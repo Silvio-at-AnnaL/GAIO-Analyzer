@@ -6,4 +6,32 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./analysisReport";
+export * from "./analysisReportMode";
+export * from "./analysisReportStatus";
+export * from "./analysisStarted";
+export * from "./competitorResult";
+export * from "./competitorScore";
+export * from "./contentRelevanceResult";
+export * from "./contentRelevanceResultDimensionsItem";
+export * from "./errorResponse";
+export * from "./faqResult";
+export * from "./headingResult";
+export * from "./headingResultPagesItem";
+export * from "./headingResultPagesItemHeadingsItem";
 export * from "./healthStatus";
+export * from "./llmDiscoverabilityResult";
+export * from "./llmQuestion";
+export * from "./questionnaireData";
+export * from "./recommendation";
+export * from "./recommendationTier";
+export * from "./schemaOrgResult";
+export * from "./schemaOrgResultProductSchemaDetails";
+export * from "./startAnalysisBody";
+export * from "./startAnalysisBodyMode";
+export * from "./technicalSeoResult";
+export * from "./technicalSeoResultCanonicalTags";
+export * from "./technicalSeoResultHreflang";
+export * from "./technicalSeoResultHttpStatusCodes";
+export * from "./technicalSeoResultMetaDescriptions";
+export * from "./technicalSeoResultMetaTitles";

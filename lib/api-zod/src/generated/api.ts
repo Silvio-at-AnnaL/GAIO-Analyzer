@@ -14,3 +14,202 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Initiates analysis with questionnaire data and URL or HTML input
+ * @summary Start a new website analysis
+ */
+export const StartAnalysisBody = zod.object({
+  mode: zod.enum(["url", "html"]),
+  url: zod.string().nullish(),
+  html: zod.string().nullish(),
+  questionnaire: zod
+    .object({
+      companyPitch: zod.string().nullish(),
+      companyName: zod.string().nullish(),
+      brandName: zod.string().nullish(),
+      brandVariants: zod.string().nullish(),
+      subBrands: zod.string().nullish(),
+      slogans: zod.string().nullish(),
+      buyerPersonas: zod.string().nullish(),
+      geographicFocus: zod.string().nullish(),
+      contentLanguages: zod.string().nullish(),
+      competitors: zod.string().nullish(),
+      differentiators: zod.string().nullish(),
+      influencers: zod.string().nullish(),
+      socialMedia: zod.string().nullish(),
+      microsites: zod.string().nullish(),
+      directories: zod.string().nullish(),
+      reviewPlatforms: zod.string().nullish(),
+      seoTools: zod.string().nullish(),
+      dataSources: zod.string().nullish(),
+      restrictions: zod.string().nullish(),
+      strategicPriority: zod.string().nullish(),
+      kpis: zod.string().nullish(),
+      weightingPreferences: zod.string().nullish(),
+      plannedCampaigns: zod.string().nullish(),
+    })
+    .optional(),
+});
+
+/**
+ * Returns the completed analysis report
+ * @summary Get analysis report
+ */
+export const GetAnalysisReportParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetAnalysisReportResponse = zod.object({
+  id: zod.string(),
+  status: zod.enum(["pending", "running", "completed", "failed"]),
+  url: zod.string().nullish(),
+  mode: zod.enum(["url", "html"]),
+  overallScore: zod.number().nullish(),
+  currentModule: zod.string().nullish(),
+  progress: zod.number(),
+  technicalSeo: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        responseTime: zod.number(),
+        ttfb: zod.number(),
+        httpStatusCodes: zod.record(zod.string(), zod.number()).optional(),
+        robotsTxt: zod.boolean(),
+        sitemapXml: zod.boolean(),
+        canonicalTags: zod.object({
+          present: zod.boolean(),
+          count: zod.number(),
+        }),
+        hreflang: zod.object({
+          present: zod.boolean(),
+          languages: zod.array(zod.string()),
+          consistent: zod.boolean(),
+        }),
+        metaTitles: zod.object({
+          present: zod.number(),
+          avgLength: zod.number(),
+          tooShort: zod.number(),
+          tooLong: zod.number(),
+          missing: zod.number(),
+        }),
+        metaDescriptions: zod.object({
+          present: zod.number(),
+          avgLength: zod.number(),
+          tooShort: zod.number(),
+          tooLong: zod.number(),
+          missing: zod.number(),
+        }),
+        imageAltCoverage: zod.number(),
+        mobileViewport: zod.boolean(),
+        httpsEnforced: zod.boolean(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  schemaOrg: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        detectedTypes: zod.array(zod.string()),
+        missingHighValue: zod.array(zod.string()),
+        productSchemaDetails: zod
+          .record(zod.string(), zod.boolean())
+          .optional(),
+        validationErrors: zod.array(zod.string()),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  headingStructure: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        pages: zod.array(
+          zod.object({
+            url: zod.string(),
+            h1Count: zod.number(),
+            hasHierarchyIssues: zod.boolean(),
+            headings: zod.array(
+              zod.object({
+                level: zod.string(),
+                text: zod.string(),
+              }),
+            ),
+          }),
+        ),
+        keywordInHeadings: zod.boolean(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  contentRelevance: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        dimensions: zod.array(
+          zod.object({
+            name: zod.string(),
+            score: zod.number(),
+            findings: zod.array(zod.string()),
+          }),
+        ),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  faqQuality: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        faqItemsFound: zod.number(),
+        hasFaqSchema: zod.boolean(),
+        hasHtmlFaq: zod.boolean(),
+        qualityAssessment: zod.string().nullish(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  llmDiscoverability: zod
+    .union([
+      zod.object({
+        score: zod.number(),
+        questions: zod.array(
+          zod.object({
+            question: zod.string(),
+            rating: zod.number(),
+            gap: zod.string(),
+          }),
+        ),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  competitorComparison: zod
+    .union([
+      zod.object({
+        competitors: zod.array(
+          zod.object({
+            name: zod.string(),
+            url: zod.string(),
+            technicalScore: zod.number(),
+            schemaScore: zod.number(),
+            contentScore: zod.number(),
+            compositeScore: zod.number(),
+          }),
+        ),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  recommendations: zod.array(
+    zod.object({
+      tier: zod.enum(["critical", "high_leverage", "secondary"]),
+      finding: zod.string(),
+      whyItMatters: zod.string(),
+      fixInstruction: zod.string(),
+    }),
+  ),
+  errors: zod.array(zod.string()),
+  crawledPages: zod.array(zod.string()),
+});

@@ -1,0 +1,255 @@
+Build a full-stack web application called "GAIO Analyzer" — a B2B industrial 
+website audit tool that evaluates LLM discoverability and classic SEO 
+readiness. The app has two input modes and produces a structured visual report.
+
+---
+
+TECH STACK
+- Backend: Python (FastAPI)
+- Frontend: React + TypeScript + Tailwind CSS
+- Charts: Recharts (spider/radar, bar, donut charts)
+- HTML parsing: BeautifulSoup4 + httpx (async)
+- Schema.org validation: Python (json-ld / extruct library)
+- LLM analysis module: Anthropic API (claude-sonnet-4-20250514) — 
+  use only for semantic/content quality scoring and question generation
+- Competitor lookup: use web search via Anthropic's web_search tool 
+  (or fallback: DuckDuckGo HTML scraping for competitor discovery)
+
+---
+
+TWO INPUT MODES (shown as toggle on the start screen)
+
+Mode A — Domain Input
+  User enters a URL (e.g. https://example.com). 
+  The backend crawls the homepage + up to 15 sub-pages (sitemap.xml 
+  first, then internal links). Respect robots.txt.
+
+Mode B — HTML Paste / Upload
+  User pastes raw HTML or uploads an .html file of a specific page.
+  Analysis runs on that single page only. Disable crawler-dependent 
+  modules and show a notice where multi-page data would appear.
+
+---
+
+ONBOARDING: CLIENT QUESTIONNAIRE (Step 1 before analysis)
+
+Before running the analysis, show a multi-step form collecting the 
+following data. All fields optional but clearly labeled as improving 
+analysis quality. Store responses in app state and pass to LLM prompts.
+
+Section A — Brand basics:
+  - Company elevator pitch (1-2 sentences)
+  - Official company name incl. legal form (GmbH, AG, etc.)
+  - Main brand name + spelling variants / abbreviations
+  - Sub-brands, product brands, former names or domains
+  - Slogans, hashtags, proprietary technical terms
+
+Section B — Target market:
+  - Primary buyer personas (industry / job title / decision criteria)
+  - Geographic focus (countries/regions)
+  - Content languages
+
+Section C — Competitive environment:
+  - Top 5+ competitors (name + URL)
+  - Key differentiators from those competitors
+  - Known industry influencers / thought leaders
+
+Section D — Digital presence:
+  - All social media handles/URLs (LinkedIn, X, Facebook, Instagram, 
+    YouTube, Xing, TikTok, WeChat, podcasts, blogs)
+  - Microsites, support portals, documentation domains
+  - Industry directories used (IndustryStock, Kompass, Thomasnet, etc.)
+  - Review platforms (G2, Capterra, Trustpilot, kununu, etc.)
+
+Section E — Technical access:
+  - Existing SEO/monitoring tool licenses (Ahrefs, Semrush, etc.)
+  - Internal data sources available (GA4, Search Console, CRM)
+  - Technical/compliance restrictions (GDPR, NDA, export controls)
+
+Section F — Project goals:
+  - Strategic priority (reach/SoV / reputation / backlinks / Gen-AI visibility)
+  - Required KPIs or thresholds
+  - Preferred weighting of analysis dimensions (if any)
+  - Planned campaigns/launches in next 12 months
+
+The questionnaire data feeds into: competitor comparison (pre-populating 
+the competitor list), brand mention detection in content, and LLM 
+question generation context.
+
+---
+
+ANALYSIS MODULES (run sequentially, show progress bar)
+
+MODULE 1 — Technical SEO Benchmarks
+  - HTTP response time + TTFB (measure actual request timing)
+  - HTTP status codes for crawled pages
+  - robots.txt present and parseable (Y/N)
+  - sitemap.xml present and valid (Y/N)
+  - Canonical tags present (Y/N, count)
+  - hreflang tags: present, languages detected, consistency check 
+    (warn if hreflang present but inconsistent across pages)
+  - Meta titles: present / avg. length / too short (<30 chars) / 
+    too long (>60 chars) — count per category
+  - Meta descriptions: present / avg. length / too short / too long / 
+    missing — count per category
+  - Image alt text coverage: % of images with alt text
+  - Mobile viewport meta tag present (Y/N)
+  - HTTPS enforced (Y/N)
+  Score: calculate a weighted Technical SEO Score (0–100)
+
+MODULE 2 — Structured Data / Schema.org
+  Use the "extruct" Python library to extract all JSON-LD, Microdata, 
+  and RDFa from crawled pages.
+  - Detect schema types present (list them: Organization, Product, 
+    FAQPage, BreadcrumbList, WebPage, etc.)
+  - For each detected type: validate required properties are populated
+  - Missing high-value schema types for B2B industrial: flag if 
+    Product, Organization, FAQPage are absent
+  - Product schema deep-check: name, description, offers/price, 
+    manufacturer, sku, image — report which properties are missing
+  Score: Schema Completeness Score (0–100)
+
+MODULE 3 — Heading Structure Analysis
+  For each crawled page:
+  - H1 count (flag if 0 or >1)
+  - H2/H3 hierarchy check (flag if H3 appears without H2 parent)
+  - Extract all headings as a list
+  - Keyword density in headings: detect if product/service terms 
+    appear in H1/H2 (use questionnaire brand terms if available)
+  Score: Heading Structure Score (0–100)
+
+MODULE 4 — Content Semantic Relevance (LLM-powered)
+  Send page content samples to Claude API with this task:
+  "Given this B2B industrial website content, evaluate: 
+   (1) Does it describe specific use cases and application scenarios? 
+   (2) Does it answer likely buyer questions (ROI, specs, integrations, 
+       certifications, support)? 
+   (3) Is technical depth sufficient for expert-level users?
+   (4) Are there content gaps a competitor could exploit?
+   Return a JSON with scores (0-10) for each dimension and 3 bullet 
+   points of specific findings per dimension."
+  Use questionnaire data (personas, differentiators) to enrich the prompt.
+  Score: Content Relevance Score (0–100)
+
+MODULE 5 — FAQ Structure Detection & Quality
+  - Detect FAQ sections via: FAQPage schema, HTML patterns 
+    (<details>/<summary>, accordion-like classes, sections with 
+    question-pattern headings)
+  - Count FAQ items found
+  - Evaluate question quality via LLM: are they framed as real user 
+    questions? Do answers have sufficient depth?
+  - Flag if no FAQ content found (high-impact gap for LLM visibility)
+  Score: FAQ Score (0–100)
+
+MODULE 6 — LLM Discoverability Simulation
+  This module predicts how well an LLM would answer questions about 
+  this company/product based solely on the website content.
+  
+  Step 1 — Generate likely user questions:
+    Prompt Claude: "Based on this B2B industrial company's website 
+    content and the following context [questionnaire data], generate 
+    10 questions a potential buyer or researcher would ask an AI 
+    assistant about this company, its products, or its use cases."
+  
+  Step 2 — Answer quality prediction:
+    For each generated question, prompt Claude: "Using ONLY the 
+    following website content as your knowledge source, how completely 
+    and accurately could you answer this question? Rate 1-5 and 
+    explain the gap if any."
+  
+  Display: generated questions as a list, each with a predicted 
+  answer quality rating (1-5 stars) and the identified content gap.
+  Overall LLM Discoverability Score (0–100) = mean of ratings × 20.
+
+MODULE 7 — Competitor Comparison
+  Sources (in priority order):
+  1. Questionnaire data (pre-filled competitor URLs from Section C)
+  2. LLM-based discovery: prompt Claude with web_search tool to find 
+     "top competitors of [company] in [industry]" — extract up to 5 URLs
+  
+  For each competitor URL: run a lightweight version of Modules 1, 2, 
+  and 4 (technical basics + schema check + content score only).
+  
+  Display: ranked comparison table + horizontal bar chart showing 
+  each site's composite score vs. the analyzed site.
+  Clearly label data freshness and note that competitor scores are 
+  estimates based on a single-page sample.
+
+---
+
+SCORING & VISUALIZATION
+
+Overall GAIO Score = weighted average:
+  Technical SEO:         15%
+  Schema/Structured Data: 20%
+  Heading Structure:     10%
+  Content Relevance:     20%
+  FAQ Quality:           15%
+  LLM Discoverability:   20%
+
+Visualizations to render (use Recharts):
+  1. Radar/Spider chart — all 6 dimension scores for the analyzed site
+  2. Donut chart — Overall GAIO Score with color-coded zones 
+     (0-40 red / 41-70 orange / 71-100 green)
+  3. Horizontal bar chart — competitor comparison (all sites, ranked)
+  4. Bar chart — Technical SEO sub-metrics 
+     (response time, meta coverage, image alt %, etc.)
+  5. Star ratings — LLM question-by-question discoverability display
+
+---
+
+RECOMMENDATIONS ENGINE
+
+After all modules run, generate a prioritized action list.
+Group findings into exactly three tiers:
+
+  🔴 CRITICAL — must be fixed immediately (broken fundamentals: 
+     missing canonical, no HTTPS, 0 structured data, H1 absent)
+  
+  🟠 HIGH LEVERAGE — changes likely to produce major visibility gains 
+     (missing FAQPage schema, thin content on key product pages, 
+     no use-case descriptions, hreflang errors, missing Organization schema)
+  
+  🟡 SECONDARY — improvements for after critical + high-leverage 
+     are resolved (meta description length, image alt text gaps, 
+     heading hierarchy inconsistencies)
+
+Each recommendation must include:
+  - What exactly is wrong (specific page/element if possible)
+  - Why it matters for LLM discoverability and/or classic SEO
+  - Concrete fix instruction (code snippet or content guidance)
+
+Generate recommendations via LLM (Claude) with all module findings 
+as input. Return structured JSON with tier, finding, why_it_matters, 
+fix_instruction fields.
+
+---
+
+REPORT EXPORT
+
+Add a "Download Report" button that generates a clean HTML report 
+(single self-contained file with inline CSS) containing all findings, 
+charts (rendered as SVG), and the full recommendations list. 
+No PDF library needed — use html2canvas or just print-to-PDF guidance.
+
+---
+
+UI/UX NOTES
+
+- Single-page app with step-based progress: 
+  Step 1: Questionnaire (skippable) → Step 2: Input Mode → 
+  Step 3: Analysis running (live progress) → Step 4: Report
+- Analysis progress: show module name + spinner while each module runs
+- Use a clean, professional dark-neutral color scheme (not a 
+  consumer tool — this is used in B2B agency contexts)
+- All text labels and UI copy in German (the tool is for German-speaking 
+  agency use; analysis prompts to Claude API remain in English)
+- If a module fails (e.g. site blocks crawling), show a clear error 
+  state for that module, skip it in scoring, and note it in the report
+
+---
+
+ENVIRONMENT VARIABLES NEEDED
+  ANTHROPIC_API_KEY — for all Claude API calls
+
+Do not hardcode any API keys. Use python-dotenv for local dev.

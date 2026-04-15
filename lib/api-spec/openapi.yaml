@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: analysis
+    description: Website analysis operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /analyze:
+    post:
+      operationId: startAnalysis
+      tags: [analysis]
+      summary: Start a new website analysis
+      description: Initiates analysis with questionnaire data and URL or HTML input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAnalysisBody"
+      responses:
+        "201":
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisStarted"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analyze/{id}:
+    get:
+      operationId: getAnalysisReport
+      tags: [analysis]
+      summary: Get analysis report
+      description: Returns the completed analysis report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analysis report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisReport"
+        "404":
+          description: Analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +89,420 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    QuestionnaireData:
+      type: object
+      properties:
+        companyPitch:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        brandName:
+          type: ["string", "null"]
+        brandVariants:
+          type: ["string", "null"]
+        subBrands:
+          type: ["string", "null"]
+        slogans:
+          type: ["string", "null"]
+        buyerPersonas:
+          type: ["string", "null"]
+        geographicFocus:
+          type: ["string", "null"]
+        contentLanguages:
+          type: ["string", "null"]
+        competitors:
+          type: ["string", "null"]
+        differentiators:
+          type: ["string", "null"]
+        influencers:
+          type: ["string", "null"]
+        socialMedia:
+          type: ["string", "null"]
+        microsites:
+          type: ["string", "null"]
+        directories:
+          type: ["string", "null"]
+        reviewPlatforms:
+          type: ["string", "null"]
+        seoTools:
+          type: ["string", "null"]
+        dataSources:
+          type: ["string", "null"]
+        restrictions:
+          type: ["string", "null"]
+        strategicPriority:
+          type: ["string", "null"]
+        kpis:
+          type: ["string", "null"]
+        weightingPreferences:
+          type: ["string", "null"]
+        plannedCampaigns:
+          type: ["string", "null"]
+
+    StartAnalysisBody:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [url, html]
+        url:
+          type: ["string", "null"]
+        html:
+          type: ["string", "null"]
+        questionnaire:
+          $ref: "#/components/schemas/QuestionnaireData"
+      required:
+        - mode
+
+    AnalysisStarted:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+      required:
+        - id
+        - status
+
+    TechnicalSeoResult:
+      type: object
+      properties:
+        score:
+          type: number
+        responseTime:
+          type: number
+        ttfb:
+          type: number
+        httpStatusCodes:
+          type: object
+          additionalProperties:
+            type: integer
+        robotsTxt:
+          type: boolean
+        sitemapXml:
+          type: boolean
+        canonicalTags:
+          type: object
+          properties:
+            present:
+              type: boolean
+            count:
+              type: integer
+          required: [present, count]
+        hreflang:
+          type: object
+          properties:
+            present:
+              type: boolean
+            languages:
+              type: array
+              items:
+                type: string
+            consistent:
+              type: boolean
+          required: [present, languages, consistent]
+        metaTitles:
+          type: object
+          properties:
+            present:
+              type: integer
+            avgLength:
+              type: number
+            tooShort:
+              type: integer
+            tooLong:
+              type: integer
+            missing:
+              type: integer
+          required: [present, avgLength, tooShort, tooLong, missing]
+        metaDescriptions:
+          type: object
+          properties:
+            present:
+              type: integer
+            avgLength:
+              type: number
+            tooShort:
+              type: integer
+            tooLong:
+              type: integer
+            missing:
+              type: integer
+          required: [present, avgLength, tooShort, tooLong, missing]
+        imageAltCoverage:
+          type: number
+        mobileViewport:
+          type: boolean
+        httpsEnforced:
+          type: boolean
+      required:
+        - score
+        - responseTime
+        - ttfb
+        - robotsTxt
+        - sitemapXml
+        - canonicalTags
+        - hreflang
+        - metaTitles
+        - metaDescriptions
+        - imageAltCoverage
+        - mobileViewport
+        - httpsEnforced
+
+    SchemaOrgResult:
+      type: object
+      properties:
+        score:
+          type: number
+        detectedTypes:
+          type: array
+          items:
+            type: string
+        missingHighValue:
+          type: array
+          items:
+            type: string
+        productSchemaDetails:
+          type: object
+          additionalProperties:
+            type: boolean
+        validationErrors:
+          type: array
+          items:
+            type: string
+      required:
+        - score
+        - detectedTypes
+        - missingHighValue
+        - validationErrors
+
+    HeadingResult:
+      type: object
+      properties:
+        score:
+          type: number
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              h1Count:
+                type: integer
+              hasHierarchyIssues:
+                type: boolean
+              headings:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    level:
+                      type: string
+                    text:
+                      type: string
+                  required: [level, text]
+            required: [url, h1Count, hasHierarchyIssues, headings]
+        keywordInHeadings:
+          type: boolean
+      required:
+        - score
+        - pages
+        - keywordInHeadings
+
+    ContentRelevanceResult:
+      type: object
+      properties:
+        score:
+          type: number
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: number
+              findings:
+                type: array
+                items:
+                  type: string
+            required: [name, score, findings]
+      required:
+        - score
+        - dimensions
+
+    FaqResult:
+      type: object
+      properties:
+        score:
+          type: number
+        faqItemsFound:
+          type: integer
+        hasFaqSchema:
+          type: boolean
+        hasHtmlFaq:
+          type: boolean
+        qualityAssessment:
+          type: ["string", "null"]
+      required:
+        - score
+        - faqItemsFound
+        - hasFaqSchema
+        - hasHtmlFaq
+
+    LlmQuestion:
+      type: object
+      properties:
+        question:
+          type: string
+        rating:
+          type: number
+        gap:
+          type: string
+      required:
+        - question
+        - rating
+        - gap
+
+    LlmDiscoverabilityResult:
+      type: object
+      properties:
+        score:
+          type: number
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/LlmQuestion"
+      required:
+        - score
+        - questions
+
+    CompetitorScore:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        technicalScore:
+          type: number
+        schemaScore:
+          type: number
+        contentScore:
+          type: number
+        compositeScore:
+          type: number
+      required:
+        - name
+        - url
+        - technicalScore
+        - schemaScore
+        - contentScore
+        - compositeScore
+
+    CompetitorResult:
+      type: object
+      properties:
+        competitors:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompetitorScore"
+      required:
+        - competitors
+
+    Recommendation:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [critical, high_leverage, secondary]
+        finding:
+          type: string
+        whyItMatters:
+          type: string
+        fixInstruction:
+          type: string
+      required:
+        - tier
+        - finding
+        - whyItMatters
+        - fixInstruction
+
+    AnalysisReport:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        url:
+          type: ["string", "null"]
+        mode:
+          type: string
+          enum: [url, html]
+        overallScore:
+          type: ["number", "null"]
+        currentModule:
+          type: ["string", "null"]
+        progress:
+          type: number
+        technicalSeo:
+          oneOf:
+            - $ref: "#/components/schemas/TechnicalSeoResult"
+            - type: "null"
+        schemaOrg:
+          oneOf:
+            - $ref: "#/components/schemas/SchemaOrgResult"
+            - type: "null"
+        headingStructure:
+          oneOf:
+            - $ref: "#/components/schemas/HeadingResult"
+            - type: "null"
+        contentRelevance:
+          oneOf:
+            - $ref: "#/components/schemas/ContentRelevanceResult"
+            - type: "null"
+        faqQuality:
+          oneOf:
+            - $ref: "#/components/schemas/FaqResult"
+            - type: "null"
+        llmDiscoverability:
+          oneOf:
+            - $ref: "#/components/schemas/LlmDiscoverabilityResult"
+            - type: "null"
+        competitorComparison:
+          oneOf:
+            - $ref: "#/components/schemas/CompetitorResult"
+            - type: "null"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recommendation"
+        errors:
+          type: array
+          items:
+            type: string
+        crawledPages:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - status
+        - mode
+        - progress
+        - recommendations
+        - errors
+        - crawledPages

@@ -8,3 +8,252 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface QuestionnaireData {
+  /** @nullable */
+  companyPitch?: string | null;
+  /** @nullable */
+  companyName?: string | null;
+  /** @nullable */
+  brandName?: string | null;
+  /** @nullable */
+  brandVariants?: string | null;
+  /** @nullable */
+  subBrands?: string | null;
+  /** @nullable */
+  slogans?: string | null;
+  /** @nullable */
+  buyerPersonas?: string | null;
+  /** @nullable */
+  geographicFocus?: string | null;
+  /** @nullable */
+  contentLanguages?: string | null;
+  /** @nullable */
+  competitors?: string | null;
+  /** @nullable */
+  differentiators?: string | null;
+  /** @nullable */
+  influencers?: string | null;
+  /** @nullable */
+  socialMedia?: string | null;
+  /** @nullable */
+  microsites?: string | null;
+  /** @nullable */
+  directories?: string | null;
+  /** @nullable */
+  reviewPlatforms?: string | null;
+  /** @nullable */
+  seoTools?: string | null;
+  /** @nullable */
+  dataSources?: string | null;
+  /** @nullable */
+  restrictions?: string | null;
+  /** @nullable */
+  strategicPriority?: string | null;
+  /** @nullable */
+  kpis?: string | null;
+  /** @nullable */
+  weightingPreferences?: string | null;
+  /** @nullable */
+  plannedCampaigns?: string | null;
+}
+
+export type StartAnalysisBodyMode =
+  (typeof StartAnalysisBodyMode)[keyof typeof StartAnalysisBodyMode];
+
+export const StartAnalysisBodyMode = {
+  url: "url",
+  html: "html",
+} as const;
+
+export interface StartAnalysisBody {
+  mode: StartAnalysisBodyMode;
+  /** @nullable */
+  url?: string | null;
+  /** @nullable */
+  html?: string | null;
+  questionnaire?: QuestionnaireData;
+}
+
+export interface AnalysisStarted {
+  id: string;
+  status: string;
+}
+
+export type TechnicalSeoResultHttpStatusCodes = { [key: string]: number };
+
+export type TechnicalSeoResultCanonicalTags = {
+  present: boolean;
+  count: number;
+};
+
+export type TechnicalSeoResultHreflang = {
+  present: boolean;
+  languages: string[];
+  consistent: boolean;
+};
+
+export type TechnicalSeoResultMetaTitles = {
+  present: number;
+  avgLength: number;
+  tooShort: number;
+  tooLong: number;
+  missing: number;
+};
+
+export type TechnicalSeoResultMetaDescriptions = {
+  present: number;
+  avgLength: number;
+  tooShort: number;
+  tooLong: number;
+  missing: number;
+};
+
+export interface TechnicalSeoResult {
+  score: number;
+  responseTime: number;
+  ttfb: number;
+  httpStatusCodes?: TechnicalSeoResultHttpStatusCodes;
+  robotsTxt: boolean;
+  sitemapXml: boolean;
+  canonicalTags: TechnicalSeoResultCanonicalTags;
+  hreflang: TechnicalSeoResultHreflang;
+  metaTitles: TechnicalSeoResultMetaTitles;
+  metaDescriptions: TechnicalSeoResultMetaDescriptions;
+  imageAltCoverage: number;
+  mobileViewport: boolean;
+  httpsEnforced: boolean;
+}
+
+export type SchemaOrgResultProductSchemaDetails = { [key: string]: boolean };
+
+export interface SchemaOrgResult {
+  score: number;
+  detectedTypes: string[];
+  missingHighValue: string[];
+  productSchemaDetails?: SchemaOrgResultProductSchemaDetails;
+  validationErrors: string[];
+}
+
+export type HeadingResultPagesItemHeadingsItem = {
+  level: string;
+  text: string;
+};
+
+export type HeadingResultPagesItem = {
+  url: string;
+  h1Count: number;
+  hasHierarchyIssues: boolean;
+  headings: HeadingResultPagesItemHeadingsItem[];
+};
+
+export interface HeadingResult {
+  score: number;
+  pages: HeadingResultPagesItem[];
+  keywordInHeadings: boolean;
+}
+
+export type ContentRelevanceResultDimensionsItem = {
+  name: string;
+  score: number;
+  findings: string[];
+};
+
+export interface ContentRelevanceResult {
+  score: number;
+  dimensions: ContentRelevanceResultDimensionsItem[];
+}
+
+export interface FaqResult {
+  score: number;
+  faqItemsFound: number;
+  hasFaqSchema: boolean;
+  hasHtmlFaq: boolean;
+  /** @nullable */
+  qualityAssessment?: string | null;
+}
+
+export interface LlmQuestion {
+  question: string;
+  rating: number;
+  gap: string;
+}
+
+export interface LlmDiscoverabilityResult {
+  score: number;
+  questions: LlmQuestion[];
+}
+
+export interface CompetitorScore {
+  name: string;
+  url: string;
+  technicalScore: number;
+  schemaScore: number;
+  contentScore: number;
+  compositeScore: number;
+}
+
+export interface CompetitorResult {
+  competitors: CompetitorScore[];
+}
+
+export type RecommendationTier =
+  (typeof RecommendationTier)[keyof typeof RecommendationTier];
+
+export const RecommendationTier = {
+  critical: "critical",
+  high_leverage: "high_leverage",
+  secondary: "secondary",
+} as const;
+
+export interface Recommendation {
+  tier: RecommendationTier;
+  finding: string;
+  whyItMatters: string;
+  fixInstruction: string;
+}
+
+export type AnalysisReportStatus =
+  (typeof AnalysisReportStatus)[keyof typeof AnalysisReportStatus];
+
+export const AnalysisReportStatus = {
+  pending: "pending",
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+} as const;
+
+export type AnalysisReportMode =
+  (typeof AnalysisReportMode)[keyof typeof AnalysisReportMode];
+
+export const AnalysisReportMode = {
+  url: "url",
+  html: "html",
+} as const;
+
+export interface AnalysisReport {
+  id: string;
+  status: AnalysisReportStatus;
+  /** @nullable */
+  url?: string | null;
+  mode: AnalysisReportMode;
+  /** @nullable */
+  overallScore?: number | null;
+  /** @nullable */
+  currentModule?: string | null;
+  progress: number;
+  technicalSeo?: TechnicalSeoResult | null;
+  schemaOrg?: SchemaOrgResult | null;
+  headingStructure?: HeadingResult | null;
+  contentRelevance?: ContentRelevanceResult | null;
+  faqQuality?: FaqResult | null;
+  llmDiscoverability?: LlmDiscoverabilityResult | null;
+  competitorComparison?: CompetitorResult | null;
+  recommendations: Recommendation[];
+  errors: string[];
+  crawledPages: string[];
+}
