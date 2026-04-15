@@ -1,0 +1,163 @@
+---
+UI/UX REDESIGN — REPLACE ALL PREVIOUS UI/UX NOTES WITH THE FOLLOWING
+---
+
+LAYOUT: FIXED LEFT SIDEBAR + MAIN CONTENT AREA
+
+The app uses a two-column layout at all times:
+- Left: fixed sidebar navigation (width: ~240px), always visible
+- Right: main content area, scrollable
+
+The sidebar contains exactly 4 navigation items (numbered, icon + label):
+  1. Domainanalyse – Basisdaten
+  2. HTML-Analyse
+  3. Ergebnisse
+  4. Einstellungen
+
+Active item is highlighted. Clicking any item switches the main content 
+area to that view — no page reloads, pure client-side routing (React state).
+
+After an analysis has completed, the user can click items 1 or 2 at any 
+time to modify inputs and re-trigger a full new analysis. Do not lock 
+navigation after analysis runs.
+
+---
+
+SIDEBAR ITEM 1 — "Domainanalyse – Basisdaten"
+
+Main content area shows a clean, well-spaced input form. No multi-step 
+wizard — all fields visible at once, grouped into labeled sections.
+
+SECTION: Unternehmen & Website
+  - Unternehmensname
+    Tooltip: "Bitte geben Sie die korrekte Unternehmensbezeichnung ein"
+    Input type: text, full width
+
+  - Website-URL
+    Tooltip: "Bitte Ihre hier zu analysierende Website eintragen"
+    Input type: url, full width, placeholder: "https://www.beispiel.de"
+
+SECTION: Wettbewerber
+  - Dynamic URL input list, labeled "Wettbewerber-Domains"
+    Tooltip on section label: "Die Website-Adresse/n Ihrer wichtigsten 
+    Wettbewerber"
+    Behavior: Start with 1 input field. Each time a field is filled 
+    (on blur), automatically append a new empty field below it.
+    Maximum 10 fields total. Each field has a small ✕ button to remove it.
+    Input type: url, placeholder: "https://www.wettbewerber.de"
+
+SECTION: Social Media & Online-Profile
+  Pre-labeled individual input fields for each platform (show icon + 
+  platform name as label, input as URL or handle):
+    LinkedIn, Facebook, Instagram, YouTube, TikTok, 
+    WeChat, Twitter / X, Kununu, Xing
+  These fields are optional — style them visually lighter than the 
+  required fields above. Arrange in a 2-column grid layout.
+
+SECTION: Zielgruppen / Käuferpersonas
+  - Textarea, ~4 rows
+    Tooltip: "Hier Ihre Zielbranchen und Zielpersonen 
+    (Einkäufer, Projektingenieure, R+D…) eintragen"
+    Placeholder: "z. B. Einkaufsleiter in der Automobilindustrie, 
+    Projektingenieure im Maschinenbau, F&E-Verantwortliche..."
+
+BELOW THE FORM — full-width primary CTA button:
+  Label: "Analyse starten"
+  On click: validate that Unternehmensname and Website-URL are filled 
+  (show inline error if not), then start the analysis pipeline and 
+  immediately switch the main content area to item 3 "Ergebnisse".
+
+---
+
+SIDEBAR ITEM 2 — "HTML-Analyse"
+
+Main content area shows:
+
+An info box at the top (subtle, not alarming):
+  "Wenn Sie diesen Weg wählen, wird nur die einzelne Seite analysiert, 
+  die Sie hier bereitstellen. Crawler-abhängige Module werden übersprungen."
+
+Two input options as a tab switcher ("Code einfügen" | "Datei hochladen"):
+
+Tab A — "Code einfügen":
+  Large textarea, ~20 rows, monospace font
+  Placeholder: "HTML-Code hier einfügen..."
+
+Tab B — "Datei hochladen":
+  Drag-and-drop zone + fallback file picker button
+  Accept: .html, .htm only
+  Show filename + file size after upload; allow re-upload to replace
+
+Below (outside tabs) — full-width primary CTA button:
+  Label: "Analyse starten"
+  On click: validate that either textarea has content or a file is 
+  loaded (show inline error if not), then start the HTML-only analysis 
+  pipeline and switch to item 3 "Ergebnisse".
+
+---
+
+SIDEBAR ITEM 3 — "Ergebnisse"
+
+This view has two states:
+
+STATE A — Analysis running:
+  Show a vertical list of all analysis modules with status indicators:
+    ⏳ waiting  /  🔄 running (animated spinner)  /  ✅ done  /  ⚠️ skipped
+  Show current module name + a subtle progress bar at the top.
+  Modules run sequentially; update status in real time via 
+  server-sent events (SSE) or WebSocket from the FastAPI backend.
+
+STATE B — Analysis complete:
+  Display the full report (all modules, charts, recommendations).
+  At the top of the results: a "Analyse herunterladen" button that 
+  generates and downloads a self-contained HTML report file 
+  (single file, inline CSS + SVG charts, no external dependencies).
+  
+  Below the download button: a subtle text prompt:
+  "Basisdaten ändern oder neue Analyse starten? 
+   → Wechseln Sie zu Domainanalyse oder HTML-Analyse."
+  (This is purely informational — navigation is always available 
+  in the sidebar.)
+
+If no analysis has been run yet (first app load), show a neutral 
+empty state: icon + text "Noch keine Analyse durchgeführt. 
+Starten Sie unter Domainanalyse oder HTML-Analyse."
+
+---
+
+SIDEBAR ITEM 4 — "Einstellungen"
+
+Main content area shows a single settings section for now:
+
+SECTION: Darstellung
+  Label: "Farbmodus"
+  Three-option radio/toggle group:
+    ○ Hell
+    ○ Dunkel  
+    ● Systemeinstellung (default, selected on first load)
+
+  Behavior: selecting "Hell" or "Dunkel" immediately applies the 
+  chosen theme. "Systemeinstellung" uses the OS/browser 
+  prefers-color-scheme media query.
+  Persist selection in localStorage so it survives page refresh.
+
+  Implement theming via CSS custom properties (variables) on the 
+  root element. Define a complete --color-* token set for both 
+  light and dark themes. Do not use two separate CSS files.
+
+---
+
+GENERAL UI REQUIREMENTS
+
+- All UI copy (labels, tooltips, placeholders, buttons, status messages) 
+  in German.
+- Sidebar is always visible and never collapses (desktop layout only 
+  is fine for v1 — no mobile breakpoint required).
+- Tooltips: implement as native HTML title attributes OR as small 
+  ⓘ icon next to the label that shows a styled tooltip on hover. 
+  Do not use a tooltip library — implement in plain CSS/React.
+- Form state (all inputs in items 1 and 2) must persist in React 
+  global state (Context or Zustand) so that switching between sidebar 
+  items does not clear entered data.
+- Do not use a multi-step wizard or modal overlays for any input. 
+  All forms are inline in the main content area.

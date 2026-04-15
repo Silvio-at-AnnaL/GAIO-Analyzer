@@ -47,6 +47,11 @@ router.get("/analyze/:id", async (req, res): Promise<void> => {
   res.json(analysis);
 });
 
+router.get("/analyses", async (_req, res): Promise<void> => {
+  const items = listAnalyses();
+  res.json({ items, total: items.length });
+});
+
 router.get("/analyze/:id/events", async (req, res): Promise<void> => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
