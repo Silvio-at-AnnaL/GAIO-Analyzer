@@ -29,10 +29,39 @@ export interface AnalysisState {
   crawledPages: string[];
 }
 
-const analysisStore = new Map<string, AnalysisState>();
+interface AnalysisEntry {
+  state: AnalysisState;
+  startedAt: string;
+}
+
+const analysisStore = new Map<string, AnalysisEntry>();
 
 export function getAnalysis(id: string): AnalysisState | undefined {
-  return analysisStore.get(id);
+  return analysisStore.get(id)?.state;
+}
+
+export function listAnalyses(): Array<{
+  id: string;
+  status: string;
+  url: string | null;
+  mode: string;
+  overallScore: number | null;
+  progress: number;
+  crawledPagesCount: number;
+  startedAt: string;
+}> {
+  return Array.from(analysisStore.entries())
+    .map(([, entry]) => ({
+      id: entry.state.id,
+      status: entry.state.status,
+      url: entry.state.url,
+      mode: entry.state.mode,
+      overallScore: entry.state.overallScore,
+      progress: entry.state.progress,
+      crawledPagesCount: entry.state.crawledPages.length,
+      startedAt: entry.startedAt,
+    }))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
 interface QuestionnaireInput {
@@ -128,7 +157,9 @@ export async function runAnalysis(
     crawledPages: [],
   };
 
-  analysisStore.set(id, state);
+  const startedAt = new Date().toISOString();
+  const save = () => analysisStore.set(id, { state: { ...state }, startedAt });
+  save();
 
   const questionnaireContext = buildQuestionnaireContext(questionnaire);
   const brandTerms = extractBrandTerms(questionnaire);
@@ -141,7 +172,7 @@ export async function runAnalysis(
     if (mode === "url" && url) {
       state.currentModule = "Crawling Website";
       state.progress = 5;
-      analysisStore.set(id, { ...state });
+      save();
 
       crawlResult = await crawlSite(url, 16);
       pages = crawlResult.pages;
@@ -150,7 +181,7 @@ export async function runAnalysis(
       if (pages.length === 0) {
         state.status = "failed";
         state.errors.push("Could not crawl any pages from the provided URL");
-        analysisStore.set(id, { ...state });
+        save();
         return;
       }
     } else if (mode === "html" && html) {
@@ -174,7 +205,7 @@ export async function runAnalysis(
     } else {
       state.status = "failed";
       state.errors.push("Invalid input: provide URL or HTML");
-      analysisStore.set(id, { ...state });
+      save();
       return;
     }
 
@@ -182,7 +213,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "Technisches SEO";
       state.progress = 10;
-      analysisStore.set(id, { ...state });
+      save();
       state.technicalSeo = analyzeTechnicalSeo(crawlResult, url || "uploaded-page");
     } catch (err) {
       logger.error({ err }, "Technical SEO analysis failed");
@@ -193,7 +224,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "Schema.org / Strukturierte Daten";
       state.progress = 25;
-      analysisStore.set(id, { ...state });
+      save();
       state.schemaOrg = analyzeSchemaOrg(pages);
     } catch (err) {
       logger.error({ err }, "Schema.org analysis failed");
@@ -204,7 +235,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "Heading-Struktur";
       state.progress = 35;
-      analysisStore.set(id, { ...state });
+      save();
       state.headingStructure = analyzeHeadings(pages, brandTerms);
     } catch (err) {
       logger.error({ err }, "Heading analysis failed");
@@ -215,7 +246,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "Inhaltliche Relevanz (KI-Analyse)";
       state.progress = 45;
-      analysisStore.set(id, { ...state });
+      save();
       state.contentRelevance = await analyzeContentRelevance(pages, questionnaireContext);
     } catch (err) {
       logger.error({ err }, "Content relevance analysis failed");
@@ -226,7 +257,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "FAQ-Qualitaet";
       state.progress = 60;
-      analysisStore.set(id, { ...state });
+      save();
       state.faqQuality = await analyzeFaq(pages);
     } catch (err) {
       logger.error({ err }, "FAQ analysis failed");
@@ -237,7 +268,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "LLM-Auffindbarkeit";
       state.progress = 75;
-      analysisStore.set(id, { ...state });
+      save();
       state.llmDiscoverability = await analyzeLlmDiscoverability(pages, questionnaireContext);
     } catch (err) {
       logger.error({ err }, "LLM discoverability analysis failed");
@@ -249,7 +280,7 @@ export async function runAnalysis(
       try {
         state.currentModule = "Wettbewerbsvergleich";
         state.progress = 85;
-        analysisStore.set(id, { ...state });
+        save();
         state.competitorComparison = await analyzeCompetitors(competitorUrls);
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
@@ -263,7 +294,7 @@ export async function runAnalysis(
     try {
       state.currentModule = "Empfehlungen generieren";
       state.progress = 92;
-      analysisStore.set(id, { ...state });
+      save();
 
       const moduleResults = {
         technicalSeo: state.technicalSeo,
@@ -306,13 +337,13 @@ export async function runAnalysis(
     state.status = "completed";
     state.progress = 100;
     state.currentModule = null;
-    analysisStore.set(id, { ...state });
+    save();
 
     logger.info({ id, overallScore: state.overallScore }, "Analysis completed");
   } catch (err) {
     logger.error({ err, id }, "Analysis failed");
     state.status = "failed";
     state.errors.push("Analysis failed unexpectedly");
-    analysisStore.set(id, { ...state });
+    save();
   }
 }

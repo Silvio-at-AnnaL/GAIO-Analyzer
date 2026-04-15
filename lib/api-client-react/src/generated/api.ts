@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AnalysesListResponse,
   AnalysisReport,
   AnalysisStarted,
   ErrorResponse,
@@ -101,6 +102,82 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a summary of all analyses in the current session
+ * @summary List all analyses
+ */
+export const getListAnalysesUrl = () => {
+  return `/api/analyses`;
+};
+
+export const listAnalyses = async (
+  options?: RequestInit,
+): Promise<AnalysesListResponse> => {
+  return customFetch<AnalysesListResponse>(getListAnalysesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAnalysesQueryKey = () => {
+  return [`/api/analyses`] as const;
+};
+
+export const getListAnalysesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnalyses>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAnalyses>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAnalysesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnalyses>>> = ({
+    signal,
+  }) => listAnalyses({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnalyses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnalysesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnalyses>>
+>;
+export type ListAnalysesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all analyses
+ */
+
+export function useListAnalyses<
+  TData = Awaited<ReturnType<typeof listAnalyses>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAnalyses>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnalysesQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

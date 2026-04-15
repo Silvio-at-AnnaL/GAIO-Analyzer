@@ -16,6 +16,26 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Returns a summary of all analyses in the current session
+ * @summary List all analyses
+ */
+export const ListAnalysesResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      status: zod.enum(["pending", "running", "completed", "failed"]),
+      url: zod.string().nullish(),
+      mode: zod.enum(["url", "html"]),
+      overallScore: zod.number().nullish(),
+      progress: zod.number(),
+      crawledPagesCount: zod.number(),
+      startedAt: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
  * Initiates analysis with questionnaire data and URL or HTML input
  * @summary Start a new website analysis
  */

@@ -6,10 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./analysesListResponse";
 export * from "./analysisReport";
 export * from "./analysisReportMode";
 export * from "./analysisReportStatus";
 export * from "./analysisStarted";
+export * from "./analysisSummary";
+export * from "./analysisSummaryMode";
+export * from "./analysisSummaryStatus";
 export * from "./competitorResult";
 export * from "./competitorScore";
 export * from "./contentRelevanceResult";

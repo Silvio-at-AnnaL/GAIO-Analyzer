@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { StartAnalysisBody, GetAnalysisReportParams } from "@workspace/api-zod";
-import { runAnalysis, getAnalysis } from "../lib/analysis-engine";
+import { runAnalysis, getAnalysis, listAnalyses } from "../lib/analysis-engine";
 
 const router: IRouter = Router();
 
