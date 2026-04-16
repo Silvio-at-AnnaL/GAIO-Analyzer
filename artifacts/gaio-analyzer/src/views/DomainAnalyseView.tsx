@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis } from "@workspace/api-client-react";
 
@@ -20,10 +20,18 @@ const SOCIAL_PLATFORMS = [
   { key: "xing", label: "Xing" },
 ] as const;
 
+const MAX_VISIBLE_PAGES = 15;
+
 export function DomainAnalyseView() {
-  const { domainForm, setDomainForm, setAnalysisId, setAnalysisStatus, setActiveView } = useAppStore();
+  const {
+    domainForm, setDomainForm,
+    setAnalysisId, setAnalysisStatus, setActiveView,
+    crawledPages, selectedPages, setSelectedPages,
+  } = useAppStore();
+
   const startAnalysis = useStartAnalysis();
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
+  const [showAllPages, setShowAllPages] = useState(false);
 
   const updateField = <K extends keyof typeof domainForm>(key: K, value: typeof domainForm[K]) => {
     setDomainForm({ ...domainForm, [key]: value });
@@ -36,8 +44,6 @@ export function DomainAnalyseView() {
   const updateCompetitor = (index: number, value: string) => {
     const next = [...domainForm.competitors];
     next[index] = value;
-
-    // Auto-add new field if last field was filled and we're under limit
     if (value.trim() !== "" && index === next.length - 1 && next.length < 10) {
       next.push("");
     }
@@ -46,7 +52,6 @@ export function DomainAnalyseView() {
 
   const removeCompetitor = (index: number) => {
     const next = domainForm.competitors.filter((_, i) => i !== index);
-    // Always keep at least 1
     setDomainForm({ ...domainForm, competitors: next.length > 0 ? next : [""] });
   };
 
@@ -59,6 +64,20 @@ export function DomainAnalyseView() {
     return Object.keys(errs).length === 0;
   };
 
+  const togglePage = (url: string) => {
+    const next = selectedPages.includes(url)
+      ? selectedPages.filter((u) => u !== url)
+      : [...selectedPages, url];
+    setSelectedPages(next);
+  };
+
+  const allSelected = crawledPages.length > 0 && selectedPages.length === crawledPages.length;
+  const toggleAll = () => {
+    setSelectedPages(allSelected ? [] : [...crawledPages]);
+  };
+
+  const visiblePages = showAllPages ? crawledPages : crawledPages.slice(0, MAX_VISIBLE_PAGES);
+
   const handleStart = () => {
     if (!validate()) return;
 
@@ -67,6 +86,8 @@ export function DomainAnalyseView() {
       .filter(([, v]) => v.trim())
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
+
+    const useExplicitUrls = crawledPages.length > 0 && selectedPages.length > 0 && selectedPages.length < crawledPages.length;
 
     startAnalysis.mutate(
       {
@@ -79,6 +100,7 @@ export function DomainAnalyseView() {
             buyerPersonas: domainForm.personas.trim() || null,
             socialMedia: socialLines || null,
           },
+          explicitUrls: useExplicitUrls ? selectedPages : null,
         },
       },
       {
@@ -97,13 +119,13 @@ export function DomainAnalyseView() {
   return (
     <div className="max-w-2xl space-y-8">
       <div>
-        <h1 className="text-xl font-bold font-mono tracking-tight">Domainanalyse – Basisdaten</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Domainanalyse – Basisdaten</h1>
         <p className="text-sm text-muted-foreground mt-1">Website crawlen und alle 7 Analysemodule ausführen.</p>
       </div>
 
       {/* Section: Unternehmen & Website */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold font-mono text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
           Unternehmen &amp; Website
         </h2>
 
@@ -141,11 +163,75 @@ export function DomainAnalyseView() {
             <p className="text-xs text-destructive">{errors.url}</p>
           )}
         </div>
+
+        {/* Crawled pages selection — only shown after at least one analysis */}
+        {crawledPages.length > 0 && (
+          <div
+            className="rounded-lg border border-border p-4 space-y-3"
+            style={{ background: "hsl(var(--muted) / 0.3)" }}
+          >
+            <div>
+              <p className="text-sm font-semibold">Zu analysierende Unterseiten</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Automatisch beim letzten Crawl erkannt. Sie können die Auswahl anpassen und die Analyse neu starten.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{selectedPages.length} von {crawledPages.length} ausgewählt</span>
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-xs text-primary hover:underline font-medium"
+              >
+                {allSelected ? "Alle abwählen" : "Alle auswählen"}
+              </button>
+            </div>
+
+            <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+              {visiblePages.map((url) => (
+                <label
+                  key={url}
+                  className="flex items-start gap-2.5 py-1.5 px-2 rounded cursor-pointer hover:bg-muted/50 transition-colors"
+                  style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.75rem" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedPages.includes(url)}
+                    onChange={() => togglePage(url)}
+                    className="mt-0.5 shrink-0 accent-primary"
+                  />
+                  <span className="break-all text-foreground/80 leading-tight">{url}</span>
+                </label>
+              ))}
+            </div>
+
+            {crawledPages.length > MAX_VISIBLE_PAGES && (
+              <button
+                type="button"
+                onClick={() => setShowAllPages((v) => !v)}
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+              >
+                {showAllPages ? (
+                  <>
+                    <ChevronUp className="w-3 h-3" />
+                    Weniger anzeigen
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3" />
+                    {crawledPages.length - MAX_VISIBLE_PAGES} weitere anzeigen
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Section: Wettbewerber */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold font-mono text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
           Wettbewerber-Domains
           <Tooltip text="Die Website-Adresse/n Ihrer wichtigsten Wettbewerber" />
         </h2>
@@ -188,7 +274,7 @@ export function DomainAnalyseView() {
 
       {/* Section: Social Media */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold font-mono text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
           Social Media &amp; Online-Profile
         </h2>
         <p className="text-xs text-muted-foreground -mt-2">Optional — URL oder Profilname</p>
@@ -214,7 +300,7 @@ export function DomainAnalyseView() {
 
       {/* Section: Zielgruppen */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold font-mono text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
           Zielgruppen / Käuferpersonas
           <Tooltip text="Hier Ihre Zielbranchen und Zielpersonen (Einkäufer, Projektingenieure, R+D…) eintragen" />
         </h2>

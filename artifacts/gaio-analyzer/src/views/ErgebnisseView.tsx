@@ -10,10 +10,11 @@ import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { generateHtmlReport } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from "recharts";
 import {
-  Loader2, CheckCircle2, XCircle, Download, Star, AlertCircle, AlertTriangle, Info, Clock
+  Loader2, CheckCircle2, XCircle, Download, Star, AlertCircle, AlertTriangle,
+  Info, Clock, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 
 const MODULE_NAMES = [
@@ -58,7 +59,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
   return (
     <div className="max-w-xl space-y-6">
       <div>
-        <h1 className="text-xl font-bold font-mono tracking-tight">
+        <h1 className="text-2xl font-bold tracking-tight">
           {isFailed ? "Analyse fehlgeschlagen" : "Analyse läuft…"}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -67,14 +68,14 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
       </div>
 
       <div className="space-y-2">
-        <div className="flex justify-between text-xs text-muted-foreground font-mono">
+        <div className="flex justify-between text-xs text-muted-foreground">
           <span>{report?.currentModule || "Initialisierung…"}</span>
           <span>{Math.round(progress)}%</span>
         </div>
         <Progress value={progress} className="h-1.5" />
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {MODULE_NAMES.map((name) => {
           const isCompleted = completedModules.includes(name);
           const isCurrent = name === currentModuleName;
@@ -100,7 +101,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
               ) : (
                 <Clock className="w-4 h-4 shrink-0 text-muted-foreground/40" />
               )}
-              <span className="font-mono text-xs">{name}</span>
+              <span className="text-xs">{name}</span>
             </div>
           );
         })}
@@ -108,7 +109,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
 
       {report?.errors && report.errors.length > 0 && (
         <div className="p-3 rounded-md bg-muted/50 space-y-1">
-          <p className="text-xs font-mono text-muted-foreground">Hinweise:</p>
+          <p className="text-xs text-muted-foreground">Hinweise:</p>
           {report.errors.map((e, i) => (
             <p key={i} className="text-xs text-muted-foreground">– {e}</p>
           ))}
@@ -132,13 +133,224 @@ function RecommendationCard({ rec }: { rec: { finding: string; whyItMatters: str
   );
 }
 
+function scoreBadgeColor(score: number): string {
+  if (score >= 76) return "hsl(142 71% 45%)";
+  if (score >= 61) return "hsl(43 96% 50%)";
+  if (score >= 41) return "hsl(35 92% 55%)";
+  return "hsl(0 84% 60%)";
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 76) return "Stark";
+  if (score >= 61) return "Solide";
+  if (score >= 41) return "Ausbaufähig";
+  return "Kritisch";
+}
+
+function Delta({ main, comp }: { main: number; comp: number }) {
+  const delta = main - comp;
+  const color = delta > 0 ? "hsl(142 71% 45%)" : delta < 0 ? "hsl(0 84% 60%)" : "hsl(var(--muted-foreground))";
+  const label = delta > 0 ? "Ihr Vorteil" : delta < 0 ? "Aufholbedarf" : "Gleichstand";
+  return (
+    <span className="text-xs font-semibold" style={{ color }}>
+      {delta > 0 ? "+" : ""}{delta}
+      <span className="ml-1 opacity-75">{label}</span>
+    </span>
+  );
+}
+
+interface CompetitorCardProps {
+  competitor: {
+    name: string;
+    url: string;
+    technicalScore: number;
+    schemaScore: number;
+    contentScore: number;
+    headingScore: number;
+    faqScore: number;
+    compositeScore: number;
+    crawledPagesCount: number;
+    findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+  };
+  mainScores: {
+    technicalScore: number;
+    schemaScore: number;
+    contentScore: number;
+    headingScore: number;
+    faqScore: number;
+  };
+}
+
+function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
+  const metrics = [
+    { label: "Technical SEO", main: mainScores.technicalScore, comp: competitor.technicalScore },
+    { label: "Schema.org", main: mainScores.schemaScore, comp: competitor.schemaScore },
+    { label: "Inhaltliche Relevanz", main: mainScores.contentScore, comp: competitor.contentScore },
+    { label: "Heading-Struktur", main: mainScores.headingScore, comp: competitor.headingScore },
+    { label: "FAQ-Qualität", main: mainScores.faqScore, comp: competitor.faqScore },
+  ];
+
+  const badgeColor = scoreBadgeColor(competitor.compositeScore);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <img
+              src={`https://www.google.com/s2/favicons?domain=${competitor.url}&sz=32`}
+              alt=""
+              className="w-5 h-5 rounded shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            <span className="font-bold text-base truncate">{competitor.name}</span>
+          </div>
+          <div
+            className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide"
+            style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}40` }}
+          >
+            {competitor.compositeScore} · {scoreLabel(competitor.compositeScore)}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Metrics table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Metrik</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ihre Seite</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wettbewerber</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-2">Delta / Bewertung</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.map((m) => (
+                <tr key={m.label} className="border-b border-border/50 last:border-0">
+                  <td className="py-2 text-sm text-foreground/80">{m.label}</td>
+                  <td className="py-2 text-right font-mono font-semibold text-sm"
+                    style={{ color: scoreBadgeColor(m.main) }}>
+                    {m.main}
+                  </td>
+                  <td className="py-2 text-right font-mono font-semibold text-sm"
+                    style={{ color: scoreBadgeColor(m.comp) }}>
+                    {m.comp}
+                  </td>
+                  <td className="py-2 text-right pr-2">
+                    <Delta main={m.main} comp={m.comp} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* LLM note */}
+        <p className="text-xs text-muted-foreground italic">
+          LLM-Sichtbarkeit wird nur für die Hauptdomain vollständig analysiert
+        </p>
+
+        {/* Findings */}
+        {competitor.findings && (
+          <div className="space-y-2 pt-1">
+            {[
+              { emoji: "⚠️", label: "Was macht dieser Wettbewerber besser?", text: competitor.findings.betterThanYou, color: "hsl(0 84% 60% / 0.08)", border: "hsl(0 84% 60% / 0.25)" },
+              { emoji: "✅", label: "Ihr klarer Vorteil", text: competitor.findings.yourAdvantage, color: "hsl(142 71% 45% / 0.08)", border: "hsl(142 71% 45% / 0.25)" },
+              { emoji: "💡", label: "Konkrete Empfehlung", text: competitor.findings.recommendation, color: "hsl(217 91% 60% / 0.08)", border: "hsl(217 91% 60% / 0.25)" },
+            ].map((f) => (
+              <div
+                key={f.label}
+                className="rounded-lg px-3 py-2.5 space-y-0.5"
+                style={{ background: f.color, border: `1px solid ${f.border}` }}
+              >
+                <p className="text-xs font-semibold text-muted-foreground">{f.emoji} {f.label}</p>
+                <p className="text-sm leading-relaxed">{f.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Data quality note */}
+        <p className="text-xs text-muted-foreground">
+          Score-Basis:{" "}
+          {competitor.crawledPagesCount > 1
+            ? `${competitor.crawledPagesCount} gecrawlte Seiten`
+            : "Einzelseiten-Stichprobe (Startseite)"}
+          {" · "}
+          <a
+            href={competitor.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-0.5"
+          >
+            {competitor.url} <ExternalLink className="w-3 h-3" />
+          </a>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CrawledPagesPanel({ pages }: { pages: string[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
+      >
+        <span>Gecrawlte Seiten ({pages.length} Seiten)</span>
+        {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      {isOpen && (
+        <div className="border-t border-border max-h-72 overflow-y-auto">
+          {pages.map((url, i) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 text-xs hover:bg-muted/20 transition-colors break-all"
+              style={{
+                fontFamily: "ui-monospace, monospace",
+                background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.2)",
+                color: "hsl(var(--primary))",
+              }}
+            >
+              <ExternalLink className="w-3 h-3 shrink-0" />
+              {url}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
+  const { setCrawledPages, setSelectedPages } = useAppStore();
+
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
       enabled: !!analysisId,
       queryKey: getGetAnalysisReportQueryKey(analysisId),
     },
   });
+
+  // Sync crawled pages back to app store when report loads
+  useEffect(() => {
+    if (report?.crawledPages && report.crawledPages.length > 0) {
+      const pages = report.crawledPages.filter((p) => p !== "uploaded-page");
+      if (pages.length > 0) {
+        setCrawledPages(pages);
+        setSelectedPages(pages);
+      }
+    }
+  }, [report?.crawledPages]);
 
   if (!report) return <div className="text-muted-foreground text-sm">Lade Bericht…</div>;
 
@@ -148,7 +360,20 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const contentRelevance = report.contentRelevance as Record<string, unknown> | null;
   const faqQuality = report.faqQuality as Record<string, unknown> | null;
   const llmDiscoverability = report.llmDiscoverability as Record<string, unknown> | null;
-  const competitorComparison = report.competitorComparison as { competitors: Array<{ name: string; url: string; compositeScore: number }> } | null;
+  const competitorComparison = report.competitorComparison as {
+    competitors: Array<{
+      name: string;
+      url: string;
+      technicalScore: number;
+      schemaScore: number;
+      contentScore: number;
+      headingScore: number;
+      faqScore: number;
+      compositeScore: number;
+      crawledPagesCount: number;
+      findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+    }>;
+  } | null;
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
 
   const radarData = [
@@ -159,6 +384,14 @@ function ReportView({ analysisId }: { analysisId: string }) {
     { subject: "FAQ", value: (faqQuality?.score as number) ?? 0 },
     { subject: "LLM", value: (llmDiscoverability?.score as number) ?? 0 },
   ];
+
+  const mainScores = {
+    technicalScore: (technicalSeo?.score as number) ?? 0,
+    schemaScore: (schemaOrg?.score as number) ?? 0,
+    contentScore: (contentRelevance?.score as number) ?? 0,
+    headingScore: (headingStructure?.score as number) ?? 0,
+    faqScore: (faqQuality?.score as number) ?? 0,
+  };
 
   const technicalBarData = technicalSeo ? [
     { name: "Meta-Titel", value: Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, report.crawledPages.length)) * 100) },
@@ -172,6 +405,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const highRecs = recommendations.filter((r) => r.tier === "high_leverage");
   const secondaryRecs = recommendations.filter((r) => r.tier === "secondary");
   const llmQuestions = (llmDiscoverability?.questions as Array<{ question: string; rating: number; gap: string }>) || [];
+
+  const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return "Ihre Seite"; } })() : "Ihre Seite";
+
+  const competitorChartData = competitorComparison ? [
+    { name: myDomain, compositeScore: report.overallScore ?? 0, isMain: true },
+    ...competitorComparison.competitors.map((c) => ({ name: c.name, compositeScore: c.compositeScore, isMain: false })),
+  ].sort((a, b) => b.compositeScore - a.compositeScore) : [];
 
   const handleExport = () => {
     const htmlContent = generateHtmlReport(report as Record<string, unknown>);
@@ -189,8 +429,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold font-mono tracking-tight">Ergebnisse</h1>
-          <p className="text-xs text-muted-foreground font-mono mt-1">
+          <h1 className="text-2xl font-bold tracking-tight">Ergebnisse</h1>
+          <p className="text-xs text-muted-foreground mt-1">
             {report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten
           </p>
         </div>
@@ -209,7 +449,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-wide">GAIO Score</CardTitle>
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
           </CardHeader>
           <CardContent className="flex justify-center py-2">
             <ScoreDonut score={report.overallScore ?? 0} />
@@ -217,7 +457,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </Card>
         <Card className="md:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-wide">Dimensionen</CardTitle>
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
@@ -237,8 +477,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
         {radarData.map((d) => (
           <Card key={d.subject}>
             <CardContent className="py-3 px-3 text-center">
-              <p className="text-xs text-muted-foreground font-mono leading-tight">{d.subject}</p>
-              <p className={`text-xl font-bold font-mono mt-0.5 ${d.value >= 71 ? "text-green-500" : d.value >= 41 ? "text-yellow-500" : "text-red-500"}`}>
+              <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
+              <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
                 {d.value}
               </p>
             </CardContent>
@@ -259,7 +499,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         <TabsContent value="details" className="space-y-4 pt-4">
           {technicalBarData.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Technische SEO-Metriken</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische SEO-Metriken</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={technicalBarData} layout="vertical">
@@ -274,9 +514,14 @@ function ReportView({ analysisId }: { analysisId: string }) {
             </Card>
           )}
 
+          {/* Gecrawlte Seiten collapsible panel */}
+          {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
+            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
+          )}
+
           {technicalSeo && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Technische Details</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Details</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
@@ -301,7 +546,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
           {schemaOrg && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Schema.org / Strukturierte Daten</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Schema.org / Strukturierte Daten</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1.5">Erkannte Typen:</p>
@@ -330,13 +575,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
           {contentRelevance && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Inhaltliche Relevanz</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Inhaltliche Relevanz</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {((contentRelevance.dimensions as Array<{ name: string; score: number; findings: string[] }>) || []).map((dim) => (
                   <div key={dim.name} className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">{dim.name}</span>
-                      <span className={`font-mono text-sm font-bold ${dim.score >= 7 ? "text-green-500" : dim.score >= 4 ? "text-yellow-500" : "text-red-500"}`}>
+                      <span className="font-mono text-sm font-bold" style={{ color: dim.score >= 7 ? "hsl(142 71% 45%)" : dim.score >= 4 ? "hsl(43 96% 50%)" : "hsl(0 84% 60%)" }}>
                         {dim.score}/10
                       </span>
                     </div>
@@ -355,7 +600,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           {llmQuestions.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   LLM-Auffindbarkeits-Simulation (Score: {(llmDiscoverability?.score as number) ?? 0}/100)
                 </CardTitle>
               </CardHeader>
@@ -385,27 +630,37 @@ function ReportView({ analysisId }: { analysisId: string }) {
         {/* Competitors Tab */}
         <TabsContent value="competitors" className="space-y-4 pt-4">
           {competitorComparison && competitorComparison.competitors.length > 0 ? (
-            <Card>
-              <CardHeader><CardTitle className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Wettbewerbsvergleich</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={Math.max(180, (competitorComparison.competitors.length + 1) * 45 + 60)}>
-                  <BarChart
-                    data={[
-                      { name: report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return "Ihre Seite"; } })() : "Ihre Seite", compositeScore: report.overallScore ?? 0 },
-                      ...competitorComparison.competitors.map((c) => ({ name: c.name, compositeScore: c.compositeScore })),
-                    ]}
-                    layout="vertical"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" width={140} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px" }} />
-                    <Bar dataKey="compositeScore" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} name="Score" />
-                  </BarChart>
-                </ResponsiveContainer>
-                <p className="text-xs text-muted-foreground mt-2">Wettbewerber-Scores basieren auf einer Einzelseiten-Stichprobe.</p>
-              </CardContent>
-            </Card>
+            <>
+              {/* Summary chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Gesamt-Score Übersicht
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={Math.max(160, competitorChartData.length * 44 + 60)}>
+                    <BarChart data={competitorChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" width={140} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                      <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} formatter={(v) => [`${v}`, "Score"]} />
+                      <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]}>
+                        {competitorChartData.map((entry, i) => (
+                          <Cell key={i} fill={entry.isMain ? "hsl(var(--primary))" : "hsl(var(--chart-3))"} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-muted-foreground mt-2">Ihre Seite ist blau hervorgehoben.</p>
+                </CardContent>
+              </Card>
+
+              {/* Competitor detail cards */}
+              {competitorComparison.competitors.map((c) => (
+                <CompetitorCard key={c.url} competitor={c} mainScores={mainScores} />
+              ))}
+            </>
           ) : (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">
@@ -419,7 +674,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         <TabsContent value="recommendations" className="space-y-5 pt-4">
           {criticalRecs.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-bold font-mono flex items-center gap-2 text-red-500 uppercase tracking-wider">
+              <h3 className="text-xs font-bold flex items-center gap-2 text-red-500 uppercase tracking-wider">
                 <AlertCircle className="w-3.5 h-3.5" /> Kritisch ({criticalRecs.length})
               </h3>
               {criticalRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
@@ -427,7 +682,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           )}
           {highRecs.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-bold font-mono flex items-center gap-2 text-orange-500 uppercase tracking-wider">
+              <h3 className="text-xs font-bold flex items-center gap-2 text-orange-500 uppercase tracking-wider">
                 <AlertTriangle className="w-3.5 h-3.5" /> Hoher Hebel ({highRecs.length})
               </h3>
               {highRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
@@ -435,7 +690,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           )}
           {secondaryRecs.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-bold font-mono flex items-center gap-2 text-yellow-500 uppercase tracking-wider">
+              <h3 className="text-xs font-bold flex items-center gap-2 text-yellow-500 uppercase tracking-wider">
                 <Info className="w-3.5 h-3.5" /> Sekundär ({secondaryRecs.length})
               </h3>
               {secondaryRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
@@ -451,7 +706,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       {report.errors.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-xs font-mono text-destructive uppercase tracking-wide">Hinweise & Fehler</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-xs font-semibold text-destructive uppercase tracking-wider">Hinweise &amp; Fehler</CardTitle></CardHeader>
           <CardContent>
             <ul className="text-sm text-muted-foreground space-y-0.5">
               {report.errors.map((e, i) => <li key={i}>– {e}</li>)}

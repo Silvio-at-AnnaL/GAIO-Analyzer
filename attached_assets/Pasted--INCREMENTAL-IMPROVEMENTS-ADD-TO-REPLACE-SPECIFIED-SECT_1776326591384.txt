@@ -1,0 +1,230 @@
+---
+INCREMENTAL IMPROVEMENTS — ADD TO / REPLACE SPECIFIED SECTIONS
+---
+
+## 1. CRAWLED PAGES — VISIBILITY & RE-SELECTION
+
+In the results view (Sidebar Item 3), within the Technical SEO module 
+output section, add a collapsible panel labeled:
+  "Gecrawlte Seiten ([n] Seiten)"
+  where [n] = actual count.
+
+Panel content: a scrollable list of all crawled URLs.
+Each URL renders as a clickable link: <a href="..." target="_blank" 
+rel="noopener noreferrer">. Show full URL, no truncation.
+Style: compact list, monospace or small sans, alternating row shading.
+
+BACK-TRANSFER TO INPUT FORM:
+After a successful crawl, the backend returns the full list of crawled 
+URLs to the frontend. These are stored in global app state alongside 
+the other form inputs.
+
+In Sidebar Item 1 ("Domainanalyse – Basisdaten"), add a new section 
+BELOW the Website-URL field, visible only after at least one analysis 
+has been completed:
+
+  Section label: "Zu analysierende Unterseiten"
+  Subtext: "Automatisch beim letzten Crawl erkannt. 
+  Sie können die Auswahl anpassen und die Analyse neu starten."
+
+  Render the crawled URLs as a checkbox list.
+  Default: all checked.
+  User can uncheck individual pages to exclude them from the next run.
+  Checked URLs are passed to the backend as an explicit page list, 
+  bypassing the auto-crawler for that run (backend must accept an 
+  optional explicit_urls parameter and skip crawling if it is provided).
+
+  Add a "Alle auswählen / Alle abwählen" toggle above the list.
+  If the list exceeds 15 items, show first 15 and a "Mehr anzeigen" 
+  link to expand.
+
+
+## 2. COMPETITOR COMPARISON — EXPANDED DETAIL
+
+Replace the current single-bar-chart competitor block with the following:
+
+For each competitor URL analyzed, display a dedicated competitor card 
+(vertical stack of cards, one per competitor). Each card contains:
+
+  HEADER ROW:
+    Competitor domain name (bold) + favicon if fetchable + 
+    overall composite score badge (colored: red/orange/green)
+
+  METRICS TABLE (5 columns: Metric | Your Site | Competitor | 
+  Delta | Assessment):
+    - Technical SEO Score
+    - Schema / Structured Data Score
+    - Content Relevance Score
+    - Heading Structure Score
+    - FAQ Score
+    (LLM Discoverability score is excluded from competitor cards — 
+    label a note: "LLM-Sichtbarkeit wird nur für die Hauptdomain 
+    vollständig analysiert")
+
+  Delta column: show +/- value with color coding 
+  (green = you lead, red = competitor leads).
+  Assessment column: short auto-generated label, e.g. 
+  "Ihr Vorteil", "Gleichstand", "Aufholbedarf".
+
+  FINDINGS SUMMARY (3 bullet points per competitor, LLM-generated):
+    "Was macht dieser Wettbewerber besser als Sie?"
+    "Wo haben Sie einen klaren Vorteil?"
+    "Eine konkrete Empfehlung aus diesem Vergleich."
+  Generate via Claude API with both sites' module data as input.
+
+  DATA QUALITY NOTE per card (small, muted text):
+    "Score-Basis: [n] gecrawlte Seiten" 
+    OR 
+    "Score-Basis: Einzelseiten-Stichprobe (Startseite)" 
+    depending on how many pages were actually scanned per competitor.
+
+SUMMARY CHART (kept from before, shown above the cards):
+  Horizontal bar chart with all sites (yours highlighted) ranked by 
+  composite score. This gives quick overview before the user reads 
+  the detail cards.
+
+
+## 3. NEW SIDEBAR ITEM 4 — "FAQ / So funktioniert's"
+
+Insert as new item 4. Renumber old item 4 "Einstellungen" to item 5.
+
+Main content area: static informational page, well-structured, 
+readable prose + tables. No API calls. Content in German.
+
+Structure:
+
+  H2: Was analysiert dieses Tool?
+  Short paragraph: GAIO Analyzer untersucht B2B-Industriewebsites 
+  auf ihre Auffindbarkeit durch KI-Sprachmodelle (LLMs) sowie auf 
+  klassische SEO-Grundlagen.
+
+  H2: Die Analyse-Module im Überblick
+  Table with 3 columns: Modul | Was wird geprüft | Warum es wichtig ist
+  Rows:
+    Technische SEO-Basis | HTTP-Antwortzeit, HTTPS, robots.txt, 
+    sitemap.xml, Canonical-Tags, hreflang, Meta-Daten, Alt-Texte, 
+    Mobile-Viewport | Grundvoraussetzung für Indexierung durch 
+    Suchmaschinen und LLM-Crawler
+    
+    Strukturierte Daten (Schema.org) | JSON-LD, Microdata, RDFa — 
+    Typen: Organization, Product, FAQPage, BreadcrumbList u.a. | 
+    Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass 
+    LLMs korrekte und vollständige Antworten generieren
+    
+    Heading-Struktur | H1/H2/H3-Hierarchie, Keyword-Präsenz 
+    in Überschriften | Strukturierte Inhalte werden von LLMs 
+    bevorzugt als Quellen verarbeitet
+    
+    Inhaltliche Relevanz (KI-gestützt) | Vorhandensein von 
+    Anwendungsszenarien, technischer Tiefe, Käufer-Fragetypen | 
+    LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen 
+    vollständig beantworten
+    
+    FAQ-Qualität | Erkannte FAQ-Strukturen, Frageformulierung, 
+    Antworttiefe | FAQPage-Schema ist einer der stärksten 
+    Einzelhebel für LLM-Sichtbarkeit
+    
+    LLM-Sichtbarkeits­simulation | Generierte Käuferfragen + 
+    prognostizierte Antwortqualität auf Basis des vorhandenen 
+    Contents | Zeigt direkt, welche Informationslücken LLMs 
+    bei Anfragen zu Ihrem Unternehmen haben
+
+  H2: Score-Gewichtung (Gesamt-GAIO-Score)
+  Donut or simple visual breakdown (static SVG or CSS bar), 
+  mirroring actual weights used in scoring:
+    Strukturierte Daten:      20 %
+    Inhaltliche Relevanz:     20 %
+    LLM-Sichtbarkeit:         20 %
+    Technische SEO-Basis:     15 %
+    FAQ-Qualität:             15 %
+    Heading-Struktur:         10 %
+
+  H2: Score-Interpretation
+  Table: Score-Bereich | Bewertung | Bedeutung
+    0–40   | Kritisch      | Grundlegende Defizite — LLMs können 
+                             diese Website kaum als Quelle nutzen
+    41–60  | Ausbaufähig   | Technische Basis vorhanden, 
+                             aber inhaltliche Lücken limitieren 
+                             die LLM-Sichtbarkeit erheblich
+    61–75  | Solide        | Gute Ausgangsbasis — gezielte 
+                             Maßnahmen können die Sichtbarkeit 
+                             spürbar steigern
+    76–90  | Stark         | Überdurchschnittlich gut aufgestellt; 
+                             Feinoptimierung empfohlen
+    91–100 | Exzellent     | Best-in-class LLM-Readiness
+
+  H2: Empfehlungs-Priorisierung
+  Short explanation of the three tiers:
+    🔴 Kritisch — Fundamentale Fehler, die sofort behoben werden 
+    müssen (z. B. fehlendes HTTPS, keine strukturierten Daten, 
+    kein H1)
+    🟠 Hoher Hebel — Maßnahmen mit dem größten Wirkungspotenzial 
+    (z. B. fehlende FAQPage-Schema, dünne Produktbeschreibungen, 
+    fehlende Anwendungsszenarien)
+    🟡 Nachgeordnet — Optimierungen für nach der Erstbereinigung 
+    (z. B. Meta-Description-Länge, Alt-Text-Lücken)
+
+  H2: Hinweise zur Genauigkeit
+  Short prose (3–4 sentences): Scores basieren auf einer 
+  automatisierten Analyse und stellen Annäherungswerte dar. 
+  Wettbewerber-Scores beruhen auf einer Stichprobe (Startseite 
+  + max. 3 Unterseiten). Die LLM-Sichtbarkeits­simulation 
+  verwendet Claude (Anthropic) und spiegelt keine garantierten 
+  Rankingfaktoren wider. Alle Empfehlungen sollten mit einem 
+  Experten validiert werden.
+
+
+## 4. TYPOGRAPHY REDESIGN
+
+Replace the current typeface with the following system.
+
+Primary font: "Inter" — load from Google Fonts:
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+If Inter unavailable as fallback: system-ui, -apple-system, 
+BlinkMacSystemFont, "Segoe UI", sans-serif.
+
+Do NOT use: monospace fonts for UI labels, Roboto Mono for any 
+visible text, default browser sans-serif without explicit declaration.
+
+Apply these typographic tokens as CSS custom properties:
+
+  --font-family-base: 'Inter', system-ui, sans-serif;
+  --font-size-xs:   0.75rem;   /* 12px — captions, tooltips */
+  --font-size-sm:   0.875rem;  /* 14px — secondary labels, table rows */
+  --font-size-base: 1rem;      /* 16px — body, inputs */
+  --font-size-lg:   1.125rem;  /* 18px — section labels */
+  --font-size-xl:   1.375rem;  /* 22px — module headings */
+  --font-size-2xl:  1.75rem;   /* 28px — page titles */
+  --font-weight-regular: 400;
+  --font-weight-medium:  500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.3;
+  --line-height-base:  1.6;
+  --line-height-loose: 1.8;
+  --letter-spacing-tight: -0.01em;  /* headings */
+  --letter-spacing-base:   0em;
+  --letter-spacing-wide:   0.03em;  /* labels, badges */
+
+Apply to elements:
+  body, inputs, buttons, textareas: --font-family-base, 
+  --font-size-base, --font-weight-regular
+  H1 (page titles): --font-size-2xl, --font-weight-bold, 
+  --letter-spacing-tight, --line-height-tight
+  H2 (module/section heads): --font-size-xl, --font-weight-semibold
+  H3 (card titles, sub-sections): --font-size-lg, --font-weight-medium
+  Table headers, form labels: --font-size-sm, --font-weight-semibold, 
+  --letter-spacing-wide, uppercase
+  Tooltips, captions: --font-size-xs, --font-weight-regular, 
+  --line-height-loose
+  Buttons (primary): --font-weight-semibold, --letter-spacing-wide
+  Score badges: --font-weight-bold, --font-size-sm
+
+COLOR PALETTE ADJUSTMENT (apply alongside typography):
+  Reduce reliance on pure #000 and #fff. Use:
+  --color-text-primary:   #1a1a2e  (dark mode: #e8e8f0)
+  --color-text-secondary: #4a4a6a  (dark mode: #9090b0)
+  --color-text-muted:     #8080a0  (dark mode: #5a5a7a)
+  These slightly blue-tinted neutrals pair naturally with Inter and 
+  feel less cold than pure grays.

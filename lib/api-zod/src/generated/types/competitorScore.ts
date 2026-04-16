@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CompetitorFindings } from "./competitorFindings";
 
 export interface CompetitorScore {
   name: string;
@@ -12,5 +13,9 @@ export interface CompetitorScore {
   technicalScore: number;
   schemaScore: number;
   contentScore: number;
+  headingScore: number;
+  faqScore: number;
   compositeScore: number;
+  crawledPagesCount: number;
+  findings?: CompetitorFindings | null;
 }

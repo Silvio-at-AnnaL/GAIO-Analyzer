@@ -1,7 +1,16 @@
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { crawlSite } from "../crawler";
 import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg } from "./schema-org";
+import { analyzeHeadings } from "./headings";
+import { analyzeFaq } from "./faq";
 import { logger } from "../logger";
+
+export interface CompetitorFindings {
+  betterThanYou: string;
+  yourAdvantage: string;
+  recommendation: string;
+}
 
 export interface CompetitorScore {
   name: string;
@@ -9,11 +18,24 @@ export interface CompetitorScore {
   technicalScore: number;
   schemaScore: number;
   contentScore: number;
+  headingScore: number;
+  faqScore: number;
   compositeScore: number;
+  crawledPagesCount: number;
+  findings: CompetitorFindings | null;
 }
 
 export interface CompetitorResult {
   competitors: CompetitorScore[];
+}
+
+export interface MainSiteScores {
+  technicalScore: number;
+  schemaScore: number;
+  contentScore: number;
+  headingScore: number;
+  faqScore: number;
+  overallScore: number;
 }
 
 function extractDomainName(url: string): string {
@@ -25,7 +47,56 @@ function extractDomainName(url: string): string {
   }
 }
 
-export async function analyzeCompetitors(competitorUrls: string[]): Promise<CompetitorResult> {
+async function generateFindings(
+  mainDomain: string,
+  mainScores: MainSiteScores,
+  competitorDomain: string,
+  competitorScores: {
+    technicalScore: number;
+    schemaScore: number;
+    contentScore: number;
+    headingScore: number;
+    faqScore: number;
+    compositeScore: number;
+  },
+): Promise<CompetitorFindings> {
+  const prompt = `You are an SEO and LLM-discoverability expert. Compare two B2B industrial websites based on their analysis scores.
+
+Main site: ${mainDomain}
+Scores: Technical SEO=${mainScores.technicalScore}, Schema.org=${mainScores.schemaScore}, Content=${mainScores.contentScore}, Headings=${mainScores.headingScore}, FAQ=${mainScores.faqScore}
+
+Competitor: ${competitorDomain}
+Scores: Technical SEO=${competitorScores.technicalScore}, Schema.org=${competitorScores.schemaScore}, Content=${competitorScores.contentScore}, Headings=${competitorScores.headingScore}, FAQ=${competitorScores.faqScore}, Composite=${competitorScores.compositeScore}
+
+Respond with a JSON object (no markdown) with exactly these three fields:
+- "betterThanYou": One concrete thing this competitor does better (German, 1-2 sentences)
+- "yourAdvantage": One area where the main site clearly outperforms this competitor (German, 1-2 sentences)
+- "recommendation": One specific, actionable improvement the main site should make based on this comparison (German, 1-2 sentences)`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+    return JSON.parse(cleaned) as CompetitorFindings;
+  } catch (err) {
+    logger.warn({ err }, "Failed to generate competitor findings");
+    return {
+      betterThanYou: "Analyse nicht verfügbar.",
+      yourAdvantage: "Analyse nicht verfügbar.",
+      recommendation: "Analyse nicht verfügbar.",
+    };
+  }
+}
+
+export async function analyzeCompetitors(
+  competitorUrls: string[],
+  mainSiteScores?: MainSiteScores,
+): Promise<CompetitorResult> {
   const competitors: CompetitorScore[] = [];
 
   for (const url of competitorUrls.slice(0, 5)) {
@@ -40,6 +111,8 @@ export async function analyzeCompetitors(competitorUrls: string[]): Promise<Comp
 
       const technicalResult = analyzeTechnicalSeo(crawlResult, normalizedUrl);
       const schemaResult = analyzeSchemaOrg(crawlResult.pages);
+      const headingResult = analyzeHeadings(crawlResult.pages, []);
+      const faqResult = await analyzeFaq(crawlResult.pages);
 
       const contentScore = Math.round(
         (technicalResult.metaTitles.present > 0 ? 30 : 0) +
@@ -49,16 +122,34 @@ export async function analyzeCompetitors(competitorUrls: string[]): Promise<Comp
       );
 
       const compositeScore = Math.round(
-        technicalResult.score * 0.35 + schemaResult.score * 0.35 + contentScore * 0.3,
+        technicalResult.score * 0.25 +
+          schemaResult.score * 0.25 +
+          Math.min(100, contentScore) * 0.2 +
+          headingResult.score * 0.15 +
+          faqResult.score * 0.15,
       );
 
-      competitors.push({
-        name: extractDomainName(normalizedUrl),
-        url: normalizedUrl,
+      const competitorDomain = extractDomainName(normalizedUrl);
+      const competitorScores = {
         technicalScore: technicalResult.score,
         schemaScore: schemaResult.score,
         contentScore: Math.min(100, contentScore),
+        headingScore: headingResult.score,
+        faqScore: faqResult.score,
         compositeScore: Math.min(100, compositeScore),
+      };
+
+      let findings: CompetitorFindings | null = null;
+      if (mainSiteScores) {
+        findings = await generateFindings("Ihre Website", mainSiteScores, competitorDomain, competitorScores);
+      }
+
+      competitors.push({
+        name: competitorDomain,
+        url: normalizedUrl,
+        ...competitorScores,
+        crawledPagesCount: crawlResult.pages.length,
+        findings,
       });
     } catch (err) {
       logger.warn({ url, err }, "Competitor analysis failed");
@@ -66,6 +157,5 @@ export async function analyzeCompetitors(competitorUrls: string[]): Promise<Comp
   }
 
   competitors.sort((a, b) => b.compositeScore - a.compositeScore);
-
   return { competitors };
 }

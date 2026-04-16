@@ -14,6 +14,7 @@ export * from "./analysisStarted";
 export * from "./analysisSummary";
 export * from "./analysisSummaryMode";
 export * from "./analysisSummaryStatus";
+export * from "./competitorFindings";
 export * from "./competitorResult";
 export * from "./competitorScore";
 export * from "./contentRelevanceResult";

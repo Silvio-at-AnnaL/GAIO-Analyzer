@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { DomainAnalyseView } from "@/views/DomainAnalyseView";
 import { HtmlAnalyseView } from "@/views/HtmlAnalyseView";
 import { ErgebnisseView } from "@/views/ErgebnisseView";
+import { FaqView } from "@/views/FaqView";
 import { EinstellungenView } from "@/views/EinstellungenView";
 
 function AppContent() {
@@ -16,7 +17,8 @@ function AppContent() {
           {activeView === 1 && <DomainAnalyseView />}
           {activeView === 2 && <HtmlAnalyseView />}
           {activeView === 3 && <ErgebnisseView />}
-          {activeView === 4 && <EinstellungenView />}
+          {activeView === 4 && <FaqView />}
+          {activeView === 5 && <EinstellungenView />}
         </div>
       </main>
     </div>

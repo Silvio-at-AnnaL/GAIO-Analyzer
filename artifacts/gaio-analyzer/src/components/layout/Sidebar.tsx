@@ -1,11 +1,12 @@
-import { Globe, FileCode, BarChart3, Settings } from "lucide-react";
+import { Globe, FileCode, BarChart3, HelpCircle, Settings } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 
 const NAV_ITEMS: { id: ActiveView; icon: React.ElementType; label: string }[] = [
   { id: 1, icon: Globe, label: "Domainanalyse – Basisdaten" },
   { id: 2, icon: FileCode, label: "HTML-Analyse" },
   { id: 3, icon: BarChart3, label: "Ergebnisse" },
-  { id: 4, icon: Settings, label: "Einstellungen" },
+  { id: 4, icon: HelpCircle, label: "FAQ / So funktioniert's" },
+  { id: 5, icon: Settings, label: "Einstellungen" },
 ];
 
 export function Sidebar() {
@@ -19,14 +20,20 @@ export function Sidebar() {
         borderColor: "hsl(var(--sidebar-border))",
       }}
     >
-      <div className="flex items-center gap-2.5 px-5 h-14 border-b shrink-0" style={{ borderColor: "hsl(var(--sidebar-border))" }}>
+      <div
+        className="flex items-center gap-2.5 px-5 h-14 border-b shrink-0"
+        style={{ borderColor: "hsl(var(--sidebar-border))" }}
+      >
         <div className="w-3 h-3 rounded-sm bg-primary animate-pulse shrink-0" />
-        <span className="font-mono font-bold text-sm tracking-tight" style={{ color: "hsl(var(--sidebar-foreground))" }}>
-          GAIO_ANALYZER
+        <span
+          className="font-bold text-sm tracking-tight"
+          style={{ color: "hsl(var(--sidebar-foreground))", fontFamily: "var(--font-family-base)" }}
+        >
+          GAIO Analyzer
         </span>
       </div>
 
-      <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map(({ id, icon: Icon, label }) => {
           const isActive = activeView === id;
           return (
@@ -34,20 +41,18 @@ export function Sidebar() {
               key={id}
               onClick={() => setActiveView(id)}
               data-testid={`nav-item-${id}`}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors text-sm"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors"
               style={{
                 background: isActive ? "hsl(var(--sidebar-accent))" : "transparent",
-                color: isActive
-                  ? "hsl(var(--sidebar-primary))"
-                  : "hsl(var(--sidebar-foreground))",
+                color: isActive ? "hsl(var(--sidebar-primary))" : "hsl(var(--sidebar-foreground))",
                 fontWeight: isActive ? 600 : 400,
               }}
             >
-              <span className="shrink-0 flex items-center justify-center w-5">
+              <span className="shrink-0 w-4 h-4 flex items-center">
                 <Icon className="w-4 h-4" />
               </span>
-              <span className="flex-1 leading-tight font-mono text-xs">
-                <span className="text-xs opacity-50 mr-1">{id}.</span>
+              <span className="flex-1 text-xs leading-tight">
+                <span className="opacity-40 mr-1 font-mono">{id}.</span>
                 {label}
               </span>
             </button>
@@ -55,8 +60,15 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="px-4 py-3 border-t text-xs font-mono" style={{ borderColor: "hsl(var(--sidebar-border))", color: "hsl(var(--sidebar-foreground))", opacity: 0.4 }}>
-        GAIO v1.0
+      <div
+        className="px-4 py-3 border-t text-xs"
+        style={{
+          borderColor: "hsl(var(--sidebar-border))",
+          color: "hsl(var(--sidebar-foreground))",
+          opacity: 0.35,
+        }}
+      >
+        GAIO Analyzer v1.0
       </div>
     </aside>
   );

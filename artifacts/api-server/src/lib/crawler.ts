@@ -87,6 +87,15 @@ function parseSitemapUrls(xml: string, hostname: string): string[] {
   return urls;
 }
 
+export async function fetchPage(url: string): Promise<CrawledPage | null> {
+  try {
+    const data = await fetchWithTiming(url);
+    return { url, ...data };
+  } catch {
+    return null;
+  }
+}
+
 export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const result: CrawlResult = {

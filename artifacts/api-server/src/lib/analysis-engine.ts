@@ -1,4 +1,4 @@
-import { crawlSite, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchPage, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg } from "./analyzers/schema-org";
 import { analyzeHeadings } from "./analyzers/headings";
@@ -136,6 +136,7 @@ export async function runAnalysis(
   url: string | null,
   html: string | null,
   questionnaire?: QuestionnaireInput | null,
+  explicitUrls?: string[] | null,
 ): Promise<void> {
   const state: AnalysisState = {
     id,
@@ -174,8 +175,25 @@ export async function runAnalysis(
       state.progress = 5;
       save();
 
-      crawlResult = await crawlSite(url, 16);
-      pages = crawlResult.pages;
+      if (explicitUrls && explicitUrls.length > 0) {
+        // Use pre-selected pages, fetch them individually without re-crawling
+        const fetchedPages = await Promise.allSettled(
+          explicitUrls.map((pageUrl) => fetchPage(pageUrl)),
+        );
+        pages = fetchedPages
+          .filter((r): r is PromiseFulfilledResult<CrawledPage> => r.status === "fulfilled" && r.value !== null)
+          .map((r) => r.value);
+        crawlResult = {
+          pages,
+          robotsTxt: null,
+          sitemapXml: null,
+          robotsTxtExists: false,
+          sitemapXmlExists: false,
+        };
+      } else {
+        crawlResult = await crawlSite(url, 16);
+        pages = crawlResult.pages;
+      }
       state.crawledPages = pages.map((p) => p.url);
 
       if (pages.length === 0) {
@@ -281,7 +299,15 @@ export async function runAnalysis(
         state.currentModule = "Wettbewerbsvergleich";
         state.progress = 85;
         save();
-        state.competitorComparison = await analyzeCompetitors(competitorUrls);
+        const mainSiteScores = {
+          technicalScore: (state.technicalSeo as { score: number } | null)?.score ?? 0,
+          schemaScore: (state.schemaOrg as { score: number } | null)?.score ?? 0,
+          contentScore: (state.contentRelevance as { score: number } | null)?.score ?? 0,
+          headingScore: (state.headingStructure as { score: number } | null)?.score ?? 0,
+          faqScore: (state.faqQuality as { score: number } | null)?.score ?? 0,
+          overallScore: 0,
+        };
+        state.competitorComparison = await analyzeCompetitors(competitorUrls, mainSiteScores);
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
         state.errors.push("Competitor analysis failed");

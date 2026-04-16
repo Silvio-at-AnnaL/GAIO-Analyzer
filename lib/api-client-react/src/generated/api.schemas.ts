@@ -113,6 +113,8 @@ export interface StartAnalysisBody {
   /** @nullable */
   html?: string | null;
   questionnaire?: QuestionnaireData;
+  /** If provided, skip auto-crawl and use these URLs directly */
+  explicitUrls?: string[] | null;
 }
 
 export interface AnalysisStarted {
@@ -224,13 +226,23 @@ export interface LlmDiscoverabilityResult {
   questions: LlmQuestion[];
 }
 
+export interface CompetitorFindings {
+  betterThanYou: string;
+  yourAdvantage: string;
+  recommendation: string;
+}
+
 export interface CompetitorScore {
   name: string;
   url: string;
   technicalScore: number;
   schemaScore: number;
   contentScore: number;
+  headingScore: number;
+  faqScore: number;
   compositeScore: number;
+  crawledPagesCount: number;
+  findings?: CompetitorFindings | null;
 }
 
 export interface CompetitorResult {

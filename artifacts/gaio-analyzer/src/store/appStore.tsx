@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
-export type ActiveView = 1 | 2 | 3 | 4;
+export type ActiveView = 1 | 2 | 3 | 4 | 5;
 export type Theme = "light" | "dark" | "system";
 export type AnalysisStatus = "idle" | "running" | "completed" | "failed";
 
@@ -46,6 +46,12 @@ interface AppState {
   analysisStatus: AnalysisStatus;
   setAnalysisStatus: (s: AnalysisStatus) => void;
 
+  crawledPages: string[];
+  setCrawledPages: (pages: string[]) => void;
+
+  selectedPages: string[];
+  setSelectedPages: (pages: string[]) => void;
+
   theme: Theme;
   setTheme: (t: Theme) => void;
 }
@@ -87,7 +93,6 @@ function applyTheme(theme: Theme) {
   } else if (theme === "dark") {
     root.setAttribute("data-theme", "dark");
   } else {
-    // System — resolve immediately from media query
     root.setAttribute("data-theme", getSystemDark() ? "dark" : "light");
   }
 }
@@ -98,6 +103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [htmlForm, setHtmlForm] = useState<HtmlForm>(DEFAULT_HTML_FORM);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
+  const [crawledPages, setCrawledPages] = useState<string[]>([]);
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem("gaio-theme");
     return (saved as Theme) || "system";
@@ -132,6 +139,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAnalysisId,
         analysisStatus,
         setAnalysisStatus,
+        crawledPages,
+        setCrawledPages,
+        selectedPages,
+        setSelectedPages,
         theme,
         setTheme,
       }}

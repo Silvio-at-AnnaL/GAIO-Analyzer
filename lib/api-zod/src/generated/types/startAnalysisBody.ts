@@ -15,4 +15,6 @@ export interface StartAnalysisBody {
   /** @nullable */
   html?: string | null;
   questionnaire?: QuestionnaireData;
+  /** If provided, skip auto-crawl and use these URLs directly */
+  explicitUrls?: string[] | null;
 }

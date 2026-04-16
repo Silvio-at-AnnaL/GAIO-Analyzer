@@ -70,6 +70,10 @@ export const StartAnalysisBody = zod.object({
       plannedCampaigns: zod.string().nullish(),
     })
     .optional(),
+  explicitUrls: zod
+    .array(zod.string())
+    .nullish()
+    .describe("If provided, skip auto-crawl and use these URLs directly"),
 });
 
 /**
@@ -215,7 +219,20 @@ export const GetAnalysisReportResponse = zod.object({
             technicalScore: zod.number(),
             schemaScore: zod.number(),
             contentScore: zod.number(),
+            headingScore: zod.number(),
+            faqScore: zod.number(),
             compositeScore: zod.number(),
+            crawledPagesCount: zod.number(),
+            findings: zod
+              .union([
+                zod.object({
+                  betterThanYou: zod.string(),
+                  yourAdvantage: zod.string(),
+                  recommendation: zod.string(),
+                }),
+                zod.null(),
+              ])
+              .optional(),
           }),
         ),
       }),
