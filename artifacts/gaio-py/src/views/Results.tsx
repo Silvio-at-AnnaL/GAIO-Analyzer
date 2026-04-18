@@ -495,7 +495,7 @@ const MODULE_STEPS = [
 ]
 
 export function Results() {
-  const { analysisStatus, progressEvents, result, analysisError } = useAppStore()
+  const { analysisStatus, progressEvents, result, analysisError, setActiveView } = useAppStore()
 
   if (analysisStatus === 'idle') {
     return (
@@ -575,7 +575,6 @@ export function Results() {
   // ── Full results ───────────────────────────────────────────
 
   const r = result
-  const setActiveView = useAppStore(s => s.setActiveView)
   const radarData = [
     { subject: 'Techn. SEO',  A: r.scores.technical_seo },
     { subject: 'Schema.org',  A: r.scores.schema },
