@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/gaio-py/"
+title = "GAIO Analyzer (Python)"
+version = "1.0.0"
+id = "artifacts/gaio-py"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/gaio-py/" ]
+localPort = 25760
+
+[services.development]
+run = "pnpm --filter @workspace/gaio-py run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/gaio-py", "run", "build" ]
+publicDir = "artifacts/gaio-py/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25760"
+BASE_PATH = "/gaio-py/"

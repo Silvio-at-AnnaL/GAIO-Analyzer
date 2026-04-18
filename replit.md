@@ -76,4 +76,34 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - `SESSION_SECRET` — Session secret
 - `DATABASE_URL` — PostgreSQL connection (auto-configured)
 
+## Python Version (artifacts/gaio-py + artifacts/gaio-py-backend)
+
+A parallel Python FastAPI + React/Vite implementation of the GAIO Analyzer.
+
+### Architecture
+- **Frontend**: `artifacts/gaio-py/` — React + Vite, plain CSS (no Tailwind), Zustand for state, Axios for API calls
+- **Backend**: `artifacts/gaio-py-backend/` — FastAPI + uvicorn, async analysis pipeline with SSE streaming
+- **Preview path**: `/gaio-py/`
+
+### Running the Python version
+Two workflows must be active:
+1. `artifacts/gaio-py: web` — Vite dev server on port 25760
+2. `gaio-py: Python Backend` — uvicorn on port 8000
+
+The Vite dev server proxies `/gaio-py/api/*` → `http://localhost:8000/api/*`.
+
+### Python Backend API
+- `GET /api/health` — Health check with `api_key_configured` flag
+- `GET /api/check-sitemap?url=...` — Check robots.txt / sitemap.xml availability
+- `POST /api/analyze/domain` — Start domain analysis (async, returns `task_id`)
+- `POST /api/analyze/html` — Start HTML analysis (async, returns `task_id`)
+- `GET /api/analysis/{task_id}/stream` — SSE progress stream
+- `GET /api/analysis/{task_id}/results` — Fetch completed analysis results
+
+### Key Files (Python version)
+- `artifacts/gaio-py-backend/main.py` — FastAPI app, all endpoints and analysis modules
+- `artifacts/gaio-py/src/store/appStore.ts` — Zustand store with persist
+- `artifacts/gaio-py/src/lib/api.ts` — Axios instance with `BASE_URL` prefix
+- `artifacts/gaio-py/src/views/` — DomainAnalysis, HtmlAnalysis, Results, FAQView, Settings
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
