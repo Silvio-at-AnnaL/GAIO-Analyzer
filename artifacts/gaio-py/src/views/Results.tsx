@@ -284,27 +284,107 @@ function FaqSection({ data }: { data: any }) {
   )
 }
 
+function sourceDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') }
+  catch { return url }
+}
+
+function QuestionRow({ q }: { q: any }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '10px 14px', background: 'var(--bg-sidebar)', borderRadius: 8, marginBottom: 8 }}>
+      <div style={{ flex: 1 }}>
+        <p style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: 4 }}>{q.question}</p>
+        {q.gap && q.gap !== 'Analyse nicht verfügbar' && (
+          <p style={{ fontSize: '0.80rem', color: 'var(--text-muted)', marginBottom: q.source_url ? 4 : 0 }}>⚠ {q.gap}</p>
+        )}
+        {q.source_url && (
+          <a
+            href={q.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: '0.78rem', color: 'var(--accent)', textDecoration: 'underline' }}
+          >
+            Quelle: {sourceDomain(q.source_url)}
+          </a>
+        )}
+      </div>
+      <div style={{ flexShrink: 0 }}>
+        <Stars rating={q.rating} />
+      </div>
+    </div>
+  )
+}
+
 function LlmSection({ data }: { data: any }) {
+  const hasNewFormat = data?.part_a || data?.part_b
+  const partA = data?.part_a
+  const partB = data?.part_b
+
+  if (!hasNewFormat) {
+    // Backward-compat: old flat format
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <span style={{ fontWeight: 700 }}>Ø Antwortqualität:</span>
+          <Stars rating={data?.avg_rating ?? 0} />
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{data?.avg_rating ?? 0}/5</span>
+        </div>
+        {data?.questions_rated?.map((q: any, i: number) => (
+          <QuestionRow key={i} q={q} />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <span style={{ fontWeight: 700 }}>Ø Antwortqualität:</span>
-        <Stars rating={data.avg_rating} />
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{data.avg_rating}/5</span>
-      </div>
-      {data.questions_rated?.map((q: any, i: number) => (
-        <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 14px', background: 'var(--bg-sidebar)', borderRadius: 8, marginBottom: 8 }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: 4 }}>{q.question}</p>
-            {q.gap && q.gap !== 'Analyse nicht verfügbar' && (
-              <p style={{ fontSize: '0.80rem', color: 'var(--text-muted)' }}>⚠ {q.gap}</p>
-            )}
-          </div>
-          <div style={{ flexShrink: 0 }}>
-            <Stars rating={q.rating} />
-          </div>
+      {/* Sub-scores */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20,
+      }}>
+        <div className="score-card" style={{ borderLeft: '3px solid var(--accent)' }}>
+          <p className="score-label" style={{ fontSize: '0.7rem' }}>Auffindbarkeit (unbekannte Suche)</p>
+          <p className="score-val" style={{ color: scoreColor(partA?.score ?? 0), fontSize: '1.6rem' }}>{partA?.score ?? 0}</p>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/100 · 70% Gewicht</p>
         </div>
-      ))}
+        <div className="score-card" style={{ borderLeft: '3px solid var(--accent)' }}>
+          <p className="score-label" style={{ fontSize: '0.7rem' }}>Informationstiefe (Markensuche)</p>
+          <p className="score-val" style={{ color: scoreColor(partB?.score ?? 0), fontSize: '1.6rem' }}>{partB?.score ?? 0}</p>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/100 · 30% Gewicht</p>
+        </div>
+        <div className="score-card" style={{ borderLeft: '3px solid var(--score-green)' }}>
+          <p className="score-label" style={{ fontSize: '0.7rem' }}>LLM-Gesamtscore</p>
+          <p className="score-val" style={{ color: scoreColor(data.score ?? 0), fontSize: '1.6rem' }}>{data.score ?? 0}</p>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/100 (gewichtet)</p>
+        </div>
+      </div>
+
+      {/* Block A */}
+      {partA?.questions_rated?.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)' }}>
+            Teil A — Auffindbarkeit ohne Markenbezug
+          </h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+            Diese Fragen simulieren einen potenziellen Neukunden, der Ihren Firmennamen noch nicht kennt.
+            Taucht Ihr Unternehmen in den KI-Antworten auf diese Fragen auf?
+          </p>
+          {partA.questions_rated.map((q: any, i: number) => <QuestionRow key={i} q={q} />)}
+        </div>
+      )}
+
+      {/* Block B */}
+      {partB?.questions_rated?.length > 0 && (
+        <div>
+          <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 4, color: 'var(--text-primary)' }}>
+            Teil B — Marken- & Produktverifikation
+          </h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+            Fragen von Interessenten, die Ihr Unternehmen bereits kennen und spezifische Informationen suchen.
+          </p>
+          {partB.questions_rated.map((q: any, i: number) => <QuestionRow key={i} q={q} />)}
+        </div>
+      )}
     </div>
   )
 }
@@ -496,6 +576,7 @@ const MODULE_STEPS = [
 
 export function Results() {
   const { analysisStatus, progressEvents, result, analysisError, setActiveView } = useAppStore()
+  const [exporting, setExporting] = useState(false)
 
   if (analysisStatus === 'idle') {
     return (
@@ -603,13 +684,48 @@ export function Results() {
     )
   }
 
-  const generateReport = () => {
+  const generateReport = async () => {
+    setExporting(true)
+    // Brief loading delay so the user sees the state, and so React can flush
+    await new Promise(res => setTimeout(res, 1200))
+
+    // ── Capture chart SVGs from the live DOM ────────────────────────────────
+    let donutSvg = ''
+    let radarSvg = ''
+    let barSvg = ''
+    try {
+      const serializer = new XMLSerializer()
+      const svgs = Array.from(document.querySelectorAll('.charts-grid svg, .chart-card svg')) as SVGElement[]
+      // The first two charts are the donut + radar (top section).
+      // A third may exist inside the competitor section.
+      const cleanSvg = (el: SVGElement) => {
+        const clone = el.cloneNode(true) as SVGElement
+        if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+        // Resolve any var() colors using computed style on the original
+        const orig = el.querySelectorAll('*')
+        const cl = clone.querySelectorAll('*')
+        orig.forEach((node, i) => {
+          const cs = window.getComputedStyle(node as Element)
+          const target = cl[i] as SVGElement | undefined
+          if (!target) return
+          const fill = cs.getPropertyValue('fill')
+          const stroke = cs.getPropertyValue('stroke')
+          if (fill && fill !== 'none' && !target.getAttribute('fill')) target.setAttribute('fill', fill)
+          if (stroke && stroke !== 'none' && !target.getAttribute('stroke')) target.setAttribute('stroke', stroke)
+        })
+        return serializer.serializeToString(clone)
+      }
+      if (svgs[0]) donutSvg = cleanSvg(svgs[0])
+      if (svgs[1]) radarSvg = cleanSvg(svgs[1])
+      if (svgs[2]) barSvg = cleanSvg(svgs[2])
+    } catch (err) {
+      console.warn('SVG capture failed, falling back to text-only report:', err)
+    }
+
     const date = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })
     const company = r.questionnaire.company_name || r.questionnaire.url || 'HTML-Upload'
     const scoreCol = (s: number) => scoreColorHex(s)
     const scoreBg  = (s: number) => scoreBgHex(s)
-    const tierIcon = (t: string) => t === 'critical' ? '🔴' : t === 'high_leverage' ? '🟠' : '🟡'
-    const tierLabel = (t: string) => t === 'critical' ? 'Kritisch' : t === 'Hoher Hebel' ? '🟠' : 'Nachgeordnet'
 
     const moduleRows = [
       ['Technische SEO-Basis',         r.scores.technical_seo,      15],
@@ -688,9 +804,24 @@ export function Results() {
   ul { padding-left: 20px; }
   li { margin-bottom: 4px; font-size: 0.85rem; color: #5C5345; }
   .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #EDE7DE; font-size: 0.75rem; color: #9C8E80; text-align: center; }
+  .charts-row { display: flex; gap: 20px; margin: 24px 0 32px; flex-wrap: wrap; }
+  .chart-box { flex: 1; min-width: 260px; background: #FFFFFF; border: 1px solid #EDE7DE; border-radius: 10px; padding: 16px; text-align: center; }
+  .chart-box .chart-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9C8E80; margin-bottom: 10px; }
+  .chart-box svg { max-width: 100%; height: auto; }
+  .llm-block { margin-bottom: 24px; }
+  .llm-block .block-head { font-size: 1rem; font-weight: 800; color: #1C1914; margin-bottom: 4px; }
+  .llm-block .block-sub { font-size: 0.82rem; color: #9C8E80; margin-bottom: 12px; line-height: 1.5; }
+  .llm-subscores { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .llm-subscores .item { background: #F2EDE6; border-radius: 8px; padding: 10px 12px; text-align: left; border-left: 3px solid #C4761A; }
+  .llm-subscores .item .lab { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #9C8E80; }
+  .llm-subscores .item .val { font-size: 1.5rem; font-weight: 900; line-height: 1.1; margin-top: 4px; }
+  .llm-subscores .item .sub { font-size: 0.7rem; color: #9C8E80; }
   @media print {
     body { background: white; }
     .page { padding: 24px; }
+    h2 { page-break-before: always; page-break-after: avoid; }
+    h2:first-of-type { page-break-before: avoid; }
+    table, .llm-block, .meta { page-break-inside: avoid; }
   }
 </style>
 </head>
@@ -711,6 +842,13 @@ export function Results() {
       <div class="gaio-label">GAIO Score / 100</div>
     </div>
   </div>
+
+  ${(donutSvg || radarSvg) ? `
+  <!-- Charts: GAIO score donut + dimensions radar -->
+  <div class="charts-row">
+    ${donutSvg ? `<div class="chart-box"><div class="chart-title">GAIO Gesamt-Score</div>${donutSvg}</div>` : ''}
+    ${radarSvg ? `<div class="chart-box"><div class="chart-title">Dimensionen-Überblick</div>${radarSvg}</div>` : ''}
+  </div>` : ''}
 
   ${r.executive_summary ? `
   <!-- Executive Summary -->
@@ -764,24 +902,69 @@ export function Results() {
     ).join(' ')}
   </p>` : ''}` : ''}
 
-  <!-- LLM Questions -->
-  ${r.llm?.questions_rated?.length > 0 ? `
-  <h2>🤖 LLM-Sichtbarkeits-Simulation</h2>
-  <table>
-    <thead><tr><th>Käufer-Frage</th><th style="width:100px;">Antwortqualität</th><th>Inhaltslücke</th></tr></thead>
-    <tbody>
-      ${r.llm.questions_rated.map((q: any) => `
-        <tr>
-          <td>${q.question}</td>
-          <td style="text-align:center;font-weight:800;color:${scoreCol(q.rating*20)}">${q.rating}/5</td>
-          <td style="color:#9C8E80;font-size:0.8rem;">${q.gap || '–'}</td>
-        </tr>`).join('')}
-    </tbody>
-  </table>` : ''}
+  <!-- LLM Discoverability -->
+  ${(r.llm?.part_a || r.llm?.part_b || r.llm?.questions_rated?.length > 0) ? (() => {
+    const partA = r.llm?.part_a
+    const partB = r.llm?.part_b
+    const renderQuestionTable = (rows: any[]) => `
+      <table>
+        <thead><tr><th>Frage</th><th style="width:90px;">Antwortqualität</th><th>Inhaltslücke / Quelle</th></tr></thead>
+        <tbody>
+          ${rows.map((q: any) => `
+            <tr>
+              <td>${q.question}</td>
+              <td style="text-align:center;font-weight:800;color:${scoreCol(q.rating*20)}">${q.rating}/5</td>
+              <td style="color:#5C5345;font-size:0.8rem;">
+                ${q.gap ? `<div style="color:#9C8E80;margin-bottom:4px;">${q.gap}</div>` : ''}
+                ${q.source_url ? `<a href="${q.source_url}" style="color:#C4761A;text-decoration:underline;font-size:0.78rem;">Quelle: ${(() => { try { return new URL(q.source_url).hostname.replace(/^www\./, '') } catch { return q.source_url } })()}</a>` : ''}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`
 
-  <!-- Competitor table -->
+    if (partA || partB) {
+      return `
+  <h2>🤖 LLM-Sichtbarkeits-Simulation</h2>
+  <div class="llm-subscores">
+    <div class="item">
+      <div class="lab">Auffindbarkeit (unbekannte Suche)</div>
+      <div class="val" style="color:${scoreCol(partA?.score ?? 0)}">${partA?.score ?? 0}<span style="font-size:0.7rem;color:#9C8E80;">/100</span></div>
+      <div class="sub">70% Gewicht</div>
+    </div>
+    <div class="item">
+      <div class="lab">Informationstiefe (Markensuche)</div>
+      <div class="val" style="color:${scoreCol(partB?.score ?? 0)}">${partB?.score ?? 0}<span style="font-size:0.7rem;color:#9C8E80;">/100</span></div>
+      <div class="sub">30% Gewicht</div>
+    </div>
+    <div class="item" style="border-left-color:${scoreCol(r.llm.score ?? 0)}">
+      <div class="lab">LLM-Gesamtscore</div>
+      <div class="val" style="color:${scoreCol(r.llm.score ?? 0)}">${r.llm.score ?? 0}<span style="font-size:0.7rem;color:#9C8E80;">/100</span></div>
+      <div class="sub">gewichtet</div>
+    </div>
+  </div>
+  ${partA?.questions_rated?.length ? `
+  <div class="llm-block">
+    <div class="block-head">Teil A — Auffindbarkeit ohne Markenbezug</div>
+    <div class="block-sub">Diese Fragen simulieren einen potenziellen Neukunden, der Ihren Firmennamen noch nicht kennt. Taucht Ihr Unternehmen in den KI-Antworten auf diese Fragen auf?</div>
+    ${renderQuestionTable(partA.questions_rated)}
+  </div>` : ''}
+  ${partB?.questions_rated?.length ? `
+  <div class="llm-block">
+    <div class="block-head">Teil B — Marken- & Produktverifikation</div>
+    <div class="block-sub">Fragen von Interessenten, die Ihr Unternehmen bereits kennen und spezifische Informationen suchen.</div>
+    ${renderQuestionTable(partB.questions_rated)}
+  </div>` : ''}`
+    }
+    // Old flat format fallback
+    return `
+  <h2>🤖 LLM-Sichtbarkeits-Simulation</h2>
+  ${renderQuestionTable(r.llm.questions_rated)}`
+  })() : ''}
+
+  <!-- Competitor section with chart -->
   ${r.competitors?.length > 0 ? `
   <h2>🏆 Wettbewerbsvergleich</h2>
+  ${barSvg ? `<div class="chart-box" style="margin-bottom:16px;"><div class="chart-title">Gesamt-Score Vergleich</div>${barSvg}</div>` : ''}
   <table>
     <thead><tr><th>Domain</th><th>Gesamt</th><th>Techn. SEO</th><th>Schema</th><th>Content</th><th>FAQ</th><th>Delta zu Ihnen</th></tr></thead>
     <tbody>${compRows}</tbody>
@@ -804,12 +987,16 @@ export function Results() {
 </div>
 </body></html>`
 
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `GAIO-Report-${(company).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.html`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    try {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `GAIO-Report-${(company).replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.html`
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const mainScores = { ...r.scores, total: r.gaio_score }
@@ -837,8 +1024,13 @@ export function Results() {
             onClick={() => setActiveView(r.html_mode ? 'html' : 'domain')}>
             ↩ Neue Analyse
           </button>
-          <button className="btn btn-secondary" onClick={generateReport} style={{ fontSize: '0.85rem', padding: '8px 14px' }}>
-            ⬇ Download
+          <button
+            className="btn btn-secondary"
+            onClick={generateReport}
+            disabled={exporting}
+            style={{ fontSize: '0.85rem', padding: '8px 14px', opacity: exporting ? 0.7 : 1 }}
+          >
+            {exporting ? 'Bereite Export vor…' : '⬇ Vollständigen Report exportieren'}
           </button>
         </div>
       </div>

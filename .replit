@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -67,3 +67,7 @@ externalPort = 3001
 [[ports]]
 localPort = 25760
 externalPort = 4200
+
+[nix]
+channel = "stable-25_05"
+packages = ["libxcrypt", "xcodebuild", "zlib"]

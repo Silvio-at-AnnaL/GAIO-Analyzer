@@ -1,0 +1,120 @@
+The app currently has a module called "LLM-Auffindbarkeit" (LLM 
+Discoverability) that generates questions to test how well a website 
+would appear in AI assistant responses. Please make the following 
+changes to this module:
+
+---
+
+CHANGE 1 — Two-part question strategy
+
+Currently all generated questions explicitly mention the company name.
+This needs to be restructured into two separate question sets.
+
+PART A — "Problem-first" questions (generate 6 questions)
+These questions must NOT contain the company name or domain.
+They simulate a potential B2B buyer in early research mode who does 
+not yet know this vendor exists and is simply searching for a solution.
+The AI assistant prompt for generating these questions should instruct 
+the model to create questions based purely on the product category, 
+industry, and use cases found in the website content — as if the user 
+is asking an AI "who can help me with X?" rather than "tell me about 
+company Y."
+
+Correct framing examples:
+- "Welcher Hersteller bietet vakuumbasierte Greifsysteme für die 
+  Automobilproduktion an?"
+- "Wie kann ich Verpackungslinien bei hohen Taktraten automatisieren?"
+- "Welche Unternehmen liefern ISO-zertifizierte Prüfmaschinen für 
+  Metallkomponenten?"
+
+The goal of Part A: if the analyzed website has strong LLM visibility, 
+the company should naturally appear as a recommendation in AI answers 
+to these questions. Part A carries 70% weight in the overall score.
+
+PART B — "Brand verification" questions (generate 4 questions)
+These questions DO explicitly mention the company name and domain.
+They simulate a buyer who already knows the company and wants to verify 
+specific information: certifications, product specs, delivery times, 
+support, comparisons with competitors, use-case fit.
+
+Example: "Welche Zertifizierungen hat [Company] für den Einsatz in der 
+Lebensmittelindustrie?"
+
+Part B carries 30% weight in the overall score.
+
+The answerability rating (1–5 stars) applies to both parts.
+Return the results as two separate lists in the API response, plus 
+a combined weighted score.
+
+---
+
+CHANGE 2 — Add source URL to each star rating
+
+When the AI rates each question's answerability (1–5), it should also 
+identify which specific crawled page URL from the website best supports 
+the answer. Include this as a "source_url" field in the rating result.
+If no specific page covers the question adequately, source_url is null.
+
+---
+
+CHANGE 3 — Update the results display for this module
+
+Show the two question sets in clearly separated blocks:
+
+Block A header: "Teil A — Auffindbarkeit ohne Markenbezug"
+Subtext below header: "Diese Fragen simulieren einen potenziellen 
+Neukunden, der Ihren Firmennamen noch nicht kennt. Taucht Ihr 
+Unternehmen in den KI-Antworten auf diese Fragen auf?"
+
+Block B header: "Teil B — Marken- & Produktverifikation"  
+Subtext: "Fragen von Interessenten, die Ihr Unternehmen bereits kennen 
+und spezifische Informationen suchen."
+
+For each question in both blocks, display:
+- The question text
+- Star rating (1–5)
+- The gap explanation (what information is missing)
+- If source_url is not null: a clickable link labeled 
+  "Quelle: [domain name]" that opens in a new tab
+
+Show two sub-scores before the combined score:
+- "Auffindbarkeit (unbekannte Suche)": Part A average × 20
+- "Informationstiefe (Markensuche)": Part B average × 20  
+- "LLM-Gesamtscore": weighted combination (70% Part A, 30% Part B)
+
+If existing stored results use the old format (single flat list called 
+questions_rated), display them as before so nothing breaks.
+
+---
+
+CHANGE 4 — Report download: full visual export
+
+Replace the current simple HTML download with a complete self-contained 
+export that preserves charts and layout.
+
+Use this approach:
+1. When the user clicks the download button, show a brief loading state 
+   ("Bereite Export vor…") for 1–2 seconds
+2. Use document.querySelectorAll to find all rendered chart SVG elements 
+   on the page (Recharts renders to SVG in the DOM)
+3. Serialize each SVG to a string using XMLSerializer
+4. Read the resolved CSS variable values from getComputedStyle on the 
+   root element (so colors work without CSS custom properties in the 
+   exported file)
+5. Build a single self-contained HTML file that:
+   - Has all chart SVGs inlined at the correct positions
+   - Has all color values hardcoded (no CSS var() references)
+   - Includes the Nunito font via Google Fonts link tag
+   - Contains all report sections: executive summary, all module scores, 
+     recommendations (all three tiers), competitor cards, LLM question 
+     tables, crawled URL list
+   - Has print-optimized CSS with page breaks before major sections
+   - Renders correctly when opened in any browser without internet 
+     (except for the Google Fonts request, which is acceptable)
+6. If SVG capture fails for any chart, fall back to the current 
+   text-based export and log a warning
+7. Rename the button label to "⬇ Vollständigen Report exportieren"
+8. File name format: GAIO-Report-[company-name]-[YYYY-MM-DD].html
+
+The exported file must look close to the on-screen results view — 
+not a minimal text dump. The goal is a client-ready document.
