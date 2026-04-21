@@ -287,7 +287,10 @@ export async function runAnalysis(
       state.currentModule = "LLM-Auffindbarkeit";
       state.progress = 75;
       save();
-      state.llmDiscoverability = await analyzeLlmDiscoverability(pages, questionnaireContext);
+      state.llmDiscoverability = await analyzeLlmDiscoverability(pages, questionnaireContext, {
+        companyName: questionnaire?.companyName ?? questionnaire?.brandName ?? null,
+        url,
+      });
     } catch (err) {
       logger.error({ err }, "LLM discoverability analysis failed");
       state.errors.push("LLM discoverability analysis failed");
