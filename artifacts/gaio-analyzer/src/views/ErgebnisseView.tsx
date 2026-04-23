@@ -331,6 +331,52 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
   );
 }
 
+interface HreflangVariant { lang: string; url: string; }
+
+function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
+      >
+        <span>Erkannte Sprachvarianten der Website ({variants.length})</span>
+        {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      {isOpen && (
+        <div className="border-t border-border max-h-72 overflow-y-auto">
+          {variants.map((v, i) => (
+            <a
+              key={`${v.lang}-${v.url}`}
+              href={v.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-4 py-2 text-xs hover:bg-muted/20 transition-colors break-all"
+              style={{
+                background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.2)",
+              }}
+            >
+              <span
+                className="shrink-0 inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold border border-border bg-muted text-muted-foreground"
+                style={{ minWidth: "3rem" }}
+              >
+                {v.lang}
+              </span>
+              <span className="text-primary font-mono" style={{ fontFamily: "ui-monospace, monospace" }}>
+                {v.url}
+              </span>
+              <ExternalLink className="w-3 h-3 shrink-0 text-muted-foreground ml-auto" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
   const [exporting, setExporting] = useState(false);
@@ -569,6 +615,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
           {/* Gecrawlte Seiten collapsible panel */}
           {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
             <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
+          )}
+
+          {/* Hreflang variants panel */}
+          {((report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants?.length ?? 0) > 0 && (
+            <HreflangVariantsPanel
+              variants={(report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants!}
+            />
           )}
 
           {technicalSeo && (

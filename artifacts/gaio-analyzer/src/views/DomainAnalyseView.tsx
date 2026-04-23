@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Plus, X, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis } from "@workspace/api-client-react";
 
@@ -32,6 +32,38 @@ export function DomainAnalyseView() {
   const startAnalysis = useStartAnalysis();
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
   const [showAllPages, setShowAllPages] = useState(false);
+
+  // Local editable URL list — initialized from crawledPages, can be modified
+  const [editablePages, setEditablePages] = useState<string[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [addingNew, setAddingNew] = useState(false);
+  const [newUrlValue, setNewUrlValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const newUrlInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync editablePages + selectedPages when a new crawl result arrives
+  useEffect(() => {
+    if (crawledPages.length > 0) {
+      setEditablePages([...crawledPages]);
+      setSelectedPages([...crawledPages]);
+    }
+  }, [crawledPages]);
+
+  // Focus the edit input when entering edit mode
+  useEffect(() => {
+    if (editingIndex !== null) {
+      editInputRef.current?.focus();
+      editInputRef.current?.select();
+    }
+  }, [editingIndex]);
+
+  // Focus the new URL input when adding
+  useEffect(() => {
+    if (addingNew) {
+      newUrlInputRef.current?.focus();
+    }
+  }, [addingNew]);
 
   const updateField = <K extends keyof typeof domainForm>(key: K, value: typeof domainForm[K]) => {
     setDomainForm({ ...domainForm, [key]: value });
@@ -64,6 +96,8 @@ export function DomainAnalyseView() {
     return Object.keys(errs).length === 0;
   };
 
+  // ── URL list helpers ──────────────────────────────────────────────────────
+
   const togglePage = (url: string) => {
     const next = selectedPages.includes(url)
       ? selectedPages.filter((u) => u !== url)
@@ -71,12 +105,57 @@ export function DomainAnalyseView() {
     setSelectedPages(next);
   };
 
-  const allSelected = crawledPages.length > 0 && selectedPages.length === crawledPages.length;
+  const allSelected = editablePages.length > 0 && selectedPages.length === editablePages.length;
   const toggleAll = () => {
-    setSelectedPages(allSelected ? [] : [...crawledPages]);
+    setSelectedPages(allSelected ? [] : [...editablePages]);
   };
 
-  const visiblePages = showAllPages ? crawledPages : crawledPages.slice(0, MAX_VISIBLE_PAGES);
+  const startEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingValue(editablePages[index]);
+  };
+
+  const confirmEdit = () => {
+    if (editingIndex === null) return;
+    const oldUrl = editablePages[editingIndex];
+    const newUrl = editingValue.trim();
+
+    if (newUrl && newUrl !== oldUrl) {
+      const next = [...editablePages];
+      next[editingIndex] = newUrl;
+      setEditablePages(next);
+
+      // Update selectedPages: replace old URL with new URL if it was selected
+      setSelectedPages(selectedPages.map((u) => (u === oldUrl ? newUrl : u)));
+    }
+
+    setEditingIndex(null);
+    setEditingValue("");
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setEditingValue("");
+  };
+
+  const confirmAddNew = () => {
+    const url = newUrlValue.trim();
+    if (url) {
+      setEditablePages((prev) => [...prev, url]);
+      setSelectedPages([...selectedPages, url]);
+    }
+    setAddingNew(false);
+    setNewUrlValue("");
+  };
+
+  const cancelAddNew = () => {
+    setAddingNew(false);
+    setNewUrlValue("");
+  };
+
+  const visiblePages = showAllPages ? editablePages : editablePages.slice(0, MAX_VISIBLE_PAGES);
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleStart = () => {
     if (!validate()) return;
@@ -87,7 +166,9 @@ export function DomainAnalyseView() {
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
-    const useExplicitUrls = crawledPages.length > 0 && selectedPages.length > 0 && selectedPages.length < crawledPages.length;
+    // Pass explicit URLs whenever we have an editable list with at least one selection
+    const hasEditableList = editablePages.length > 0;
+    const explicitUrls = hasEditableList && selectedPages.length > 0 ? selectedPages : null;
 
     startAnalysis.mutate(
       {
@@ -100,7 +181,7 @@ export function DomainAnalyseView() {
             buyerPersonas: domainForm.personas.trim() || null,
             socialMedia: socialLines || null,
           },
-          explicitUrls: useExplicitUrls ? selectedPages : null,
+          explicitUrls,
         },
       },
       {
@@ -165,7 +246,7 @@ export function DomainAnalyseView() {
         </div>
 
         {/* Crawled pages selection — only shown after at least one analysis */}
-        {crawledPages.length > 0 && (
+        {editablePages.length > 0 && (
           <div
             className="rounded-lg border border-border p-4 space-y-3"
             style={{ background: "hsl(var(--muted) / 0.3)" }}
@@ -173,12 +254,12 @@ export function DomainAnalyseView() {
             <div>
               <p className="text-sm font-semibold">Zu analysierende Unterseiten</p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                Automatisch beim letzten Crawl erkannt. Sie können die Auswahl anpassen und die Analyse neu starten.
+                Automatisch beim letzten Crawl erkannt. Sie können URLs bearbeiten, neue hinzufügen und die Auswahl anpassen.
               </p>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{selectedPages.length} von {crawledPages.length} ausgewählt</span>
+              <span className="text-xs text-muted-foreground">{selectedPages.length} von {editablePages.length} ausgewählt</span>
               <button
                 type="button"
                 onClick={toggleAll}
@@ -189,24 +270,124 @@ export function DomainAnalyseView() {
             </div>
 
             <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
-              {visiblePages.map((url) => (
-                <label
-                  key={url}
-                  className="flex items-start gap-2.5 py-1.5 px-2 rounded cursor-pointer hover:bg-muted/50 transition-colors"
-                  style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.75rem" }}
-                >
+              {visiblePages.map((url, idx) => {
+                const isEditing = editingIndex === idx;
+
+                return (
+                  <div
+                    key={`${url}-${idx}`}
+                    className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/50 transition-colors"
+                  >
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedPages.includes(url)}
+                      onChange={() => !isEditing && togglePage(url)}
+                      className="mt-0.5 shrink-0 accent-primary"
+                    />
+
+                    {isEditing ? (
+                      /* Inline edit mode */
+                      <div className="flex-1 flex items-center gap-1.5">
+                        <input
+                          ref={editInputRef}
+                          type="url"
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") confirmEdit();
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          className="flex-1 text-xs bg-background border border-border rounded px-2 py-0.5 font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={confirmEdit}
+                          className="shrink-0 p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
+                          aria-label="Bestätigen"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          aria-label="Abbrechen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      /* Display mode */
+                      <div className="flex-1 flex items-start gap-1.5 min-w-0">
+                        <span
+                          className="flex-1 break-all text-foreground/80 leading-tight cursor-default"
+                          style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.75rem" }}
+                        >
+                          {url}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(idx)}
+                          className="shrink-0 mt-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label="URL bearbeiten"
+                          style={{ opacity: 0.5 }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.5")}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* New URL input row */}
+              {addingNew && (
+                <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-muted/30">
                   <input
                     type="checkbox"
-                    checked={selectedPages.includes(url)}
-                    onChange={() => togglePage(url)}
-                    className="mt-0.5 shrink-0 accent-primary"
+                    checked
+                    readOnly
+                    className="mt-0.5 shrink-0 accent-primary opacity-50"
                   />
-                  <span className="break-all text-foreground/80 leading-tight">{url}</span>
-                </label>
-              ))}
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <input
+                      ref={newUrlInputRef}
+                      type="url"
+                      value={newUrlValue}
+                      onChange={(e) => setNewUrlValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") confirmAddNew();
+                        if (e.key === "Escape") cancelAddNew();
+                      }}
+                      placeholder="https://www.beispiel.de/seite"
+                      className="flex-1 text-xs bg-background border border-border rounded px-2 py-0.5 font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={confirmAddNew}
+                      className="shrink-0 p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
+                      aria-label="URL hinzufügen"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelAddNew}
+                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Abbrechen"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {crawledPages.length > MAX_VISIBLE_PAGES && (
+            {/* Show more / less toggle */}
+            {editablePages.length > MAX_VISIBLE_PAGES && (
               <button
                 type="button"
                 onClick={() => setShowAllPages((v) => !v)}
@@ -220,9 +401,21 @@ export function DomainAnalyseView() {
                 ) : (
                   <>
                     <ChevronDown className="w-3 h-3" />
-                    {crawledPages.length - MAX_VISIBLE_PAGES} weitere anzeigen
+                    {editablePages.length - MAX_VISIBLE_PAGES} weitere anzeigen
                   </>
                 )}
+              </button>
+            )}
+
+            {/* Add URL button */}
+            {!addingNew && (
+              <button
+                type="button"
+                onClick={() => setAddingNew(true)}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                URL hinzufügen
               </button>
             )}
           </div>
