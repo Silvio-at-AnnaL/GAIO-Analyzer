@@ -333,6 +333,7 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
 
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
+  const [exporting, setExporting] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -404,7 +405,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const criticalRecs = recommendations.filter((r) => r.tier === "critical");
   const highRecs = recommendations.filter((r) => r.tier === "high_leverage");
   const secondaryRecs = recommendations.filter((r) => r.tier === "secondary");
-  const llmQuestions = (llmDiscoverability?.questions as Array<{ question: string; rating: number; gap: string }>) || [];
+  type LlmQ = { question: string; rating: number; gap: string; sourceUrl?: string | null };
+  type LlmPart = { label: string; weight: number; avgRating: number; score: number; questions: LlmQ[] };
+  const llmQuestions = (llmDiscoverability?.questions as LlmQ[]) || [];
+  const llmPartA = (llmDiscoverability?.partA as LlmPart | undefined);
+  const llmPartB = (llmDiscoverability?.partB as LlmPart | undefined);
+  const llmAvgRating = (llmDiscoverability?.avgRating as number | undefined) ?? 0;
 
   const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return "Ihre Seite"; } })() : "Ihre Seite";
 
@@ -413,15 +419,61 @@ function ReportView({ analysisId }: { analysisId: string }) {
     ...competitorComparison.competitors.map((c) => ({ name: c.name, compositeScore: c.compositeScore, isMain: false })),
   ].sort((a, b) => b.compositeScore - a.compositeScore) : [];
 
-  const handleExport = () => {
-    const htmlContent = generateHtmlReport(report as Record<string, unknown>);
-    const blob = new Blob([htmlContent], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `gaio-report-${report.id.slice(0, 8)}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const captureSvg = (selector: string): string | null => {
+    const el = document.querySelector(selector) as SVGElement | null;
+    if (!el) return null;
+    try {
+      const clone = el.cloneNode(true) as SVGElement;
+      // Inline computed styles so the export renders without external CSS.
+      const allOriginals = el.querySelectorAll("*");
+      const allClones = clone.querySelectorAll("*");
+      allOriginals.forEach((orig, i) => {
+        const cs = window.getComputedStyle(orig);
+        const target = allClones[i] as SVGElement | undefined;
+        if (!target) return;
+        const styleProps = ["fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "font-size", "font-family", "font-weight", "color"];
+        let inline = "";
+        styleProps.forEach((p) => {
+          const v = cs.getPropertyValue(p);
+          if (v) inline += `${p}:${v};`;
+        });
+        if (inline) target.setAttribute("style", inline);
+      });
+      if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      return new XMLSerializer().serializeToString(clone);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Wait a frame to ensure DOM is fully rendered.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const svgs = document.querySelectorAll(".recharts-wrapper svg");
+      const radarSvg = svgs[0] ? captureSvg(".recharts-wrapper svg") : null;
+      const technicalBarSvg = svgs[1] ? new XMLSerializer().serializeToString(svgs[1]) : null;
+      const competitorBarSvg = svgs[2] ? new XMLSerializer().serializeToString(svgs[2]) : null;
+      const donutSvg = document.querySelector(".score-donut svg")
+        ? new XMLSerializer().serializeToString(document.querySelector(".score-donut svg")!)
+        : null;
+      const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+        radarSvg,
+        donutSvg,
+        technicalBarSvg,
+        competitorBarSvg,
+      });
+      const blob = new Blob([htmlContent], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gaio-report-${report.id.slice(0, 8)}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -434,9 +486,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
             {report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten
           </p>
         </div>
-        <Button size="sm" onClick={handleExport} data-testid="button-export">
-          <Download className="w-4 h-4 mr-1.5" />
-          Analyse herunterladen
+        <Button size="sm" onClick={handleExport} disabled={exporting} data-testid="button-export">
+          {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
+          {exporting ? "Bereite Export vor…" : "Vollständigen Report exportieren"}
         </Button>
       </div>
 
@@ -598,28 +650,84 @@ function ReportView({ analysisId }: { analysisId: string }) {
         {/* LLM Tab */}
         <TabsContent value="llm" className="space-y-4 pt-4">
           {llmQuestions.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  LLM-Auffindbarkeits-Simulation (Score: {(llmDiscoverability?.score as number) ?? 0}/100)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {llmQuestions.map((q, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-muted/30 space-y-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <p className="text-sm font-medium flex-1">{q.question}</p>
-                      <div className="flex shrink-0">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className={`w-3.5 h-3.5 ${star <= q.rating ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground/20"}`} />
-                        ))}
-                      </div>
-                    </div>
-                    {q.gap && <p className="text-xs text-muted-foreground">{q.gap}</p>}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <>
+              {/* Sub-score grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Auffindbarkeit (Teil A · 70%)</div>
+                    <div className="text-2xl font-mono font-bold mt-1">{llmPartA?.score ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmPartA?.avgRating?.toFixed(2) ?? "—"} / 5</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Informationstiefe (Teil B · 30%)</div>
+                    <div className="text-2xl font-mono font-bold mt-1">{llmPartB?.score ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmPartB?.avgRating?.toFixed(2) ?? "—"} / 5</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Gesamt (gewichtet)</div>
+                    <div className="text-2xl font-mono font-bold mt-1">{(llmDiscoverability?.score as number) ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
+                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmAvgRating.toFixed(2)} / 5</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Part A */}
+              {llmPartA && llmPartA.questions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {llmPartA.label}
+                    </CardTitle>
+                    <p className="text-[11px] text-muted-foreground font-normal normal-case">
+                      Buyer kennt das Unternehmen NICHT — testet, ob die Seite in Kategorie- und Problemfragen auftaucht.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {llmPartA.questions.map((q, i) => (
+                      <LlmQuestionRow key={i} q={q} />
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Part B */}
+              {llmPartB && llmPartB.questions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {llmPartB.label}
+                    </CardTitle>
+                    <p className="text-[11px] text-muted-foreground font-normal normal-case">
+                      Buyer kennt die Marke bereits — prüft, wie tief und konkret die Seite Markenfragen beantwortet.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {llmPartB.questions.map((q, i) => (
+                      <LlmQuestionRow key={i} q={q} />
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Fallback: flat list for old reports without partA/partB */}
+              {!llmPartA && !llmPartB && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      LLM-Auffindbarkeits-Simulation (Score: {(llmDiscoverability?.score as number) ?? 0}/100)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {llmQuestions.map((q, i) => <LlmQuestionRow key={i} q={q} />)}
+                  </CardContent>
+                </Card>
+              )}
+            </>
           ) : (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">Keine LLM-Daten verfügbar.</CardContent>
@@ -745,6 +853,30 @@ export function ErgebnisseView() {
   }
 
   return <ReportView analysisId={analysisId} />;
+}
+
+function LlmQuestionRow({ q }: { q: { question: string; rating: number; gap: string; sourceUrl?: string | null } }) {
+  return (
+    <div className="p-3 rounded-lg bg-muted/30 space-y-2">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-sm font-medium flex-1">{q.question}</p>
+        <div className="flex shrink-0">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <Star key={star} className={`w-3.5 h-3.5 ${star <= q.rating ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground/20"}`} />
+          ))}
+        </div>
+      </div>
+      {q.gap && <p className="text-xs text-muted-foreground">{q.gap}</p>}
+      {q.sourceUrl ? (
+        <a href={q.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline break-all">
+          <ExternalLink className="w-3 h-3 shrink-0" />
+          <span className="truncate">{q.sourceUrl}</span>
+        </a>
+      ) : (
+        <p className="text-[11px] text-muted-foreground italic">Keine passende Quellseite gefunden</p>
+      )}
+    </div>
+  );
 }
 
 function BarChart3Placeholder() {

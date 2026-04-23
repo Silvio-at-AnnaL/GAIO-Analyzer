@@ -76,34 +76,16 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - `SESSION_SECRET` — Session secret
 - `DATABASE_URL` — PostgreSQL connection (auto-configured)
 
-## Python Version (artifacts/gaio-py + artifacts/gaio-py-backend)
+## LLM Discoverability — Two-Part Question Structure
 
-A parallel Python FastAPI + React/Vite implementation of the GAIO Analyzer.
+The LLM module produces two parts (lives in `artifacts/api-server/src/lib/analyzers/llm-discoverability.ts`):
+- **Part A** (Auffindbarkeit, weight 0.7): 6 problem/category questions in German that do NOT mention the company. Tests whether the site surfaces in early-research queries.
+- **Part B** (Informationstiefe, weight 0.3): 4 brand-verification questions explicitly mentioning the company name.
+- Each question is rated 1–5 and includes a `sourceUrl` pointing to the best-matching crawled page (or `null`).
+- Result shape: `{ score, avgRating, questions, partA: LlmPart, partB: LlmPart }`. The flat `questions` list is preserved for backward compatibility.
 
-### Architecture
-- **Frontend**: `artifacts/gaio-py/` — React + Vite, plain CSS (no Tailwind), Zustand for state, Axios for API calls
-- **Backend**: `artifacts/gaio-py-backend/` — FastAPI + uvicorn, async analysis pipeline with SSE streaming
-- **Preview path**: `/gaio-py/`
+The Results view (`artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx`, LLM tab) renders a 3-card sub-score grid (Teil A / Teil B / Gesamt) plus a labeled block per part with star ratings, gap text, and source URL links.
 
-### Running the Python version
-Two workflows must be active:
-1. `artifacts/gaio-py: web` — Vite dev server on port 25760
-2. `gaio-py: Python Backend` — uvicorn on port 8000
-
-The Vite dev server proxies `/gaio-py/api/*` → `http://localhost:8000/api/*`.
-
-### Python Backend API
-- `GET /api/health` — Health check with `api_key_configured` flag
-- `GET /api/check-sitemap?url=...` — Check robots.txt / sitemap.xml availability
-- `POST /api/analyze/domain` — Start domain analysis (async, returns `task_id`)
-- `POST /api/analyze/html` — Start HTML analysis (async, returns `task_id`)
-- `GET /api/analysis/{task_id}/stream` — SSE progress stream
-- `GET /api/analysis/{task_id}/results` — Fetch completed analysis results
-
-### Key Files (Python version)
-- `artifacts/gaio-py-backend/main.py` — FastAPI app, all endpoints and analysis modules
-- `artifacts/gaio-py/src/store/appStore.ts` — Zustand store with persist
-- `artifacts/gaio-py/src/lib/api.ts` — Axios instance with `BASE_URL` prefix
-- `artifacts/gaio-py/src/views/` — DomainAnalysis, HtmlAnalysis, Results, FAQView, Settings
+The HTML report export (`artifacts/gaio-analyzer/src/lib/report-export.ts`) accepts captured SVGs (donut, radar, bars) from `handleExport` in the view, inlines computed styles, and embeds them into a self-contained HTML file with print-friendly CSS and the new two-part LLM section.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
