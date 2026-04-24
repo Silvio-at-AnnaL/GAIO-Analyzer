@@ -1,0 +1,81 @@
+```
+Please make the following four independent changes to the app.
+
+---
+
+CHANGE A — Language variants: empty state message
+
+In the results page, the "Erkannte Sprachvarianten der Website" section 
+currently shows nothing when no hreflang tags were found.
+
+Change this: when zero hreflang tags are detected, display the section 
+with the following message instead of hiding it entirely:
+
+"Keine Sprachvarianten dieser Website gefunden."
+
+Show this as a muted, small text note — not an error, just an 
+informational remark. The section heading should still appear so 
+the user knows the check was performed.
+
+---
+
+CHANGE B — Competitor crawling: full coverage + linked pages
+
+B1 — All entered competitors must be analyzed.
+Currently not all competitors entered in the base data form are 
+necessarily processed. Change this so that every non-empty competitor 
+URL entered by the user is visited and included in the competitor 
+comparison results. No competitor may be silently skipped.
+
+B2 — Minimum three pages per competitor.
+For each competitor, crawl at least 3 pages (homepage + 2 subpages). 
+Apply the same priority scoring already used for the main domain 
+(PRIORITY 1–5 patterns) to select which subpages to visit.
+If a competitor site has fewer than 3 crawlable pages, crawl whatever 
+is available.
+
+B3 — Display crawled competitor pages as links.
+In the competitor comparison section of the results page, below each 
+competitor's score card, add a collapsible or always-visible list 
+labeled "Analysierte Seiten" showing the exact URLs that were crawled 
+for that competitor. Each URL must be a clickable link with 
+target="_blank". Show the page title (from the <title> tag) as the 
+link text if available, otherwise show the URL path.
+
+---
+
+CHANGE C — Response time and TTFB: traffic light system + tooltips
+
+C1 — Traffic light rating.
+For both "Antwortzeit" (response time) and "TTFB" (Time to First Byte), 
+replace the raw millisecond number display with a combined display 
+showing the number AND a colored traffic light indicator:
+
+Response time thresholds:
+🟢 Green:  under 400 ms  — label: "Gut"
+🟡 Yellow: 400–800 ms    — label: "Akzeptabel"  
+🔴 Red:    over 800 ms   — label: "Kritisch"
+
+TTFB thresholds:
+🟢 Green:  under 200 ms  — label: "Gut"
+🟡 Yellow: 200–500 ms    — label: "Akzeptabel"
+🔴 Red:    over 500 ms   — label: "Kritisch"
+
+Display format example: "672 ms 🟡 Akzeptabel"
+
+C2 — Tooltips for both metrics.
+Add a small info icon (ⓘ) next to each metric label. On hover, 
+show a tooltip with the following text:
+
+Tooltip for Antwortzeit:
+"Die Antwortzeit misst, wie lange der Server insgesamt braucht, 
+um eine vollständige Seite zu liefern. Unter 400 ms gilt als 
+schnell. Über 800 ms wirkt sich negativ auf SEO und 
+Nutzererfahrung aus."
+
+Tooltip for TTFB:
+"Time to First Byte (TTFB) misst, wie schnell der Server mit 
+der Auslieferung beginnt — bevor der Browser die Seite aufgebaut 
+hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-
+Performance. Google nutzt TTFB als Qualitätssignal."
+```

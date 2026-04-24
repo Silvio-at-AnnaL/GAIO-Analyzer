@@ -133,6 +133,98 @@ function RecommendationCard({ rec }: { rec: { finding: string; whyItMatters: str
   );
 }
 
+// ─── Change C1: Traffic light rating ─────────────────────────────────────────
+
+type TrafficLightType = "responseTime" | "ttfb";
+
+function getTrafficLight(value: number, type: TrafficLightType) {
+  if (type === "responseTime") {
+    if (value < 400) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
+    if (value <= 800) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
+    return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+  }
+  // ttfb
+  if (value < 200) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
+  if (value <= 500) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
+  return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+}
+
+function TrafficLightValue({ value, type }: { value: number; type: TrafficLightType }) {
+  const { dot, label, className } = getTrafficLight(value, type);
+  return (
+    <span className={`text-sm font-bold font-mono ${className}`}>
+      {value} ms {dot} {label}
+    </span>
+  );
+}
+
+// ─── Change C2: Metric label with tooltip ─────────────────────────────────────
+
+function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="inline-flex items-center gap-1 relative">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <button
+        type="button"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        aria-label={`Info: ${label}`}
+      >
+        <Info className="w-3 h-3" />
+      </button>
+      {show && (
+        <div
+          className="absolute bottom-full left-0 mb-2 z-50 w-72 rounded-md border border-border bg-popover shadow-lg p-3 text-xs text-popover-foreground leading-relaxed whitespace-normal"
+          role="tooltip"
+        >
+          {tooltip}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ─── Change B3: Competitor crawled pages list ─────────────────────────────────
+
+function CompetitorCrawledPages({ pages }: { pages: Array<{ url: string; title: string | null }> }) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/30 transition-colors text-left text-muted-foreground"
+      >
+        <span>Analysierte Seiten ({pages.length})</span>
+        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {isOpen && (
+        <div className="border-t border-border max-h-48 overflow-y-auto">
+          {pages.map((page, i) => (
+            <a
+              key={page.url}
+              href={page.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/20 transition-colors"
+              style={{ background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.2)" }}
+            >
+              <ExternalLink className="w-3 h-3 shrink-0 text-primary" />
+              <span className="text-primary hover:underline truncate">
+                {page.title || new URL(page.url).pathname || page.url}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function scoreBadgeColor(score: number): string {
   if (score >= 76) return "hsl(142 71% 45%)";
   if (score >= 61) return "hsl(43 96% 50%)";
@@ -170,6 +262,7 @@ interface CompetitorCardProps {
     faqScore: number;
     compositeScore: number;
     crawledPagesCount: number;
+    crawledPages?: Array<{ url: string; title: string | null }>;
     findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
   };
   mainScores: {
@@ -270,6 +363,11 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
               </div>
             ))}
           </div>
+        )}
+
+        {/* B3: Crawled pages list */}
+        {competitor.crawledPages && competitor.crawledPages.length > 0 && (
+          <CompetitorCrawledPages pages={competitor.crawledPages} />
         )}
 
         {/* Data quality note */}
@@ -396,8 +494,6 @@ function getLangBadgeInfo(langTag: string): { flag: string; name: string } {
 function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
   const uniqueLangs = Array.from(new Map(variants.map((v) => [v.lang, v])).keys());
 
-  if (uniqueLangs.length === 0) return null;
-
   const sorted = [...uniqueLangs].sort((a, b) => {
     if (a === "x-default") return -1;
     if (b === "x-default") return 1;
@@ -407,24 +503,30 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
   return (
     <div className="rounded-lg border border-border px-4 py-3 space-y-2.5">
       <p className="text-sm font-medium">Erkannte Sprachvarianten der Website</p>
-      <div className="flex flex-wrap gap-2">
-        {sorted.map((lang) => {
-          const { flag, name } = getLangBadgeInfo(lang);
-          return (
-            <span
-              key={lang}
-              title={lang}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground select-none"
-            >
-              <span style={{ fontSize: "1rem", lineHeight: 1 }}>{flag}</span>
-              {name}
-            </span>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse
-      </p>
+      {uniqueLangs.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Keine Sprachvarianten dieser Website gefunden.</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {sorted.map((lang) => {
+              const { flag, name } = getLangBadgeInfo(lang);
+              return (
+                <span
+                  key={lang}
+                  title={lang}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground select-none"
+                >
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>{flag}</span>
+                  {name}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -470,6 +572,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       faqScore: number;
       compositeScore: number;
       crawledPagesCount: number;
+      crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
     }>;
   } | null;
@@ -669,21 +772,40 @@ function ReportView({ analysisId }: { analysisId: string }) {
             <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
           )}
 
-          {/* Hreflang variants panel */}
-          {((report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants?.length ?? 0) > 0 && (
-            <HreflangVariantsPanel
-              variants={(report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants!}
-            />
-          )}
+          {/* Hreflang variants panel — always shown, handles empty state internally */}
+          <HreflangVariantsPanel
+            variants={(report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants ?? []}
+          />
 
           {technicalSeo && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Details</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* C1 + C2: Antwortzeit with traffic light and tooltip */}
+                  <div>
+                    <MetricLabelWithTooltip
+                      label="Antwortzeit"
+                      tooltip="Die Antwortzeit misst, wie lange der Server insgesamt braucht, um eine vollständige Seite zu liefern. Unter 400 ms gilt als schnell. Über 800 ms wirkt sich negativ auf SEO und Nutzererfahrung aus."
+                    />
+                    <TrafficLightValue
+                      value={technicalSeo.responseTime as number}
+                      type="responseTime"
+                    />
+                  </div>
+                  {/* C1 + C2: TTFB with traffic light and tooltip */}
+                  <div>
+                    <MetricLabelWithTooltip
+                      label="TTFB"
+                      tooltip="Time to First Byte (TTFB) misst, wie schnell der Server mit der Auslieferung beginnt — bevor der Browser die Seite aufgebaut hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-Performance. Google nutzt TTFB als Qualitätssignal."
+                    />
+                    <TrafficLightValue
+                      value={technicalSeo.ttfb as number}
+                      type="ttfb"
+                    />
+                  </div>
+                  {/* Remaining metrics */}
                   {[
-                    { label: "Antwortzeit", val: `${technicalSeo.responseTime}ms` },
-                    { label: "TTFB", val: `${technicalSeo.ttfb}ms` },
                     { label: "robots.txt", val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
                     { label: "sitemap.xml", val: (technicalSeo.sitemapXml as boolean) ? "✓" : "✗" },
                     { label: "HTTPS", val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },

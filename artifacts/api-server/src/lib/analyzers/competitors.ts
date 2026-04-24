@@ -12,6 +12,11 @@ export interface CompetitorFindings {
   recommendation: string;
 }
 
+export interface CompetitorCrawledPage {
+  url: string;
+  title: string | null;
+}
+
 export interface CompetitorScore {
   name: string;
   url: string;
@@ -22,6 +27,7 @@ export interface CompetitorScore {
   faqScore: number;
   compositeScore: number;
   crawledPagesCount: number;
+  crawledPages: CompetitorCrawledPage[];
   findings: CompetitorFindings | null;
 }
 
@@ -45,6 +51,11 @@ function extractDomainName(url: string): string {
   } catch {
     return url;
   }
+}
+
+function extractPageTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  return match ? match[1].trim().replace(/\s+/g, " ") : null;
 }
 
 async function generateFindings(
@@ -99,13 +110,31 @@ export async function analyzeCompetitors(
 ): Promise<CompetitorResult> {
   const competitors: CompetitorScore[] = [];
 
-  for (const url of competitorUrls.slice(0, 5)) {
+  // B1: Process ALL entered competitor URLs — no silent skipping
+  for (const url of competitorUrls) {
+    const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+    const competitorDomain = extractDomainName(normalizedUrl);
+
     try {
-      const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
-      const crawlResult = await crawlSite(normalizedUrl, 3);
+      // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
+      //     priority scoring to select the best subpages.
+      const crawlResult = await crawlSite(normalizedUrl, 5);
 
       if (crawlResult.pages.length === 0) {
-        logger.warn({ url }, "Competitor crawl returned no pages");
+        logger.warn({ url }, "Competitor crawl returned no pages — including with zero scores");
+        competitors.push({
+          name: competitorDomain,
+          url: normalizedUrl,
+          technicalScore: 0,
+          schemaScore: 0,
+          contentScore: 0,
+          headingScore: 0,
+          faqScore: 0,
+          compositeScore: 0,
+          crawledPagesCount: 0,
+          crawledPages: [],
+          findings: null,
+        });
         continue;
       }
 
@@ -129,7 +158,6 @@ export async function analyzeCompetitors(
           faqResult.score * 0.15,
       );
 
-      const competitorDomain = extractDomainName(normalizedUrl);
       const competitorScores = {
         technicalScore: technicalResult.score,
         schemaScore: schemaResult.score,
@@ -138,6 +166,12 @@ export async function analyzeCompetitors(
         faqScore: faqResult.score,
         compositeScore: Math.min(100, compositeScore),
       };
+
+      // B3: Build crawled-page list with titles extracted from HTML
+      const crawledPages: CompetitorCrawledPage[] = crawlResult.pages.map((p) => ({
+        url: p.url,
+        title: extractPageTitle(p.html),
+      }));
 
       let findings: CompetitorFindings | null = null;
       if (mainSiteScores) {
@@ -149,10 +183,24 @@ export async function analyzeCompetitors(
         url: normalizedUrl,
         ...competitorScores,
         crawledPagesCount: crawlResult.pages.length,
+        crawledPages,
         findings,
       });
     } catch (err) {
-      logger.warn({ url, err }, "Competitor analysis failed");
+      logger.warn({ url, err }, "Competitor analysis failed — including with zero scores");
+      competitors.push({
+        name: competitorDomain,
+        url: normalizedUrl,
+        technicalScore: 0,
+        schemaScore: 0,
+        contentScore: 0,
+        headingScore: 0,
+        faqScore: 0,
+        compositeScore: 0,
+        crawledPagesCount: 0,
+        crawledPages: [],
+        findings: null,
+      });
     }
   }
 
