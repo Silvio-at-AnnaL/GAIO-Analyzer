@@ -285,6 +285,26 @@ function addToQueue(
   sortCategoryQueue(q);
 }
 
+// ─── Known language/region codes for path-based detection ────────────────────
+
+const KNOWN_LANG_CODES = new Set([
+  "af", "ar", "az", "be", "bg", "bn", "bs", "ca", "cs", "cy", "da", "de",
+  "el", "en", "es", "et", "eu", "fa", "fi", "fil", "fr", "ga", "gl", "gu",
+  "he", "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "ka", "kk", "km",
+  "kn", "ko", "lt", "lv", "mk", "ml", "mn", "mr", "ms", "mt", "nb", "nl",
+  "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sr", "sv", "sw", "ta",
+  "te", "th", "tr", "uk", "ur", "uz", "vi", "zh",
+  // common region variants
+  "de-at", "de-ch", "de-de", "en-au", "en-ca", "en-gb", "en-ie", "en-in",
+  "en-nz", "en-sg", "en-us", "en-za", "es-419", "es-ar", "es-cl", "es-co",
+  "es-es", "es-mx", "fr-be", "fr-ca", "fr-ch", "fr-fr", "it-ch", "it-it",
+  "nl-be", "nl-nl", "pt-br", "pt-pt", "zh-cn", "zh-hk", "zh-tw",
+]);
+
+function isKnownLangCode(code: string): boolean {
+  return KNOWN_LANG_CODES.has(code.toLowerCase());
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function fetchPage(url: string): Promise<CrawledPage | null> {
@@ -525,6 +545,48 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
       }
     } catch (err) {
       logger.warn({ url, err }, "Failed to crawl page");
+    }
+  }
+
+  // ── A2: Path-based language fallback ─────────────────────────────────────
+  // If no hreflang tags were found at all, infer language variants from the
+  // path prefixes of the URLs we actually visited during the crawl.
+  // Pattern: /<langcode>/ or /<langcode> at end of pathname (e.g. /en, /de-at)
+  const LANG_SEGMENT_RE = /^\/([a-z]{2,3}(?:-[a-z]{2,4})?)(?:\/|$)/i;
+
+  // Collect all candidate URLs: crawled pages + hreflang-quarantined URLs
+  const candidateUrls = [
+    ...result.pages.map((p) => p.url),
+    ...Array.from(hreflangUrlSet),
+  ];
+
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const pathname = new URL(candidateUrl).pathname;
+      const m = pathname.match(LANG_SEGMENT_RE);
+      if (!m) continue;
+      const lang = m[1].toLowerCase();
+      // Only treat as a language segment if it looks like a real ISO code
+      // (skip path segments that happen to be 2-3 chars, e.g. /de for a topic)
+      // We check against a known list of common language/region codes.
+      if (!isKnownLangCode(lang)) continue;
+
+      // Normalise: use the root of that language path as the variant URL
+      const u = new URL(candidateUrl);
+      u.pathname = `/${lang}/`;
+      u.search = "";
+      u.hash = "";
+      const variantUrl = u.href;
+
+      // Add as an inferred variant if not already present
+      const alreadyExists = result.hreflangVariants.some(
+        (h) => h.lang === lang || h.url === variantUrl,
+      );
+      if (!alreadyExists) {
+        result.hreflangVariants.push({ lang, url: variantUrl });
+      }
+    } catch {
+      // skip
     }
   }
 

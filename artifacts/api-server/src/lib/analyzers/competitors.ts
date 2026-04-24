@@ -29,6 +29,7 @@ export interface CompetitorScore {
   crawledPagesCount: number;
   crawledPages: CompetitorCrawledPage[];
   findings: CompetitorFindings | null;
+  error?: string;
 }
 
 export interface CompetitorResult {
@@ -134,6 +135,7 @@ export async function analyzeCompetitors(
           crawledPagesCount: 0,
           crawledPages: [],
           findings: null,
+          error: "Nicht erreichbar",
         });
         continue;
       }
@@ -200,6 +202,7 @@ export async function analyzeCompetitors(
         crawledPagesCount: 0,
         crawledPages: [],
         findings: null,
+        error: "Nicht erreichbar",
       });
     }
   }

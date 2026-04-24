@@ -191,36 +191,30 @@ function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: st
 // ─── Change B3: Competitor crawled pages list ─────────────────────────────────
 
 function CompetitorCrawledPages({ pages }: { pages: Array<{ url: string; title: string | null }> }) {
-  const [isOpen, setIsOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setIsOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/30 transition-colors text-left text-muted-foreground"
-      >
-        <span>Analysierte Seiten ({pages.length})</span>
-        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-      </button>
-      {isOpen && (
-        <div className="border-t border-border max-h-48 overflow-y-auto">
-          {pages.map((page, i) => (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">Analysierte Seiten</p>
+      <div className="rounded-lg border border-border overflow-hidden">
+        {pages.map((page, i) => {
+          let displayPath = page.url;
+          try { displayPath = new URL(page.url).pathname || page.url; } catch { /* keep url */ }
+          return (
             <a
               key={page.url}
               href={page.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/20 transition-colors"
-              style={{ background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.2)" }}
+              className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30 transition-colors"
+              style={{ background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.15)" }}
             >
               <ExternalLink className="w-3 h-3 shrink-0 text-primary" />
               <span className="text-primary hover:underline truncate">
-                {page.title || new URL(page.url).pathname || page.url}
+                {page.title || displayPath}
               </span>
             </a>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -264,6 +258,7 @@ interface CompetitorCardProps {
     crawledPagesCount: number;
     crawledPages?: Array<{ url: string; title: string | null }>;
     findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+    error?: string;
   };
   mainScores: {
     technicalScore: number;
@@ -275,6 +270,37 @@ interface CompetitorCardProps {
 }
 
 function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
+  if (competitor.error) {
+    return (
+      <Card className="border-border/50 opacity-75">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${competitor.url}&sz=32`}
+                alt=""
+                className="w-5 h-5 rounded shrink-0 grayscale"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+              <span className="font-bold text-base truncate text-muted-foreground">{competitor.name}</span>
+            </div>
+            <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-muted text-muted-foreground border border-border">
+              Nicht erreichbar
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">
+            Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).{" "}
+            <a href={competitor.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+              {competitor.url} <ExternalLink className="w-3 h-3" />
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const metrics = [
     { label: "Technical SEO", main: mainScores.technicalScore, comp: competitor.technicalScore },
     { label: "Schema.org", main: mainScores.schemaScore, comp: competitor.schemaScore },
@@ -574,6 +600,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       crawledPagesCount: number;
       crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+      error?: string;
     }>;
   } | null;
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
