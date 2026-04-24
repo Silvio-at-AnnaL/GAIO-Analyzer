@@ -1,0 +1,105 @@
+The app has a built-in crawler that currently has a significant flaw: 
+it follows hreflang alternate links from the homepage, which means it 
+wastes most of its page budget on language variants instead of crawling 
+meaningful content pages. Please fix this and make three related 
+improvements.
+
+---
+
+CHANGE 1 — Detect and quarantine hreflang links
+
+When parsing a page during crawling, extract all <link rel="alternate" 
+hreflang="..."> tags from the HTML head. Store the detected language 
+variants (hreflang value + URL) separately — do NOT add them to the 
+crawl queue.
+
+These hreflang URLs must be:
+- Excluded from the crawl queue entirely
+- Saved in the analysis result under a new field called 
+  "hreflang_variants" as an array of objects: 
+  { lang: "de", url: "https://..." }
+- Displayed on the results page in a dedicated section labeled 
+  "Erkannte Sprachvarianten der Website" — show each language code 
+  and URL as a clickable link (target="_blank")
+- Stored in the saved analysis data so they can be used in a future 
+  feature (multi-language analysis)
+
+This fix must apply to ALL pages visited during crawl, not just the 
+homepage — hreflang tags can appear on any page.
+
+---
+
+CHANGE 2 — Priority-based URL selection
+
+After collecting all internal links from the homepage (and from the 
+sitemap if available), score and sort them before deciding which to 
+crawl. Do not just take the first N links in document order.
+
+Apply the following priority scoring to each discovered URL path:
+
+PRIORITY 1 (score 100) — crawl these first:
+URL paths containing any of these patterns:
+produkt, product, products, produkte, loesungen, solutions, leistungen, 
+services, anwendungen, applications, use-case, usecases, anwendungsfall
+
+PRIORITY 2 (score 80):
+referenzen, references, kundenstimmen, testimonials, case-study, 
+fallstudie, anwendungsbeispiel, beispiele, examples
+
+PRIORITY 3 (score 60):
+news, blog, presse, press, aktuell, artikel, article, insights
+
+PRIORITY 4 (score 40):
+technologie, technology, innovation, industrie, industry
+
+PRIORITY 5 (score 20) — only if nothing better found:
+everything else that is same-domain and not in the excluded list below
+
+ALWAYS EXCLUDE (score 0, never crawl):
+- hreflang variant URLs (see Change 1)
+- URLs containing: login, logout, cart, warenkorb, checkout, 
+  impressum, datenschutz, privacy, cookie, agb, terms, sitemap, 
+  feed, rss, wp-admin, wp-json, cdn, assets, static
+- Non-HTML file extensions: .pdf, .jpg, .png, .gif, .svg, .mp4, 
+  .zip, .css, .js
+- URLs with query strings containing tracking parameters: 
+  utm_, fbclid, gclid
+
+Sort all candidate URLs by priority score descending, then crawl 
+in that order up to the configured page limit. If fewer high-priority 
+pages exist than the limit, fill remaining slots with lower-priority 
+pages.
+
+Also check the sitemap.xml first (as is currently done) — if sitemap 
+URLs are available, apply the same priority scoring to them.
+
+---
+
+CHANGE 3 — Editable URL list before re-analysis
+
+In the "Domainanalyse – Basisdaten" view, after a first analysis has 
+been completed, the crawled URLs are already shown as a checkbox list. 
+Extend this with full editing capability:
+
+Each URL row in the list must have:
+- A checkbox (already exists — keep it)
+- The URL displayed as a clickable link (already exists — keep it)
+- A small edit button (pencil icon) next to the URL
+- When the edit button is clicked: the URL text becomes an inline 
+  editable input field, pre-filled with the current URL. The user 
+  can modify it. Pressing Enter or clicking a confirm checkmark saves 
+  the edit. Pressing Escape cancels.
+
+Also add below the list:
+- An "URL hinzufügen" button that appends a new empty editable input 
+  row to the list. The user types a URL and confirms it. The new URL 
+  gets added to the selected list.
+
+When the user clicks "Analyse starten" after editing:
+- Only the checked URLs are passed to the backend
+- Any manually edited or added URLs are included exactly as entered
+- The backend must accept this explicit URL list and fetch those 
+  exact pages instead of auto-crawling
+
+Make sure the "Alle auswählen / Alle abwählen" toggle still works 
+correctly after edits and additions.

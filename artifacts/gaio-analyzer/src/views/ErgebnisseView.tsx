@@ -133,6 +133,92 @@ function RecommendationCard({ rec }: { rec: { finding: string; whyItMatters: str
   );
 }
 
+// ─── Change C1: Traffic light rating ─────────────────────────────────────────
+
+type TrafficLightType = "responseTime" | "ttfb";
+
+function getTrafficLight(value: number, type: TrafficLightType) {
+  if (type === "responseTime") {
+    if (value < 400) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
+    if (value <= 800) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
+    return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+  }
+  // ttfb
+  if (value < 200) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
+  if (value <= 500) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
+  return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+}
+
+function TrafficLightValue({ value, type }: { value: number; type: TrafficLightType }) {
+  const { dot, label, className } = getTrafficLight(value, type);
+  return (
+    <span className={`text-sm font-bold font-mono ${className}`}>
+      {value} ms {dot} {label}
+    </span>
+  );
+}
+
+// ─── Change C2: Metric label with tooltip ─────────────────────────────────────
+
+function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="inline-flex items-center gap-1 relative">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <button
+        type="button"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        aria-label={`Info: ${label}`}
+      >
+        <Info className="w-3 h-3" />
+      </button>
+      {show && (
+        <div
+          className="absolute bottom-full left-0 mb-2 z-50 w-72 rounded-md border border-border bg-popover shadow-lg p-3 text-xs text-popover-foreground leading-relaxed whitespace-normal"
+          role="tooltip"
+        >
+          {tooltip}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ─── Change B3: Competitor crawled pages list ─────────────────────────────────
+
+function CompetitorCrawledPages({ pages }: { pages: Array<{ url: string; title: string | null }> }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">Analysierte Seiten</p>
+      <div className="rounded-lg border border-border overflow-hidden">
+        {pages.map((page, i) => {
+          let displayPath = page.url;
+          try { displayPath = new URL(page.url).pathname || page.url; } catch { /* keep url */ }
+          return (
+            <a
+              key={page.url}
+              href={page.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30 transition-colors"
+              style={{ background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.15)" }}
+            >
+              <ExternalLink className="w-3 h-3 shrink-0 text-primary" />
+              <span className="text-primary hover:underline truncate">
+                {page.title || displayPath}
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function scoreBadgeColor(score: number): string {
   if (score >= 76) return "hsl(142 71% 45%)";
   if (score >= 61) return "hsl(43 96% 50%)";
@@ -170,7 +256,9 @@ interface CompetitorCardProps {
     faqScore: number;
     compositeScore: number;
     crawledPagesCount: number;
+    crawledPages?: Array<{ url: string; title: string | null }>;
     findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+    error?: string;
   };
   mainScores: {
     technicalScore: number;
@@ -182,6 +270,37 @@ interface CompetitorCardProps {
 }
 
 function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
+  if (competitor.error) {
+    return (
+      <Card className="border-border/50 opacity-75">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${competitor.url}&sz=32`}
+                alt=""
+                className="w-5 h-5 rounded shrink-0 grayscale"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+              <span className="font-bold text-base truncate text-muted-foreground">{competitor.name}</span>
+            </div>
+            <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-muted text-muted-foreground border border-border">
+              Nicht erreichbar
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">
+            Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).{" "}
+            <a href={competitor.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
+              {competitor.url} <ExternalLink className="w-3 h-3" />
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const metrics = [
     { label: "Technical SEO", main: mainScores.technicalScore, comp: competitor.technicalScore },
     { label: "Schema.org", main: mainScores.schemaScore, comp: competitor.schemaScore },
@@ -272,6 +391,11 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
           </div>
         )}
 
+        {/* B3: Crawled pages list */}
+        {competitor.crawledPages && competitor.crawledPages.length > 0 && (
+          <CompetitorCrawledPages pages={competitor.crawledPages} />
+        )}
+
         {/* Data quality note */}
         <p className="text-xs text-muted-foreground">
           Score-Basis:{" "}
@@ -331,6 +455,108 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
   );
 }
 
+interface HreflangVariant { lang: string; url: string; }
+
+const LANG_INFO: Record<string, { flag: string; name: string }> = {
+  "x-default": { flag: "🌐", name: "Default" },
+  de: { flag: "🇩🇪", name: "Deutsch" },
+  en: { flag: "🇬🇧", name: "English" },
+  fr: { flag: "🇫🇷", name: "Français" },
+  es: { flag: "🇪🇸", name: "Español" },
+  it: { flag: "🇮🇹", name: "Italiano" },
+  pl: { flag: "🇵🇱", name: "Polski" },
+  zh: { flag: "🇨🇳", name: "中文" },
+  pt: { flag: "🇵🇹", name: "Português" },
+  nl: { flag: "🇳🇱", name: "Nederlands" },
+  ja: { flag: "🇯🇵", name: "日本語" },
+  ko: { flag: "🇰🇷", name: "한국어" },
+  ru: { flag: "🇷🇺", name: "Русский" },
+  ar: { flag: "🇸🇦", name: "العربية" },
+  tr: { flag: "🇹🇷", name: "Türkçe" },
+  sv: { flag: "🇸🇪", name: "Svenska" },
+  da: { flag: "🇩🇰", name: "Dansk" },
+  fi: { flag: "🇫🇮", name: "Suomi" },
+  nb: { flag: "🇳🇴", name: "Norsk" },
+  no: { flag: "🇳🇴", name: "Norsk" },
+  cs: { flag: "🇨🇿", name: "Čeština" },
+  sk: { flag: "🇸🇰", name: "Slovenčina" },
+  hu: { flag: "🇭🇺", name: "Magyar" },
+  ro: { flag: "🇷🇴", name: "Română" },
+  bg: { flag: "🇧🇬", name: "Български" },
+  hr: { flag: "🇭🇷", name: "Hrvatski" },
+  uk: { flag: "🇺🇦", name: "Українська" },
+  el: { flag: "🇬🇷", name: "Ελληνικά" },
+  he: { flag: "🇮🇱", name: "עברית" },
+  th: { flag: "🇹🇭", name: "ไทย" },
+  vi: { flag: "🇻🇳", name: "Tiếng Việt" },
+  id: { flag: "🇮🇩", name: "Bahasa Indonesia" },
+  ms: { flag: "🇲🇾", name: "Bahasa Melayu" },
+};
+
+function regionToFlag(regionCode: string): string {
+  return regionCode
+    .toUpperCase()
+    .split("")
+    .map((c) => String.fromCodePoint(c.charCodeAt(0) + 127397))
+    .join("");
+}
+
+function getLangBadgeInfo(langTag: string): { flag: string; name: string } {
+  if (langTag === "x-default") return { flag: "🌐", name: "Default" };
+
+  const parts = langTag.split("-");
+  const baseLang = parts[0].toLowerCase();
+  const region = parts.length > 1 ? parts[parts.length - 1] : null;
+
+  const baseName = LANG_INFO[baseLang]?.name ?? langTag;
+
+  if (region && region.length === 2 && /^[A-Za-z]+$/.test(region)) {
+    return { flag: regionToFlag(region), name: baseName };
+  }
+
+  return LANG_INFO[baseLang] ?? { flag: "🌐", name: langTag };
+}
+
+function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
+  const uniqueLangs = Array.from(new Map(variants.map((v) => [v.lang, v])).keys());
+
+  const sorted = [...uniqueLangs].sort((a, b) => {
+    if (a === "x-default") return -1;
+    if (b === "x-default") return 1;
+    return a.localeCompare(b);
+  });
+
+  return (
+    <div className="rounded-lg border border-border px-4 py-3 space-y-2.5">
+      <p className="text-sm font-medium">Erkannte Sprachvarianten der Website</p>
+      {uniqueLangs.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Keine Sprachvarianten dieser Website gefunden.</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {sorted.map((lang) => {
+              const { flag, name } = getLangBadgeInfo(lang);
+              return (
+                <span
+                  key={lang}
+                  title={lang}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground select-none"
+                >
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>{flag}</span>
+                  {name}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
   const [exporting, setExporting] = useState(false);
@@ -372,7 +598,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
       faqScore: number;
       compositeScore: number;
       crawledPagesCount: number;
+      crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
+      error?: string;
     }>;
   } | null;
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
@@ -571,14 +799,40 @@ function ReportView({ analysisId }: { analysisId: string }) {
             <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
           )}
 
+          {/* Hreflang variants panel — always shown, handles empty state internally */}
+          <HreflangVariantsPanel
+            variants={(report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants ?? []}
+          />
+
           {technicalSeo && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Details</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* C1 + C2: Antwortzeit with traffic light and tooltip */}
+                  <div>
+                    <MetricLabelWithTooltip
+                      label="Antwortzeit"
+                      tooltip="Die Antwortzeit misst, wie lange der Server insgesamt braucht, um eine vollständige Seite zu liefern. Unter 400 ms gilt als schnell. Über 800 ms wirkt sich negativ auf SEO und Nutzererfahrung aus."
+                    />
+                    <TrafficLightValue
+                      value={technicalSeo.responseTime as number}
+                      type="responseTime"
+                    />
+                  </div>
+                  {/* C1 + C2: TTFB with traffic light and tooltip */}
+                  <div>
+                    <MetricLabelWithTooltip
+                      label="TTFB"
+                      tooltip="Time to First Byte (TTFB) misst, wie schnell der Server mit der Auslieferung beginnt — bevor der Browser die Seite aufgebaut hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-Performance. Google nutzt TTFB als Qualitätssignal."
+                    />
+                    <TrafficLightValue
+                      value={technicalSeo.ttfb as number}
+                      type="ttfb"
+                    />
+                  </div>
+                  {/* Remaining metrics */}
                   {[
-                    { label: "Antwortzeit", val: `${technicalSeo.responseTime}ms` },
-                    { label: "TTFB", val: `${technicalSeo.ttfb}ms` },
                     { label: "robots.txt", val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
                     { label: "sitemap.xml", val: (technicalSeo.sitemapXml as boolean) ? "✓" : "✗" },
                     { label: "HTTPS", val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },

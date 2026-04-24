@@ -1,0 +1,76 @@
+```
+Please fix the following two issues. These are bugs in existing 
+functionality, not new features.
+
+---
+
+BUG FIX A — Hreflang detection not working correctly
+
+The hreflang detection is currently failing even when language 
+variants exist. Evidence: the crawler visited /en/ and /en/products 
+pages but still reported "Keine Sprachvarianten gefunden."
+
+There are two likely causes — fix both:
+
+A1 — Detection scope is too narrow.
+The current code probably only checks for hreflang tags on the 
+homepage. Change it to collect hreflang tags from EVERY page that 
+gets crawled, not just the entry page. Merge all findings into a 
+single deduplicated list of language variants.
+
+A2 — Path-based language detection as fallback.
+Even if no <link rel="alternate" hreflang="..."> tags exist, the 
+crawler can infer language variants from the URLs it actually visits. 
+After crawling is complete, scan the list of all crawled URLs for 
+path segments that are recognized language codes:
+/en, /en/, /de, /de/, /fr, /fr/, /es, /es/, /it, /it/, /nl, /nl/, 
+/pl, /pl/, /zh, /zh/, /pt, /pt/, /ja, /ja/, /ko, /ko/, /ru, /ru/,
+as well as region variants like /en-us, /en-gb, /de-at, /de-ch, etc.
+
+If such paths are found among the crawled URLs, treat them as 
+detected language variants — even without explicit hreflang tags.
+Store them in hreflang_variants with the inferred lang code and 
+the corresponding URL.
+
+The display logic (flag badges, count note) stays exactly as it is.
+The empty state message "Keine Sprachvarianten dieser Website 
+gefunden." should only appear when NEITHER hreflang tags NOR 
+path-based language variants were found.
+
+---
+
+BUG FIX B — Competitor analysis: missing competitors and missing 
+crawled page list
+
+B1 — All entered competitors must be analyzed without exception.
+
+Identify why some competitors are being skipped. Common causes:
+- A timeout on one competitor causes the entire batch to abort
+- An error in one competitor's fetch crashes the loop
+- A hard-coded limit on competitor count lower than the number entered
+
+Fix this by:
+- Wrapping each individual competitor's fetch and analysis in its 
+  own try/catch so that one failed competitor never blocks the others
+- Removing any hard-coded limit on competitor count — process ALL 
+  non-empty URLs entered by the user, regardless of how many there are
+- If a competitor is unreachable (timeout, 404, blocked), still 
+  include it in the results with a clear error state: show the domain 
+  name, a "Nicht erreichbar" status, and skip its scoring — but do 
+  not omit it from the results entirely
+
+B2 — Display crawled pages per competitor.
+
+This was requested previously but is not appearing in the results.
+For each competitor in the competitor comparison section, add a 
+visible list of the pages that were actually crawled for that 
+competitor. Requirements:
+- Label: "Analysierte Seiten"
+- Show between 1 and 5 URLs per competitor (however many were crawled)
+- Each URL is a clickable link with target="_blank"
+- Use the page's <title> tag content as the link text where available; 
+  fall back to showing the URL path if no title was found
+- Display this list directly under the competitor's score information, 
+  always visible (not hidden behind a toggle)
+- If only the homepage was crawled, show just that one URL
+```

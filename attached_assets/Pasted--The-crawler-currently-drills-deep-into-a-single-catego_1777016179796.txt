@@ -1,0 +1,113 @@
+```
+The crawler currently drills deep into a single category instead of 
+covering the site broadly. Rewrite the URL selection and crawl logic 
+with the following rules. All previously defined priority scores 
+(PRIORITY 1–5) remain in place — only the selection strategy changes.
+
+---
+
+RULE 1 — Breadth before depth
+
+The crawler must never exhaust its page budget within a single 
+category. Define "category" as the first meaningful path segment 
+after the domain or language prefix.
+
+Examples:
+/de/produkte/gasdruckregler/typ-a → category: "produkte"
+/de/veroeffentlichungen/technische-dokumentationen/... → category: "veroeffentlichungen"
+/solutions/pressure-control/ → category: "solutions"
+
+At any point during crawling, no single category may account for 
+more than 25% of the total pages crawled — unless fewer than 4 
+distinct categories exist on the site, in which case the cap is 40%.
+
+Enforce this by tracking a per-category counter. When a category 
+hits its cap, skip further URLs from that category and move to the 
+next best available URL from a different category.
+
+---
+
+RULE 2 — Maximum one level of depth per category per pass
+
+On the first pass through the crawl queue, take at most ONE page 
+per category per depth level. 
+
+"Depth level" is defined by the number of path segments below the 
+start URL. Example with start URL rmg.com/de:
+- /de/produkte → depth 1
+- /de/produkte/gasdruckregler → depth 2
+- /de/produkte/gasdruckregler/typ-a → depth 3
+
+First pass: crawl one page at depth 1 from each category, then one 
+page at depth 2 from each category, and so on — rotating across 
+categories rather than going deep into one.
+
+Only go deeper in a single category (more than one page per level) 
+if the total number of discovered crawlable pages across all 
+categories is fewer than 40. In that case, distribute the remaining 
+budget proportionally across available categories.
+
+---
+
+RULE 3 — Language preference
+
+When multiple equivalent URLs differ only by language prefix 
+(e.g. /de/produkte vs /en/products vs /fr/produits), prefer in 
+this order:
+1. /de/ or paths where lang = "de"
+2. /en/ or paths where lang = "en"  
+3. All other languages (any order)
+
+This applies both to sitemap URLs and to discovered internal links. 
+If no language prefix is present, treat the URL as neutral and 
+include it normally.
+
+---
+
+RULE 4 — Respect the entered URL as the root ceiling
+
+If the user enters a path URL (e.g. https://www.rmg.com/de instead 
+of just https://www.rmg.com), treat that path as the topmost allowed 
+level. The crawler must not follow links that go above this path.
+
+Examples:
+- Start URL: https://www.rmg.com/de
+  → /de/produkte ✓ allowed
+  → /de/loesungen ✓ allowed
+  → / (root) ✗ blocked
+  → /en/products ✗ blocked (different language branch, above /de)
+
+- Start URL: https://www.rmg.com
+  → all same-domain paths allowed
+
+Implement this as a path prefix filter: every candidate URL must 
+start with the entered start URL's path.
+
+---
+
+RULE 5 — Category diversity enforcement: practical implementation
+
+Build the crawl queue as follows:
+
+Step 1: Collect all candidate URLs (from homepage links + sitemap), 
+        apply priority scores, exclude blacklisted patterns and 
+        hreflang variants, enforce the path ceiling from Rule 4.
+
+Step 2: Group candidates by category (first meaningful path segment).
+
+Step 3: Sort groups by their highest-priority URL's score descending.
+
+Step 4: Build the final queue by interleaving: take the top-scored 
+        uncrawled URL from group 1, then group 2, then group 3, etc., 
+        cycling through groups round-robin until the page limit is 
+        reached. Within each group, go one depth level at a time 
+        (Rule 2) before revisiting the same group.
+
+Step 5: Apply the 25% per-category cap (Rule 1) as a hard cutoff 
+        during actual crawling, not just during queue building — 
+        because crawling may discover new URLs dynamically.
+
+This round-robin interleaving ensures that with a 15-page budget and 
+5 categories, the crawler visits roughly 3 pages per category at 
+increasing depths, rather than 13 pages in one category and 1 in another.
+```

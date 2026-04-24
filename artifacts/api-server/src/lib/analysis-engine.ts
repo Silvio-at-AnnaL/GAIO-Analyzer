@@ -27,6 +27,7 @@ export interface AnalysisState {
   recommendations: unknown[];
   errors: string[];
   crawledPages: string[];
+  hreflangVariants: Array<{ lang: string; url: string }>;
 }
 
 interface AnalysisEntry {
@@ -156,6 +157,7 @@ export async function runAnalysis(
     recommendations: [],
     errors: [],
     crawledPages: [],
+    hreflangVariants: [],
   };
 
   const startedAt = new Date().toISOString();
@@ -189,12 +191,14 @@ export async function runAnalysis(
           sitemapXml: null,
           robotsTxtExists: false,
           sitemapXmlExists: false,
+          hreflangVariants: [],
         };
       } else {
         crawlResult = await crawlSite(url, 16);
         pages = crawlResult.pages;
       }
       state.crawledPages = pages.map((p) => p.url);
+      state.hreflangVariants = crawlResult.hreflangVariants ?? [];
 
       if (pages.length === 0) {
         state.status = "failed";
@@ -218,6 +222,7 @@ export async function runAnalysis(
         sitemapXml: null,
         robotsTxtExists: false,
         sitemapXmlExists: false,
+        hreflangVariants: [],
       };
       state.crawledPages = ["uploaded-page"];
     } else {
