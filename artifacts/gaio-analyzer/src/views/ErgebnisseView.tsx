@@ -333,46 +333,98 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
 
 interface HreflangVariant { lang: string; url: string; }
 
+const LANG_INFO: Record<string, { flag: string; name: string }> = {
+  "x-default": { flag: "🌐", name: "Default" },
+  de: { flag: "🇩🇪", name: "Deutsch" },
+  en: { flag: "🇬🇧", name: "English" },
+  fr: { flag: "🇫🇷", name: "Français" },
+  es: { flag: "🇪🇸", name: "Español" },
+  it: { flag: "🇮🇹", name: "Italiano" },
+  pl: { flag: "🇵🇱", name: "Polski" },
+  zh: { flag: "🇨🇳", name: "中文" },
+  pt: { flag: "🇵🇹", name: "Português" },
+  nl: { flag: "🇳🇱", name: "Nederlands" },
+  ja: { flag: "🇯🇵", name: "日本語" },
+  ko: { flag: "🇰🇷", name: "한국어" },
+  ru: { flag: "🇷🇺", name: "Русский" },
+  ar: { flag: "🇸🇦", name: "العربية" },
+  tr: { flag: "🇹🇷", name: "Türkçe" },
+  sv: { flag: "🇸🇪", name: "Svenska" },
+  da: { flag: "🇩🇰", name: "Dansk" },
+  fi: { flag: "🇫🇮", name: "Suomi" },
+  nb: { flag: "🇳🇴", name: "Norsk" },
+  no: { flag: "🇳🇴", name: "Norsk" },
+  cs: { flag: "🇨🇿", name: "Čeština" },
+  sk: { flag: "🇸🇰", name: "Slovenčina" },
+  hu: { flag: "🇭🇺", name: "Magyar" },
+  ro: { flag: "🇷🇴", name: "Română" },
+  bg: { flag: "🇧🇬", name: "Български" },
+  hr: { flag: "🇭🇷", name: "Hrvatski" },
+  uk: { flag: "🇺🇦", name: "Українська" },
+  el: { flag: "🇬🇷", name: "Ελληνικά" },
+  he: { flag: "🇮🇱", name: "עברית" },
+  th: { flag: "🇹🇭", name: "ไทย" },
+  vi: { flag: "🇻🇳", name: "Tiếng Việt" },
+  id: { flag: "🇮🇩", name: "Bahasa Indonesia" },
+  ms: { flag: "🇲🇾", name: "Bahasa Melayu" },
+};
+
+function regionToFlag(regionCode: string): string {
+  return regionCode
+    .toUpperCase()
+    .split("")
+    .map((c) => String.fromCodePoint(c.charCodeAt(0) + 127397))
+    .join("");
+}
+
+function getLangBadgeInfo(langTag: string): { flag: string; name: string } {
+  if (langTag === "x-default") return { flag: "🌐", name: "Default" };
+
+  const parts = langTag.split("-");
+  const baseLang = parts[0].toLowerCase();
+  const region = parts.length > 1 ? parts[parts.length - 1] : null;
+
+  const baseName = LANG_INFO[baseLang]?.name ?? langTag;
+
+  if (region && region.length === 2 && /^[A-Za-z]+$/.test(region)) {
+    return { flag: regionToFlag(region), name: baseName };
+  }
+
+  return LANG_INFO[baseLang] ?? { flag: "🌐", name: langTag };
+}
+
 function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const uniqueLangs = Array.from(new Map(variants.map((v) => [v.lang, v])).keys());
+
+  if (uniqueLangs.length === 0) return null;
+
+  const sorted = [...uniqueLangs].sort((a, b) => {
+    if (a === "x-default") return -1;
+    if (b === "x-default") return 1;
+    return a.localeCompare(b);
+  });
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setIsOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
-      >
-        <span>Erkannte Sprachvarianten der Website ({variants.length})</span>
-        {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-      </button>
-      {isOpen && (
-        <div className="border-t border-border max-h-72 overflow-y-auto">
-          {variants.map((v, i) => (
-            <a
-              key={`${v.lang}-${v.url}`}
-              href={v.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-4 py-2 text-xs hover:bg-muted/20 transition-colors break-all"
-              style={{
-                background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.2)",
-              }}
+    <div className="rounded-lg border border-border px-4 py-3 space-y-2.5">
+      <p className="text-sm font-medium">Erkannte Sprachvarianten der Website</p>
+      <div className="flex flex-wrap gap-2">
+        {sorted.map((lang) => {
+          const { flag, name } = getLangBadgeInfo(lang);
+          return (
+            <span
+              key={lang}
+              title={lang}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground select-none"
             >
-              <span
-                className="shrink-0 inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold border border-border bg-muted text-muted-foreground"
-                style={{ minWidth: "3rem" }}
-              >
-                {v.lang}
-              </span>
-              <span className="text-primary font-mono" style={{ fontFamily: "ui-monospace, monospace" }}>
-                {v.url}
-              </span>
-              <ExternalLink className="w-3 h-3 shrink-0 text-muted-foreground ml-auto" />
-            </a>
-          ))}
-        </div>
-      )}
+              <span style={{ fontSize: "1rem", lineHeight: 1 }}>{flag}</span>
+              {name}
+            </span>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse
+      </p>
     </div>
   );
 }
