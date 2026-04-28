@@ -1,0 +1,88 @@
+Improve the „Vollständigen Report exportieren" function with the following changes.
+
+---
+
+CHANGE 1 — Two separate export buttons
+
+Replace the single export button with two clearly labeled buttons side by side:
+- "📄 Report als PDF exportieren"
+- "🌐 Report als HTML exportieren"
+
+---
+
+CHANGE 2 — PDF export via browser print
+
+Implement the PDF export using the browser's built-in print functionality (window.print()), NOT a PDF library. This ensures charts and layout render exactly as they appear on screen.
+
+2.1 — Trigger and print stylesheet
+When the user clicks "Report als PDF exportieren":
+- Dynamically inject a <style> block with media="print" into the document head (remove it again after printing is done)
+- Call window.print()
+- The injected print stylesheet handles all visual rules below
+
+2.2 — Hide the sidebar
+In the print stylesheet, add:
+  nav, aside, .sidebar, [class*="sidebar"], [class*="nav-panel"],
+  [class*="left-panel"] { display: none !important; }
+Also hide all export buttons, tab navigation bars, and any "Analyse starten" buttons.
+
+2.3 — One result tab = one PDF page, future-proof
+Each results tab panel (Details, LLM-Auffindbarkeit, Wettbewerb, Empfehlungen — and any future tabs added later) must appear as a separate page in the PDF.
+
+Implement this by:
+- Before printing, temporarily making ALL tab panels visible simultaneously (override any display:none on inactive tabs)
+- Adding CSS: each tab panel gets page-break-before: always —  except the first one
+- Using a data attribute or consistent class to identify all current AND future tab panels generically, for example: [role="tabpanel"], .tab-panel, .results-tab, .analysis-section — whichever class/attribute is actually used in the codebase
+- After window.print() resolves (use the afterprint event), restore the original tab visibility state
+
+2.4 — Document width
+In the print stylesheet set:
+  @page { size: 210mm auto; margin: 12mm 14mm; }
+This fixes width at 210mm (A4 width) and lets height be determined by content.
+
+2.5 — No page breaks within a tab's content
+Each tab panel must print as one continuous page regardless of length. In the print stylesheet:
+  [role="tabpanel"], .tab-panel, .results-tab, .analysis-section {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+Do NOT apply page-break-inside: avoid to child elements like individual cards or chart containers — only to the top-level tab panel wrapper, so content flows naturally within the page.
+
+---
+
+CHANGE 3 — HTML export: fix colors and fix content mapping
+
+3.1 — Light mode color scheme for HTML export
+The current export uses dark background colors (#0f1117). Replace the entire color scheme in the exported HTML with a clean light theme:
+
+  Background:        #f4f5f7
+  Card background:   #ffffff
+  Primary text:      #1a1d23
+  Secondary text:    #4a4d57
+  Muted text:        #787b86
+  Border color:      #dde0e8
+  Accent color:      keep the existing brand accent (blue or whatever the app uses) — do not change it
+  Chart colors:      keep as-is (they are readable on light bg)
+
+Apply these as hardcoded hex values in the exported file — no CSS custom properties, since the file must render correctly standalone without the app's stylesheet.
+
+3.2 — Fix content mapping bugs in HTML export
+The current HTML export has incorrect content placement. 
+Known issues include: technical SEO metrics appearing under "Wettbewerbsvergleich", and the competitor analysis text content not being exported at all.
+
+Do a full audit of the HTML export generation function and fix ALL content mapping issues:
+
+- Read the actual data structure of the analysis result object as it exists in the codebase (check what fields are returned by the backend and stored in frontend state)
+- Map each result section to its correct export block:
+    "Details" tab content     → section labeled "Technische Analyse"
+    "LLM-Auffindbarkeit" tab  → section labeled "LLM-Auffindbarkeit"
+    "Wettbewerb" tab          → section labeled "Wettbewerbsvergleich"
+    "Empfehlungen" tab        → section labeled "Empfehlungen"
+- Each section must only contain the data that belongs to it —  no cross-contamination between sections
+- The competitor section must include: each competitor's domain, their scores, the crawled pages list, and the comparative  text analysis (advantages/disadvantages) — not just the score  numbers
+- After fixing, verify by mentally tracing the data flow from the result object through to the exported HTML string and confirming each field lands in the right section
+
+3.3 — Future-proof section structure
+Build the HTML export so that adding a new results tab in the future only requires adding one new block to the export function — not restructuring the whole thing. Use a consistent pattern, for example an array of section definitions:
+  [ { title, dataKey, renderFn }, ... ]
+so new sections can be appended without touching existing ones.

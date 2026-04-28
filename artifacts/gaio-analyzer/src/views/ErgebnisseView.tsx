@@ -13,7 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from "recharts";
 import {
-  Loader2, CheckCircle2, XCircle, Download, Star, AlertCircle, AlertTriangle,
+  Loader2, CheckCircle2, XCircle, FileText, Globe, Star, AlertCircle, AlertTriangle,
   Info, Clock, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 
@@ -559,7 +559,7 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
 
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
-  const [exporting, setExporting] = useState(false);
+  const [exportingHtml, setExportingHtml] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -674,18 +674,63 @@ function ReportView({ analysisId }: { analysisId: string }) {
     }
   };
 
-  const handleExport = async () => {
-    setExporting(true);
+  // ── PDF export via browser print ────────────────────────────────────────────
+  const handlePdfExport = () => {
+    // Mark all tab panels with a sequential index so CSS can add page breaks.
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+    panels.forEach((panel, i) => panel.setAttribute("data-print-index", String(i)));
+
+    const css = `
+      @page { size: 210mm auto; margin: 12mm 14mm; }
+
+      /* Hide chrome: sidebar, nav, tab bar, export buttons */
+      aside,
+      nav,
+      [role="tablist"],
+      [data-testid="button-export-pdf"],
+      [data-testid="button-export-html"] { display: none !important; }
+
+      /* Show ALL tab panels simultaneously */
+      [role="tabpanel"] { display: block !important; }
+
+      /* Page break before every panel except the first */
+      [role="tabpanel"][data-print-index]:not([data-print-index="0"]) {
+        page-break-before: always;
+        break-before: always;
+      }
+
+      /* Each panel prints as one continuous page — no forced breaks inside */
+      [role="tabpanel"] {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    `;
+
+    const styleEl = document.createElement("style");
+    styleEl.setAttribute("media", "print");
+    styleEl.textContent = css;
+    document.head.appendChild(styleEl);
+
+    const cleanup = () => {
+      document.head.removeChild(styleEl);
+      panels.forEach((panel) => panel.removeAttribute("data-print-index"));
+    };
+    window.addEventListener("afterprint", cleanup, { once: true });
+
+    window.print();
+  };
+
+  // ── HTML export ──────────────────────────────────────────────────────────────
+  const handleHtmlExport = async () => {
+    setExportingHtml(true);
     try {
-      // Wait a frame to ensure DOM is fully rendered.
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       const svgs = document.querySelectorAll(".recharts-wrapper svg");
       const radarSvg = svgs[0] ? captureSvg(".recharts-wrapper svg") : null;
       const technicalBarSvg = svgs[1] ? new XMLSerializer().serializeToString(svgs[1]) : null;
       const competitorBarSvg = svgs[2] ? new XMLSerializer().serializeToString(svgs[2]) : null;
-      const donutSvg = document.querySelector(".score-donut svg")
-        ? new XMLSerializer().serializeToString(document.querySelector(".score-donut svg")!)
-        : null;
+      const donutEl = document.querySelector(".score-donut svg");
+      const donutSvg = donutEl ? new XMLSerializer().serializeToString(donutEl) : null;
       const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
         radarSvg,
         donutSvg,
@@ -693,14 +738,14 @@ function ReportView({ analysisId }: { analysisId: string }) {
         competitorBarSvg,
       });
       const blob = new Blob([htmlContent], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
+      const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = dlUrl;
       a.download = `gaio-report-${report.id.slice(0, 8)}.html`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(dlUrl);
     } finally {
-      setExporting(false);
+      setExportingHtml(false);
     }
   };
 
@@ -714,10 +759,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
             {report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten
           </p>
         </div>
-        <Button size="sm" onClick={handleExport} disabled={exporting} data-testid="button-export">
-          {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
-          {exporting ? "Bereite Export vor…" : "Vollständigen Report exportieren"}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={handlePdfExport} data-testid="button-export-pdf">
+            <FileText className="w-4 h-4 mr-1.5" />
+            Report als PDF exportieren
+          </Button>
+          <Button size="sm" onClick={handleHtmlExport} disabled={exportingHtml} data-testid="button-export-html">
+            {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
+            {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
+          </Button>
+        </div>
       </div>
 
       {/* Prompt to re-run */}
