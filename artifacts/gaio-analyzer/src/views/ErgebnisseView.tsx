@@ -681,7 +681,15 @@ function ReportView({ analysisId }: { analysisId: string }) {
     setExportingPdf(true);
     setExportError(null);
     const PANEL_SELECTOR = '[role="tabpanel"]';
-    let offscreen: HTMLElement | null = null;
+    let overlay: HTMLElement | null = null;
+
+    // Helper: clean up overlay if it was created.
+    const removeOverlay = () => {
+      if (overlay && overlay.parentNode) {
+        document.body.removeChild(overlay);
+        overlay = null;
+      }
+    };
 
     try {
       console.log("PDF export started");
@@ -700,28 +708,69 @@ function ReportView({ analysisId }: { analysisId: string }) {
         recommendations: "Empfehlungen",
       };
 
-      // CAUSE B — throw early with a visible message if no panels found.
+      // Throw early with a visible message if no panels found.
       const panels = Array.from(document.querySelectorAll<HTMLElement>(PANEL_SELECTOR));
       console.log("Panels found:", panels.length, "selector:", PANEL_SELECTOR);
       if (!panels || panels.length === 0) {
         throw new Error(`Keine Tab-Panels gefunden. Selektor: ${PANEL_SELECTOR}`);
       }
 
-      // Off-screen container — original DOM is never touched during capture.
-      offscreen = document.createElement("div");
-      offscreen.id = "pdf-offscreen";
-      offscreen.style.cssText = [
+      // ── Full-screen overlay so the user sees a clean loading screen ──────────
+      overlay = document.createElement("div");
+      overlay.id = "pdf-overlay";
+      overlay.style.cssText = [
         "position:fixed",
-        "top:0",
-        "left:-9999px",
-        "width:1200px",
-        "opacity:0",
-        "pointer-events:none",
-        "z-index:-1",
+        "inset:0",
+        "background:rgba(255,255,255,0.92)",
+        "z-index:99999",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "font-family:inherit",
+        "font-size:1.1rem",
+        "color:#333",
+        "flex-direction:column",
+        "gap:8px",
       ].join(";");
-      document.body.appendChild(offscreen);
+      overlay.innerHTML = `
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        <span>PDF wird erstellt…</span>
+      `;
+      document.body.appendChild(overlay);
 
-      // Store dimensions per page so jsPDF is created AFTER all captures.
+      // Save sidebar and scroll state.
+      const sidebar = document.querySelector<HTMLElement>("aside");
+      const scrollY = window.scrollY;
+
+      // Hide sidebar.
+      const prevSidebarDisplay = sidebar?.style.display ?? "";
+      if (sidebar) sidebar.style.display = "none";
+
+      // Make ALL panels visible simultaneously so html2canvas sees real content.
+      const prevPanelStyles = panels.map((panel) => ({
+        display:    panel.style.display,
+        visibility: panel.style.visibility,
+        opacity:    panel.style.opacity,
+        position:   panel.style.position,
+        height:     panel.style.height,
+        overflow:   panel.style.overflow,
+      }));
+      panels.forEach((panel) => {
+        panel.style.display    = "block";
+        panel.style.visibility = "visible";
+        panel.style.opacity    = "1";
+        panel.style.position   = "relative";
+        panel.style.height     = "auto";
+        panel.style.overflow   = "visible";
+      });
+
+      // Full repaint before capture.
+      await new Promise((r) => setTimeout(r, 300));
+
+      // ── Capture each panel directly (original elements, real styles) ──────────
       type PageData = {
         imgData: string | null;
         mmW: number;
@@ -733,32 +782,19 @@ function ReportView({ analysisId }: { analysisId: string }) {
       for (const panel of panels) {
         const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
 
-        // Clone into the off-screen container — original panel is untouched.
-        const clone = panel.cloneNode(true) as HTMLElement;
-        clone.style.display    = "block";
-        clone.style.visibility = "visible";
-        clone.style.opacity    = "1";
-        clone.style.width      = "1200px";
-        clone.style.position   = "relative";
-        offscreen.appendChild(clone);
-
-        // Double rAF so the browser finishes layout before we capture.
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-        );
-
-        // Give charts a bit more time to paint.
-        await new Promise((r) => setTimeout(r, 200));
-
-        // CAUSE A — individual try/catch per panel; never abort the loop.
+        // Individual try/catch per panel — never abort the whole loop.
         let canvas: HTMLCanvasElement | null = null;
         try {
-          canvas = await html2canvas(clone, {
-            scale: 2,
+          canvas = await html2canvas(panel, {
+            scale: 1.5,
             useCORS: true,
             allowTaint: true,
             backgroundColor: "#ffffff",
             logging: false,
+            scrollX: 0,
+            scrollY: -window.scrollY,
+            windowWidth: document.documentElement.scrollWidth,
+            windowHeight: panel.scrollHeight,
           });
         } catch (canvasErr) {
           console.warn("html2canvas failed for panel:", tabValue, canvasErr);
@@ -779,14 +815,19 @@ function ReportView({ analysisId }: { analysisId: string }) {
             tabValue,
           });
         }
-
-        // Remove the clone after capture; original panel stays untouched.
-        offscreen.removeChild(clone);
       }
 
-      // Remove the off-screen container.
-      document.body.removeChild(offscreen);
-      offscreen = null;
+      // ── Restore everything before building the PDF ────────────────────────────
+      panels.forEach((panel, i) => {
+        panel.style.display    = prevPanelStyles[i].display;
+        panel.style.visibility = prevPanelStyles[i].visibility;
+        panel.style.opacity    = prevPanelStyles[i].opacity;
+        panel.style.position   = prevPanelStyles[i].position;
+        panel.style.height     = prevPanelStyles[i].height;
+        panel.style.overflow   = prevPanelStyles[i].overflow;
+      });
+      if (sidebar) sidebar.style.display = prevSidebarDisplay;
+      window.scrollTo(0, scrollY);
 
       console.log("All panels captured:", pages.length);
 
@@ -840,6 +881,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
         pdf.text(headerText, 4, 5);
       });
 
+      // Remove overlay BEFORE triggering download so it doesn't appear in capture.
+      removeOverlay();
+
       console.log("Triggering download...");
       pdf.save(`GAIO-Report-${safeCompany}-${today}.pdf`);
     } catch (err) {
@@ -850,9 +894,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       );
     } finally {
       setExportingPdf(false);
-      // Safety cleanup in case the error happened mid-capture.
-      const leftover = document.getElementById("pdf-offscreen");
-      if (leftover) document.body.removeChild(leftover);
+      // Safety cleanup — remove overlay if error happened mid-capture.
+      removeOverlay();
     }
   };
 
