@@ -695,8 +695,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       console.log("PDF export started");
 
       // Dynamic imports keep the bundle lean.
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
+      const [{ toJpeg }, { default: jsPDF }] = await Promise.all([
+        import("html-to-image"),
         import("jspdf"),
       ]);
 
@@ -757,6 +757,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         position:   panel.style.position,
         height:     panel.style.height,
         overflow:   panel.style.overflow,
+        width:      panel.style.width,
       }));
       panels.forEach((panel) => {
         panel.style.display    = "block";
@@ -782,38 +783,41 @@ function ReportView({ analysisId }: { analysisId: string }) {
       for (const panel of panels) {
         const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
 
+        // Fix offsetWidth=0 on previously-hidden panels by forcing a width.
+        panel.style.width = "1200px";
+        await new Promise((r) => setTimeout(r, 100));
+
+        const captureHeight = panel.scrollHeight;
+        const captureWidth  = 1200;
+
         // Individual try/catch per panel — never abort the whole loop.
-        let canvas: HTMLCanvasElement | null = null;
+        let imgData: string | null = null;
         try {
-          canvas = await html2canvas(panel, {
-            scale: 1.5,
-            useCORS: true,
-            allowTaint: true,
+          imgData = await toJpeg(panel, {
+            quality: 0.92,
             backgroundColor: "#ffffff",
-            logging: false,
-            scrollX: 0,
-            scrollY: -window.scrollY,
-            windowWidth: document.documentElement.scrollWidth,
-            windowHeight: panel.scrollHeight,
+            pixelRatio: 1.5,
+            skipFonts: false,
+            filter: (node) => {
+              const tag = (node as HTMLElement).tagName;
+              if (tag === "SCRIPT" || tag === "NOSCRIPT") return false;
+              return true;
+            },
           });
-        } catch (canvasErr) {
-          console.warn("html2canvas failed for panel:", tabValue, canvasErr);
-          canvas = null;
+        } catch (imgErr) {
+          console.warn("html-to-image failed for panel:", tabValue, imgErr);
+          imgData = null;
         }
 
-        console.log("Captured panel:", tabValue, "canvas size:", canvas?.width, "x", canvas?.height);
+        const mmW = 210;
+        const mmH = (captureHeight / captureWidth) * mmW;
 
-        if (!canvas || canvas.width === 0 || canvas.height === 0) {
-          pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
+        console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
+
+        if (!imgData || mmH <= 0 || !isFinite(mmH)) {
+          pages.push({ imgData: null, mmW, mmH: 80, tabValue });
         } else {
-          const mmW = 210;
-          const mmH = (canvas.height / canvas.width) * mmW;
-          pages.push({
-            imgData: canvas.toDataURL("image/jpeg", 0.92),
-            mmW,
-            mmH,
-            tabValue,
-          });
+          pages.push({ imgData, mmW, mmH, tabValue });
         }
       }
 
@@ -825,6 +829,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         panel.style.position   = prevPanelStyles[i].position;
         panel.style.height     = prevPanelStyles[i].height;
         panel.style.overflow   = prevPanelStyles[i].overflow;
+        panel.style.width      = prevPanelStyles[i].width;
       });
       if (sidebar) sidebar.style.display = prevSidebarDisplay;
       window.scrollTo(0, scrollY);

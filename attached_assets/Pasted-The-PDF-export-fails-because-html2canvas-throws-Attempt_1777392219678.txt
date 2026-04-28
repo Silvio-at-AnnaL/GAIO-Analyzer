@@ -1,0 +1,102 @@
+The PDF export fails because html2canvas throws:
+"Attempting to parse an unsupported color function oklab"
+
+html2canvas does not support modern CSS color functions 
+(oklab, oklch, color(), etc.) used by the current stylesheet.
+This cannot be fixed by patching the export code — the library 
+itself is incompatible.
+
+---
+
+SOLUTION: Replace html2canvas with html-to-image
+
+Uninstall html2canvas completely.
+Install html-to-image instead:
+  npm install html-to-image
+
+html-to-image is actively maintained, supports all modern CSS 
+including oklab/oklch, and has a nearly identical API.
+
+---
+
+REPLACE the capture call everywhere html2canvas is used:
+
+OLD (remove this):
+  import html2canvas from 'html2canvas'
+  const canvas = await html2canvas(element, {
+    scale: 1.5,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    scrollX: 0,
+    scrollY: -window.scrollY,
+    windowWidth: document.documentElement.scrollWidth,
+    windowHeight: panel.scrollHeight
+  })
+  const imgData = canvas.toDataURL('image/jpeg', 0.92)
+  const mmW = 210
+  const mmH = (canvas.height / canvas.width) * mmW
+
+NEW (replace with this):
+  import { toJpeg } from 'html-to-image'
+
+  const imgData = await toJpeg(element, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: false,
+    filter: (node) => {
+      // Skip script tags and hidden utility elements
+      if (node.tagName === 'SCRIPT') return false
+      if (node.tagName === 'NOSCRIPT') return false
+      return true
+    }
+  })
+
+  // html-to-image returns a data URL directly — no canvas needed.
+  // Calculate dimensions from the element's actual size:
+  const rect = element.getBoundingClientRect()
+  const mmW = 210
+  const mmH = (rect.height / rect.width) * mmW
+
+  // Validate before using:
+  if (!imgData || mmH <= 0 || !isFinite(mmH)) {
+    // push placeholder and continue
+  }
+
+---
+
+UPDATE the dimension calculation for jsPDF:
+
+Since html-to-image returns a data URL directly (not a canvas 
+object), remove all canvas.width / canvas.height references.
+Use element.getBoundingClientRect() or element.scrollHeight / 
+element.offsetWidth for dimension calculations instead.
+
+For panels that are display:block but have offsetWidth = 0 
+(because they were previously hidden), set a fixed capture 
+width before measuring:
+  element.style.width = '1200px'
+  await new Promise(r => setTimeout(r, 100))
+  const rect = element.getBoundingClientRect()
+  // now rect.width will be 1200
+
+Then calculate:
+  const mmW = 210
+  const mmH = (element.scrollHeight / 1200) * mmW
+
+Use element.scrollHeight (not getBoundingClientRect height) 
+because scrollHeight includes the full content height even 
+when the element has overflow:hidden.
+
+---
+
+Keep all existing logic unchanged:
+- The full-screen overlay during capture
+- The sidebar hide/restore
+- The tab panel show/restore  
+- The per-panel try/catch error handling
+- The console.log checkpoints
+- The error display in the UI
+- The jsPDF page creation and pdf.save() call
