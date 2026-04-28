@@ -697,33 +697,44 @@ function ReportView({ analysisId }: { analysisId: string }) {
       const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
       if (panels.length === 0) return;
 
-      // Elements to hide during capture.
+      // Elements to hide during capture (sidebar, nav, tab bar, export buttons).
       const hideEls = Array.from(
         document.querySelectorAll<HTMLElement>('aside, nav, [role="tablist"], [data-testid="button-export-pdf"], [data-testid="button-export-html"]')
       );
-
-      // Hide chrome elements.
       const prevHideDisplay: string[] = hideEls.map((el) => el.style.display);
       hideEls.forEach((el) => { el.style.display = "none"; });
 
-      // Capture each tab panel.
-      type PageData = { imgData: string; widthPx: number; heightPx: number; tabValue: string };
+      // FIX 5: store dimensions per page so jsPDF is created AFTER all captures.
+      type PageData = {
+        imgData: string | null;
+        mmW: number;
+        mmH: number;
+        tabValue: string;
+      };
       const pages: PageData[] = [];
 
       for (const panel of panels) {
-        const prevDisplay = panel.style.display;
+        const prevDisplay    = panel.style.display;
         const prevVisibility = panel.style.visibility;
+        const prevPosition   = panel.style.position;
+        const prevOpacity    = panel.style.opacity;
 
-        // Force visible.
-        panel.style.display = "block";
+        // FIX 2: force fully visible + positioned before capture.
+        panel.style.display    = "block";
         panel.style.visibility = "visible";
+        panel.style.position   = "relative";
+        panel.style.opacity    = "1";
 
-        // Give charts / lazy content time to render.
+        // FIX 2: double rAF so the browser finishes layout before we capture.
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+
+        // Give charts a bit more time to paint.
         await new Promise((r) => setTimeout(r, 200));
 
-        const tabValue = panel.getAttribute("data-radix-collection-item") ??
-          panel.id?.replace(/^.*-content-/, "") ??
-          "tab";
+        const tabValue =
+          panel.id?.replace(/^.*-content-/, "") ?? "tab";
 
         try {
           const canvas = await html2canvas(panel, {
@@ -732,58 +743,73 @@ function ReportView({ analysisId }: { analysisId: string }) {
             backgroundColor: "#ffffff",
             logging: false,
           });
-          pages.push({
-            imgData: canvas.toDataURL("image/jpeg", 0.92),
-            widthPx: canvas.width,
-            heightPx: canvas.height,
-            tabValue,
-          });
+
+          // FIX 3: skip panels with zero-dimension canvases.
+          if (!canvas || canvas.width === 0 || canvas.height === 0) {
+            pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
+          } else {
+            // FIX 4: always derive mmH from the captured canvas dimensions.
+            const mmW = 210;
+            const mmH = (canvas.height / canvas.width) * mmW;
+            pages.push({
+              imgData: canvas.toDataURL("image/jpeg", 0.92),
+              mmW,
+              mmH,
+              tabValue,
+            });
+          }
         } catch {
-          // Placeholder page for failed panels.
-          pages.push({ imgData: "", widthPx: 1190, heightPx: 842, tabValue });
+          pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
         }
 
-        // Restore this panel.
-        panel.style.display = prevDisplay;
+        // Restore panel styles.
+        panel.style.display    = prevDisplay;
         panel.style.visibility = prevVisibility;
+        panel.style.position   = prevPosition;
+        panel.style.opacity    = prevOpacity;
       }
 
       // Restore chrome.
       hideEls.forEach((el, i) => { el.style.display = prevHideDisplay[i]; });
 
-      if (pages.length === 0) return;
+      // FIX 5: need at least one successfully captured page.
+      const firstPage = pages.find((p) => p.imgData);
+      if (!firstPage) return;
 
-      // Build the date string.
+      // Build file name parts.
       const today = new Date().toISOString().slice(0, 10);
       const safeCompany = (report.companyName ?? report.url ?? "Report")
         .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, "")
         .trim()
         .replace(/\s+/g, "-");
 
-      // Create the PDF — first page dimensions from the first panel.
-      const mmW = 210;
-      const firstPage = pages[0];
-      const firstMmH = (firstPage.heightPx / firstPage.widthPx) * mmW;
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [mmW, firstMmH] });
+      // FIX 5: create jsPDF after capture, sized to the first valid page.
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [firstPage.mmW, firstPage.mmH],
+      });
 
       pages.forEach((page, idx) => {
-        const mmH = (page.heightPx / page.widthPx) * mmW;
-
         if (idx > 0) {
-          pdf.addPage([mmW, mmH], "portrait");
+          pdf.addPage([page.mmW, page.mmH], "portrait");
         }
 
-        if (page.imgData) {
-          pdf.addImage(page.imgData, "JPEG", 0, 0, mmW, mmH);
+        // FIX 1: validate dimensions before calling addImage.
+        if (
+          page.imgData &&
+          typeof page.mmW === "number" && isFinite(page.mmW) && page.mmW > 0 &&
+          typeof page.mmH === "number" && isFinite(page.mmH) && page.mmH > 0
+        ) {
+          pdf.addImage(page.imgData, "JPEG", 0, 0, page.mmW, page.mmH);
         } else {
-          // Placeholder text for failed panel.
           pdf.setFontSize(12);
           pdf.setTextColor(150, 150, 150);
-          pdf.text("Seite konnte nicht exportiert werden", mmW / 2, mmH / 2, { align: "center" });
+          pdf.text("Seite konnte nicht exportiert werden", page.mmW / 2, page.mmH / 2, { align: "center" });
         }
 
-        // Header line.
-        const tabLabel = TAB_LABELS[page.tabValue] ?? page.tabValue;
+        // Small header line on every page.
+        const tabLabel   = TAB_LABELS[page.tabValue] ?? page.tabValue;
         const headerText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
