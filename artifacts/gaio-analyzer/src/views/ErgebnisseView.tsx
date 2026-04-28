@@ -559,6 +559,7 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
 
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
@@ -674,50 +675,125 @@ function ReportView({ analysisId }: { analysisId: string }) {
     }
   };
 
-  // ── PDF export via browser print ────────────────────────────────────────────
-  const handlePdfExport = () => {
-    // Mark all tab panels with a sequential index so CSS can add page breaks.
-    const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
-    panels.forEach((panel, i) => panel.setAttribute("data-print-index", String(i)));
+  // ── PDF export via jsPDF + html2canvas ──────────────────────────────────────
+  const handlePdfExport = async () => {
+    setExportingPdf(true);
+    try {
+      // Dynamic imports keep the bundle lean.
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
 
-    const css = `
-      @page { size: 210mm auto; margin: 12mm 14mm; }
+      // Tab label map — keep in sync with TabsContent value props.
+      const TAB_LABELS: Record<string, string> = {
+        details: "Details",
+        llm: "LLM-Auffindbarkeit",
+        competitors: "Wettbewerb",
+        recommendations: "Empfehlungen",
+      };
 
-      /* Hide chrome: sidebar, nav, tab bar, export buttons */
-      aside,
-      nav,
-      [role="tablist"],
-      [data-testid="button-export-pdf"],
-      [data-testid="button-export-html"] { display: none !important; }
+      // Collect all result tab panels.
+      const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+      if (panels.length === 0) return;
 
-      /* Show ALL tab panels simultaneously */
-      [role="tabpanel"] { display: block !important; }
+      // Elements to hide during capture.
+      const hideEls = Array.from(
+        document.querySelectorAll<HTMLElement>('aside, nav, [role="tablist"], [data-testid="button-export-pdf"], [data-testid="button-export-html"]')
+      );
 
-      /* Page break before every panel except the first */
-      [role="tabpanel"][data-print-index]:not([data-print-index="0"]) {
-        page-break-before: always;
-        break-before: always;
+      // Hide chrome elements.
+      const prevHideDisplay: string[] = hideEls.map((el) => el.style.display);
+      hideEls.forEach((el) => { el.style.display = "none"; });
+
+      // Capture each tab panel.
+      type PageData = { imgData: string; widthPx: number; heightPx: number; tabValue: string };
+      const pages: PageData[] = [];
+
+      for (const panel of panels) {
+        const prevDisplay = panel.style.display;
+        const prevVisibility = panel.style.visibility;
+
+        // Force visible.
+        panel.style.display = "block";
+        panel.style.visibility = "visible";
+
+        // Give charts / lazy content time to render.
+        await new Promise((r) => setTimeout(r, 200));
+
+        const tabValue = panel.getAttribute("data-radix-collection-item") ??
+          panel.id?.replace(/^.*-content-/, "") ??
+          "tab";
+
+        try {
+          const canvas = await html2canvas(panel, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+          });
+          pages.push({
+            imgData: canvas.toDataURL("image/jpeg", 0.92),
+            widthPx: canvas.width,
+            heightPx: canvas.height,
+            tabValue,
+          });
+        } catch {
+          // Placeholder page for failed panels.
+          pages.push({ imgData: "", widthPx: 1190, heightPx: 842, tabValue });
+        }
+
+        // Restore this panel.
+        panel.style.display = prevDisplay;
+        panel.style.visibility = prevVisibility;
       }
 
-      /* Each panel prints as one continuous page — no forced breaks inside */
-      [role="tabpanel"] {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-    `;
+      // Restore chrome.
+      hideEls.forEach((el, i) => { el.style.display = prevHideDisplay[i]; });
 
-    const styleEl = document.createElement("style");
-    styleEl.setAttribute("media", "print");
-    styleEl.textContent = css;
-    document.head.appendChild(styleEl);
+      if (pages.length === 0) return;
 
-    const cleanup = () => {
-      document.head.removeChild(styleEl);
-      panels.forEach((panel) => panel.removeAttribute("data-print-index"));
-    };
-    window.addEventListener("afterprint", cleanup, { once: true });
+      // Build the date string.
+      const today = new Date().toISOString().slice(0, 10);
+      const safeCompany = (report.companyName ?? report.url ?? "Report")
+        .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-");
 
-    window.print();
+      // Create the PDF — first page dimensions from the first panel.
+      const mmW = 210;
+      const firstPage = pages[0];
+      const firstMmH = (firstPage.heightPx / firstPage.widthPx) * mmW;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [mmW, firstMmH] });
+
+      pages.forEach((page, idx) => {
+        const mmH = (page.heightPx / page.widthPx) * mmW;
+
+        if (idx > 0) {
+          pdf.addPage([mmW, mmH], "portrait");
+        }
+
+        if (page.imgData) {
+          pdf.addImage(page.imgData, "JPEG", 0, 0, mmW, mmH);
+        } else {
+          // Placeholder text for failed panel.
+          pdf.setFontSize(12);
+          pdf.setTextColor(150, 150, 150);
+          pdf.text("Seite konnte nicht exportiert werden", mmW / 2, mmH / 2, { align: "center" });
+        }
+
+        // Header line.
+        const tabLabel = TAB_LABELS[page.tabValue] ?? page.tabValue;
+        const headerText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(headerText, 4, 5);
+      });
+
+      pdf.save(`GAIO-Report-${safeCompany}-${today}.pdf`);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   // ── HTML export ──────────────────────────────────────────────────────────────
@@ -760,9 +836,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={handlePdfExport} data-testid="button-export-pdf">
-            <FileText className="w-4 h-4 mr-1.5" />
-            Report als PDF exportieren
+          <Button size="sm" variant="outline" onClick={handlePdfExport} disabled={exportingPdf} data-testid="button-export-pdf">
+            {exportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
+            {exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}
           </Button>
           <Button size="sm" onClick={handleHtmlExport} disabled={exportingHtml} data-testid="button-export-html">
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}

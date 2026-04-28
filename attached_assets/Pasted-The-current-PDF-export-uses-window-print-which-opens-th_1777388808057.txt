@@ -1,0 +1,74 @@
+The current PDF export uses window.print() which opens the browser's native print dialog. The user must then manually select "Save as PDF" in their printer settings. This is not acceptable. Replace it entirely with a programmatic PDF generation that downloads automatically without any browser dialog.
+
+---
+
+IMPLEMENTATION: jsPDF + html2canvas
+
+Install these two libraries if not already present:
+  html2canvas
+  jspdf
+
+Do NOT use window.print() anywhere in the new implementation. 
+Remove the print stylesheet injection entirely.
+
+---
+
+HOW IT SHOULD WORK
+
+When the user clicks "Report als PDF exportieren":
+
+1. Show a loading state on the button: 
+   "⏳ PDF wird erstellt…" — disable the button during generation
+
+2. Identify all result tab panels in the DOM. Use the same selector that already works for the tab panels in this codebase (whatever class or attribute marks each results tab: Details, LLM-Auffindbarkeit, Wettbewerb, Empfehlungen — and any future tabs that may be added later).
+
+3. For each tab panel:
+   a. Temporarily make it visible if it is currently hidden 
+      (inactive tabs are likely display:none — force display:block)
+   b. Also temporarily hide the sidebar and navigation 
+      (apply display:none inline style to the sidebar/nav element)
+   c. Use html2canvas to render the tab panel DOM node to a canvas.
+      Use these html2canvas options:
+        scale: 2              (retina quality)
+        useCORS: true         (for any external images/icons)
+        backgroundColor: '#ffffff'
+        logging: false
+   d. Convert the canvas to a JPEG image (quality 0.92)
+   e. Restore the element's original visibility state after capture
+
+4. After all tab panels are captured, restore sidebar visibility.
+
+5. Create a jsPDF instance:
+     orientation: 'portrait'
+     unit: 'mm'
+     format: [210, heightInMm]   ← calculate height per page from 
+                                    the canvas aspect ratio:
+                                    heightInMm = (canvasHeight / 
+                                    canvasWidth) * 210
+
+   Since each tab has a different content height, create one PDF page per tab with its own calculated height:
+   - Start with the first tab's dimensions
+   - For each subsequent tab: call pdf.addPage([210, heightInMm], 'portrait') before adding the image
+
+6. Add each captured image to its PDF page:
+     pdf.addImage(imgData, 'JPEG', 0, 0, 210, heightInMm)
+
+7. Add a header line on each page (optional but professional):
+   Small gray text at the top: company name + tab title + date Font size 8pt, color #888888, positioned at y=6mm
+
+8. Trigger download:
+     pdf.save('GAIO-Report-[companyname]-[YYYY-MM-DD].pdf')
+
+9. Reset button to normal state after download completes.
+
+---
+
+IMPORTANT DETAILS
+
+- The sidebar and any floating UI elements (export buttons, toast notifications) must be hidden during canvas capture and restored immediately after. Do this with inline style changes, not by modifying CSS classes.
+
+- If a tab panel has lazy-loaded content or charts that need time to render, add a short await delay (200ms) before capturing each panel.
+
+- If html2canvas fails on a specific panel (try/catch), skip that panel and continue — do not abort the entire export. Add a placeholder page with text "Seite konnte nicht exportiert werden" for the failed panel.
+
+- The file must download automatically — no dialog, no confirmation. Just download.
