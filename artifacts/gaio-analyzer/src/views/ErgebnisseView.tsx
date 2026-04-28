@@ -758,6 +758,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         height:     panel.style.height,
         overflow:   panel.style.overflow,
         width:      panel.style.width,
+        minHeight:  panel.style.minHeight,
       }));
       panels.forEach((panel) => {
         panel.style.display    = "block";
@@ -783,21 +784,40 @@ function ReportView({ analysisId }: { analysisId: string }) {
       for (const panel of panels) {
         const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
 
-        // Fix offsetWidth=0 on previously-hidden panels by forcing a width.
-        panel.style.width = "1200px";
-        await new Promise((r) => setTimeout(r, 100));
+        // FIX 1 — Force a synchronous layout reflow so scrollHeight is accurate.
+        panel.style.width    = "1200px";
+        panel.style.minHeight = "100px";
+        void panel.offsetHeight; // triggers synchronous reflow
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
 
-        const captureHeight = panel.scrollHeight;
+        // FIX 2 — Use offsetHeight as fallback if scrollHeight is still 0.
         const captureWidth  = 1200;
+        const captureHeight = panel.scrollHeight > 0 ? panel.scrollHeight : panel.offsetHeight;
 
-        // Individual try/catch per panel — never abort the whole loop.
+        console.log(`Panel "${tabValue}" innerHTML length: ${panel.innerHTML.length}, height: ${captureHeight}`);
+
+        if (captureHeight === 0) {
+          console.warn("Panel has zero height after reflow — skipping:", tabValue);
+          pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
+          continue;
+        }
+
+        // FIX 4 — Give React time to finish any pending re-renders.
+        await new Promise((r) => setTimeout(r, 400));
+
+        // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
         try {
+          // FIX 3 — Pass explicit width/height so html-to-image doesn't mis-measure.
           imgData = await toJpeg(panel, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
-            skipFonts: false,
+            width: captureWidth,
+            height: captureHeight,
+            skipFonts: true,
             filter: (node) => {
               const tag = (node as HTMLElement).tagName;
               if (tag === "SCRIPT" || tag === "NOSCRIPT") return false;
@@ -830,6 +850,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         panel.style.height     = prevPanelStyles[i].height;
         panel.style.overflow   = prevPanelStyles[i].overflow;
         panel.style.width      = prevPanelStyles[i].width;
+        panel.style.minHeight  = prevPanelStyles[i].minHeight;
       });
       if (sidebar) sidebar.style.display = prevSidebarDisplay;
       window.scrollTo(0, scrollY);
@@ -1020,7 +1041,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsList>
 
         {/* Details Tab */}
-        <TabsContent value="details" className="space-y-4 pt-4">
+        <TabsContent forceMount value="details" className="space-y-4 pt-4">
           {technicalBarData.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische SEO-Metriken</CardTitle></CardHeader>
@@ -1146,7 +1167,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* LLM Tab */}
-        <TabsContent value="llm" className="space-y-4 pt-4">
+        <TabsContent forceMount value="llm" className="space-y-4 pt-4">
           {llmQuestions.length > 0 ? (
             <>
               {/* Sub-score grid */}
@@ -1234,7 +1255,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* Competitors Tab */}
-        <TabsContent value="competitors" className="space-y-4 pt-4">
+        <TabsContent forceMount value="competitors" className="space-y-4 pt-4">
           {competitorComparison && competitorComparison.competitors.length > 0 ? (
             <>
               {/* Summary chart */}
@@ -1277,7 +1298,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* Recommendations Tab */}
-        <TabsContent value="recommendations" className="space-y-5 pt-4">
+        <TabsContent forceMount value="recommendations" className="space-y-5 pt-4">
           {criticalRecs.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold flex items-center gap-2 text-red-500 uppercase tracking-wider">
