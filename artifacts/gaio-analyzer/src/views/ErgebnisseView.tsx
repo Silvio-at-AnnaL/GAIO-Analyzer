@@ -561,6 +561,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -678,7 +679,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
   // ── PDF export via jsPDF + html2canvas ──────────────────────────────────────
   const handlePdfExport = async () => {
     setExportingPdf(true);
+    setExportError(null);
+    const PANEL_SELECTOR = '[role="tabpanel"]';
+    let offscreen: HTMLElement | null = null;
+
     try {
+      console.log("PDF export started");
+
       // Dynamic imports keep the bundle lean.
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import("html2canvas"),
@@ -693,12 +700,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
         recommendations: "Empfehlungen",
       };
 
-      // Collect all result tab panels.
-      const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
-      if (panels.length === 0) return;
+      // CAUSE B — throw early with a visible message if no panels found.
+      const panels = Array.from(document.querySelectorAll<HTMLElement>(PANEL_SELECTOR));
+      console.log("Panels found:", panels.length, "selector:", PANEL_SELECTOR);
+      if (!panels || panels.length === 0) {
+        throw new Error(`Keine Tab-Panels gefunden. Selektor: ${PANEL_SELECTOR}`);
+      }
 
       // Off-screen container — original DOM is never touched during capture.
-      const offscreen = document.createElement("div");
+      offscreen = document.createElement("div");
+      offscreen.id = "pdf-offscreen";
       offscreen.style.cssText = [
         "position:fixed",
         "top:0",
@@ -739,42 +750,55 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // Give charts a bit more time to paint.
         await new Promise((r) => setTimeout(r, 200));
 
+        // CAUSE A — individual try/catch per panel; never abort the loop.
+        let canvas: HTMLCanvasElement | null = null;
         try {
-          const canvas = await html2canvas(clone, {
+          canvas = await html2canvas(clone, {
             scale: 2,
             useCORS: true,
+            allowTaint: true,
             backgroundColor: "#ffffff",
             logging: false,
           });
+        } catch (canvasErr) {
+          console.warn("html2canvas failed for panel:", tabValue, canvasErr);
+          canvas = null;
+        }
 
-          // Skip panels with zero-dimension canvases.
-          if (!canvas || canvas.width === 0 || canvas.height === 0) {
-            pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
-          } else {
-            // Derive mmH from the captured canvas dimensions.
-            const mmW = 210;
-            const mmH = (canvas.height / canvas.width) * mmW;
-            pages.push({
-              imgData: canvas.toDataURL("image/jpeg", 0.92),
-              mmW,
-              mmH,
-              tabValue,
-            });
-          }
-        } catch {
+        console.log("Captured panel:", tabValue, "canvas size:", canvas?.width, "x", canvas?.height);
+
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
           pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
+        } else {
+          const mmW = 210;
+          const mmH = (canvas.height / canvas.width) * mmW;
+          pages.push({
+            imgData: canvas.toDataURL("image/jpeg", 0.92),
+            mmW,
+            mmH,
+            tabValue,
+          });
         }
 
         // Remove the clone after capture; original panel stays untouched.
         offscreen.removeChild(clone);
       }
 
-      // Remove the off-screen container entirely.
+      // Remove the off-screen container.
       document.body.removeChild(offscreen);
+      offscreen = null;
 
-      // FIX 5: need at least one successfully captured page.
-      const firstPage = pages.find((p) => p.imgData);
-      if (!firstPage) return;
+      console.log("All panels captured:", pages.length);
+
+      // CAUSE C — require at least one valid page before touching jsPDF.
+      const validPages = pages.filter(
+        (p) => p.imgData && p.mmW > 0 && p.mmH > 0
+      );
+      if (validPages.length === 0) {
+        throw new Error(
+          `Keine Seiten konnten gerendert werden. Alle ${pages.length} Panels haben leere Canvas.`
+        );
+      }
 
       // Build file name parts.
       const today = new Date().toISOString().slice(0, 10);
@@ -783,11 +807,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
         .trim()
         .replace(/\s+/g, "-");
 
-      // FIX 5: create jsPDF after capture, sized to the first valid page.
+      console.log("Creating jsPDF...");
+      const firstValid = validPages[0];
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
-        format: [firstPage.mmW, firstPage.mmH],
+        format: [firstValid.mmW, firstValid.mmH],
       });
 
       pages.forEach((page, idx) => {
@@ -795,7 +820,6 @@ function ReportView({ analysisId }: { analysisId: string }) {
           pdf.addPage([page.mmW, page.mmH], "portrait");
         }
 
-        // FIX 1: validate dimensions before calling addImage.
         if (
           page.imgData &&
           typeof page.mmW === "number" && isFinite(page.mmW) && page.mmW > 0 &&
@@ -816,9 +840,19 @@ function ReportView({ analysisId }: { analysisId: string }) {
         pdf.text(headerText, 4, 5);
       });
 
+      console.log("Triggering download...");
       pdf.save(`GAIO-Report-${safeCompany}-${today}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setExportError(
+        "PDF-Export fehlgeschlagen: " +
+        (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setExportingPdf(false);
+      // Safety cleanup in case the error happened mid-capture.
+      const leftover = document.getElementById("pdf-offscreen");
+      if (leftover) document.body.removeChild(leftover);
     }
   };
 
@@ -872,6 +906,15 @@ function ReportView({ analysisId }: { analysisId: string }) {
           </Button>
         </div>
       </div>
+
+      {/* PDF export error banner */}
+      {exportError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <span className="shrink-0 mt-0.5">⚠</span>
+          <span>{exportError}</span>
+          <button className="ml-auto shrink-0 opacity-60 hover:opacity-100" onClick={() => setExportError(null)}>✕</button>
+        </div>
+      )}
 
       {/* Prompt to re-run */}
       <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
