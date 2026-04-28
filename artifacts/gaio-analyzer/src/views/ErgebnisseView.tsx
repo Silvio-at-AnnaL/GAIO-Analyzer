@@ -697,14 +697,20 @@ function ReportView({ analysisId }: { analysisId: string }) {
       const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
       if (panels.length === 0) return;
 
-      // Elements to hide during capture (sidebar, nav, tab bar, export buttons).
-      const hideEls = Array.from(
-        document.querySelectorAll<HTMLElement>('aside, nav, [role="tablist"], [data-testid="button-export-pdf"], [data-testid="button-export-html"]')
-      );
-      const prevHideDisplay: string[] = hideEls.map((el) => el.style.display);
-      hideEls.forEach((el) => { el.style.display = "none"; });
+      // Off-screen container — original DOM is never touched during capture.
+      const offscreen = document.createElement("div");
+      offscreen.style.cssText = [
+        "position:fixed",
+        "top:0",
+        "left:-9999px",
+        "width:1200px",
+        "opacity:0",
+        "pointer-events:none",
+        "z-index:-1",
+      ].join(";");
+      document.body.appendChild(offscreen);
 
-      // FIX 5: store dimensions per page so jsPDF is created AFTER all captures.
+      // Store dimensions per page so jsPDF is created AFTER all captures.
       type PageData = {
         imgData: string | null;
         mmW: number;
@@ -714,18 +720,18 @@ function ReportView({ analysisId }: { analysisId: string }) {
       const pages: PageData[] = [];
 
       for (const panel of panels) {
-        const prevDisplay    = panel.style.display;
-        const prevVisibility = panel.style.visibility;
-        const prevPosition   = panel.style.position;
-        const prevOpacity    = panel.style.opacity;
+        const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
 
-        // FIX 2: force fully visible + positioned before capture.
-        panel.style.display    = "block";
-        panel.style.visibility = "visible";
-        panel.style.position   = "relative";
-        panel.style.opacity    = "1";
+        // Clone into the off-screen container — original panel is untouched.
+        const clone = panel.cloneNode(true) as HTMLElement;
+        clone.style.display    = "block";
+        clone.style.visibility = "visible";
+        clone.style.opacity    = "1";
+        clone.style.width      = "1200px";
+        clone.style.position   = "relative";
+        offscreen.appendChild(clone);
 
-        // FIX 2: double rAF so the browser finishes layout before we capture.
+        // Double rAF so the browser finishes layout before we capture.
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         );
@@ -733,22 +739,19 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // Give charts a bit more time to paint.
         await new Promise((r) => setTimeout(r, 200));
 
-        const tabValue =
-          panel.id?.replace(/^.*-content-/, "") ?? "tab";
-
         try {
-          const canvas = await html2canvas(panel, {
+          const canvas = await html2canvas(clone, {
             scale: 2,
             useCORS: true,
             backgroundColor: "#ffffff",
             logging: false,
           });
 
-          // FIX 3: skip panels with zero-dimension canvases.
+          // Skip panels with zero-dimension canvases.
           if (!canvas || canvas.width === 0 || canvas.height === 0) {
             pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
           } else {
-            // FIX 4: always derive mmH from the captured canvas dimensions.
+            // Derive mmH from the captured canvas dimensions.
             const mmW = 210;
             const mmH = (canvas.height / canvas.width) * mmW;
             pages.push({
@@ -762,15 +765,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
           pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
         }
 
-        // Restore panel styles.
-        panel.style.display    = prevDisplay;
-        panel.style.visibility = prevVisibility;
-        panel.style.position   = prevPosition;
-        panel.style.opacity    = prevOpacity;
+        // Remove the clone after capture; original panel stays untouched.
+        offscreen.removeChild(clone);
       }
 
-      // Restore chrome.
-      hideEls.forEach((el, i) => { el.style.display = prevHideDisplay[i]; });
+      // Remove the off-screen container entirely.
+      document.body.removeChild(offscreen);
 
       // FIX 5: need at least one successfully captured page.
       const firstPage = pages.find((p) => p.imgData);

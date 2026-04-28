@@ -1,0 +1,64 @@
+The PDF export currently causes visible layout shifts on screen 
+while capturing tab panels — the user can see the content jumping 
+and moving during the export process. This must be fixed so the 
+entire capture process is invisible to the user.
+
+---
+
+FIX: Off-screen capture using a hidden clone
+
+Replace the current approach of showing/hiding panels in-place 
+with the following technique:
+
+1. When the user clicks the PDF export button, create a single 
+   invisible container div and append it to document.body:
+
+     const offscreen = document.createElement('div')
+     offscreen.style.cssText = `
+       position: fixed;
+       top: 0;
+       left: -9999px;
+       width: 1200px;
+       opacity: 0;
+       pointer-events: none;
+       z-index: -1;
+     `
+     document.body.appendChild(offscreen)
+
+2. For each tab panel that needs to be captured:
+   a. Clone the panel's DOM node using element.cloneNode(true)
+   b. Append the clone to the offscreen container
+   c. Force the clone to be fully visible and sized correctly:
+        clone.style.display = 'block'
+        clone.style.visibility = 'visible'
+        clone.style.opacity = '1'
+        clone.style.width = '1200px'
+        clone.style.position = 'relative'
+   d. Wait two animation frames for layout to settle:
+        await new Promise(r => requestAnimationFrame(() => 
+          requestAnimationFrame(r)))
+   e. Run html2canvas on the CLONE, not the original element
+   f. Remove the clone from the offscreen container after capture
+
+3. At no point should the original tab panels or the sidebar 
+   be modified or have their visibility changed. The original 
+   DOM must remain completely untouched during the entire 
+   export process. The user should see no movement, no 
+   flashing, no layout shifts.
+
+4. After all panels are captured, remove the offscreen 
+   container from the DOM:
+     document.body.removeChild(offscreen)
+
+5. Then proceed with jsPDF as currently implemented 
+   (the dimension validation and addImage fixes from the 
+   previous iteration must remain in place).
+
+6. The loading state on the button ("⏳ PDF wird erstellt…") 
+   must be visible and the button must stay disabled for the 
+   entire duration of the capture process.
+
+This approach completely decouples the capture process from 
+the visible UI — the user sees nothing move, the button shows 
+a loading state, and after a few seconds the PDF downloads 
+automatically.
