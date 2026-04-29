@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
-import { generateHtmlReport } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqPanelHtml } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -955,6 +955,43 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       console.log("All panels captured:", pages.length);
 
+      // ── Capture FAQ page (injected offscreen, then removed) ───────────────────
+      type FaqCapture = { imgData: string; mmH: number } | null;
+      let faqCapture: FaqCapture = null;
+      try {
+        const faqEl = document.createElement("div");
+        faqEl.style.cssText = [
+          "position:absolute",
+          "left:-9999px",
+          "top:0",
+          `width:${CAPTURE_WIDTH_PX}px`,
+          "background:#ffffff",
+          "box-sizing:border-box",
+        ].join(";");
+        faqEl.innerHTML = buildFaqPanelHtml();
+        document.body.appendChild(faqEl);
+        neutraliseImages(faqEl);
+        void faqEl.offsetHeight;
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        const faqH = faqEl.scrollHeight > 0 ? faqEl.scrollHeight : faqEl.offsetHeight;
+        if (faqH > 0) {
+          const faqJpeg = await toJpeg(faqEl, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            width: CAPTURE_WIDTH_PX,
+            height: faqH,
+            skipFonts: true,
+            filter: imageFilter,
+          });
+          faqCapture = { imgData: faqJpeg, mmH: (faqH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH, "→", faqCapture.mmH.toFixed(1), "mm");
+        }
+        document.body.removeChild(faqEl);
+      } catch (faqErr) {
+        console.warn("FAQ page capture failed:", faqErr);
+      }
+
       // CAUSE C — require at least one valid page before touching jsPDF.
       const validPages = pages.filter(
         (p) => p.imgData && p.mmW > 0 && p.mmH > 0
@@ -1018,6 +1055,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
         pdf.setTextColor(136, 136, 136);
         pdf.text(labelText, MARGIN_MM, MARGIN_MM - 3);
       });
+
+      // ── FAQ final page ────────────────────────────────────────────────────────
+      if (faqCapture) {
+        const faqPgH = MARGIN_MM + faqCapture.mmH + MARGIN_MM;
+        pdf.addPage([PDF_MM_W, faqPgH], "portrait");
+        pdf.addImage(faqCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, faqCapture.mmH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+      }
 
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
       removeOverlay();
