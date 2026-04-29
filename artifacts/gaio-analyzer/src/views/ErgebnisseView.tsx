@@ -802,6 +802,83 @@ function ReportView({ analysisId }: { analysisId: string }) {
       // Full repaint before capture.
       await new Promise((r) => setTimeout(r, 300));
 
+      // ── Capture the results header (donut + radar + score cards) ──────────────
+      const CAPTURE_WIDTH_PX = 1200;
+      const PDF_MM_W = 210;
+
+      // Shared image filter — excludes scripts, noscripts, and broken images.
+      const imageFilter = (node: HTMLElement): boolean => {
+        if (node.tagName === "SCRIPT" || node.tagName === "NOSCRIPT") return false;
+        if (node.tagName === "IMG") {
+          const img = node as HTMLImageElement;
+          const isExternal =
+            !!img.src &&
+            !img.src.startsWith(window.location.origin) &&
+            !img.src.startsWith("data:");
+          if (isExternal || !img.complete || img.naturalWidth === 0) return false;
+        }
+        return true;
+      };
+
+      // Shared helper: zero-out broken/external images in an element before capture.
+      const neutraliseImages = (el: HTMLElement) => {
+        el.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+          const isExternal =
+            !!img.src &&
+            !img.src.startsWith(window.location.origin) &&
+            !img.src.startsWith("data:");
+          if (isExternal || !img.complete || img.naturalWidth === 0) {
+            img.style.visibility = "hidden";
+            img.style.width      = "0";
+            img.style.height     = "0";
+            img.style.minWidth   = "0";
+            img.style.minHeight  = "0";
+            img.style.padding    = "0";
+            img.style.margin     = "0";
+            img.style.border     = "none";
+            img.style.overflow   = "hidden";
+          }
+        });
+      };
+
+      let headerImgData: string | null = null;
+      let headerMmH = 0;
+
+      const headerEl = document.getElementById("results-header");
+      if (headerEl) {
+        // Ensure width matches capture width, force reflow, then measure.
+        const prevHeaderWidth = headerEl.style.width;
+        headerEl.style.width = `${CAPTURE_WIDTH_PX}px`;
+        void headerEl.offsetHeight;
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await new Promise((r) => setTimeout(r, 400));
+
+        neutraliseImages(headerEl);
+
+        const headerH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
+        console.log("Header height:", headerH);
+
+        if (headerH > 0) {
+          try {
+            headerImgData = await toJpeg(headerEl, {
+              quality: 0.92,
+              backgroundColor: "#ffffff",
+              pixelRatio: 1.5,
+              width: CAPTURE_WIDTH_PX,
+              height: headerH,
+              skipFonts: true,
+              filter: imageFilter,
+            });
+            headerMmH = (headerH / CAPTURE_WIDTH_PX) * PDF_MM_W;
+            console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", PDF_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
+          } catch (hErr) {
+            console.warn("Header capture failed:", hErr);
+          }
+        }
+
+        headerEl.style.width = prevHeaderWidth;
+      }
+
       // ── Capture each panel directly (original elements, real styles) ──────────
       type PageData = {
         imgData: string | null;
@@ -837,26 +914,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // FIX 4 — Give React time to finish any pending re-renders.
         await new Promise((r) => setTimeout(r, 400));
 
-        // Aggressively neutralise external/unloaded images before capture.
-        // Use visibility:hidden + zero dimensions so html-to-image never tries
-        // to fetch them (display:none alone isn't sufficient for some browsers).
-        panel.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
-          const isExternal =
-            !!img.src &&
-            !img.src.startsWith(window.location.origin) &&
-            !img.src.startsWith("data:");
-          if (isExternal || !img.complete || img.naturalWidth === 0) {
-            img.style.visibility = "hidden";
-            img.style.width      = "0";
-            img.style.height     = "0";
-            img.style.minWidth   = "0";
-            img.style.minHeight  = "0";
-            img.style.padding    = "0";
-            img.style.margin     = "0";
-            img.style.border     = "none";
-            img.style.overflow   = "hidden";
-          }
-        });
+        // Neutralise all broken/external images before capture.
+        neutraliseImages(panel);
 
         // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
@@ -869,19 +928,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
             width: captureWidth,
             height: captureHeight,
             skipFonts: true,
-            filter: (node) => {
-              const el = node as HTMLElement;
-              if (el.tagName === "SCRIPT" || el.tagName === "NOSCRIPT") return false;
-              if (el.tagName === "IMG") {
-                const img = el as HTMLImageElement;
-                const isExternal =
-                  !!img.src &&
-                  !img.src.startsWith(window.location.origin) &&
-                  !img.src.startsWith("data:");
-                if (isExternal || !img.complete || img.naturalWidth === 0) return false;
-              }
-              return true;
-            },
+            filter: imageFilter,
           });
         } catch (imgErr) {
           console.warn("html-to-image failed for panel:", tabValue, imgErr);
@@ -923,36 +970,48 @@ function ReportView({ analysisId }: { analysisId: string }) {
         .replace(/\s+/g, "-");
 
       console.log("Creating jsPDF...");
+      const GAP_MM = 4; // vertical gap (mm) between header image and tab content
+      const hasHeader = !!headerImgData && headerMmH > 0;
+      const pageHeight = (tabMmH: number) => hasHeader ? headerMmH + GAP_MM + tabMmH : tabMmH;
+
       const firstValid = validPages[0];
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
-        format: [firstValid.mmW, firstValid.mmH],
+        format: [PDF_MM_W, pageHeight(firstValid.mmH)],
       });
 
       pages.forEach((page, idx) => {
+        const pgH = pageHeight(page.mmH);
         if (idx > 0) {
-          pdf.addPage([page.mmW, page.mmH], "portrait");
+          pdf.addPage([PDF_MM_W, pgH], "portrait");
         }
+
+        // Header image at the top of every page.
+        if (hasHeader) {
+          pdf.addImage(headerImgData!, "JPEG", 0, 0, PDF_MM_W, headerMmH);
+        }
+
+        const tabY = hasHeader ? headerMmH + GAP_MM : 0;
 
         if (
           page.imgData &&
           typeof page.mmW === "number" && isFinite(page.mmW) && page.mmW > 0 &&
           typeof page.mmH === "number" && isFinite(page.mmH) && page.mmH > 0
         ) {
-          pdf.addImage(page.imgData, "JPEG", 0, 0, page.mmW, page.mmH);
+          pdf.addImage(page.imgData, "JPEG", 0, tabY, PDF_MM_W, page.mmH);
         } else {
           pdf.setFontSize(12);
           pdf.setTextColor(150, 150, 150);
-          pdf.text("Seite konnte nicht exportiert werden", page.mmW / 2, page.mmH / 2, { align: "center" });
+          pdf.text("Seite konnte nicht exportiert werden", PDF_MM_W / 2, tabY + page.mmH / 2, { align: "center" });
         }
 
-        // Small header line on every page.
+        // Small label line at top-left.
         const tabLabel   = TAB_LABELS[page.tabValue] ?? page.tabValue;
-        const headerText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
+        const labelText  = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
-        pdf.text(headerText, 4, 5);
+        pdf.text(labelText, 4, 5);
       });
 
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
@@ -1040,45 +1099,47 @@ function ReportView({ analysisId }: { analysisId: string }) {
         Basisdaten ändern oder neue Analyse starten? → Wechseln Sie zu <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.
       </p>
 
-      {/* Score overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center py-2">
-            <ScoreDonut score={report.overallScore ?? 0} />
-          </CardContent>
-        </Card>
-        <Card className="md:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="hsl(var(--border))" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                <Radar dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={2} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Dimension scores */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-        {radarData.map((d) => (
-          <Card key={d.subject}>
-            <CardContent className="py-3 px-3 text-center">
-              <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
-              <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
-                {d.value}
-              </p>
+      {/* Score overview + dimension cards — captured as header in PDF */}
+      <div id="results-header" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
+            </CardHeader>
+            <CardContent className="flex justify-center py-2">
+              <ScoreDonut score={report.overallScore ?? 0} />
             </CardContent>
           </Card>
-        ))}
+          <Card className="md:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="hsl(var(--border))" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                  <Radar dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={2} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Dimension scores */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {radarData.map((d) => (
+            <Card key={d.subject}>
+              <CardContent className="py-3 px-3 text-center">
+                <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
+                  {d.value}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Tabs */}
