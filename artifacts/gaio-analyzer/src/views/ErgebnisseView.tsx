@@ -805,6 +805,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       // ── Capture the results header (donut + radar + score cards) ──────────────
       const CAPTURE_WIDTH_PX = 1200;
       const PDF_MM_W = 210;
+      const MARGIN_MM = 12;                           // uniform margin on all four sides
+      const CONTENT_MM_W = PDF_MM_W - MARGIN_MM * 2; // 186mm usable width
 
       // Shared image filter — excludes scripts, noscripts, and broken images.
       const imageFilter = (node: HTMLElement): boolean => {
@@ -869,8 +871,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
               skipFonts: true,
               filter: imageFilter,
             });
-            headerMmH = (headerH / CAPTURE_WIDTH_PX) * PDF_MM_W;
-            console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", PDF_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
+            headerMmH = (headerH / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
+            console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
           } catch (hErr) {
             console.warn("Header capture failed:", hErr);
           }
@@ -935,8 +937,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
           imgData = null;
         }
 
-        const mmW = 210;
-        const mmH = (captureHeight / captureWidth) * mmW;
+        const mmW = CONTENT_MM_W; // 186mm — content area after margins
+        const mmH = (captureHeight / captureWidth) * CONTENT_MM_W;
 
         console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
 
@@ -972,7 +974,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
       console.log("Creating jsPDF...");
       const GAP_MM = 4; // vertical gap (mm) between header image and tab content
       const hasHeader = !!headerImgData && headerMmH > 0;
-      const pageHeight = (tabMmH: number) => hasHeader ? headerMmH + GAP_MM + tabMmH : tabMmH;
+      // Page height = top margin + header (if any) + gap + tab content + bottom margin
+      const pageHeight = (tabMmH: number) =>
+        MARGIN_MM + (hasHeader ? headerMmH + GAP_MM : 0) + tabMmH + MARGIN_MM;
 
       const firstValid = validPages[0];
       const pdf = new jsPDF({
@@ -987,31 +991,31 @@ function ReportView({ analysisId }: { analysisId: string }) {
           pdf.addPage([PDF_MM_W, pgH], "portrait");
         }
 
-        // Header image at the top of every page.
+        // Header image — inset by MARGIN_MM on all sides.
         if (hasHeader) {
-          pdf.addImage(headerImgData!, "JPEG", 0, 0, PDF_MM_W, headerMmH);
+          pdf.addImage(headerImgData!, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, headerMmH);
         }
 
-        const tabY = hasHeader ? headerMmH + GAP_MM : 0;
+        const tabY = MARGIN_MM + (hasHeader ? headerMmH + GAP_MM : 0);
 
         if (
           page.imgData &&
           typeof page.mmW === "number" && isFinite(page.mmW) && page.mmW > 0 &&
           typeof page.mmH === "number" && isFinite(page.mmH) && page.mmH > 0
         ) {
-          pdf.addImage(page.imgData, "JPEG", 0, tabY, PDF_MM_W, page.mmH);
+          pdf.addImage(page.imgData, "JPEG", MARGIN_MM, tabY, CONTENT_MM_W, page.mmH);
         } else {
           pdf.setFontSize(12);
           pdf.setTextColor(150, 150, 150);
           pdf.text("Seite konnte nicht exportiert werden", PDF_MM_W / 2, tabY + page.mmH / 2, { align: "center" });
         }
 
-        // Small label line at top-left.
-        const tabLabel   = TAB_LABELS[page.tabValue] ?? page.tabValue;
-        const labelText  = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
+        // Small label line — sits inside the top margin.
+        const tabLabel  = TAB_LABELS[page.tabValue] ?? page.tabValue;
+        const labelText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
-        pdf.text(labelText, 4, 5);
+        pdf.text(labelText, MARGIN_MM, MARGIN_MM - 3);
       });
 
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
