@@ -1,0 +1,91 @@
+Add a new menu item "5. Kontakt" between the existing 
+items "4. FAQ / So funktioniert's" and "5. Einstellungen". 
+Renumber "Einstellungen" to "6. Einstellungen".
+
+Use an envelope/mail icon for the Kontakt menu item 
+(same icon style as the other menu items use).
+
+---
+
+KONTAKT PAGE CONTENT
+
+Create a new Kontakt view with the following content 
+and layout:
+
+LAYOUT: Centered card, max-width 600px, clean and 
+professional. Light background matching the app's 
+existing card style.
+
+SECTION 1 — Logo
+Display the image file "Brand.png" at the top of 
+the card. The file will be placed in the project's 
+public or assets folder. Show it at a reasonable 
+size (max height 60px, preserve aspect ratio).
+
+SECTION 2 — Contact person card
+Display the image file "SH-IS-background.webp" as 
+a profile/portrait image. Circular crop, diameter 
+120px, centered or left-aligned with text beside it.
+
+Below or beside the image:
+  Name:      Silvio Haase
+  Funktion:  CMO & Head of Business Development
+  Firma:     Deutscher Medien Verlag GmbH / IndustryStock.com
+  E-Mail:    Silvio.Haase@IndustryStock.com
+             (shown as clickable mailto: link)
+
+SECTION 3 — Activating short text
+Use this text (written to feel helpful, not salesy):
+
+  "Sie haben Fragen zum GAIO Analyzer, möchten 
+  eine Analyse für Ihr Unternehmen durchführen 
+  lassen oder interessieren sich für eine 
+  individuelle Beratung zur LLM-Sichtbarkeit 
+  Ihrer Website?
+
+  Sprechen Sie uns einfach an — wir antworten 
+  schnell und unkompliziert."
+
+Below the text: a prominent CTA button labeled 
+"E-Mail schreiben" that opens 
+mailto:Silvio.Haase@IndustryStock.com
+
+---
+
+EXPORT: Add Kontakt page to PDF and HTML exports
+
+PDF export:
+After the FAQ page (which is currently the last 
+page), add one more page with the Kontakt content.
+Build it as a self-contained HTML document injected 
+into an iframe, same technique used for the FAQ page.
+
+The Kontakt page for PDF should contain:
+- Brand.png logo (embed as base64 or reference from 
+  public folder)
+- Profile image SH-IS-background.webp (same approach)
+- Name, function, company, email (as plain text, 
+  email as visible text not a link since PDF is static)
+- The activating text from Section 3 above
+- A line at the bottom: "E-Mail: Silvio.Haase@IndustryStock.com"
+- Same white background, same font, same 12mm margin 
+  logic as all other PDF pages
+
+HTML export:
+After the FAQ section at the bottom of the one-pager, 
+add a section divider labeled "Kontakt" and then the 
+Kontakt content as static HTML:
+- Brand.png logo
+- Profile image (img tag with src pointing to the 
+  public asset)
+- Name, function, company
+- Email as a clickable mailto: link
+- The activating short text
+- "E-Mail schreiben" button as an anchor tag with 
+  href="mailto:Silvio.Haase@IndustryStock.com"
+
+For both exports: if the image files cannot be loaded 
+(e.g. not yet uploaded), show a placeholder box with 
+the text "[Bild: Brand-Logo]" or "[Bild: Silvio Haase]" 
+so the layout is preserved even before the files are 
+added.

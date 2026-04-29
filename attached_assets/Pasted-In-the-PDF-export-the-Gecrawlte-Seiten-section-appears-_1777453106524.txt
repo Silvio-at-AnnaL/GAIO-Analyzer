@@ -1,0 +1,117 @@
+In the PDF export, the "Gecrawlte Seiten" section appears 
+collapsed — it shows the section header but the list of 
+crawled URLs is hidden because the accordion/collapsible 
+is in its closed state during capture.
+
+---
+
+FIX
+
+Before capturing the Details tab panel for the PDF, 
+find all collapsed/closed sections within it and 
+force them open. After capture, restore their original 
+state.
+
+STEP 1 — Before capturing the Details panel, expand 
+all collapsible sections:
+
+  // Find all collapsed elements — check which pattern 
+  // the codebase uses. Common patterns:
+  // - elements with aria-expanded="false"
+  // - elements with a class like 'collapsed', 'closed', 
+  //   or 'hidden'
+  // - elements where a sibling/child content div has 
+  //   display:none or max-height:0
+
+  const detailsPanel = // the Details tab panel element
+
+  // Expand all collapsed accordions/disclosures:
+  const collapsibles = detailsPanel.querySelectorAll(
+    '[aria-expanded="false"], details:not([open])'
+  )
+  
+  // Store original state before changing anything:
+  const collapsibleStates = Array.from(collapsibles).map(el => ({
+    el,
+    wasOpen: el.hasAttribute('open') || 
+              el.getAttribute('aria-expanded') === 'true'
+  }))
+
+  // Force open:
+  collapsibles.forEach(el => {
+    if (el.tagName === 'DETAILS') {
+      el.setAttribute('open', '')
+    } else {
+      el.setAttribute('aria-expanded', 'true')
+      // Also find and show the controlled content panel:
+      const contentId = el.getAttribute('aria-controls')
+      if (contentId) {
+        const content = document.getElementById(contentId)
+        if (content) {
+          content.style.display = 'block'
+          content.style.maxHeight = 'none'
+          content.style.overflow = 'visible'
+          content.style.visibility = 'visible'
+          content.style.opacity = '1'
+        }
+      }
+    }
+  })
+
+  // Also look for any content divs that are hidden via 
+  // CSS classes used by the collapsible component 
+  // (inspect the actual class names used in the codebase 
+  // for hidden collapsible content and target those too):
+  const hiddenContent = detailsPanel.querySelectorAll(
+    '.hidden, [data-state="closed"], [data-collapsed="true"]'
+  )
+  const hiddenStates = Array.from(hiddenContent).map(el => ({
+    el,
+    originalDisplay: (el as HTMLElement).style.display,
+    originalMaxHeight: (el as HTMLElement).style.maxHeight,
+    originalClass: el.className
+  }))
+  hiddenContent.forEach(el => {
+    const htmlEl = el as HTMLElement
+    htmlEl.style.display = 'block'
+    htmlEl.style.maxHeight = 'none'
+    htmlEl.style.overflow = 'visible'
+  })
+
+STEP 2 — Wait for reflow after expanding:
+
+  void detailsPanel.offsetHeight
+  await new Promise(r => setTimeout(r, 300))
+
+STEP 3 — Capture the Details panel as usual.
+
+STEP 4 — After capture, restore all collapsibles to 
+their original state in the finally block:
+
+  collapsibleStates.forEach(({ el, wasOpen }) => {
+    if (!wasOpen) {
+      if (el.tagName === 'DETAILS') {
+        el.removeAttribute('open')
+      } else {
+        el.setAttribute('aria-expanded', 'false')
+        const contentId = el.getAttribute('aria-controls')
+        if (contentId) {
+          const content = document.getElementById(contentId)
+          if (content) {
+            content.style.display = ''
+            content.style.maxHeight = ''
+            content.style.overflow = ''
+            content.style.visibility = ''
+            content.style.opacity = ''
+          }
+        }
+      }
+    }
+  })
+
+  hiddenStates.forEach(({ el, originalDisplay, originalMaxHeight }) => {
+    const htmlEl = el as HTMLElement
+    htmlEl.style.display = originalDisplay
+    htmlEl.style.maxHeight = originalMaxHeight
+    htmlEl.style.overflow = ''
+  })

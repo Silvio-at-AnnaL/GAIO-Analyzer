@@ -4,6 +4,7 @@ import { DomainAnalyseView } from "@/views/DomainAnalyseView";
 import { HtmlAnalyseView } from "@/views/HtmlAnalyseView";
 import { ErgebnisseView } from "@/views/ErgebnisseView";
 import { FaqView } from "@/views/FaqView";
+import { KontaktView } from "@/views/KontaktView";
 import { EinstellungenView } from "@/views/EinstellungenView";
 
 function AppContent() {
@@ -18,7 +19,8 @@ function AppContent() {
           {activeView === 2 && <HtmlAnalyseView />}
           {activeView === 3 && <ErgebnisseView />}
           {activeView === 4 && <FaqView />}
-          {activeView === 5 && <EinstellungenView />}
+          {activeView === 5 && <KontaktView />}
+          {activeView === 6 && <EinstellungenView />}
         </div>
       </main>
     </div>

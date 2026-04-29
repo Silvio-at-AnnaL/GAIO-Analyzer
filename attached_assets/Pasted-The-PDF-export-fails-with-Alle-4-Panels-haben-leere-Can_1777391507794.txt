@@ -1,0 +1,129 @@
+The PDF export fails with: "Alle 4 Panels haben leere Canvas."
+This means html2canvas is capturing empty content for every panel.
+The clones exist in the DOM but have no rendered content.
+
+---
+
+ROOT CAUSE
+
+The offscreen clone approach is failing because cloned elements 
+lose their rendered styles and component state. React-rendered 
+content with CSS modules, Tailwind, or scoped styles often does 
+not transfer correctly to clones. html2canvas captures nothing.
+
+---
+
+SOLUTION: Capture the original elements directly, but move the 
+entire app container off-screen temporarily instead of cloning.
+
+Replace the clone-based approach entirely with this:
+
+---
+
+STEP 1 — Find the main content container
+
+Identify the DOM element that wraps ONLY the results content 
+(not the sidebar, not the header). This is likely something like:
+  document.querySelector('main') 
+  or the direct parent of the tab panels.
+
+Give this element a stable id if it does not already have one:
+  id="results-main-content"
+
+---
+
+STEP 2 — New capture approach: shift the whole layout
+
+When PDF export starts:
+
+a. Save the current scroll position:
+     const scrollY = window.scrollY
+
+b. Find the sidebar/nav element and hide it with inline style:
+     sidebar.style.display = 'none'
+
+c. Find ALL tab panels (active and inactive). 
+   Make them all visible simultaneously:
+     panels.forEach(panel => {
+       panel.dataset.originalDisplay = panel.style.display
+       panel.style.display = 'block'
+       panel.style.visibility = 'visible'
+       panel.style.opacity = '1'
+       panel.style.position = 'relative'
+       panel.style.height = 'auto'
+       panel.style.overflow = 'visible'
+     })
+
+d. Wait for full repaint:
+     await new Promise(r => setTimeout(r, 300))
+
+e. Capture each panel using html2canvas targeting the ORIGINAL 
+   element directly (not a clone):
+     const canvas = await html2canvas(panel, {
+       scale: 1.5,
+       useCORS: true,
+       allowTaint: true,
+       backgroundColor: '#ffffff',
+       logging: false,
+       scrollX: 0,
+       scrollY: -window.scrollY,
+       windowWidth: document.documentElement.scrollWidth,
+       windowHeight: panel.scrollHeight
+     })
+
+f. After ALL panels are captured, immediately restore 
+   everything:
+     // restore panels
+     panels.forEach(panel => {
+       panel.style.display = panel.dataset.originalDisplay || ''
+       panel.style.visibility = ''
+       panel.style.opacity = ''
+       panel.style.position = ''
+       panel.style.height = ''
+       panel.style.overflow = ''
+       delete panel.dataset.originalDisplay
+     })
+     // restore sidebar
+     sidebar.style.display = ''
+     // restore scroll
+     window.scrollTo(0, scrollY)
+
+g. Then build the PDF from the captured canvases as before.
+
+---
+
+STEP 3 — Handle the "screen movement" concern
+
+Yes, the user will briefly see the layout change while panels 
+are being captured (sidebar hides, all tabs show at once). 
+Minimize this by:
+
+- Showing a full-screen semi-transparent overlay div during 
+  capture that sits above the content:
+    const overlay = document.createElement('div')
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.85);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+      font-size: 1.1rem;
+      color: #333;
+    `
+    overlay.textContent = '⏳ PDF wird erstellt…'
+    document.body.appendChild(overlay)
+
+- Add the overlay BEFORE modifying any DOM elements
+- Remove the overlay AFTER restoring all DOM elements and 
+  BEFORE triggering the PDF download
+
+This way the user sees a clean loading screen instead of 
+seeing the layout jump.
+
+---
+
+STEP 4 — Keep all error handling and console.log checkpoints 
+from the previous iteration. Do not remove them.

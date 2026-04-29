@@ -1,4 +1,4 @@
-import { Globe, FileCode, BarChart3, HelpCircle, Settings } from "lucide-react";
+import { Globe, FileCode, BarChart3, HelpCircle, Mail, Settings } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 
 const NAV_ITEMS: { id: ActiveView; icon: React.ElementType; label: string }[] = [
@@ -6,7 +6,8 @@ const NAV_ITEMS: { id: ActiveView; icon: React.ElementType; label: string }[] = 
   { id: 2, icon: FileCode, label: "HTML-Analyse" },
   { id: 3, icon: BarChart3, label: "Ergebnisse" },
   { id: 4, icon: HelpCircle, label: "FAQ / So funktioniert's" },
-  { id: 5, icon: Settings, label: "Einstellungen" },
+  { id: 5, icon: Mail, label: "Kontakt" },
+  { id: 6, icon: Settings, label: "Einstellungen" },
 ];
 
 export function Sidebar() {

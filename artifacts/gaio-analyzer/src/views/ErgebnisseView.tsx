@@ -7,13 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
-import { generateHtmlReport } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from "recharts";
 import {
-  Loader2, CheckCircle2, XCircle, Download, Star, AlertCircle, AlertTriangle,
+  Loader2, CheckCircle2, XCircle, FileText, Globe, Star, AlertCircle, AlertTriangle,
   Info, Clock, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 
@@ -417,8 +417,9 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
   );
 }
 
-function CrawledPagesPanel({ pages }: { pages: string[] }) {
+function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMode?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
+  const expanded = isOpen || pdfMode;
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -428,10 +429,10 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
       >
         <span>Gecrawlte Seiten ({pages.length} Seiten)</span>
-        {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
-      {isOpen && (
-        <div className="border-t border-border max-h-72 overflow-y-auto">
+      {expanded && (
+        <div className="border-t border-border overflow-visible">
           {pages.map((url, i) => (
             <a
               key={url}
@@ -557,9 +558,51 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
   );
 }
 
+// ── Shared export filename helpers ────────────────────────────────────────────
+
+/** Strip protocol/www, replace dots+slashes with underscores. */
+function formatDomainForFilename(url: string | null | undefined): string {
+  return (url ?? "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/$/, "")
+    .replace(/\./g, "_")
+    .replace(/\//g, "_") || "report";
+}
+
+/** Fetch a URL and return it as a base64 data-URI string (empty string on failure). */
+async function fetchAsBase64(url: string): Promise<string> {
+  try {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
+
+/** Build the timestamp portion `DD-MM-YYYY--HH-MM-SS` from local time. */
+function buildExportTimestamp(d: Date = new Date()): string {
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh   = String(d.getHours()).padStart(2, "0");
+  const min  = String(d.getMinutes()).padStart(2, "0");
+  const ss   = String(d.getSeconds()).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy}--${hh}-${min}-${ss}`;
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
-  const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingHtml, setExportingHtml] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [pdfMode, setPdfMode] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -674,33 +717,515 @@ function ReportView({ analysisId }: { analysisId: string }) {
     }
   };
 
-  const handleExport = async () => {
-    setExporting(true);
+  // ── PDF export via jsPDF + html2canvas ──────────────────────────────────────
+  const handlePdfExport = async () => {
+    setExportingPdf(true);
+    setExportError(null);
+    setPdfMode(true);
+    // Wait for React to re-render charts without animations before capture.
+    await new Promise((r) => setTimeout(r, 500));
+    const PANEL_SELECTOR = '[role="tabpanel"]';
+    let overlay: HTMLElement | null = null;
+
+    // Saved state for guaranteed restore in finally.
+    let savedPanels: HTMLElement[] = [];
+    let savedPanelStyles: Array<{
+      display: string; visibility: string; opacity: string;
+      position: string; height: string; overflow: string;
+      width: string; minHeight: string;
+    }> = [];
+    let savedSidebar: HTMLElement | null = null;
+    let savedSidebarDisplay = "";
+    let savedScrollY = 0;
+
+    // Helper: clean up overlay if it was created.
+    const removeOverlay = () => {
+      if (overlay && overlay.parentNode) {
+        document.body.removeChild(overlay);
+        overlay = null;
+      }
+    };
+
+    // Helper: restore panels & sidebar to original state.
+    const restoreDom = () => {
+      savedPanels.forEach((panel, i) => {
+        panel.style.display    = savedPanelStyles[i].display;
+        panel.style.visibility = savedPanelStyles[i].visibility;
+        panel.style.opacity    = savedPanelStyles[i].opacity;
+        panel.style.position   = savedPanelStyles[i].position;
+        panel.style.height     = savedPanelStyles[i].height;
+        panel.style.overflow   = savedPanelStyles[i].overflow;
+        panel.style.width      = savedPanelStyles[i].width;
+        panel.style.minHeight  = savedPanelStyles[i].minHeight;
+      });
+      if (savedSidebar) savedSidebar.style.display = savedSidebarDisplay;
+      window.scrollTo(0, savedScrollY);
+    };
+
     try {
-      // Wait a frame to ensure DOM is fully rendered.
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const svgs = document.querySelectorAll(".recharts-wrapper svg");
-      const radarSvg = svgs[0] ? captureSvg(".recharts-wrapper svg") : null;
-      const technicalBarSvg = svgs[1] ? new XMLSerializer().serializeToString(svgs[1]) : null;
-      const competitorBarSvg = svgs[2] ? new XMLSerializer().serializeToString(svgs[2]) : null;
-      const donutSvg = document.querySelector(".score-donut svg")
-        ? new XMLSerializer().serializeToString(document.querySelector(".score-donut svg")!)
-        : null;
+      console.log("PDF export started");
+
+      // Dynamic imports keep the bundle lean.
+      const [{ toJpeg }, { default: jsPDF }] = await Promise.all([
+        import("html-to-image"),
+        import("jspdf"),
+      ]);
+
+      // Tab label map — keep in sync with TabsContent value props.
+      const TAB_LABELS: Record<string, string> = {
+        details: "Details",
+        llm: "LLM-Auffindbarkeit",
+        competitors: "Wettbewerb",
+        recommendations: "Empfehlungen",
+      };
+
+      // Throw early with a visible message if no panels found.
+      const panels = Array.from(document.querySelectorAll<HTMLElement>(PANEL_SELECTOR));
+      console.log("Panels found:", panels.length, "selector:", PANEL_SELECTOR);
+      if (!panels || panels.length === 0) {
+        throw new Error(`Keine Tab-Panels gefunden. Selektor: ${PANEL_SELECTOR}`);
+      }
+
+      // ── Full-screen overlay so the user sees a clean loading screen ──────────
+      overlay = document.createElement("div");
+      overlay.id = "pdf-overlay";
+      overlay.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        "background:rgba(255,255,255,0.92)",
+        "z-index:99999",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "font-family:inherit",
+        "font-size:1.1rem",
+        "color:#333",
+        "flex-direction:column",
+        "gap:8px",
+      ].join(";");
+      overlay.innerHTML = `
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        <span>PDF wird erstellt…</span>
+      `;
+      document.body.appendChild(overlay);
+
+      // Save sidebar and scroll state into outer-scoped vars (used by restoreDom in finally).
+      savedSidebar      = document.querySelector<HTMLElement>("aside");
+      savedScrollY      = window.scrollY;
+      savedSidebarDisplay = savedSidebar?.style.display ?? "";
+      if (savedSidebar) savedSidebar.style.display = "none";
+
+      // Save all panel styles, then force every panel visible for capture.
+      savedPanels       = panels;
+      savedPanelStyles  = panels.map((panel) => ({
+        display:    panel.style.display,
+        visibility: panel.style.visibility,
+        opacity:    panel.style.opacity,
+        position:   panel.style.position,
+        height:     panel.style.height,
+        overflow:   panel.style.overflow,
+        width:      panel.style.width,
+        minHeight:  panel.style.minHeight,
+      }));
+      panels.forEach((panel) => {
+        panel.style.display    = "block";
+        panel.style.visibility = "visible";
+        panel.style.opacity    = "1";
+        panel.style.position   = "relative";
+        panel.style.height     = "auto";
+        panel.style.overflow   = "visible";
+      });
+
+      // Full repaint before capture.
+      await new Promise((r) => setTimeout(r, 300));
+
+      // ── Capture the results header (donut + radar + score cards) ──────────────
+      const CAPTURE_WIDTH_PX = 1200;
+      const PDF_MM_W = 210;
+      const MARGIN_MM = 12;                           // uniform margin on all four sides
+      const CONTENT_MM_W = PDF_MM_W - MARGIN_MM * 2; // 186mm usable width
+
+      // Shared image filter — excludes scripts, noscripts, and broken images.
+      const imageFilter = (node: HTMLElement): boolean => {
+        if (node.tagName === "SCRIPT" || node.tagName === "NOSCRIPT") return false;
+        if (node.tagName === "IMG") {
+          const img = node as HTMLImageElement;
+          const isExternal =
+            !!img.src &&
+            !img.src.startsWith(window.location.origin) &&
+            !img.src.startsWith("data:");
+          if (isExternal || !img.complete || img.naturalWidth === 0) return false;
+        }
+        return true;
+      };
+
+      // Shared helper: zero-out broken/external images in an element before capture.
+      const neutraliseImages = (el: HTMLElement) => {
+        el.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+          const isExternal =
+            !!img.src &&
+            !img.src.startsWith(window.location.origin) &&
+            !img.src.startsWith("data:");
+          if (isExternal || !img.complete || img.naturalWidth === 0) {
+            img.style.visibility = "hidden";
+            img.style.width      = "0";
+            img.style.height     = "0";
+            img.style.minWidth   = "0";
+            img.style.minHeight  = "0";
+            img.style.padding    = "0";
+            img.style.margin     = "0";
+            img.style.border     = "none";
+            img.style.overflow   = "hidden";
+          }
+        });
+      };
+
+      let headerImgData: string | null = null;
+      let headerMmH = 0;
+
+      const headerEl = document.getElementById("results-header");
+      if (headerEl) {
+        // Ensure width matches capture width, force reflow, then measure.
+        const prevHeaderWidth = headerEl.style.width;
+        headerEl.style.width = `${CAPTURE_WIDTH_PX}px`;
+        void headerEl.offsetHeight;
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await new Promise((r) => setTimeout(r, 400));
+
+        neutraliseImages(headerEl);
+
+        const headerH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
+        console.log("Header height:", headerH);
+
+        if (headerH > 0) {
+          try {
+            headerImgData = await toJpeg(headerEl, {
+              quality: 0.92,
+              backgroundColor: "#ffffff",
+              pixelRatio: 1.5,
+              width: CAPTURE_WIDTH_PX,
+              height: headerH,
+              skipFonts: true,
+              filter: imageFilter,
+            });
+            headerMmH = (headerH / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
+            console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
+          } catch (hErr) {
+            console.warn("Header capture failed:", hErr);
+          }
+        }
+
+        headerEl.style.width = prevHeaderWidth;
+      }
+
+      // ── Capture each panel directly (original elements, real styles) ──────────
+      type PageData = {
+        imgData: string | null;
+        mmW: number;
+        mmH: number;
+        tabValue: string;
+      };
+      const pages: PageData[] = [];
+
+      for (const panel of panels) {
+        const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
+
+        // FIX 1 — Force a synchronous layout reflow so scrollHeight is accurate.
+        panel.style.width    = "1200px";
+        panel.style.minHeight = "100px";
+        void panel.offsetHeight; // triggers synchronous reflow
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+
+        // FIX 2 — Use offsetHeight as fallback if scrollHeight is still 0.
+        const captureWidth  = 1200;
+        const captureHeight = panel.scrollHeight > 0 ? panel.scrollHeight : panel.offsetHeight;
+
+        console.log(`Panel "${tabValue}" innerHTML length: ${panel.innerHTML.length}, height: ${captureHeight}`);
+
+        if (captureHeight === 0) {
+          console.warn("Panel has zero height after reflow — skipping:", tabValue);
+          pages.push({ imgData: null, mmW: 210, mmH: 80, tabValue });
+          continue;
+        }
+
+        // FIX 4 — Give React time to finish any pending re-renders.
+        await new Promise((r) => setTimeout(r, 400));
+
+        // Neutralise all broken/external images before capture.
+        neutraliseImages(panel);
+
+        // Individual try/catch — never abort the whole loop.
+        let imgData: string | null = null;
+        try {
+          // FIX 3 — Pass explicit width/height so html-to-image doesn't mis-measure.
+          imgData = await toJpeg(panel, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            width: captureWidth,
+            height: captureHeight,
+            skipFonts: true,
+            filter: imageFilter,
+          });
+        } catch (imgErr) {
+          console.warn("html-to-image failed for panel:", tabValue, imgErr);
+          imgData = null;
+        }
+
+        const mmW = CONTENT_MM_W; // 186mm — content area after margins
+        const mmH = (captureHeight / captureWidth) * CONTENT_MM_W;
+
+        console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
+
+        if (!imgData || mmH <= 0 || !isFinite(mmH)) {
+          pages.push({ imgData: null, mmW, mmH: 80, tabValue });
+        } else {
+          pages.push({ imgData, mmW, mmH, tabValue });
+        }
+      }
+
+      // Restore DOM before building the PDF (also runs in finally for error safety).
+      restoreDom();
+
+      console.log("All panels captured:", pages.length);
+
+      // ── Pre-fetch Kontakt images as base64 (for FAQ-less pages these are quick) ──
+      const base = import.meta.env.BASE_URL;
+      const [kontaktLogoB64, kontaktProfileB64] = await Promise.all([
+        fetchAsBase64(base + "brand-logo.png"),
+        fetchAsBase64(base + "kontakt-silvio.webp"),
+      ]);
+
+      // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
+      type FaqCapture = { imgData: string; mmH: number } | null;
+      let faqCapture: FaqCapture = null;
+      const faqIframe = document.createElement("iframe");
+      try {
+        faqIframe.style.cssText = [
+          "position:fixed",
+          "left:-9999px",
+          "top:0",
+          `width:${CAPTURE_WIDTH_PX}px`,
+          "height:2000px",
+          "border:none",
+          "opacity:0",
+        ].join(";");
+        document.body.appendChild(faqIframe);
+
+        // Write the self-contained HTML document into the iframe.
+        const faqDoc = faqIframe.contentDocument!;
+        faqDoc.open();
+        faqDoc.write(buildFaqDocumentHtml());
+        faqDoc.close();
+
+        // Let the browser finish painting all content (tables need time).
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const faqBody = faqDoc.body as HTMLBodyElement;
+        const faqH = Math.max(faqBody.scrollHeight, faqBody.offsetHeight);
+        console.log("FAQ iframe height:", faqH, "scrollHeight:", faqBody.scrollHeight, "offsetHeight:", faqBody.offsetHeight);
+        if (faqH === 0) {
+          console.warn("FAQ iframe body height is 0 — content may not have loaded");
+        }
+
+        if (faqH > 0) {
+          // Resize iframe to exact content height, then wait for reflow.
+          faqIframe.style.height = `${faqH}px`;
+          await new Promise((r) => setTimeout(r, 300));
+
+          const faqJpeg = await toJpeg(faqBody, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            skipFonts: true,
+          });
+          faqCapture = { imgData: faqJpeg, mmH: (faqH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH, "→", faqCapture.mmH.toFixed(1), "mm");
+        }
+      } catch (faqErr) {
+        console.warn("FAQ page capture failed:", faqErr);
+      } finally {
+        if (faqIframe.parentNode) document.body.removeChild(faqIframe);
+      }
+
+      // ── Capture Kontakt page via iframe ───────────────────────────────────────
+      type KontaktCapture = { imgData: string; mmH: number } | null;
+      let kontaktCapture: KontaktCapture = null;
+      const kontaktIframe = document.createElement("iframe");
+      try {
+        kontaktIframe.style.cssText = [
+          "position:fixed",
+          "left:-9999px",
+          "top:0",
+          `width:${CAPTURE_WIDTH_PX}px`,
+          "height:2000px",
+          "border:none",
+          "opacity:0",
+        ].join(";");
+        document.body.appendChild(kontaktIframe);
+
+        const kontaktDoc = kontaktIframe.contentDocument!;
+        kontaktDoc.open();
+        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktProfileB64));
+        kontaktDoc.close();
+
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const kontaktBody = kontaktDoc.body as HTMLBodyElement;
+        const kontaktH = Math.max(kontaktBody.scrollHeight, kontaktBody.offsetHeight);
+        console.log("Kontakt iframe height:", kontaktH);
+
+        if (kontaktH > 0) {
+          kontaktIframe.style.height = `${kontaktH}px`;
+          await new Promise((r) => setTimeout(r, 300));
+
+          const kontaktJpeg = await toJpeg(kontaktBody, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            skipFonts: true,
+          });
+          kontaktCapture = { imgData: kontaktJpeg, mmH: (kontaktH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          console.log("Kontakt page captured:", kontaktCapture.mmH.toFixed(1), "mm");
+        }
+      } catch (kontaktErr) {
+        console.warn("Kontakt page capture failed:", kontaktErr);
+      } finally {
+        if (kontaktIframe.parentNode) document.body.removeChild(kontaktIframe);
+      }
+
+      // CAUSE C — require at least one valid page before touching jsPDF.
+      const validPages = pages.filter(
+        (p) => p.imgData && p.mmW > 0 && p.mmH > 0
+      );
+      if (validPages.length === 0) {
+        throw new Error(
+          `Keine Seiten konnten gerendert werden. Alle ${pages.length} Panels haben leere Canvas.`
+        );
+      }
+
+      // Build file name using shared helpers.
+      const pdfDomain    = formatDomainForFilename(report.url);
+      const pdfTimestamp = buildExportTimestamp();
+      const today        = new Date().toISOString().slice(0, 10); // kept for the per-page label only
+
+      console.log("Creating jsPDF...");
+      const GAP_MM = 4; // vertical gap (mm) between header image and tab content
+      const hasHeader = !!headerImgData && headerMmH > 0;
+      // Page height = top margin + header (if any) + gap + tab content + bottom margin
+      const pageHeight = (tabMmH: number) =>
+        MARGIN_MM + (hasHeader ? headerMmH + GAP_MM : 0) + tabMmH + MARGIN_MM;
+
+      const firstValid = validPages[0];
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [PDF_MM_W, pageHeight(firstValid.mmH)],
+      });
+
+      pages.forEach((page, idx) => {
+        const pgH = pageHeight(page.mmH);
+        if (idx > 0) {
+          pdf.addPage([PDF_MM_W, pgH], "portrait");
+        }
+
+        // Header image — inset by MARGIN_MM on all sides.
+        if (hasHeader) {
+          pdf.addImage(headerImgData!, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, headerMmH);
+        }
+
+        const tabY = MARGIN_MM + (hasHeader ? headerMmH + GAP_MM : 0);
+
+        if (
+          page.imgData &&
+          typeof page.mmW === "number" && isFinite(page.mmW) && page.mmW > 0 &&
+          typeof page.mmH === "number" && isFinite(page.mmH) && page.mmH > 0
+        ) {
+          pdf.addImage(page.imgData, "JPEG", MARGIN_MM, tabY, CONTENT_MM_W, page.mmH);
+        } else {
+          pdf.setFontSize(12);
+          pdf.setTextColor(150, 150, 150);
+          pdf.text("Seite konnte nicht exportiert werden", PDF_MM_W / 2, tabY + page.mmH / 2, { align: "center" });
+        }
+
+        // Small label line — sits inside the top margin.
+        const tabLabel  = TAB_LABELS[page.tabValue] ?? page.tabValue;
+        const labelText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(labelText, MARGIN_MM, MARGIN_MM - 3);
+      });
+
+      // ── FAQ final page ────────────────────────────────────────────────────────
+      if (faqCapture) {
+        const faqPgH = MARGIN_MM + faqCapture.mmH + MARGIN_MM;
+        pdf.addPage([PDF_MM_W, faqPgH], "portrait");
+        pdf.addImage(faqCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, faqCapture.mmH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+      }
+
+      // ── Kontakt final page ────────────────────────────────────────────────────
+      if (kontaktCapture) {
+        const kontaktPgH = MARGIN_MM + kontaktCapture.mmH + MARGIN_MM;
+        pdf.addPage([PDF_MM_W, kontaktPgH], "portrait");
+        pdf.addImage(kontaktCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, kontaktCapture.mmH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(`Kontakt · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+      }
+
+      // Remove overlay BEFORE triggering download so it doesn't appear in capture.
+      removeOverlay();
+
+      console.log("Triggering download...");
+      pdf.save(`GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setExportError(
+        "PDF-Export fehlgeschlagen: " +
+        (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setExportingPdf(false);
+      setPdfMode(false);
+      // Always restore the DOM and overlay, even if an error occurred mid-capture.
+      restoreDom();
+      removeOverlay();
+    }
+  };
+
+  // ── HTML export ──────────────────────────────────────────────────────────────
+  const handleHtmlExport = async () => {
+    setExportingHtml(true);
+    try {
+      const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
+
+      const htmlBase = import.meta.env.BASE_URL;
+      const [htmlLogoB64, htmlProfileB64] = await Promise.all([
+        fetchAsBase64(htmlBase + "brand-logo.png"),
+        fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+      ]);
+
       const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
-        radarSvg,
-        donutSvg,
-        technicalBarSvg,
-        competitorBarSvg,
+        logoSrc: htmlLogoB64,
+        profileSrc: htmlProfileB64,
       });
       const blob = new Blob([htmlContent], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
+      const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `gaio-report-${report.id.slice(0, 8)}.html`;
+      a.href = dlUrl;
+      a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(dlUrl);
     } finally {
-      setExporting(false);
+      setExportingHtml(false);
     }
   };
 
@@ -714,56 +1239,73 @@ function ReportView({ analysisId }: { analysisId: string }) {
             {report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten
           </p>
         </div>
-        <Button size="sm" onClick={handleExport} disabled={exporting} data-testid="button-export">
-          {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
-          {exporting ? "Bereite Export vor…" : "Vollständigen Report exportieren"}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={handlePdfExport} disabled={exportingPdf} data-testid="button-export-pdf">
+            {exportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
+            {exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}
+          </Button>
+          <Button size="sm" onClick={handleHtmlExport} disabled={exportingHtml} data-testid="button-export-html">
+            {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
+            {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
+          </Button>
+        </div>
       </div>
+
+      {/* PDF export error banner */}
+      {exportError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <span className="shrink-0 mt-0.5">⚠</span>
+          <span>{exportError}</span>
+          <button className="ml-auto shrink-0 opacity-60 hover:opacity-100" onClick={() => setExportError(null)}>✕</button>
+        </div>
+      )}
 
       {/* Prompt to re-run */}
       <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
         Basisdaten ändern oder neue Analyse starten? → Wechseln Sie zu <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.
       </p>
 
-      {/* Score overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center py-2">
-            <ScoreDonut score={report.overallScore ?? 0} />
-          </CardContent>
-        </Card>
-        <Card className="md:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="hsl(var(--border))" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                <Radar dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={2} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Dimension scores */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-        {radarData.map((d) => (
-          <Card key={d.subject}>
-            <CardContent className="py-3 px-3 text-center">
-              <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
-              <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
-                {d.value}
-              </p>
+      {/* Score overview + dimension cards — captured as header in PDF */}
+      <div id="results-header" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
+            </CardHeader>
+            <CardContent className="flex justify-center py-2">
+              <ScoreDonut score={report.overallScore ?? 0} />
             </CardContent>
           </Card>
-        ))}
+          <Card className="md:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="hsl(var(--border))" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                  <Radar dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={2} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Dimension scores */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {radarData.map((d) => (
+            <Card key={d.subject}>
+              <CardContent className="py-3 px-3 text-center">
+                <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
+                  {d.value}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -776,7 +1318,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsList>
 
         {/* Details Tab */}
-        <TabsContent value="details" className="space-y-4 pt-4">
+        <TabsContent forceMount value="details" className="space-y-4 pt-4">
           {technicalBarData.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische SEO-Metriken</CardTitle></CardHeader>
@@ -787,7 +1329,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                     <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                     <YAxis type="category" dataKey="name" width={90} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                     <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} isAnimationActive={!pdfMode} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -796,7 +1338,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
           {/* Gecrawlte Seiten collapsible panel */}
           {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
-            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
+            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} pdfMode={pdfMode} />
           )}
 
           {/* Hreflang variants panel — always shown, handles empty state internally */}
@@ -902,7 +1444,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* LLM Tab */}
-        <TabsContent value="llm" className="space-y-4 pt-4">
+        <TabsContent forceMount value="llm" className="space-y-4 pt-4">
           {llmQuestions.length > 0 ? (
             <>
               {/* Sub-score grid */}
@@ -990,7 +1532,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* Competitors Tab */}
-        <TabsContent value="competitors" className="space-y-4 pt-4">
+        <TabsContent forceMount value="competitors" className="space-y-4 pt-4">
           {competitorComparison && competitorComparison.competitors.length > 0 ? (
             <>
               {/* Summary chart */}
@@ -1007,7 +1549,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                       <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                       <YAxis type="category" dataKey="name" width={140} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                       <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} formatter={(v) => [`${v}`, "Score"]} />
-                      <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]}>
+                      <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]} isAnimationActive={!pdfMode}>
                         {competitorChartData.map((entry, i) => (
                           <Cell key={i} fill={entry.isMain ? "hsl(var(--primary))" : "hsl(var(--chart-3))"} />
                         ))}
@@ -1033,7 +1575,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         </TabsContent>
 
         {/* Recommendations Tab */}
-        <TabsContent value="recommendations" className="space-y-5 pt-4">
+        <TabsContent forceMount value="recommendations" className="space-y-5 pt-4">
           {criticalRecs.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold flex items-center gap-2 text-red-500 uppercase tracking-wider">
