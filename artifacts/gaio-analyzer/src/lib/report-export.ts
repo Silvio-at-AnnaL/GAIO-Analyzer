@@ -30,6 +30,29 @@ type CompetitorEntry = {
   error?: string;
 };
 
+// ─── Language flag map (hreflang badges) ──────────────────────────────────────
+
+const LANG_FLAGS: Record<string, [string, string]> = {
+  "de":        ["🇩🇪", "DE"],
+  "en":        ["🇬🇧", "EN"],
+  "fr":        ["🇫🇷", "FR"],
+  "es":        ["🇪🇸", "ES"],
+  "it":        ["🇮🇹", "IT"],
+  "pl":        ["🇵🇱", "PL"],
+  "zh":        ["🇨🇳", "ZH"],
+  "pt":        ["🇵🇹", "PT"],
+  "nl":        ["🇳🇱", "NL"],
+  "ja":        ["🇯🇵", "JA"],
+  "ko":        ["🇰🇷", "KO"],
+  "ru":        ["🇷🇺", "RU"],
+  "x-default": ["🌐", "Default"],
+};
+
+function langBadge(lang: string): string {
+  const [flag, label] = LANG_FLAGS[lang] ?? ["🌐", lang.toUpperCase()];
+  return `${flag} ${label}`;
+}
+
 // ─── Light theme palette (hardcoded hex — no CSS vars, works standalone) ─────
 
 const C = {
@@ -172,11 +195,13 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   }
 
   if (hreflang.length > 0) {
+    const uniqueLangs = [...new Set(hreflang.map((v) => v.lang))].sort();
     html += `
-    <h3>Hreflang-Sprachvarianten (${hreflang.length})</h3>
+    <h3>Erkannte Sprachvarianten (${uniqueLangs.length})</h3>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-      ${hreflang.map((v) => `<span style="background:${C.bg};border:1px solid ${C.border};border-radius:4px;padding:3px 8px;font-size:11px;font-family:monospace;"><strong>${esc(v.lang)}</strong>&nbsp;&nbsp;<a href="${esc(v.url)}" style="color:${C.accent};">${esc(v.url)}</a></span>`).join("")}
-    </div>`;
+      ${uniqueLangs.map((lang) => `<span style="background:${C.bg};border:1px solid ${C.border};border-radius:6px;padding:4px 10px;font-size:13px;">${langBadge(lang)}</span>`).join("")}
+    </div>
+    <p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${hreflang.length} Sprachvarianten-URLs gespeichert für spätere Mehrsprachenanalyse</p>`;
   }
 
   if (crawledPages.length > 0) {
@@ -414,6 +439,116 @@ ${divider("FAQ / So funktioniert's")}
   Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten
   Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.
 </p>`;
+}
+
+/**
+ * Full self-contained HTML document for FAQ PDF capture via iframe.
+ * Uses a stylesheet inside <head> so tables and headings render reliably.
+ */
+export function buildFaqDocumentHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #ffffff;
+    color: #1a1d23;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px;
+    width: 1200px;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 2px solid #dde0e8; }
+  h2 { font-size: 15px; font-weight: 700; margin: 28px 0 12px; border-bottom: 2px solid #dde0e8; padding-bottom: 6px; }
+  p  { margin-bottom: 14px; color: #4a4d57; line-height: 1.7; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #dde0e8; }
+  th { background: #f4f5f7; padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #787b86; font-weight: 700; border-bottom: 1px solid #dde0e8; }
+  td { padding: 8px 12px; border-bottom: 1px solid #dde0e8; vertical-align: top; color: #1a1d23; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .block { border-left: 4px solid #dde0e8; padding: 10px 14px; margin-bottom: 10px; background: #f4f5f7; border-radius: 0 6px 6px 0; }
+  .block.red    { border-color: #ef4444; }
+  .block.orange { border-color: #f59e0b; }
+  .block.yellow { border-color: #eab308; }
+  .block .tier  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .block .title { font-size: 14px; font-weight: 600; color: #1a1d23; margin-bottom: 4px; }
+  .block .desc  { font-size: 12px; color: #4a4d57; }
+  .red    .tier { color: #ef4444; }
+  .orange .tier { color: #f59e0b; }
+  .yellow .tier { color: #eab308; }
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+</style>
+</head>
+<body>
+  <h1>FAQ / So funktioniert's</h1>
+
+  <h2>Was analysiert dieses Tool?</h2>
+  <p>Der GAIO Analyzer untersucht B2B-Websites auf ihre Auffindbarkeit durch KI-Sprachmodelle (LLMs wie ChatGPT, Gemini, Claude) sowie auf klassische SEO-Grundlagen. Das Ergebnis ist ein praxisorientierter Bericht mit priorisierten Handlungsempfehlungen.</p>
+
+  <h2>Die Analyse-Module im Überblick</h2>
+  <table>
+    <thead><tr><th>Modul</th><th>Was wird geprüft</th><th>Warum es wichtig ist</th></tr></thead>
+    <tbody>
+      <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
+      <tr><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
+      <tr><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
+      <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
+      <tr><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
+      <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Score-Gewichtung (Gesamt-GAIO-Score)</h2>
+  <table>
+    <thead><tr><th>Modul</th><th>Gewichtung</th><th>Begründung</th></tr></thead>
+    <tbody>
+      <tr><td>Strukturierte Daten</td><td><strong>20 %</strong></td><td>Direkt maschinenlesbar, höchste LLM-Verwertung</td></tr>
+      <tr><td>Inhaltliche Relevanz</td><td><strong>20 %</strong></td><td>Substanz ist Grundlage jeder LLM-Zitation</td></tr>
+      <tr><td>LLM-Sichtbarkeit</td><td><strong>20 %</strong></td><td>Direktes Maß der KI-Auffindbarkeit</td></tr>
+      <tr><td>Technische SEO-Basis</td><td><strong>15 %</strong></td><td>Enabler für alle anderen Module</td></tr>
+      <tr><td>FAQ-Qualität</td><td><strong>15 %</strong></td><td>Hoher Impact bei geringem Aufwand</td></tr>
+      <tr><td>Heading-Struktur</td><td><strong>10 %</strong></td><td>Wichtig, aber nicht allein entscheidend</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Score-Interpretation</h2>
+  <table>
+    <thead><tr><th>Score</th><th>Bewertung</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td><strong style="color:#ef4444">0–40</strong></td><td>Kritisch</td><td>Grundlegende Defizite — LLMs können diese Website kaum als verlässliche Quelle nutzen</td></tr>
+      <tr><td><strong style="color:#f59e0b">41–60</strong></td><td>Ausbaufähig</td><td>Technische Basis teilweise vorhanden, aber inhaltliche Lücken limitieren die LLM-Sichtbarkeit erheblich</td></tr>
+      <tr><td><strong style="color:#84cc16">61–75</strong></td><td>Solide</td><td>Gute Ausgangsbasis — gezielte Maßnahmen können die Sichtbarkeit spürbar steigern</td></tr>
+      <tr><td><strong style="color:#22c55e">76–90</strong></td><td>Stark</td><td>Überdurchschnittlich gut aufgestellt — Feinoptimierung empfohlen</td></tr>
+      <tr><td><strong style="color:#22c55e">91–100</strong></td><td>Exzellent</td><td>Best-in-class LLM-Readiness</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Empfehlungs-Priorisierung</h2>
+  <div class="block red">
+    <div class="tier">Kritisch</div>
+    <div class="title">Fundamentale Fehler, die sofort behoben werden müssen.</div>
+    <div class="desc">Beispiele: kein HTTPS, keine strukturierten Daten, H1 auf der Mehrheit der Seiten fehlend.</div>
+  </div>
+  <div class="block orange">
+    <div class="tier">Hoher Hebel</div>
+    <div class="title">Maßnahmen mit dem größten Wirkungspotenzial.</div>
+    <div class="desc">Beispiele: fehlende FAQPage-Schema, dünne Produktbeschreibungen ohne Anwendungsszenarien, fehlende Organization-Schema.</div>
+  </div>
+  <div class="block yellow">
+    <div class="tier">Nachgeordnet</div>
+    <div class="title">Optimierungen für nach der Erstbereinigung.</div>
+    <div class="desc">Beispiele: Meta-Description-Länge, Alt-Text-Lücken, Heading-Hierarchiefehler.</div>
+  </div>
+
+  <h2>Hinweise zur Genauigkeit</h2>
+  <p>Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber. Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
+
+  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+</body>
+</html>`;
 }
 
 /** Self-contained FAQ HTML for DOM injection during PDF capture (inline styles only). */

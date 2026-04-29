@@ -1,0 +1,171 @@
+Please fix two issues in the export functions.
+
+---
+
+FIX 1 — HTML export: language variants show only 
+unique language codes, not all URLs
+
+In the HTML export generation function, find the 
+section that renders "Hreflang-Sprachvarianten".
+
+Currently it iterates over every single entry in 
+the hreflang_variants array and renders each URL 
+as a badge — resulting in 116 badges for a 
+multilingual site.
+
+Change this to:
+
+STEP 1 — Extract unique language codes only.
+Before rendering, reduce the hreflang_variants array 
+to a deduplicated list of lang codes:
+
+  const uniqueLangs = [...new Set(
+    hrefLangVariants.map(v => v.lang)
+  )].sort()
+
+STEP 2 — Render one badge per unique language code.
+Use the same flag emoji + language name mapping 
+already used in the app's live results view.
+Each badge shows: flag emoji + language code in 
+uppercase. Example: 🇩🇪 DE, 🇬🇧 EN, 🇨🇳 ZH
+
+Use this mapping (same as the app already uses):
+  de → 🇩🇪 DE
+  en → 🇬🇧 EN
+  fr → 🇫🇷 FR
+  es → 🇪🇸 ES
+  it → 🇮🇹 IT
+  pl → 🇵🇱 PL
+  zh → 🇨🇳 ZH
+  pt → 🇵🇹 PT
+  nl → 🇳🇱 NL
+  ja → 🇯🇵 JA
+  ko → 🇰🇷 KO
+  ru → 🇷🇺 RU
+  x-default → 🌐 Default
+  For any lang code not in this list: show 🌐 + 
+  the code in uppercase
+
+STEP 3 — Update the count in the heading.
+Change "Hreflang-Sprachvarianten (116)" to show 
+the count of unique languages, not total URLs:
+  "Erkannte Sprachvarianten ([n])"
+  where n = uniqueLangs.length
+
+STEP 4 — Add a note below the badges:
+  "[total] Sprachvarianten-URLs gespeichert 
+  für spätere Mehrsprachenanalyse"
+  where total = hrefLangVariants.length (the 
+  full count, e.g. 116)
+
+---
+
+FIX 2 — PDF export: FAQ page is blank
+
+The FAQ page in the PDF shows a header but no content.
+The previous fixes (position:fixed, longer wait, 
+scrollHeight/offsetHeight) did not resolve it.
+
+Try a completely different approach: instead of 
+injecting and capturing a dynamically created 
+element, build the FAQ content as a data URL and 
+load it into a temporary iframe, then capture the 
+iframe's content window document body.
+
+Replace the current FAQ capture code with this:
+
+  // Build self-contained FAQ HTML document
+  const faqHtml = `<!DOCTYPE html>
+  <html><head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 
+        'Segoe UI', sans-serif;
+      background: #ffffff;
+      color: #1a1d23;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 32px;
+      width: 1200px;
+    }
+    h1 { font-size: 20px; font-weight: 700; 
+         margin-bottom: 24px; }
+    h2 { font-size: 15px; font-weight: 700; 
+         margin: 28px 0 12px; 
+         border-bottom: 2px solid #dde0e8;
+         padding-bottom: 6px; }
+    p { margin-bottom: 12px; color: #4a4d57; }
+    table { width: 100%; border-collapse: collapse; 
+            margin-bottom: 20px; font-size: 13px; }
+    th { background: #f4f5f7; padding: 8px 12px; 
+         text-align: left; font-size: 11px;
+         text-transform: uppercase; 
+         letter-spacing: 0.05em;
+         color: #787b86; font-weight: 700; }
+    td { padding: 8px 12px; 
+         border-bottom: 1px solid #dde0e8;
+         vertical-align: top; }
+    .block { border-left: 4px solid #dde0e8;
+             padding: 10px 14px; margin-bottom: 10px;
+             background: #f4f5f7; border-radius: 0 6px 6px 0; }
+    .block.red { border-color: #ef4444; }
+    .block.orange { border-color: #f59e0b; }
+    .block.yellow { border-color: #eab308; }
+    .block strong { display: block; margin-bottom: 4px; }
+  </style>
+  </head><body>
+  [INSERT THE COMPLETE STATIC FAQ HTML CONTENT HERE — 
+  same content as already implemented in the previous 
+  FAQ export attempt, with all headings, tables, and 
+  text blocks]
+  </body></html>`
+
+  // Create iframe to render it
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = `
+    position: fixed;
+    left: -9999px;
+    top: 0;
+    width: 1200px;
+    height: 2000px;
+    border: none;
+    opacity: 0;
+  `
+  document.body.appendChild(iframe)
+
+  // Write content into iframe
+  iframe.contentDocument.open()
+  iframe.contentDocument.write(faqHtml)
+  iframe.contentDocument.close()
+
+  // Wait for iframe to fully render
+  await new Promise(r => setTimeout(r, 1000))
+
+  // Measure actual content height
+  const faqBody = iframe.contentDocument.body
+  const faqHeight = Math.max(
+    faqBody.scrollHeight,
+    faqBody.offsetHeight
+  )
+  console.log('FAQ iframe height:', faqHeight)
+
+  // Resize iframe to full content height
+  iframe.style.height = faqHeight + 'px'
+  await new Promise(r => setTimeout(r, 300))
+
+  // Capture the iframe body
+  const faqImgData = await toJpeg(faqBody, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: true
+  })
+
+  // Clean up
+  document.body.removeChild(iframe)
+
+  // Calculate PDF dimensions and add page
+  const faqMmH = (faqHeight / 1200) * 186
+  // ... add to PDF as usual with 12mm margins

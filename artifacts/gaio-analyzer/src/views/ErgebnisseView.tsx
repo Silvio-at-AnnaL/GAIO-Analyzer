@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
-import { generateHtmlReport, buildFaqPanelHtml } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -955,60 +955,56 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       console.log("All panels captured:", pages.length);
 
-      // ── Capture FAQ page (injected offscreen, then removed) ───────────────────
+      // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
       type FaqCapture = { imgData: string; mmH: number } | null;
       let faqCapture: FaqCapture = null;
+      const faqIframe = document.createElement("iframe");
       try {
-        const faqEl = document.createElement("div");
-        // position:fixed forces immediate layout relative to viewport — more reliable
-        // than absolute for off-screen rendering; left:-9999px keeps it invisible.
-        faqEl.style.cssText = [
+        faqIframe.style.cssText = [
           "position:fixed",
-          "top:0",
           "left:-9999px",
+          "top:0",
           `width:${CAPTURE_WIDTH_PX}px`,
-          "min-height:200px",
-          "background:#ffffff",
-          "color:#1a1d23",
-          "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-          "font-size:14px",
-          "line-height:1.6",
-          "padding:24px",
-          "box-sizing:border-box",
-          "display:block",
-          "visibility:visible",
-          "opacity:1",
-          "z-index:-1",
+          "height:2000px",
+          "border:none",
+          "opacity:0",
         ].join(";");
-        faqEl.innerHTML = buildFaqPanelHtml();
-        document.body.appendChild(faqEl);
-        neutraliseImages(faqEl);
-        // Force synchronous layout calculation.
-        void faqEl.offsetHeight;
-        // Wait longer than other panels — tables need more time to lay out.
-        await new Promise((r) => setTimeout(r, 800));
-        // Take the larger of scrollHeight / offsetHeight.
-        const faqH = Math.max(faqEl.scrollHeight, faqEl.offsetHeight);
-        console.log("FAQ element height before capture:", faqH, "scrollHeight:", faqEl.scrollHeight, "offsetHeight:", faqEl.offsetHeight);
+        document.body.appendChild(faqIframe);
+
+        // Write the self-contained HTML document into the iframe.
+        const faqDoc = faqIframe.contentDocument!;
+        faqDoc.open();
+        faqDoc.write(buildFaqDocumentHtml());
+        faqDoc.close();
+
+        // Let the browser finish painting all content (tables need time).
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const faqBody = faqDoc.body as HTMLBodyElement;
+        const faqH = Math.max(faqBody.scrollHeight, faqBody.offsetHeight);
+        console.log("FAQ iframe height:", faqH, "scrollHeight:", faqBody.scrollHeight, "offsetHeight:", faqBody.offsetHeight);
         if (faqH === 0) {
-          console.warn("FAQ element height is 0 after render wait — check element visibility");
+          console.warn("FAQ iframe body height is 0 — content may not have loaded");
         }
+
         if (faqH > 0) {
-          const faqJpeg = await toJpeg(faqEl, {
+          // Resize iframe to exact content height, then wait for reflow.
+          faqIframe.style.height = `${faqH}px`;
+          await new Promise((r) => setTimeout(r, 300));
+
+          const faqJpeg = await toJpeg(faqBody, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
-            width: CAPTURE_WIDTH_PX,
-            height: faqH,
             skipFonts: true,
-            filter: imageFilter,
           });
           faqCapture = { imgData: faqJpeg, mmH: (faqH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
           console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH, "→", faqCapture.mmH.toFixed(1), "mm");
         }
-        document.body.removeChild(faqEl);
       } catch (faqErr) {
         console.warn("FAQ page capture failed:", faqErr);
+      } finally {
+        if (faqIframe.parentNode) document.body.removeChild(faqIframe);
       }
 
       // CAUSE C — require at least one valid page before touching jsPDF.
