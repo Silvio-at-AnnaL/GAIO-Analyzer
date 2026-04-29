@@ -562,6 +562,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pdfMode, setPdfMode] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -680,6 +681,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const handlePdfExport = async () => {
     setExportingPdf(true);
     setExportError(null);
+    setPdfMode(true);
+    // Wait for React to re-render charts without animations before capture.
+    await new Promise((r) => setTimeout(r, 500));
     const PANEL_SELECTOR = '[role="tabpanel"]';
     let overlay: HTMLElement | null = null;
 
@@ -833,11 +837,24 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // FIX 4 — Give React time to finish any pending re-renders.
         await new Promise((r) => setTimeout(r, 400));
 
-        // Bug Fix 2 — Hide any broken/unloaded images before capture.
-        const imgs = Array.from(panel.querySelectorAll<HTMLImageElement>("img"));
-        imgs.forEach((img) => {
-          if (!img.complete || img.naturalWidth === 0) {
-            img.style.display = "none";
+        // Aggressively neutralise external/unloaded images before capture.
+        // Use visibility:hidden + zero dimensions so html-to-image never tries
+        // to fetch them (display:none alone isn't sufficient for some browsers).
+        panel.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+          const isExternal =
+            !!img.src &&
+            !img.src.startsWith(window.location.origin) &&
+            !img.src.startsWith("data:");
+          if (isExternal || !img.complete || img.naturalWidth === 0) {
+            img.style.visibility = "hidden";
+            img.style.width      = "0";
+            img.style.height     = "0";
+            img.style.minWidth   = "0";
+            img.style.minHeight  = "0";
+            img.style.padding    = "0";
+            img.style.margin     = "0";
+            img.style.border     = "none";
+            img.style.overflow   = "hidden";
           }
         });
 
@@ -855,10 +872,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
             filter: (node) => {
               const el = node as HTMLElement;
               if (el.tagName === "SCRIPT" || el.tagName === "NOSCRIPT") return false;
-              // Skip images that failed to load — prevents cross-origin fetch errors.
               if (el.tagName === "IMG") {
                 const img = el as HTMLImageElement;
-                if (!img.complete || img.naturalWidth === 0) return false;
+                const isExternal =
+                  !!img.src &&
+                  !img.src.startsWith(window.location.origin) &&
+                  !img.src.startsWith("data:");
+                if (isExternal || !img.complete || img.naturalWidth === 0) return false;
               }
               return true;
             },
@@ -948,6 +968,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       );
     } finally {
       setExportingPdf(false);
+      setPdfMode(false);
       // Always restore the DOM and overlay, even if an error occurred mid-capture.
       restoreDom();
       removeOverlay();
@@ -1081,7 +1102,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                     <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                     <YAxis type="category" dataKey="name" width={90} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                     <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} isAnimationActive={!pdfMode} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -1301,7 +1322,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                       <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                       <YAxis type="category" dataKey="name" width={140} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                       <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} formatter={(v) => [`${v}`, "Score"]} />
-                      <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]}>
+                      <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]} isAnimationActive={!pdfMode}>
                         {competitorChartData.map((entry, i) => (
                           <Cell key={i} fill={entry.isMain ? "hsl(var(--primary))" : "hsl(var(--chart-3))"} />
                         ))}

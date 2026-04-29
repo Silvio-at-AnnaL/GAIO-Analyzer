@@ -1,0 +1,78 @@
+The competitors panel still fails in html-to-image with 
+"html-to-image failed for panel: competitors". 
+Two changes are needed.
+
+---
+
+CHANGE 1 — Disable bar chart animations during PDF capture
+
+Some chart libraries animate bars on first render. If the 
+capture happens before the animation completes, the chart 
+may render as empty or partial.
+
+Find the bar chart component used in the competitors panel 
+(likely a Recharts BarChart or similar). Add a prop or 
+configuration that disables animation:
+
+For Recharts: add isAnimationActive={false} to every 
+<Bar>, <Line>, <Area>, and <Cell> component inside the 
+competitors tab panel.
+
+If the chart component accepts an isAnimationActive prop 
+at the chart level, set it there too.
+
+To avoid permanently disabling animations (which would 
+affect the normal UI), implement this as a React state 
+variable:
+
+  const [pdfMode, setPdfMode] = useState(false)
+
+Set setPdfMode(true) at the very start of handlePdfExport, 
+before any capture begins. Set setPdfMode(false) in the 
+finally block after export completes.
+
+Pass pdfMode as isAnimationActive={!pdfMode} to all 
+animated chart elements in the competitors panel.
+
+After setting pdfMode(true), wait 500ms before starting 
+captures to allow React to re-render the charts without 
+animations.
+
+---
+
+CHANGE 2 — More aggressive broken image removal
+
+The current filter is not catching all broken images. 
+Replace the image handling approach entirely.
+
+Before capturing the competitors panel, run this cleanup:
+
+  const allImgs = panel.querySelectorAll('img')
+  allImgs.forEach(img => {
+    const el = img as HTMLImageElement
+    // Hide ALL external images (any src not starting 
+    // with the current origin)
+    const isExternal = el.src && 
+      !el.src.startsWith(window.location.origin) &&
+      !el.src.startsWith('data:')
+    if (isExternal || !el.complete || el.naturalWidth === 0) {
+      el.style.visibility = 'hidden'
+      el.style.width = '0'
+      el.style.height = '0'
+      el.style.minWidth = '0'
+      el.style.minHeight = '0'
+      el.style.padding = '0'
+      el.style.margin = '0'
+      el.style.border = 'none'
+      el.style.overflow = 'hidden'
+    }
+  })
+
+Use visibility:hidden and zero dimensions instead of 
+display:none or the filter function — this ensures 
+html-to-image does not attempt to process or fetch 
+these image elements at all, while keeping the layout 
+of surrounding elements intact.
+
+Apply this cleanup to ALL panels before capture, not 
+just the competitors panel.
