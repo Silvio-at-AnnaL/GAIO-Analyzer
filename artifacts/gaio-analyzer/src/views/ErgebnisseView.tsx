@@ -558,6 +558,29 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
   );
 }
 
+// ── Shared export filename helpers ────────────────────────────────────────────
+
+/** Strip protocol/www, replace dots+slashes with underscores. */
+function formatDomainForFilename(url: string | null | undefined): string {
+  return (url ?? "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/$/, "")
+    .replace(/\./g, "_")
+    .replace(/\//g, "_") || "report";
+}
+
+/** Build the timestamp portion `DD-MM-YYYY--HH-MM-SS` from local time. */
+function buildExportTimestamp(d: Date = new Date()): string {
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh   = String(d.getHours()).padStart(2, "0");
+  const min  = String(d.getMinutes()).padStart(2, "0");
+  const ss   = String(d.getSeconds()).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy}--${hh}-${min}-${ss}`;
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages } = useAppStore();
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1017,12 +1040,10 @@ function ReportView({ analysisId }: { analysisId: string }) {
         );
       }
 
-      // Build file name parts.
-      const today = new Date().toISOString().slice(0, 10);
-      const safeCompany = (report.companyName ?? report.url ?? "Report")
-        .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, "")
-        .trim()
-        .replace(/\s+/g, "-");
+      // Build file name using shared helpers.
+      const pdfDomain    = formatDomainForFilename(report.url);
+      const pdfTimestamp = buildExportTimestamp();
+      const today        = new Date().toISOString().slice(0, 10); // kept for the per-page label only
 
       console.log("Creating jsPDF...");
       const GAP_MM = 4; // vertical gap (mm) between header image and tab content
@@ -1085,7 +1106,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       removeOverlay();
 
       console.log("Triggering download...");
-      pdf.save(`GAIO-Report-${safeCompany}-${today}.pdf`);
+      pdf.save(`GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`);
     } catch (err) {
       console.error("PDF export failed:", err);
       setExportError(
@@ -1105,24 +1126,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const handleHtmlExport = async () => {
     setExportingHtml(true);
     try {
-      // Build domain slug: strip protocol + www, replace dots and slashes with underscores.
-      const rawUrl = report.url ?? "";
-      const domainSlug = rawUrl
-        .replace(/^https?:\/\//, "")
-        .replace(/^www\./, "")
-        .replace(/\/$/, "")
-        .replace(/\./g, "_")
-        .replace(/\//g, "_") || "report";
-
-      // Local timestamp at moment of export.
-      const now = new Date();
-      const dd   = String(now.getDate()).padStart(2, "0");
-      const mm   = String(now.getMonth() + 1).padStart(2, "0");
-      const yyyy = now.getFullYear();
-      const hh   = String(now.getHours()).padStart(2, "0");
-      const min  = String(now.getMinutes()).padStart(2, "0");
-      const ss   = String(now.getSeconds()).padStart(2, "0");
-      const filename = `GAIO-Analyzer-${domainSlug}--${dd}-${mm}-${yyyy}--${hh}-${min}-${ss}.html`;
+      const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
 
       const htmlContent = generateHtmlReport(report as Record<string, unknown>);
       const blob = new Blob([htmlContent], { type: "text/html" });
