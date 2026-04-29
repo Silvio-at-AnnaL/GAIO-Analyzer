@@ -417,8 +417,9 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
   );
 }
 
-function CrawledPagesPanel({ pages }: { pages: string[] }) {
+function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMode?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
+  const expanded = isOpen || pdfMode;
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -428,10 +429,10 @@ function CrawledPagesPanel({ pages }: { pages: string[] }) {
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
       >
         <span>Gecrawlte Seiten ({pages.length} Seiten)</span>
-        {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
-      {isOpen && (
-        <div className="border-t border-border max-h-72 overflow-y-auto">
+      {expanded && (
+        <div className="border-t border-border overflow-visible">
           {pages.map((url, i) => (
             <a
               key={url}
@@ -1176,7 +1177,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
           {/* Gecrawlte Seiten collapsible panel */}
           {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
-            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} />
+            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} pdfMode={pdfMode} />
           )}
 
           {/* Hreflang variants panel — always shown, handles empty state internally */}
