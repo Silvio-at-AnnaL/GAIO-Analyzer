@@ -237,7 +237,12 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   const cc = report.competitorComparison as { competitors: CompetitorEntry[] } | null;
   if (!cc || cc.competitors.length === 0) return "";
 
-  const myScore  = (report.overallScore as number) ?? 0;
+  const myScore        = (report.overallScore as number) ?? 0;
+  const myTechnical    = ((report.technicalSeo      as Record<string, unknown>)?.score as number) ?? 0;
+  const mySchema       = ((report.schemaOrg         as Record<string, unknown>)?.score as number) ?? 0;
+  const myContent      = ((report.contentRelevance  as Record<string, unknown>)?.score as number) ?? 0;
+  const myHeadings     = ((report.headingStructure  as Record<string, unknown>)?.score as number) ?? 0;
+  const myFaq          = ((report.faqQuality        as Record<string, unknown>)?.score as number) ?? 0;
   const myDomain = report.url
     ? (() => { try { return new URL(report.url as string).hostname; } catch { return "Ihre Seite"; } })()
     : "Ihre Seite";
@@ -254,7 +259,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       <tr style="background:${C.bg};">
         <td><strong>${esc(myDomain)}</strong> <span style="font-size:10px;color:${C.textMuted}">(Ihre Seite)</span></td>
         <td><strong style="color:${scoreColor(myScore)}">${myScore}</strong></td>
-        <td colspan="5" style="color:${C.textMuted};font-size:11px;text-align:center">—</td>
+        <td style="color:${scoreColor(myTechnical)}">${myTechnical}</td>
+        <td style="color:${scoreColor(mySchema)}">${mySchema}</td>
+        <td style="color:${scoreColor(myContent)}">${myContent}</td>
+        <td style="color:${scoreColor(myHeadings)}">${myHeadings}</td>
+        <td style="color:${scoreColor(myFaq)}">${myFaq}</td>
       </tr>
       ${cc.competitors.map((c) => `
       <tr>
