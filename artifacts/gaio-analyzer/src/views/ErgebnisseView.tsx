@@ -683,12 +683,39 @@ function ReportView({ analysisId }: { analysisId: string }) {
     const PANEL_SELECTOR = '[role="tabpanel"]';
     let overlay: HTMLElement | null = null;
 
+    // Saved state for guaranteed restore in finally.
+    let savedPanels: HTMLElement[] = [];
+    let savedPanelStyles: Array<{
+      display: string; visibility: string; opacity: string;
+      position: string; height: string; overflow: string;
+      width: string; minHeight: string;
+    }> = [];
+    let savedSidebar: HTMLElement | null = null;
+    let savedSidebarDisplay = "";
+    let savedScrollY = 0;
+
     // Helper: clean up overlay if it was created.
     const removeOverlay = () => {
       if (overlay && overlay.parentNode) {
         document.body.removeChild(overlay);
         overlay = null;
       }
+    };
+
+    // Helper: restore panels & sidebar to original state.
+    const restoreDom = () => {
+      savedPanels.forEach((panel, i) => {
+        panel.style.display    = savedPanelStyles[i].display;
+        panel.style.visibility = savedPanelStyles[i].visibility;
+        panel.style.opacity    = savedPanelStyles[i].opacity;
+        panel.style.position   = savedPanelStyles[i].position;
+        panel.style.height     = savedPanelStyles[i].height;
+        panel.style.overflow   = savedPanelStyles[i].overflow;
+        panel.style.width      = savedPanelStyles[i].width;
+        panel.style.minHeight  = savedPanelStyles[i].minHeight;
+      });
+      if (savedSidebar) savedSidebar.style.display = savedSidebarDisplay;
+      window.scrollTo(0, savedScrollY);
     };
 
     try {
@@ -741,16 +768,15 @@ function ReportView({ analysisId }: { analysisId: string }) {
       `;
       document.body.appendChild(overlay);
 
-      // Save sidebar and scroll state.
-      const sidebar = document.querySelector<HTMLElement>("aside");
-      const scrollY = window.scrollY;
+      // Save sidebar and scroll state into outer-scoped vars (used by restoreDom in finally).
+      savedSidebar      = document.querySelector<HTMLElement>("aside");
+      savedScrollY      = window.scrollY;
+      savedSidebarDisplay = savedSidebar?.style.display ?? "";
+      if (savedSidebar) savedSidebar.style.display = "none";
 
-      // Hide sidebar.
-      const prevSidebarDisplay = sidebar?.style.display ?? "";
-      if (sidebar) sidebar.style.display = "none";
-
-      // Make ALL panels visible simultaneously so html2canvas sees real content.
-      const prevPanelStyles = panels.map((panel) => ({
+      // Save all panel styles, then force every panel visible for capture.
+      savedPanels       = panels;
+      savedPanelStyles  = panels.map((panel) => ({
         display:    panel.style.display,
         visibility: panel.style.visibility,
         opacity:    panel.style.opacity,
@@ -807,6 +833,14 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // FIX 4 — Give React time to finish any pending re-renders.
         await new Promise((r) => setTimeout(r, 400));
 
+        // Bug Fix 2 — Hide any broken/unloaded images before capture.
+        const imgs = Array.from(panel.querySelectorAll<HTMLImageElement>("img"));
+        imgs.forEach((img) => {
+          if (!img.complete || img.naturalWidth === 0) {
+            img.style.display = "none";
+          }
+        });
+
         // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
         try {
@@ -819,8 +853,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
             height: captureHeight,
             skipFonts: true,
             filter: (node) => {
-              const tag = (node as HTMLElement).tagName;
-              if (tag === "SCRIPT" || tag === "NOSCRIPT") return false;
+              const el = node as HTMLElement;
+              if (el.tagName === "SCRIPT" || el.tagName === "NOSCRIPT") return false;
+              // Skip images that failed to load — prevents cross-origin fetch errors.
+              if (el.tagName === "IMG") {
+                const img = el as HTMLImageElement;
+                if (!img.complete || img.naturalWidth === 0) return false;
+              }
               return true;
             },
           });
@@ -841,19 +880,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
         }
       }
 
-      // ── Restore everything before building the PDF ────────────────────────────
-      panels.forEach((panel, i) => {
-        panel.style.display    = prevPanelStyles[i].display;
-        panel.style.visibility = prevPanelStyles[i].visibility;
-        panel.style.opacity    = prevPanelStyles[i].opacity;
-        panel.style.position   = prevPanelStyles[i].position;
-        panel.style.height     = prevPanelStyles[i].height;
-        panel.style.overflow   = prevPanelStyles[i].overflow;
-        panel.style.width      = prevPanelStyles[i].width;
-        panel.style.minHeight  = prevPanelStyles[i].minHeight;
-      });
-      if (sidebar) sidebar.style.display = prevSidebarDisplay;
-      window.scrollTo(0, scrollY);
+      // Restore DOM before building the PDF (also runs in finally for error safety).
+      restoreDom();
 
       console.log("All panels captured:", pages.length);
 
@@ -920,7 +948,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       );
     } finally {
       setExportingPdf(false);
-      // Safety cleanup — remove overlay if error happened mid-capture.
+      // Always restore the DOM and overlay, even if an error occurred mid-capture.
+      restoreDom();
       removeOverlay();
     }
   };
