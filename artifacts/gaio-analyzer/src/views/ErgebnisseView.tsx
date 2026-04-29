@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
-import { generateHtmlReport, buildFaqDocumentHtml } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -570,6 +570,22 @@ function formatDomainForFilename(url: string | null | undefined): string {
     .replace(/\//g, "_") || "report";
 }
 
+/** Fetch a URL and return it as a base64 data-URI string (empty string on failure). */
+async function fetchAsBase64(url: string): Promise<string> {
+  try {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
+
 /** Build the timestamp portion `DD-MM-YYYY--HH-MM-SS` from local time. */
 function buildExportTimestamp(d: Date = new Date()): string {
   const dd   = String(d.getDate()).padStart(2, "0");
@@ -978,6 +994,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       console.log("All panels captured:", pages.length);
 
+      // ── Pre-fetch Kontakt images as base64 (for FAQ-less pages these are quick) ──
+      const base = import.meta.env.BASE_URL;
+      const [kontaktLogoB64, kontaktProfileB64] = await Promise.all([
+        fetchAsBase64(base + "brand-logo.png"),
+        fetchAsBase64(base + "kontakt-silvio.webp"),
+      ]);
+
       // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
       type FaqCapture = { imgData: string; mmH: number } | null;
       let faqCapture: FaqCapture = null;
@@ -1028,6 +1051,52 @@ function ReportView({ analysisId }: { analysisId: string }) {
         console.warn("FAQ page capture failed:", faqErr);
       } finally {
         if (faqIframe.parentNode) document.body.removeChild(faqIframe);
+      }
+
+      // ── Capture Kontakt page via iframe ───────────────────────────────────────
+      type KontaktCapture = { imgData: string; mmH: number } | null;
+      let kontaktCapture: KontaktCapture = null;
+      const kontaktIframe = document.createElement("iframe");
+      try {
+        kontaktIframe.style.cssText = [
+          "position:fixed",
+          "left:-9999px",
+          "top:0",
+          `width:${CAPTURE_WIDTH_PX}px`,
+          "height:2000px",
+          "border:none",
+          "opacity:0",
+        ].join(";");
+        document.body.appendChild(kontaktIframe);
+
+        const kontaktDoc = kontaktIframe.contentDocument!;
+        kontaktDoc.open();
+        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktProfileB64));
+        kontaktDoc.close();
+
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const kontaktBody = kontaktDoc.body as HTMLBodyElement;
+        const kontaktH = Math.max(kontaktBody.scrollHeight, kontaktBody.offsetHeight);
+        console.log("Kontakt iframe height:", kontaktH);
+
+        if (kontaktH > 0) {
+          kontaktIframe.style.height = `${kontaktH}px`;
+          await new Promise((r) => setTimeout(r, 300));
+
+          const kontaktJpeg = await toJpeg(kontaktBody, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            skipFonts: true,
+          });
+          kontaktCapture = { imgData: kontaktJpeg, mmH: (kontaktH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          console.log("Kontakt page captured:", kontaktCapture.mmH.toFixed(1), "mm");
+        }
+      } catch (kontaktErr) {
+        console.warn("Kontakt page capture failed:", kontaktErr);
+      } finally {
+        if (kontaktIframe.parentNode) document.body.removeChild(kontaktIframe);
       }
 
       // CAUSE C — require at least one valid page before touching jsPDF.
@@ -1102,6 +1171,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
         pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
       }
 
+      // ── Kontakt final page ────────────────────────────────────────────────────
+      if (kontaktCapture) {
+        const kontaktPgH = MARGIN_MM + kontaktCapture.mmH + MARGIN_MM;
+        pdf.addPage([PDF_MM_W, kontaktPgH], "portrait");
+        pdf.addImage(kontaktCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, kontaktCapture.mmH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(`Kontakt · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+      }
+
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
       removeOverlay();
 
@@ -1128,7 +1207,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
     try {
       const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
 
-      const htmlContent = generateHtmlReport(report as Record<string, unknown>);
+      const htmlBase = import.meta.env.BASE_URL;
+      const [htmlLogoB64, htmlProfileB64] = await Promise.all([
+        fetchAsBase64(htmlBase + "brand-logo.png"),
+        fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+      ]);
+
+      const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+        logoSrc: htmlLogoB64,
+        profileSrc: htmlProfileB64,
+      });
       const blob = new Blob([htmlContent], { type: "text/html" });
       const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");

@@ -645,9 +645,118 @@ export function buildFaqPanelHtml(): string {
 </div>`;
 }
 
+// ─── Kontakt ──────────────────────────────────────────────────────────────────
+
+/** Inner HTML for the Kontakt section in the HTML one-pager. */
+function renderKontaktSection(logoSrc: string, profileSrc: string): string {
+  const logoImg = logoSrc
+    ? `<img src="${logoSrc}" alt="Deutscher Medien Verlag / IndustryStock.com" style="max-height:52px;max-width:220px;object-fit:contain;" />`
+    : `<div style="height:52px;display:flex;align-items:center;border:1px dashed #dde0e8;border-radius:6px;padding:0 14px;color:#787b86;font-size:12px;">[Bild: Brand-Logo]</div>`;
+  const profileImg = profileSrc
+    ? `<img src="${profileSrc}" alt="Silvio Haase" style="width:100px;height:100px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;flex-shrink:0;" />`
+    : `<div style="width:100px;height:100px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;flex-shrink:0;">[Bild:<br>Silvio Haase]</div>`;
+
+  return `
+${divider("Kontakt")}
+<h2>Kontakt</h2>
+<div style="background:#ffffff;border:1px solid #dde0e8;border-radius:10px;padding:28px 24px;max-width:600px;">
+  <div style="margin-bottom:20px;">${logoImg}</div>
+  <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #dde0e8;">
+    <div style="flex-shrink:0;">${profileImg}</div>
+    <div>
+      <div style="font-size:16px;font-weight:700;color:#1a1d23;margin-bottom:4px;">Silvio Haase</div>
+      <div style="font-size:13px;color:#4a4d57;margin-bottom:2px;">CMO &amp; Head of Business Development</div>
+      <div style="font-size:13px;color:#4a4d57;margin-bottom:8px;">Deutscher Medien Verlag GmbH / IndustryStock.com</div>
+      <a href="mailto:Silvio.Haase@IndustryStock.com" style="font-size:13px;color:#3b82f6;font-weight:500;text-decoration:none;">&#9993; Silvio.Haase@IndustryStock.com</a>
+    </div>
+  </div>
+  <p style="font-size:13px;color:#1a1d23;line-height:1.7;margin-bottom:10px;">
+    Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen
+    oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?
+  </p>
+  <p style="font-size:13px;color:#4a4d57;line-height:1.7;margin-bottom:20px;">
+    Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.
+  </p>
+  <a href="mailto:Silvio.Haase@IndustryStock.com"
+     style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">
+    &#9993; E-Mail schreiben
+  </a>
+</div>`;
+}
+
+/**
+ * Full self-contained HTML document for Kontakt PDF capture via iframe.
+ */
+export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): string {
+  const logoImg = logoSrc
+    ? `<img src="${logoSrc}" alt="Deutscher Medien Verlag / IndustryStock.com" style="max-height:52px;max-width:220px;object-fit:contain;" />`
+    : `<div style="height:52px;display:flex;align-items:center;border:1px dashed #dde0e8;border-radius:6px;padding:0 14px;color:#787b86;font-size:12px;">[Bild: Brand-Logo]</div>`;
+  const profileImg = profileSrc
+    ? `<img src="${profileSrc}" alt="Silvio Haase" style="width:110px;height:110px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;" />`
+    : `<div style="width:110px;height:110px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;">[Bild:<br>Silvio Haase]</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #ffffff;
+    color: #1a1d23;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px;
+    width: 1200px;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 2px solid #dde0e8; }
+  .card { border: 1px solid #dde0e8; border-radius: 10px; padding: 28px; max-width: 700px; }
+  .logo { margin-bottom: 20px; }
+  .person { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #dde0e8; }
+  .name  { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .role  { font-size: 13px; color: #4a4d57; margin-bottom: 2px; }
+  .co    { font-size: 13px; color: #4a4d57; margin-bottom: 8px; }
+  .email { font-size: 13px; color: #3b82f6; font-weight: 500; }
+  .text  { font-size: 13px; color: #1a1d23; line-height: 1.7; margin-bottom: 10px; }
+  .sec   { font-size: 13px; color: #4a4d57; line-height: 1.7; margin-bottom: 20px; }
+  .cta   { display: inline-block; background: #3b82f6; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
+  .note  { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+</style>
+</head>
+<body>
+  <h1>Kontakt</h1>
+  <div class="card">
+    <div class="logo">${logoImg}</div>
+    <div class="person">
+      <div>${profileImg}</div>
+      <div>
+        <div class="name">Silvio Haase</div>
+        <div class="role">CMO &amp; Head of Business Development</div>
+        <div class="co">Deutscher Medien Verlag GmbH / IndustryStock.com</div>
+        <div class="email">E-Mail: Silvio.Haase@IndustryStock.com</div>
+      </div>
+    </div>
+    <p class="text">
+      Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen
+      oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?
+    </p>
+    <p class="sec">
+      Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.
+    </p>
+    <a class="cta" href="mailto:Silvio.Haase@IndustryStock.com">E-Mail schreiben</a>
+  </div>
+  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+</body>
+</html>`;
+}
+
 // ─── Main export function ─────────────────────────────────────────────────────
 
-export function generateHtmlReport(report: Record<string, unknown>): string {
+export function generateHtmlReport(
+  report: Record<string, unknown>,
+  opts: { logoSrc?: string; profileSrc?: string } = {}
+): string {
   const overallScore = (report.overallScore as number) ?? 0;
   const url          = String(report.url ?? "HTML-Upload");
   const crawledCount = ((report.crawledPages as string[]) ?? []).length;
@@ -667,6 +776,7 @@ export function generateHtmlReport(report: Record<string, unknown>): string {
     renderCompetitorSection(report),
     renderRecommendationsSection(report),
     renderFaqSection(),
+    renderKontaktSection(opts.logoSrc ?? "", opts.profileSrc ?? ""),
   ].filter(Boolean).join("\n");
 
   return `<!DOCTYPE html>
