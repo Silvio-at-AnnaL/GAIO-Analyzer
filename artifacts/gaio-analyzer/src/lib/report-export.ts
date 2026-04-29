@@ -1,12 +1,5 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface ExportSvgs {
-  radarSvg?: string | null;
-  donutSvg?: string | null;
-  technicalBarSvg?: string | null;
-  competitorBarSvg?: string | null;
-}
-
 type LlmQ = {
   question: string;
   rating: number;
@@ -88,11 +81,13 @@ function stars(n: number): string {
   return "★".repeat(Math.max(0, Math.min(5, n))) + "☆".repeat(Math.max(0, 5 - n));
 }
 
-// ─── Section renderers ────────────────────────────────────────────────────────
-// Each function takes the full report + svgs and returns an HTML string.
-// Adding a new results section = adding one entry to the SECTIONS array below.
+function divider(label: string): string {
+  return `<div class="section-divider"><span>${esc(label)}</span></div>`;
+}
 
-function renderDetailsSection(report: Record<string, unknown>, svgs: ExportSvgs): string {
+// ─── Section renderers ────────────────────────────────────────────────────────
+
+function renderDetailsSection(report: Record<string, unknown>): string {
   const technicalSeo   = report.technicalSeo   as Record<string, unknown> | null;
   const schemaOrg      = report.schemaOrg      as Record<string, unknown> | null;
   const headings       = report.headingStructure as Record<string, unknown> | null;
@@ -100,71 +95,82 @@ function renderDetailsSection(report: Record<string, unknown>, svgs: ExportSvgs)
   const faq            = report.faqQuality      as Record<string, unknown> | null;
   const hreflang       = (report.hreflangVariants as Array<{ lang: string; url: string }> | undefined) ?? [];
   const crawledPages   = ((report.crawledPages as string[]) ?? []).filter((p) => p !== "uploaded-page");
+  const crawledCount   = (report.crawledPages as string[])?.length ?? 0;
 
-  let html = `<h2>Technische Analyse</h2>`;
+  let html = divider("Details");
+  html += `<h2>Technische Analyse</h2>`;
+  html += `<p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${crawledCount} Seiten analysiert</p>`;
 
-  // Technical SEO details
   if (technicalSeo) {
+    const metaTitlePct   = Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
+    const metaDescPct    = Math.round(((technicalSeo.metaDescriptions as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
+    const altPct         = (technicalSeo.imageAltCoverage as number) ?? 0;
+    const httpsPct       = (technicalSeo.httpsEnforced as boolean) ? 100 : 0;
+    const viewportPct    = (technicalSeo.mobileViewport as boolean) ? 100 : 0;
+
     html += `
-    ${svgs.technicalBarSvg ? `<div class="chart-box"><h4>SEO-Metriken Abdeckung (%)</h4>${svgs.technicalBarSvg}</div>` : ""}
+    <h3>SEO-Metriken Abdeckung</h3>
+    <table class="data-table">
+      <thead><tr><th>Metrik</th><th>Wert</th></tr></thead>
+      <tbody>
+        <tr><td>Meta-Titel</td><td>${metaTitlePct}%</td></tr>
+        <tr><td>Meta-Beschreibung</td><td>${metaDescPct}%</td></tr>
+        <tr><td>Alt-Texte</td><td>${altPct}%</td></tr>
+        <tr><td>HTTPS</td><td>${httpsPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
+        <tr><td>Viewport</td><td>${viewportPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
+      </tbody>
+    </table>
     <div class="detail-grid">
+      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((technicalSeo.score as number) ?? 0)}">${technicalSeo.score}/100</div></div>
       <div class="detail-item"><div class="label">Antwortzeit</div><div class="val">${technicalSeo.responseTime} ms</div></div>
       <div class="detail-item"><div class="label">TTFB</div><div class="val">${technicalSeo.ttfb} ms</div></div>
       <div class="detail-item"><div class="label">robots.txt</div><div class="val">${(technicalSeo.robotsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">sitemap.xml</div><div class="val">${(technicalSeo.sitemapXml as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label">HTTPS</div><div class="val">${(technicalSeo.httpsEnforced as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label">Viewport</div><div class="val">${(technicalSeo.mobileViewport as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label">Alt-Texte</div><div class="val">${technicalSeo.imageAltCoverage}%</div></div>
       <div class="detail-item"><div class="label">Canonical Tags</div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
     </div>`;
   }
 
-  // Schema.org
   if (schemaOrg) {
     const types = (schemaOrg.detectedTypes as string[] | undefined) ?? [];
     html += `
     <h3>Schema.org / Strukturierte Daten</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val">${schemaOrg.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((schemaOrg.score as number) ?? 0)}">${schemaOrg.score}/100</div></div>
       <div class="detail-item"><div class="label">Typen erkannt</div><div class="val">${types.length}</div></div>
     </div>
     ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}`;
   }
 
-  // Heading structure
   if (headings) {
     const h1 = (headings.h1Tags as Record<string, unknown>)?.count ?? 0;
     const issues = (headings.issues as string[] | undefined) ?? [];
     html += `
     <h3>Heading-Struktur</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val">${headings.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
       <div class="detail-item"><div class="label">H1-Tags</div><div class="val">${h1}</div></div>
     </div>
     ${issues.length > 0 ? `<ul style="font-size:12px;color:${C.textSec};margin:6px 0;padding-left:16px;">${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}`;
   }
 
-  // Content relevance
   if (content) {
     html += `
     <h3>Inhaltliche Relevanz</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val">${content.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((content.score as number) ?? 0)}">${content.score}/100</div></div>
     </div>`;
   }
 
-  // FAQ quality
   if (faq) {
     html += `
     <h3>FAQ-Qualität</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val">${faq.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((faq.score as number) ?? 0)}">${faq.score}/100</div></div>
       <div class="detail-item"><div class="label">FAQ gefunden</div><div class="val">${(faq.faqFound as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       ${(faq.questionCount as number | undefined) !== undefined ? `<div class="detail-item"><div class="label">Fragen</div><div class="val">${faq.questionCount}</div></div>` : ""}
     </div>`;
   }
 
-  // Hreflang variants
   if (hreflang.length > 0) {
     html += `
     <h3>Hreflang-Sprachvarianten (${hreflang.length})</h3>
@@ -173,7 +179,6 @@ function renderDetailsSection(report: Record<string, unknown>, svgs: ExportSvgs)
     </div>`;
   }
 
-  // Crawled pages
   if (crawledPages.length > 0) {
     html += `
     <h3>Gecrawlte Seiten (${crawledPages.length})</h3>
@@ -185,17 +190,18 @@ function renderDetailsSection(report: Record<string, unknown>, svgs: ExportSvgs)
   return html;
 }
 
-function renderLlmSection(report: Record<string, unknown>, _svgs: ExportSvgs): string {
+function renderLlmSection(report: Record<string, unknown>): string {
   const llm = report.llmDiscoverability as Record<string, unknown> | null;
   if (!llm) return "";
 
-  const partA    = llm.partA as LlmPart | undefined;
-  const partB    = llm.partB as LlmPart | undefined;
-  const qs       = (llm.questions || []) as LlmQ[];
+  const partA     = llm.partA as LlmPart | undefined;
+  const partB     = llm.partB as LlmPart | undefined;
+  const qs        = (llm.questions || []) as LlmQ[];
   const avgRating = (llm.avgRating as number | undefined) ?? 0;
   const llmScore  = (llm.score as number | undefined) ?? 0;
 
-  let html = `<h2>LLM-Auffindbarkeit</h2>
+  let html = divider("LLM-Auffindbarkeit");
+  html += `<h2>LLM-Auffindbarkeit</h2>
   <div class="score-grid">
     ${partA ? `<div class="score-card"><div class="label">Teil A – Auffindbarkeit (70%)</div><div class="val" style="color:${scoreColor(partA.score)}">${partA.score}</div><div class="meta">Ø ${partA.avgRating.toFixed(2)} / 5</div></div>` : ""}
     ${partB ? `<div class="score-card"><div class="label">Teil B – Informationstiefe (30%)</div><div class="val" style="color:${scoreColor(partB.score)}">${partB.score}</div><div class="meta">Ø ${partB.avgRating.toFixed(2)} / 5</div></div>` : ""}
@@ -227,7 +233,7 @@ function renderLlmSection(report: Record<string, unknown>, _svgs: ExportSvgs): s
   return html;
 }
 
-function renderCompetitorSection(report: Record<string, unknown>, svgs: ExportSvgs): string {
+function renderCompetitorSection(report: Record<string, unknown>): string {
   const cc = report.competitorComparison as { competitors: CompetitorEntry[] } | null;
   if (!cc || cc.competitors.length === 0) return "";
 
@@ -236,13 +242,9 @@ function renderCompetitorSection(report: Record<string, unknown>, svgs: ExportSv
     ? (() => { try { return new URL(report.url as string).hostname; } catch { return "Ihre Seite"; } })()
     : "Ihre Seite";
 
-  let html = `<h2>Wettbewerbsvergleich</h2>`;
+  let html = divider("Wettbewerb");
+  html += `<h2>Wettbewerbsvergleich</h2>`;
 
-  if (svgs.competitorBarSvg) {
-    html += `<div class="chart-box"><h4>Composite Score Vergleich</h4>${svgs.competitorBarSvg}</div>`;
-  }
-
-  // Score comparison table
   html += `
   <table class="comp-table">
     <thead><tr>
@@ -267,7 +269,6 @@ function renderCompetitorSection(report: Record<string, unknown>, svgs: ExportSv
     </tbody>
   </table>`;
 
-  // Detailed card per competitor
   html += cc.competitors.map((c) => `
   <div class="comp-card">
     <div class="comp-header">
@@ -295,55 +296,59 @@ function renderCompetitorSection(report: Record<string, unknown>, svgs: ExportSv
   return html;
 }
 
-function renderRecommendationsSection(report: Record<string, unknown>, _svgs: ExportSvgs): string {
+function renderRecommendationsSection(report: Record<string, unknown>): string {
   const recs = (report.recommendations || []) as Array<{
     tier: string; finding: string; whyItMatters: string; fixInstruction: string;
   }>;
   if (recs.length === 0) return "";
 
-  return `<h2>Empfehlungen</h2>
-  ${recs.map((r) => `
+  const bySeverity = [
+    { key: "critical",      label: "Kritisch" },
+    { key: "high_leverage", label: "Hoher Hebel" },
+    { key: "secondary",     label: "Nachgeordnet" },
+  ];
+
+  let html = divider("Empfehlungen");
+  html += `<h2>Empfehlungen</h2>`;
+
+  for (const { key, label } of bySeverity) {
+    const group = recs.filter((r) => r.tier === key);
+    if (group.length === 0) continue;
+    html += `<h3 style="color:${tierColor(key)}">${esc(label)} (${group.length})</h3>`;
+    html += group.map((r) => `
   <div class="rec" style="border-color:${tierColor(r.tier)}">
     <div class="tier" style="color:${tierColor(r.tier)}">${tierLabel(r.tier)}</div>
     <div class="finding">${esc(r.finding)}</div>
     <div class="why">${esc(r.whyItMatters)}</div>
     <div class="fix">${esc(r.fixInstruction)}</div>
-  </div>`).join("")}`;
+  </div>`).join("");
+  }
+
+  return html;
 }
-
-// ─── Section registry — add new tabs here only ────────────────────────────────
-
-type SectionDef = {
-  render: (report: Record<string, unknown>, svgs: ExportSvgs) => string;
-};
-
-const SECTIONS: SectionDef[] = [
-  { render: renderDetailsSection },
-  { render: renderLlmSection },
-  { render: renderCompetitorSection },
-  { render: renderRecommendationsSection },
-];
 
 // ─── Main export function ─────────────────────────────────────────────────────
 
-export function generateHtmlReport(report: Record<string, unknown>, svgs: ExportSvgs = {}): string {
+export function generateHtmlReport(report: Record<string, unknown>): string {
   const overallScore = (report.overallScore as number) ?? 0;
-  const url = String(report.url ?? "HTML-Upload");
+  const url          = String(report.url ?? "HTML-Upload");
   const crawledCount = ((report.crawledPages as string[]) ?? []).length;
 
   const scoreDefs = [
-    { name: "Technisches SEO",     score: ((report.technicalSeo   as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Schema.org",          score: ((report.schemaOrg      as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Heading-Struktur",    score: ((report.headingStructure as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Inhaltliche Relevanz",score: ((report.contentRelevance as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "FAQ-Qualität",        score: ((report.faqQuality      as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "LLM-Auffindbarkeit",  score: ((report.llmDiscoverability as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "Technisches SEO",      score: ((report.technicalSeo        as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "Schema.org",           score: ((report.schemaOrg           as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "Heading-Struktur",     score: ((report.headingStructure    as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "Inhaltliche Relevanz", score: ((report.contentRelevance    as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "FAQ-Qualität",         score: ((report.faqQuality          as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "LLM-Auffindbarkeit",   score: ((report.llmDiscoverability  as Record<string, unknown>)?.score as number) ?? 0 },
   ];
 
-  const bodyContent = SECTIONS
-    .map((s) => s.render(report, svgs))
-    .filter(Boolean)
-    .join("\n");
+  const bodyContent = [
+    renderDetailsSection(report),
+    renderLlmSection(report),
+    renderCompetitorSection(report),
+    renderRecommendationsSection(report),
+  ].filter(Boolean).join("\n");
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -374,6 +379,20 @@ export function generateHtmlReport(report: Record<string, unknown>, svgs: Export
   h4 { font-size: 11px; color: ${C.textMuted}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
   .subtitle { color: ${C.textMuted}; font-size: 13px; margin-top: 2px; }
 
+  /* Section divider */
+  .section-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 40px 0 0;
+  }
+  .section-divider::before, .section-divider::after {
+    content: ""; flex: 1; height: 2px; background: ${C.border};
+  }
+  .section-divider span {
+    font-size: 11px; font-weight: 700; color: ${C.textMuted};
+    text-transform: uppercase; letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+
   /* Overall score */
   .overall {
     background: ${C.card}; border: 1px solid ${C.border}; border-radius: 10px;
@@ -392,13 +411,19 @@ export function generateHtmlReport(report: Record<string, unknown>, svgs: Export
   .score-card .val { font-size: 26px; font-weight: 800; margin-top: 2px; }
   .score-card .meta { font-size: 10px; color: ${C.textMuted}; margin-top: 2px; }
 
-  /* Charts */
-  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
-  .chart-box {
-    background: ${C.card}; border: 1px solid ${C.border}; border-radius: 8px;
-    padding: 14px;
+  /* Generic data table (replaces bar charts) */
+  .data-table {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 16px;
+    border: 1px solid ${C.border}; border-radius: 6px; overflow: hidden;
   }
-  .chart-box svg { display: block; margin: 0 auto; max-width: 100%; height: auto; max-height: 260px; }
+  .data-table th {
+    background: ${C.bg}; color: ${C.textMuted}; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 7px 10px; text-align: left; border-bottom: 1px solid ${C.border};
+  }
+  .data-table td { padding: 7px 10px; border-bottom: 1px solid ${C.border}; color: ${C.text}; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:nth-child(even) td { background: ${C.bg}; }
 
   /* Detail grid */
   .detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
@@ -471,23 +496,17 @@ export function generateHtmlReport(report: Record<string, unknown>, svgs: Export
   <p class="subtitle">${esc(url)} · ${crawledCount} Seiten · ${new Date().toLocaleDateString("de-DE")}</p>
 
   <div class="overall">
-    <div class="val" style="color:${scoreColor(overallScore)}">${overallScore}</div>
+    <div class="val" style="color:${scoreColor(overallScore)}">${overallScore}<span style="font-size:24px;font-weight:400;color:${C.textMuted}">/100</span></div>
     <div class="lbl">GAIO Gesamtscore</div>
   </div>
 
-  ${svgs.donutSvg || svgs.radarSvg ? `
-  <div class="charts">
-    ${svgs.donutSvg  ? `<div class="chart-box"><h4>Score-Übersicht</h4>${svgs.donutSvg}</div>`          : ""}
-    ${svgs.radarSvg  ? `<div class="chart-box"><h4>Radar (alle Module)</h4>${svgs.radarSvg}</div>`       : ""}
-  </div>` : ""}
-
-  <div class="score-grid">
-    ${scoreDefs.map((s) => `
-    <div class="score-card">
-      <div class="label">${esc(s.name)}</div>
-      <div class="val" style="color:${scoreColor(s.score)}">${s.score}</div>
-    </div>`).join("")}
-  </div>
+  <h3 style="margin-bottom:8px;">Dimensionen im Überblick</h3>
+  <table class="data-table">
+    <thead><tr><th>Dimension</th><th>Score</th></tr></thead>
+    <tbody>
+      ${scoreDefs.map((s) => `<tr><td>${esc(s.name)}</td><td style="font-weight:700;color:${scoreColor(s.score)}">${s.score}/100</td></tr>`).join("")}
+    </tbody>
+  </table>
 
   ${bodyContent}
 

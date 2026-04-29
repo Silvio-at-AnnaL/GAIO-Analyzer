@@ -1043,24 +1043,31 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const handleHtmlExport = async () => {
     setExportingHtml(true);
     try {
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const svgs = document.querySelectorAll(".recharts-wrapper svg");
-      const radarSvg = svgs[0] ? captureSvg(".recharts-wrapper svg") : null;
-      const technicalBarSvg = svgs[1] ? new XMLSerializer().serializeToString(svgs[1]) : null;
-      const competitorBarSvg = svgs[2] ? new XMLSerializer().serializeToString(svgs[2]) : null;
-      const donutEl = document.querySelector(".score-donut svg");
-      const donutSvg = donutEl ? new XMLSerializer().serializeToString(donutEl) : null;
-      const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
-        radarSvg,
-        donutSvg,
-        technicalBarSvg,
-        competitorBarSvg,
-      });
+      // Build domain slug: strip protocol + www, replace dots and slashes with underscores.
+      const rawUrl = report.url ?? "";
+      const domainSlug = rawUrl
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/$/, "")
+        .replace(/\./g, "_")
+        .replace(/\//g, "_") || "report";
+
+      // Local timestamp at moment of export.
+      const now = new Date();
+      const dd   = String(now.getDate()).padStart(2, "0");
+      const mm   = String(now.getMonth() + 1).padStart(2, "0");
+      const yyyy = now.getFullYear();
+      const hh   = String(now.getHours()).padStart(2, "0");
+      const min  = String(now.getMinutes()).padStart(2, "0");
+      const ss   = String(now.getSeconds()).padStart(2, "0");
+      const filename = `GAIO-Analyzer-${domainSlug}--${dd}-${mm}-${yyyy}--${hh}-${min}-${ss}.html`;
+
+      const htmlContent = generateHtmlReport(report as Record<string, unknown>);
       const blob = new Blob([htmlContent], { type: "text/html" });
       const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = dlUrl;
-      a.download = `gaio-report-${report.id.slice(0, 8)}.html`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(dlUrl);
     } finally {
