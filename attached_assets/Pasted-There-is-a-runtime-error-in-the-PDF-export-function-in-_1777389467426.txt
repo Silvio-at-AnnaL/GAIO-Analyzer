@@ -1,0 +1,101 @@
+There is a runtime error in the PDF export function in 
+ErgebnisseView.tsx at line 777. The error is:
+"Invalid argument passed to jsPDF.scale"
+
+This happens at:
+  pdf.addImage(page.imgData, "JPEG", 0, 0, mmW, mmH)
+
+---
+
+ROOT CAUSE
+
+The error occurs because mmH is either 0, NaN, Infinity, or 
+negative. This happens when the canvas height or width is 0 
+or undefined — which can occur when html2canvas captures a 
+tab panel that is hidden (display:none) or has zero dimensions 
+at capture time.
+
+---
+
+FIX REQUIRED
+
+Open ErgebnisseView.tsx and apply all of the following fixes 
+to the handlePdfExport function:
+
+FIX 1 — Validate dimensions before calling addImage.
+Before every pdf.addImage() call, check that mmW and mmH are 
+valid positive finite numbers. Replace the current call with:
+
+  if (
+    page.imgData &&
+    typeof mmW === 'number' && isFinite(mmW) && mmW > 0 &&
+    typeof mmH === 'number' && isFinite(mmH) && mmH > 0
+  ) {
+    pdf.addImage(page.imgData, 'JPEG', 0, 0, mmW, mmH)
+  } else {
+    console.warn('Skipping page due to invalid dimensions:', 
+      { mmW, mmH, panel: page.title })
+  }
+
+FIX 2 — Ensure tab panels are fully visible before capture.
+Before calling html2canvas on each panel element, force it 
+into a rendered visible state:
+
+  element.style.display = 'block'
+  element.style.visibility = 'visible'
+  element.style.position = 'relative'
+  element.style.opacity = '1'
+
+Then wait for the browser to repaint before capturing:
+  await new Promise(resolve => requestAnimationFrame(() => 
+    requestAnimationFrame(resolve)
+  ))
+
+Only THEN call html2canvas. This double requestAnimationFrame 
+ensures the browser has fully laid out the element.
+
+FIX 3 — Check canvas dimensions after html2canvas returns.
+After const canvas = await html2canvas(element, ...), verify:
+
+  if (!canvas || canvas.width === 0 || canvas.height === 0) {
+    // skip this panel, push a placeholder entry instead
+    pages.push({ title: panelTitle, imgData: null, mmW: 210, mmH: 80 })
+    continue
+  }
+
+FIX 4 — Calculate mmH correctly.
+The mmH calculation must use the captured canvas dimensions, 
+not any DOM element dimensions. Use exactly:
+
+  const mmW = 210
+  const mmH = (canvas.height / canvas.width) * mmW
+
+Both canvas.height and canvas.width must be checked to be 
+greater than 0 before this calculation (see FIX 3).
+
+FIX 5 — Create jsPDF with the first page's dimensions.
+The jsPDF instance must be created AFTER all panels are 
+captured, not before — because the first page's height 
+determines the initial document size. Use:
+
+  const firstPage = pages.find(p => p.imgData)
+  if (!firstPage) {
+    console.error('No pages could be captured')
+    // reset button state and return early
+    return
+  }
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: [firstPage.mmW, firstPage.mmH]
+  })
+
+  pages.forEach((page, index) => {
+    if (index > 0) {
+      pdf.addPage([page.mmW, page.mmH], 'portrait')
+    }
+    if (page.imgData) {
+      pdf.addImage(page.imgData, 'JPEG', 0, 0, page.mmW, page.mmH)
+    }
+  })

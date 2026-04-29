@@ -1,0 +1,107 @@
+Zwei klar trennbare Probleme aus der Analyse:
+
+**Problem 1:** Die Tab-Navigation verschwindet dauerhaft → das "eager rendering" hat alle Tabs permanent sichtbar gemacht statt nur während des Exports.
+
+**Problem 2:** Die Wettbewerbs-Seite schlägt fehl wegen eines defekten Bildes — `img.w-5.h-5.rounded.shrink-0` — das sind die Favicons/Logos der Wettbewerber-Domains, die nicht geladen werden können. html-to-image bricht beim ersten Bildfehler ab.
+
+```
+Please fix two separate bugs in the PDF export. Do not change 
+anything else.
+
+---
+
+BUG FIX 1 — Tab navigation permanently disappears after PDF export
+
+The eager rendering change made all tab panels permanently visible 
+simultaneously. The tab navigation no longer works after a PDF 
+export because all panels stay rendered as a single long page.
+
+The requirement is:
+- BEFORE export: normal tab navigation, only active tab visible
+- DURING export: all tabs captured (internal process, user sees 
+  only the loading overlay)
+- AFTER export: normal tab navigation restored, exactly as it 
+  was before the export started
+
+Fix this by saving and fully restoring tab state after export:
+
+Before starting capture, record which tab is currently active.
+After all captures are complete and BEFORE triggering the 
+pdf.save() download, restore every panel to its original 
+display state:
+  - The previously active panel: display:block (or whatever 
+    its original visible state was)
+  - All other panels: restore to display:none (or whatever 
+    their original hidden state was)
+
+Use dataset.originalDisplay to store each panel's original 
+display value before modifying it, then restore from that 
+stored value — do not hardcode display:none, since the 
+framework may use a different hiding mechanism.
+
+Also restore any class changes that were made to show/hide 
+panels. If the tab system uses CSS classes (e.g. 'hidden', 
+'active', 'invisible') rather than inline styles, save and 
+restore those classes too.
+
+The restoration must happen in the finally block so it runs 
+even if the export fails or throws an error.
+
+---
+
+BUG FIX 2 — Competitors panel fails due to broken favicon images
+
+The html-to-image capture fails for the competitors panel 
+because competitor favicon/logo images (the small img elements 
+with classes w-5 h-5 rounded shrink-0) cannot be fetched — 
+they are cross-origin images from competitor domains that may 
+be blocked or unavailable.
+
+Fix this with two steps:
+
+STEP A — Before capturing the competitors panel, find all 
+img elements inside it and handle broken images:
+
+  const imgs = competitorPanel.querySelectorAll('img')
+  await Promise.all(Array.from(imgs).map(img => 
+    new Promise<void>(resolve => {
+      if (img.complete && img.naturalWidth > 0) {
+        resolve()
+      } else {
+        // Replace broken/unloaded image with empty placeholder
+        img.style.display = 'none'
+        resolve()
+      }
+    })
+  ))
+
+STEP B — Add the following option to the toJpeg call for 
+ALL panels (not just competitors):
+
+  skipFonts: true
+
+And add this filter to skip broken images entirely:
+
+  filter: (node: HTMLElement) => {
+    if (node.tagName === 'SCRIPT') return false
+    if (node.tagName === 'NOSCRIPT') return false
+    // Skip images that failed to load
+    if (node.tagName === 'IMG') {
+      const img = node as HTMLImageElement
+      if (!img.complete || img.naturalWidth === 0) {
+        return false
+      }
+    }
+    return true
+  }
+
+This prevents html-to-image from trying to fetch or inline 
+any image that is not already successfully loaded in the 
+browser — which is the root cause of the competitors panel 
+failure.
+
+The "Failed to fetch" error from the Chrome extension is a 
+browser extension interference and cannot be fixed in the 
+app code — but with the filter above, it will no longer 
+cause the capture to fail.
+```

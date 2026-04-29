@@ -1,0 +1,112 @@
+The PDF export silently fails — the loading spinner appears for 
+about 2 seconds and then disappears without downloading anything 
+and without showing any error to the user. The process is 
+aborting somewhere and swallowing the error silently.
+
+---
+
+STEP 1 — Add visible error reporting first
+
+Before investigating the root cause, make sure failures are 
+never silent again. Wrap the entire handlePdfExport function 
+body in a try/catch and show the error to the user:
+
+  try {
+    // ... entire export logic
+  } catch (err) {
+    console.error('PDF export failed:', err)
+    // Show the error visibly in the UI — either an alert() for 
+    // now, or a visible error message near the export button:
+    setExportError(
+      'PDF-Export fehlgeschlagen: ' + 
+      (err instanceof Error ? err.message : String(err))
+    )
+  } finally {
+    setIsExporting(false)
+    // remove offscreen container if it still exists
+    const leftover = document.getElementById('pdf-offscreen')
+    if (leftover) document.body.removeChild(leftover)
+  }
+
+Also add console.log checkpoints at every major step so the 
+browser console shows exactly how far the process gets:
+
+  console.log('PDF export started')
+  console.log('Panels found:', panels.length)
+  // after each panel capture:
+  console.log('Captured panel:', panelTitle, 
+    'canvas size:', canvas?.width, 'x', canvas?.height)
+  console.log('All panels captured:', pages.length)
+  console.log('Creating jsPDF...')
+  console.log('Triggering download...')
+
+---
+
+STEP 2 — Fix the most likely causes of silent abort
+
+Based on the 2-second timeout behavior, the failure is most 
+likely one of these three causes — fix all of them:
+
+LIKELY CAUSE A — html2canvas fails on a panel and throws, 
+aborting the loop.
+Each individual html2canvas call must be in its own try/catch:
+
+  let canvas = null
+  try {
+    canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      allowTaint: true
+    })
+  } catch (canvasErr) {
+    console.warn('html2canvas failed for panel:', 
+      panelTitle, canvasErr)
+    canvas = null
+  }
+
+If canvas is null after this, push a placeholder and continue 
+to the next panel — do not throw.
+
+LIKELY CAUSE B — The panels array is empty or selectors 
+find no elements.
+After querying for tab panels, immediately check:
+
+  if (!panels || panels.length === 0) {
+    throw new Error(
+      'Keine Tab-Panels gefunden. Selektor prüfen: ' + 
+      PANEL_SELECTOR
+    )
+  }
+
+Log the actual selector being used and how many elements 
+it matched, so this can be debugged if it happens.
+
+LIKELY CAUSE C — jsPDF constructor or addImage throws because 
+no valid pages were captured.
+Before creating the jsPDF instance, check:
+
+  const validPages = pages.filter(p => p.imgData && 
+    p.mmW > 0 && p.mmH > 0)
+  
+  if (validPages.length === 0) {
+    throw new Error(
+      'Keine Seiten konnten gerendert werden. ' +
+      'Alle ' + pages.length + ' Panels haben leere Canvas.'
+    )
+  }
+
+Only proceed to jsPDF if validPages.length > 0.
+
+---
+
+STEP 3 — After implementing the above
+
+Run the export once and check the browser console (F12 → 
+Console tab). The console.log checkpoints will show exactly 
+where the process stops. If an error is thrown, it will now 
+also appear in the UI near the export button.
+
+Report back what the console shows — or if the error message 
+now appears on screen, what it says.

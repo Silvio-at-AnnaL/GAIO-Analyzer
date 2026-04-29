@@ -1,0 +1,71 @@
+The PDF export currently captures only the four tab panels 
+(Details, LLM-Auffindbarkeit, Wettbewerb, Empfehlungen). 
+The header section above the tab navigation is missing. 
+This header contains: the GAIO Score donut chart, the 
+Dimensionen radar chart, and the six score cards 
+(Techn. SEO, Schema.org, Headings, Inhalt, FAQ, LLM).
+
+Please add this header section to the PDF export.
+
+---
+
+IMPLEMENTATION
+
+STEP 1 — Identify the header element
+
+The header section sits above the tab bar in the DOM. 
+Give it a stable id if it does not already have one:
+  id="results-header"
+
+It contains everything from the page title / domain info 
+down to (but not including) the tab navigation bar itself.
+
+STEP 2 — Capture the header as an additional image
+
+In handlePdfExport, before capturing the tab panels, 
+capture the header section as a separate image using 
+the same toJpeg approach already in use:
+
+  const headerEl = document.getElementById('results-header')
+  // Apply the same broken-image cleanup already used 
+  // for tab panels
+  // Then capture:
+  const headerImgData = await toJpeg(headerEl, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: true,
+    filter: (node) => { /* same filter as tab panels */ }
+  })
+  const headerMmW = 210
+  const headerMmH = (headerEl.scrollHeight / 1200) * headerMmW
+
+STEP 3 — Add header to PDF
+
+Place the header image at the top of EVERY PDF page, 
+above the tab panel content on that page.
+
+For each page, the layout is:
+  - Header image: x=0, y=0, width=210mm, height=headerMmH
+  - Tab panel image: x=0, y=headerMmH + 4mm (small gap), 
+    width=210mm, height=tabMmH
+
+Each PDF page height becomes: headerMmH + 4mm + tabMmH
+
+When creating each page in jsPDF use this combined height:
+  pdf.addPage([210, headerMmH + 4 + tabMmH], 'portrait')
+
+And add both images per page:
+  pdf.addImage(headerImgData, 'JPEG', 0, 0, 210, headerMmH)
+  pdf.addImage(tabImgData, 'JPEG', 0, headerMmH + 4, 210, tabMmH)
+
+The first page (Details) also gets the header — so all 
+four pages have an identical header at the top followed 
+by that page's tab content below.
+
+STEP 4 — Apply pdfMode and broken-image cleanup to header
+
+Apply the same pdfMode={true} animation disabling and 
+the same broken-image visibility:hidden cleanup to the 
+header element before capturing it, just as is already 
+done for the tab panels.

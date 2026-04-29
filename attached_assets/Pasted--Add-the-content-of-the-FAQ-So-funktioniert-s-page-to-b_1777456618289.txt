@@ -1,0 +1,155 @@
+```
+Add the content of the "FAQ / So funktioniert's" page 
+to both the PDF export and the HTML export. The content 
+to include is the same static informational text that 
+appears under menu item 4 in the app. Do not fetch it 
+dynamically — write it directly into the export 
+generation functions as static content.
+
+---
+
+CHANGE 1 — PDF export: FAQ as final page
+
+After the last tab panel (Empfehlungen) has been 
+captured and added to the PDF, add one more page 
+containing the FAQ content.
+
+Build the FAQ page as a self-contained HTML element, 
+inject it into the DOM (offscreen, same technique 
+already used for other panels), capture it with 
+toJpeg, then add it as a new page in the PDF.
+
+The FAQ HTML element must include:
+- Section heading: "FAQ / So funktioniert's"
+- All subsections listed below (see CONTENT section)
+- Same background (#ffffff), same font, same styling 
+  as the other captured panels
+- Apply pdfMode cleanup (hidden images, animation off) 
+  before capture
+- Apply the same 12mm margin logic as all other pages
+
+After capturing, remove the injected element from the DOM.
+
+---
+
+CHANGE 2 — HTML export: FAQ appended to one-pager
+
+After the Empfehlungen section, append the FAQ content 
+as a new section in the HTML export. Use the same 
+section divider pattern already used between other 
+sections:
+  <div class="section-divider"><span>FAQ / So funktioniert's</span></div>
+
+Then the FAQ content follows as static HTML using the 
+existing export styles.
+
+---
+
+CONTENT to include in both exports
+
+Use exactly this content, structured as shown:
+
+HEADING: Was analysiert dieses Tool?
+TEXT: Der GAIO Analyzer untersucht B2B-Websites auf 
+ihre Auffindbarkeit durch KI-Sprachmodelle (LLMs wie 
+ChatGPT, Gemini, Claude) sowie auf klassische 
+SEO-Grundlagen. Das Ergebnis ist ein praxisorientierter 
+Bericht mit priorisierten Handlungsempfehlungen.
+
+HEADING: Die Analyse-Module im Überblick
+TABLE with columns: Modul | Was wird geprüft | Warum es wichtig ist
+ROWS:
+- Technische SEO-Basis | HTTP-Antwortzeit, HTTPS, 
+  robots.txt, sitemap.xml, Canonical-Tags, hreflang, 
+  Meta-Titel und -Beschreibungen, Alt-Texte, 
+  Mobile-Viewport | Grundvoraussetzung für Indexierung 
+  durch Suchmaschinen und LLM-Crawler
+
+- Strukturierte Daten (Schema.org) | JSON-LD, 
+  Microdata, RDFa — erkannte Typen: Organization, 
+  Product, FAQPage, BreadcrumbList u.a.; 
+  Vollständigkeit der Pflichtfelder | 
+  Maschinenlesbare Fakten erhöhen die 
+  Wahrscheinlichkeit, dass LLMs korrekte und 
+  vollständige Antworten generieren
+
+- Heading-Struktur | H1/H2/H3-Hierarchie, Anzahl 
+  H1 pro Seite, Hierarchiefehler | Strukturierte 
+  Inhalte werden von LLMs bevorzugt als Quellen 
+  verarbeitet
+
+- Inhaltliche Relevanz (KI-gestützt) | 
+  Anwendungsszenarien, technische Tiefe, 
+  Beantwortung von Käufer-Fragetypen, 
+  identifizierte Inhaltslücken | LLMs zitieren 
+  Seiten häufiger, wenn diese echte Nutzerfragen 
+  vollständig beantworten
+
+- FAQ-Qualität | Erkannte FAQ-Strukturen, Anzahl 
+  der Einträge, Qualität der Frageformulierungen 
+  und Antworttiefe | FAQPage-Schema ist einer der 
+  stärksten Einzelhebel für LLM-Sichtbarkeit
+
+- LLM-Sichtbarkeits-Simulation | Generierte 
+  Käufer-Fragen (ohne und mit Markenbezug) + 
+  prognostizierte Antwortqualität (1–5 Sterne) | 
+  Zeigt direkt, welche Informationslücken LLMs 
+  bei Anfragen zu diesem Unternehmen haben
+
+HEADING: Score-Gewichtung (Gesamt-GAIO-Score)
+TABLE with columns: Modul | Gewichtung | Begründung
+ROWS:
+- Strukturierte Daten | 20% | Direkt maschinenlesbar, 
+  höchste LLM-Verwertung
+- Inhaltliche Relevanz | 20% | Substanz ist Grundlage 
+  jeder LLM-Zitation
+- LLM-Sichtbarkeit | 20% | Direktes Maß der 
+  KI-Auffindbarkeit
+- Technische SEO-Basis | 15% | Enabler für alle 
+  anderen Module
+- FAQ-Qualität | 15% | Hoher Impact bei geringem 
+  Aufwand
+- Heading-Struktur | 10% | Wichtig, aber nicht 
+  allein entscheidend
+
+HEADING: Score-Interpretation
+TABLE with columns: Score | Bewertung | Bedeutung
+ROWS:
+- 0–40 | Kritisch | Grundlegende Defizite — LLMs 
+  können diese Website kaum als verlässliche 
+  Quelle nutzen
+- 41–60 | Ausbaufähig | Technische Basis teilweise 
+  vorhanden, aber inhaltliche Lücken limitieren 
+  die LLM-Sichtbarkeit erheblich
+- 61–75 | Solide | Gute Ausgangsbasis — gezielte 
+  Maßnahmen können die Sichtbarkeit spürbar steigern
+- 76–90 | Stark | Überdurchschnittlich gut 
+  aufgestellt — Feinoptimierung empfohlen
+- 91–100 | Exzellent | Best-in-class LLM-Readiness
+
+HEADING: Empfehlungs-Priorisierung
+THREE styled blocks:
+Block 1 — Kritisch: Fundamentale Fehler, die sofort 
+behoben werden müssen. Beispiele: kein HTTPS, keine 
+strukturierten Daten, H1 auf der Mehrheit der Seiten 
+fehlend.
+
+Block 2 — Hoher Hebel: Maßnahmen mit dem größten 
+Wirkungspotenzial. Beispiele: fehlende FAQPage-Schema, 
+dünne Produktbeschreibungen ohne Anwendungsszenarien, 
+fehlende Organization-Schema.
+
+Block 3 — Nachgeordnet: Optimierungen für nach der 
+Erstbereinigung. Beispiele: Meta-Description-Länge, 
+Alt-Text-Lücken, Heading-Hierarchiefehler.
+
+HEADING: Hinweise zur Genauigkeit
+TEXT: Scores basieren auf einer automatisierten 
+Analyse und stellen Annäherungswerte dar. 
+Wettbewerber-Scores beruhen auf einer Stichprobe 
+von maximal 3 Seiten pro Wettbewerber. Die 
+LLM-Sichtbarkeits-Simulation verwendet Claude 
+(Anthropic) und spiegelt keine garantierten 
+Rankingfaktoren wider. Alle Empfehlungen sollten 
+mit einem Experten validiert werden.
+```

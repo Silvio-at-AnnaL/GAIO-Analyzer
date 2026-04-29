@@ -1,0 +1,99 @@
+Keine Fehlermeldung bedeutet: Die Capture läuft durch, aber das Element hat beim Rendern keinen sichtbaren Inhalt — entweder weil es noch nicht gerendert ist oder weil die Höhe falsch gemessen wird.
+
+```
+The FAQ page in the PDF export shows only the header 
+but has empty content. No console errors are thrown, 
+which means the capture completes but the injected 
+FAQ element has no visible content at capture time.
+
+There are two likely causes — fix both.
+
+---
+
+CAUSE 1 — Insufficient render time after DOM injection
+
+The FAQ element is injected into the DOM and captured 
+too quickly. The browser has not finished painting 
+its content.
+
+After injecting the FAQ element into the DOM and 
+before calling toJpeg, increase the wait time 
+significantly:
+
+  document.body.appendChild(faqEl)
+  
+  // Force layout calculation:
+  void faqEl.offsetHeight
+  
+  // Wait longer than other panels — static HTML 
+  // with tables needs more time to lay out:
+  await new Promise(r => setTimeout(r, 800))
+  
+  // Then read the height:
+  const faqHeight = faqEl.scrollHeight
+
+If faqHeight is still 0 after this wait, log a 
+warning: console.warn('FAQ element height is 0 
+after render wait — check element visibility')
+
+---
+
+CAUSE 2 — Element dimensions or visibility not 
+fully set
+
+The injected FAQ element may not have explicit 
+dimensions that force the browser to render its 
+full content before the height is read.
+
+When creating the FAQ element, set these styles 
+explicitly:
+
+  faqEl.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    width: 1200px;
+    min-height: 200px;
+    background: #ffffff;
+    color: #1a1d23;
+    font-family: -apple-system, BlinkMacSystemFont, 
+      'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 24px;
+    box-sizing: border-box;
+    display: block;
+    visibility: visible;
+    opacity: 1;
+    z-index: -1;
+  `
+
+Note: use position:fixed with left:-9999px instead 
+of position:absolute — fixed positioning forces 
+the browser to calculate layout immediately 
+relative to the viewport, which is more reliable 
+for off-screen rendering.
+
+---
+
+CAUSE 3 — Height measurement uses wrong property
+
+After the wait, measure the element height using 
+scrollHeight AND offsetHeight and take the larger 
+of the two:
+
+  const faqHeight = Math.max(
+    faqEl.scrollHeight, 
+    faqEl.offsetHeight
+  )
+
+Also add this console.log to confirm the height 
+before capture:
+  console.log('FAQ element height before capture:', 
+    faqHeight, 'scrollHeight:', faqEl.scrollHeight, 
+    'offsetHeight:', faqEl.offsetHeight)
+
+This will make it visible in the console whether 
+the element has content or not, without requiring 
+an error to be thrown.
+```

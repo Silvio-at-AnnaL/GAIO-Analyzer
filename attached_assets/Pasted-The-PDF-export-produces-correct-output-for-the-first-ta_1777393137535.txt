@@ -1,0 +1,150 @@
+The PDF export produces correct output for the first tab panel 
+(Details, height 1498px) but pages 2, 3 and 4 are completely 
+blank. The console confirms their captured height is 0:
+
+  llm:             1200 x 0
+  competitors:     1200 x 0
+  recommendations: 1200 x 0
+
+The Google Fonts SecurityError warnings in the console are 
+harmless and do not need to be fixed — html-to-image handles 
+them gracefully already.
+
+---
+
+ROOT CAUSE
+
+The inactive tab panels report scrollHeight = 0 even after 
+setting display:block. This happens because the browser has 
+not yet performed a layout reflow for those elements. Simply 
+setting display:block and waiting with setTimeout is not 
+sufficient — the browser batches layout calculations and 
+the scrollHeight read happens before the reflow completes.
+
+---
+
+FIX 1 — Force layout reflow before reading dimensions
+
+After making each panel visible, force the browser to 
+immediately calculate its layout by reading a property that 
+requires layout — this triggers a synchronous reflow:
+
+  panel.style.display = 'block'
+  panel.style.visibility = 'visible'
+  panel.style.opacity = '1'
+  panel.style.position = 'relative'
+  panel.style.height = 'auto'
+  panel.style.overflow = 'visible'
+  panel.style.width = '1200px'
+  panel.style.minHeight = '100px'
+
+  // Force synchronous reflow by reading offsetHeight:
+  void panel.offsetHeight
+
+  // Then wait for two animation frames:
+  await new Promise(r => requestAnimationFrame(() => 
+    requestAnimationFrame(r)
+  ))
+
+  // NOW read the height — it will be correct:
+  const captureHeight = panel.scrollHeight
+
+---
+
+FIX 2 — Use offsetHeight as fallback if scrollHeight is still 0
+
+After the reflow wait, check both scrollHeight and offsetHeight:
+
+  const captureHeight = panel.scrollHeight > 0 
+    ? panel.scrollHeight 
+    : panel.offsetHeight
+
+If both are still 0, log a warning and skip the panel 
+(push a placeholder page as before).
+
+---
+
+FIX 3 — Pass explicit height to html-to-image
+
+html-to-image can misread the element height for hidden panels 
+that were just made visible. Pass the measured height 
+explicitly in the options:
+
+  const imgData = await toJpeg(panel, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    width: 1200,
+    height: captureHeight,    ← add this
+    skipFonts: true,          ← add this: skip Google Fonts 
+                                 to avoid the SecurityError 
+                                 warnings and speed up capture
+    filter: (node) => {
+      if (node.tagName === 'SCRIPT') return false
+      if (node.tagName === 'NOSCRIPT') return false
+      return true
+    }
+  })
+
+---
+
+FIX 4 — Increase wait time between panel captures
+
+Currently the delay between panels may be too short. 
+After restoring one panel and before capturing the next, 
+wait 400ms instead of the current value:
+
+  await new Promise(r => setTimeout(r, 400))
+
+This gives React time to finish any pending state updates 
+or re-renders in the panel that is about to be captured.
+
+---
+
+Keep all other existing logic unchanged:
+- The full-screen overlay
+- The sidebar hide/restore
+- The per-panel try/catch
+- The console.log checkpoints
+- The dimension validation before addImage
+- The jsPDF page creation
+
+
+ADDITIONAL ROOT CAUSE TO INVESTIGATE AND FIX
+
+Before applying the reflow fixes, first check whether the tab 
+panels use lazy rendering — meaning their content is only 
+rendered by React when the tab is first activated by the user.
+
+If that is the case, simply setting display:block on an 
+empty container will never work — scrollHeight will always 
+be 0 because there is no rendered content inside yet.
+
+Fix this with one of the following two approaches — choose 
+whichever fits the existing tab implementation:
+
+APPROACH A — Eager rendering (preferred)
+Change the tab panel rendering so that ALL tab panels are 
+always rendered in the DOM, regardless of whether they have 
+been visited. Only use CSS (display:none / display:block) 
+to show and hide them — never conditional rendering like 
+{activeTab === 'llm' && <LLMPanel />}.
+
+APPROACH B — Programmatic tab activation before capture
+If changing to eager rendering is too invasive, before 
+starting the capture loop, programmatically click through 
+all tabs in sequence so React renders each one:
+
+  for (const tabTrigger of allTabTriggers) {
+    tabTrigger.click()
+    await new Promise(r => setTimeout(r, 600))
+  }
+  // Then restore the originally active tab
+  // Then start the capture loop
+
+This forces React to render all tab contents before 
+html-to-image tries to capture them.
+
+After implementing either approach, verify by adding a 
+console.log of panel.innerHTML.length immediately before 
+the capture call — it must be greater than 0 for all panels.

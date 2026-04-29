@@ -1,0 +1,99 @@
+```
+Please fix the HTML export function with the following requirements.
+
+---
+
+CHANGE 1 — File naming convention
+
+The downloaded file must follow this exact naming pattern:
+GAIO-Analyzer-[domain]--[DD-MM-YYYY]--[HH-MM-SS].html
+
+Rules for the domain part:
+- Remove "https://", "http://", "www." from the start
+- Replace the TLD dot with underscore: 
+  "fenotec.eu" → "fenotec_eu"
+  "neptun-germany.com" → "neptun-germany_com"
+- If the URL has a path deeper than the root, replace 
+  every "/" with "_":
+  "rmg.com/de" → "rmg_com_de"
+- No trailing slash or underscore
+
+Date and time use the current local time at moment of export:
+  DD = day with leading zero
+  MM = month with leading zero  
+  YYYY = four digit year
+  HH = hours with leading zero
+  MM = minutes with leading zero
+  SS = seconds with leading zero
+
+Example: GAIO-Analyzer-fenotec_eu--29-04-2026--14-32-07.html
+
+---
+
+CHANGE 2 — One-pager structure
+
+The HTML export must be a single continuous scrollable page. 
+No tabs, no navigation, no accordions, no collapsibles.
+All content sections appear one after another from top to 
+bottom in this order:
+  1. Header (scores overview — rendered once at the very top)
+  2. Details (technical SEO metrics, schema, headings, 
+     content analysis, FAQ, hreflang, crawled pages)
+  3. LLM-Auffindbarkeit (both Part A and Part B with all 
+     questions, ratings and gap explanations)
+  4. Wettbewerb (all competitor cards with scores and findings)
+  5. Empfehlungen (all three tiers: Kritisch, Hoher Hebel, 
+     Nachgeordnet)
+
+---
+
+CHANGE 3 — Header appears exactly once
+
+The header section (GAIO Score, Dimensionen radar, six score 
+cards) appears only at the very top of the document, once. 
+It does not repeat for each section.
+
+---
+
+CHANGE 4 — No tab navigation
+
+Remove the tab bar (Details / LLM-Auffindbarkeit / Wettbewerb 
+/ Empfehlungen) from the exported HTML entirely. All sections 
+are visible without any interaction required.
+
+Also remove: the sidebar/left navigation, the export buttons, 
+the "Basisdaten ändern" hint bar, and any other UI controls 
+that are not content.
+
+Add a simple visual section divider between each content 
+section — for example a horizontal rule or a bold section 
+heading that labels each part clearly.
+
+---
+
+CHANGE 5 — No favicons, no dynamic charts
+
+Do not attempt to capture or embed:
+- Favicon images from competitor domains
+- Any dynamically rendered chart (donut chart, radar chart, 
+  bar charts)
+
+Instead of charts, show the underlying data as a simple 
+styled table or list of values. For example:
+- Replace the GAIO Score donut with a large styled text: 
+  "GAIO Score: 57/100"
+- Replace the radar chart with a simple table of the six 
+  dimension scores
+- Replace bar charts with a data table showing the 
+  metric name and value
+- Competitor score cards: show as a structured text block 
+  with domain, composite score, and sub-scores as a table
+
+This approach makes the HTML export fully static, 
+self-contained, and guaranteed to render correctly in 
+any browser without JavaScript.
+
+The light color scheme already implemented (background 
+#f4f5f7, cards #ffffff, text #1a1d23) must be used. 
+All colors hardcoded as hex values, no CSS variables.
+```
