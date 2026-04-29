@@ -960,20 +960,39 @@ function ReportView({ analysisId }: { analysisId: string }) {
       let faqCapture: FaqCapture = null;
       try {
         const faqEl = document.createElement("div");
+        // position:fixed forces immediate layout relative to viewport — more reliable
+        // than absolute for off-screen rendering; left:-9999px keeps it invisible.
         faqEl.style.cssText = [
-          "position:absolute",
-          "left:-9999px",
+          "position:fixed",
           "top:0",
+          "left:-9999px",
           `width:${CAPTURE_WIDTH_PX}px`,
+          "min-height:200px",
           "background:#ffffff",
+          "color:#1a1d23",
+          "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+          "font-size:14px",
+          "line-height:1.6",
+          "padding:24px",
           "box-sizing:border-box",
+          "display:block",
+          "visibility:visible",
+          "opacity:1",
+          "z-index:-1",
         ].join(";");
         faqEl.innerHTML = buildFaqPanelHtml();
         document.body.appendChild(faqEl);
         neutraliseImages(faqEl);
+        // Force synchronous layout calculation.
         void faqEl.offsetHeight;
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-        const faqH = faqEl.scrollHeight > 0 ? faqEl.scrollHeight : faqEl.offsetHeight;
+        // Wait longer than other panels — tables need more time to lay out.
+        await new Promise((r) => setTimeout(r, 800));
+        // Take the larger of scrollHeight / offsetHeight.
+        const faqH = Math.max(faqEl.scrollHeight, faqEl.offsetHeight);
+        console.log("FAQ element height before capture:", faqH, "scrollHeight:", faqEl.scrollHeight, "offsetHeight:", faqEl.offsetHeight);
+        if (faqH === 0) {
+          console.warn("FAQ element height is 0 after render wait — check element visibility");
+        }
         if (faqH > 0) {
           const faqJpeg = await toJpeg(faqEl, {
             quality: 0.92,
