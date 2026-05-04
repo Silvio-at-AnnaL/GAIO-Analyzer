@@ -969,22 +969,23 @@ function ReportView({ analysisId }: { analysisId: string }) {
         footerEl.textContent =
           "IndustryStock.com/GAIO-Analyzer · Exportiert am " + currentDateString;
         panel.appendChild(footerEl);
+        // FIX B — Add explicit bottom padding so footer is never clipped.
+        panel.style.paddingBottom = "80px";
         void panel.offsetHeight;
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 300));
 
-        // Re-measure height after footer injection.
-        const finalCaptureHeight = Math.max(panel.scrollHeight, panel.offsetHeight);
+        // FIX A — Measure AFTER footer + padding; add +120px buffer.
+        const captureHeightPx = panel.scrollHeight + 120;
 
         // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
         try {
-          // FIX 3 — Pass explicit width/height so html-to-image doesn't mis-measure.
           imgData = await toJpeg(panel, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
             width: captureWidth,
-            height: finalCaptureHeight,
+            height: captureHeightPx,
             skipFonts: true,
             filter: imageFilter,
           });
@@ -994,12 +995,15 @@ function ReportView({ analysisId }: { analysisId: string }) {
         } finally {
           const injected = panel.querySelector("#pdf-footer-injected");
           if (injected) panel.removeChild(injected);
+          // FIX B — Restore padding after capture.
+          panel.style.paddingBottom = "";
         }
 
         const mmW = PDF_MM_W; // always 210mm — full page width
-        const mmH = ((finalCaptureHeight + 40) / captureWidth) * PDF_MM_W;
+        // Use CONTENT_MM_W (186) for correct aspect ratio: image is placed at 186mm wide.
+        const mmH = (captureHeightPx / captureWidth) * CONTENT_MM_W;
 
-        console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
+        console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeightPx, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
 
         if (!imgData || mmH <= 0 || !isFinite(mmH)) {
           pages.push({ imgData: null, mmW, mmH: 80, tabValue });
@@ -1021,7 +1025,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       ]);
 
       // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
-      type FaqCapture = { imgData: string; mmH: number } | null;
+      type FaqCapture = { imgData: string; captureHeightPx: number } | null;
       let faqCapture: FaqCapture = null;
       const faqIframe = document.createElement("iframe");
       try {
@@ -1065,8 +1069,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
             height: faqH + 60,
             skipFonts: true,
           });
-          faqCapture = { imgData: faqJpeg, mmH: ((faqH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
-          console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH, "→", faqCapture.mmH.toFixed(1), "mm");
+          faqCapture = { imgData: faqJpeg, captureHeightPx: faqH + 60 };
+          console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH + 60, "px");
         }
       } catch (faqErr) {
         console.warn("FAQ page capture failed:", faqErr);
@@ -1087,7 +1091,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
 
-      type AnalyseparameterCapture = { imgData: string; mmH: number } | null;
+      type AnalyseparameterCapture = { imgData: string; captureHeightPx: number } | null;
       let analyseparameterCapture: AnalyseparameterCapture = null;
       const analyseparameterIframe = document.createElement("iframe");
       try {
@@ -1125,8 +1129,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
             height: apH + 60,
             skipFonts: true,
           });
-          analyseparameterCapture = { imgData: apJpeg, mmH: ((apH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
-          console.log("Analyseparameter page captured:", analyseparameterCapture.mmH.toFixed(1), "mm");
+          analyseparameterCapture = { imgData: apJpeg, captureHeightPx: apH + 60 };
+          console.log("Analyseparameter page captured:", apH + 60, "px");
         }
       } catch (apErr) {
         console.warn("Analyseparameter page capture failed:", apErr);
@@ -1135,7 +1139,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       }
 
       // ── Capture Kontakt page via iframe ───────────────────────────────────────
-      type KontaktCapture = { imgData: string; mmH: number } | null;
+      type KontaktCapture = { imgData: string; captureHeightPx: number } | null;
       let kontaktCapture: KontaktCapture = null;
       const kontaktIframe = document.createElement("iframe");
       try {
@@ -1173,8 +1177,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
             height: kontaktH + 60,
             skipFonts: true,
           });
-          kontaktCapture = { imgData: kontaktJpeg, mmH: ((kontaktH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
-          console.log("Kontakt page captured:", kontaktCapture.mmH.toFixed(1), "mm");
+          kontaktCapture = { imgData: kontaktJpeg, captureHeightPx: kontaktH + 60 };
+          console.log("Kontakt page captured:", kontaktH + 60, "px");
         }
       } catch (kontaktErr) {
         console.warn("Kontakt page capture failed:", kontaktErr);
@@ -1246,9 +1250,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       // ── FAQ final page ────────────────────────────────────────────────────────
       if (faqCapture) {
-        const faqPgH = MARGIN_MM + faqCapture.mmH + MARGIN_MM;
-        pdf.addPage([PDF_MM_W, faqPgH], "portrait");
-        pdf.addImage(faqCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, faqCapture.mmH);
+        // BUG 1 FIX: separate page-height (210mm scale) from image-height (186mm scale).
+        const faqCapPx = faqCapture.captureHeightPx;
+        const faqPageHMm    = (faqCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;      // proportional to 210mm
+        const faqContentHMm = (faqCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W; // proportional to 186mm
+        pdf.addPage([PDF_MM_W, faqPageHMm], "portrait");
+        pdf.addImage(faqCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, faqContentHMm);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
         pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
@@ -1256,9 +1263,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       // ── Analyseparameter page (page 6) ───────────────────────────────────────
       if (analyseparameterCapture) {
-        const apPgH = MARGIN_MM + analyseparameterCapture.mmH + MARGIN_MM;
-        pdf.addPage([PDF_MM_W, apPgH], "portrait");
-        pdf.addImage(analyseparameterCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, analyseparameterCapture.mmH);
+        const apCapPx = analyseparameterCapture.captureHeightPx;
+        const apPageHMm    = (apCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;
+        const apContentHMm = (apCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
+        pdf.addPage([PDF_MM_W, apPageHMm], "portrait");
+        pdf.addImage(analyseparameterCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, apContentHMm);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
         pdf.text(`Analyseparameter · ${today}`, MARGIN_MM, MARGIN_MM - 3);
@@ -1266,9 +1275,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       // ── Kontakt final page ────────────────────────────────────────────────────
       if (kontaktCapture) {
-        const kontaktPgH = MARGIN_MM + kontaktCapture.mmH + MARGIN_MM;
-        pdf.addPage([PDF_MM_W, kontaktPgH], "portrait");
-        pdf.addImage(kontaktCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, kontaktCapture.mmH);
+        const kCapPx = kontaktCapture.captureHeightPx;
+        const kPageHMm    = (kCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;
+        const kContentHMm = (kCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
+        pdf.addPage([PDF_MM_W, kPageHMm], "portrait");
+        pdf.addImage(kontaktCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, kContentHMm);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
         pdf.text(`Kontakt · ${today}`, MARGIN_MM, MARGIN_MM - 3);

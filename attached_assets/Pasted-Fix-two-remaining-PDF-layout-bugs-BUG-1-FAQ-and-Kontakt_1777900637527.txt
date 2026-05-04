@@ -1,0 +1,101 @@
+Fix two remaining PDF layout bugs.
+
+---
+
+BUG 1 — FAQ and Kontakt pages have wrong 
+dimensions (height set to 210mm instead of width)
+
+The iframe pages (faq, analyseparameter, kontakt) 
+are being captured with swapped dimensions. The 
+page ends up 210mm tall instead of 210mm wide.
+
+Root cause: the formula is being applied to the 
+wrong axis. Be explicit about which dimension 
+is which.
+
+Replace ALL dimension calculations for iframe 
+pages with this exact pattern:
+
+  // Capture width is always 1200px (enforced)
+  const captureWidthPx = 1200
+  
+  // Measure actual content height in pixels:
+  const captureHeightPx = Math.max(
+    iframeBody.scrollHeight,
+    iframeBody.offsetHeight
+  ) + 60  // buffer
+
+  // PDF page is always 210mm wide:
+  const pdfPageWidthMm = 210
+
+  // Calculate height proportionally:
+  // heightMm / widthMm = heightPx / widthPx
+  // therefore: heightMm = (heightPx / widthPx) * widthMm
+  const pdfPageHeightMm = 
+    (captureHeightPx / captureWidthPx) * pdfPageWidthMm
+
+  // When adding the page to jsPDF:
+  pdf.addPage([pdfPageWidthMm, pdfPageHeightMm], 
+    'portrait')
+
+  // When placing the image on the page:
+  // x=12 (left margin), y=12 (top margin)
+  // content width = 210 - 12 - 12 = 186mm
+  // content height = proportional to 186mm width:
+  const contentWidthMm = 186
+  const contentHeightMm = 
+    (captureHeightPx / captureWidthPx) * contentWidthMm
+
+  pdf.addImage(
+    imgData, 'JPEG',
+    12,               // x: left margin
+    12,               // y: top margin
+    contentWidthMm,   // width: always 186
+    contentHeightMm   // height: proportional
+  )
+
+Apply this exact pattern to every iframe page 
+(faq, analyseparameter, kontakt). Do not use 
+any other formula. Label every variable clearly 
+so Px and Mm are never mixed up.
+
+---
+
+BUG 2 — Footer still partially cut off on 
+content tab pages
+
+The +40px buffer is not enough. The footer is 
+visible but clipped at the bottom.
+
+Apply these three fixes together:
+
+FIX A — Increase bottom buffer significantly.
+Change from +40px to +120px when calculating 
+the capture height for tab panels:
+
+  const captureHeightPx = panel.scrollHeight + 120
+
+FIX B — Add explicit bottom padding to the 
+panel itself before capture.
+After appending the footer div and before 
+measuring scrollHeight, add bottom padding 
+to the panel:
+
+  panel.style.paddingBottom = '80px'
+  void panel.offsetHeight
+  await new Promise(r => setTimeout(r, 300))
+  const captureHeightPx = panel.scrollHeight + 120
+
+After capture, restore padding:
+  panel.style.paddingBottom = ''
+
+FIX C — Set the iframe height explicitly before 
+capture to match the measured content height.
+For tab panels this is not needed (they are 
+real DOM elements), but confirm that for iframe 
+pages the iframe element height is set to 
+captureHeightPx BEFORE calling toJpeg:
+
+  iframe.style.height = captureHeightPx + 'px'
+  await new Promise(r => setTimeout(r, 400))
+  // then capture
