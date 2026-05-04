@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
-import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams } from "@/lib/report-export";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -598,7 +598,7 @@ function buildExportTimestamp(d: Date = new Date()): string {
 }
 
 function ReportView({ analysisId }: { analysisId: string }) {
-  const { setCrawledPages, setSelectedPages } = useAppStore();
+  const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -1053,6 +1053,64 @@ function ReportView({ analysisId }: { analysisId: string }) {
         if (faqIframe.parentNode) document.body.removeChild(faqIframe);
       }
 
+      // ── Capture Analyseparameter page via iframe ──────────────────────────────
+      const pdfInputParams: InputParams = {
+        domainUrl: String(report.url ?? ""),
+        companyName: domainForm.companyName.trim() || null,
+        targetAudience: domainForm.personas.trim() || null,
+        competitors: domainForm.competitors.filter((c) => c.trim()),
+        socialMedia: Object.fromEntries(
+          Object.entries(domainForm.social).filter(([, v]) => v.trim())
+        ),
+        analysisDate: new Date().toLocaleString("de-DE"),
+        crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
+      };
+
+      type AnalyseparameterCapture = { imgData: string; mmH: number } | null;
+      let analyseparameterCapture: AnalyseparameterCapture = null;
+      const analyseparameterIframe = document.createElement("iframe");
+      try {
+        analyseparameterIframe.style.cssText = [
+          "position:fixed",
+          "left:-9999px",
+          "top:0",
+          `width:${CAPTURE_WIDTH_PX}px`,
+          "height:2000px",
+          "border:none",
+          "opacity:0",
+        ].join(";");
+        document.body.appendChild(analyseparameterIframe);
+
+        const apDoc = analyseparameterIframe.contentDocument!;
+        apDoc.open();
+        apDoc.write(buildAnalyseparameterDocumentHtml(pdfInputParams));
+        apDoc.close();
+
+        await new Promise((r) => setTimeout(r, 800));
+
+        const apBody = apDoc.body as HTMLBodyElement;
+        const apH = Math.max(apBody.scrollHeight, apBody.offsetHeight);
+        console.log("Analyseparameter iframe height:", apH);
+
+        if (apH > 0) {
+          analyseparameterIframe.style.height = `${apH}px`;
+          await new Promise((r) => setTimeout(r, 300));
+
+          const apJpeg = await toJpeg(apBody, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            skipFonts: true,
+          });
+          analyseparameterCapture = { imgData: apJpeg, mmH: (apH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          console.log("Analyseparameter page captured:", analyseparameterCapture.mmH.toFixed(1), "mm");
+        }
+      } catch (apErr) {
+        console.warn("Analyseparameter page capture failed:", apErr);
+      } finally {
+        if (analyseparameterIframe.parentNode) document.body.removeChild(analyseparameterIframe);
+      }
+
       // ── Capture Kontakt page via iframe ───────────────────────────────────────
       type KontaktCapture = { imgData: string; mmH: number } | null;
       let kontaktCapture: KontaktCapture = null;
@@ -1171,6 +1229,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
         pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
       }
 
+      // ── Analyseparameter page (page 6) ───────────────────────────────────────
+      if (analyseparameterCapture) {
+        const apPgH = MARGIN_MM + analyseparameterCapture.mmH + MARGIN_MM;
+        pdf.addPage([PDF_MM_W, apPgH], "portrait");
+        pdf.addImage(analyseparameterCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, analyseparameterCapture.mmH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(136, 136, 136);
+        pdf.text(`Analyseparameter · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+      }
+
       // ── Kontakt final page ────────────────────────────────────────────────────
       if (kontaktCapture) {
         const kontaktPgH = MARGIN_MM + kontaktCapture.mmH + MARGIN_MM;
@@ -1213,9 +1281,22 @@ function ReportView({ analysisId }: { analysisId: string }) {
         fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
       ]);
 
+      const htmlInputParams: InputParams = {
+        domainUrl: String(report.url ?? ""),
+        companyName: domainForm.companyName.trim() || null,
+        targetAudience: domainForm.personas.trim() || null,
+        competitors: domainForm.competitors.filter((c) => c.trim()),
+        socialMedia: Object.fromEntries(
+          Object.entries(domainForm.social).filter(([, v]) => v.trim())
+        ),
+        analysisDate: new Date().toLocaleString("de-DE"),
+        crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
+      };
+
       const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
         logoSrc: htmlLogoB64,
         profileSrc: htmlProfileB64,
+        inputParams: htmlInputParams,
       });
       const blob = new Blob([htmlContent], { type: "text/html" });
       const dlUrl = URL.createObjectURL(blob);

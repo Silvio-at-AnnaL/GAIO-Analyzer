@@ -53,6 +53,20 @@ function langBadge(lang: string): string {
   return `${flag} ${label}`;
 }
 
+// ─── Input parameters for Analyseparameter section ───────────────────────────
+
+export type InputParams = {
+  domainUrl: string;
+  companyName?: string | null;
+  targetAudience?: string | null;
+  differentiators?: string | null;
+  brandKeywords?: string | null;
+  competitors?: string[];
+  socialMedia?: Record<string, string>;
+  analysisDate: string;
+  crawledPagesCount: number;
+};
+
 // ─── Light theme palette (hardcoded hex — no CSS vars, works standalone) ─────
 
 const C = {
@@ -569,6 +583,133 @@ ${divider("FAQ / So funktioniert's")}
 </p>`;
 }
 
+// ─── Analyseparameter ─────────────────────────────────────────────────────────
+
+/** Inner HTML for the Analyseparameter section in the HTML one-pager. */
+function renderAnalyseparameterSection(params: InputParams): string {
+  const labelStyle = "font-weight:600;color:#787b86;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;width:180px;vertical-align:top;padding:9px 16px 9px 0;border-bottom:1px solid #dde0e8;white-space:nowrap;";
+  const valueStyle = "color:#1a1d23;font-size:14px;vertical-align:top;padding:9px 0;border-bottom:1px solid #dde0e8;";
+
+  type Row = [string, string];
+  const rows: Row[] = [];
+
+  rows.push(["Analysierte Domain", `<a href="${esc(params.domainUrl)}" style="color:#3b82f6;text-decoration:none;" target="_blank">${esc(params.domainUrl)}</a>`]);
+  if (params.companyName?.trim()) rows.push(["Unternehmensname", esc(params.companyName)]);
+  if (params.targetAudience?.trim()) rows.push(["Zielgruppen / Käuferpersonas", esc(params.targetAudience).replace(/\n/g, "<br>")]);
+  if (params.differentiators?.trim()) rows.push(["Differenzierungsmerkmale", esc(params.differentiators).replace(/\n/g, "<br>")]);
+  if (params.brandKeywords?.trim()) rows.push(["Brand-Keywords", esc(params.brandKeywords).replace(/,/g, ", ")]);
+
+  const competitorList = (params.competitors ?? []).map((c) => c.trim()).filter(Boolean);
+  if (competitorList.length > 0) {
+    const links = competitorList.map((c) => `<a href="${esc(c)}" style="color:#3b82f6;text-decoration:none;display:block;" target="_blank">${esc(c)}</a>`).join("");
+    rows.push(["Wettbewerber-Domains", links]);
+  }
+
+  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
+  if (socialEntries.length > 0) {
+    const lines = socialEntries.map(([k, v]) => `<span style="display:block;">${esc(k.charAt(0).toUpperCase() + k.slice(1))}: ${esc(v)}</span>`).join("");
+    rows.push(["Social-Media-Profile", lines]);
+  }
+
+  rows.push(["Analysedatum", esc(params.analysisDate)]);
+  rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
+
+  const tableRows = rows.map(([label, value], i) => {
+    const isLast = i === rows.length - 1;
+    const ls = isLast ? labelStyle.replace("border-bottom:1px solid #dde0e8;", "") : labelStyle;
+    const vs = isLast ? valueStyle.replace("border-bottom:1px solid #dde0e8;", "") : valueStyle;
+    return `  <tr><td style="${ls}">${label}</td><td style="${vs}">${value}</td></tr>`;
+  }).join("\n");
+
+  return `
+${divider("Analyseparameter")}
+<h2>Analyseparameter dieser Auswertung</h2>
+<div style="background:#ffffff;border:1px solid #dde0e8;border-radius:8px;padding:20px 24px;max-width:720px;">
+  <table style="width:100%;border-collapse:collapse;">
+    <tbody>
+${tableRows}
+    </tbody>
+  </table>
+</div>`;
+}
+
+/**
+ * Full self-contained HTML document for Analyseparameter PDF capture via iframe.
+ */
+export function buildAnalyseparameterDocumentHtml(params: InputParams): string {
+  type Row = [string, string];
+  const rows: Row[] = [];
+
+  rows.push(["Analysierte Domain", params.domainUrl]);
+  if (params.companyName?.trim()) rows.push(["Unternehmensname", params.companyName]);
+  if (params.targetAudience?.trim()) rows.push(["Zielgruppen / Käuferpersonas", params.targetAudience]);
+  if (params.differentiators?.trim()) rows.push(["Differenzierungsmerkmale", params.differentiators]);
+  if (params.brandKeywords?.trim()) rows.push(["Brand-Keywords", params.brandKeywords]);
+
+  const competitorList = (params.competitors ?? []).map((c) => c.trim()).filter(Boolean);
+  if (competitorList.length > 0) rows.push(["Wettbewerber-Domains", competitorList.join("\n")]);
+
+  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
+  if (socialEntries.length > 0) {
+    rows.push(["Social-Media-Profile", socialEntries.map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join("\n")]);
+  }
+
+  rows.push(["Analysedatum", params.analysisDate]);
+  rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
+
+  const tableRows = rows.map(([label, value]) => {
+    const htmlValue = value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+    return `      <tr>
+        <td class="lbl">${label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>
+        <td class="val">${htmlValue}</td>
+      </tr>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #ffffff;
+    color: #1a1d23;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px;
+    width: 1200px;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 2px solid #dde0e8; }
+  .card { border: 1px solid #dde0e8; border-radius: 8px; padding: 24px; max-width: 700px; }
+  table { width: 100%; border-collapse: collapse; }
+  .lbl {
+    font-weight: 600; color: #787b86; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.05em; width: 200px; vertical-align: top;
+    padding: 9px 16px 9px 0; border-bottom: 1px solid #dde0e8; white-space: nowrap;
+  }
+  .val {
+    color: #1a1d23; font-size: 14px; vertical-align: top;
+    padding: 9px 0; border-bottom: 1px solid #dde0e8;
+  }
+  tr:last-child .lbl, tr:last-child .val { border-bottom: none; }
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+</style>
+</head>
+<body>
+  <h1>Analyseparameter dieser Auswertung</h1>
+  <div class="card">
+    <table>
+      <tbody>
+${tableRows}
+      </tbody>
+    </table>
+  </div>
+  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+</body>
+</html>`;
+}
+
 /**
  * Full self-contained HTML document for FAQ PDF capture via iframe.
  * Uses a stylesheet inside <head> so tables and headings render reliably.
@@ -919,7 +1060,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
 
 export function generateHtmlReport(
   report: Record<string, unknown>,
-  opts: { logoSrc?: string; profileSrc?: string } = {}
+  opts: { logoSrc?: string; profileSrc?: string; inputParams?: InputParams } = {}
 ): string {
   const overallScore = (report.overallScore as number) ?? 0;
   const url          = String(report.url ?? "HTML-Upload");
@@ -940,6 +1081,7 @@ export function generateHtmlReport(
     renderCompetitorSection(report),
     renderRecommendationsSection(report),
     renderFaqSection(),
+    opts.inputParams ? renderAnalyseparameterSection(opts.inputParams) : null,
     renderKontaktSection(opts.logoSrc ?? "", opts.profileSrc ?? ""),
   ].filter(Boolean).join("\n");
 

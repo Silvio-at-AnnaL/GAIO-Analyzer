@@ -1,0 +1,160 @@
+```
+Add a new "Analyseparameter" section to both the PDF 
+and HTML exports that displays all input data entered 
+by the user in "Domainanalyse – Basisdaten" before 
+the analysis was started. Then self-verify the 
+implementation.
+
+---
+
+CHANGE 1 — Identify the input data to export
+
+The following fields from the analysis input must 
+be included. Read them from the same result/state 
+object that already stores the analysis parameters 
+(check what the existing exports already use for 
+the domain URL — extend from there):
+
+  - Analysierte Domain (URL)
+  - Unternehmensname (if entered)
+  - Zielgruppen / Käuferpersonas (if entered)
+  - Differenzierungsmerkmale (if entered)
+  - Brand-Keywords (if entered, show as comma-
+    separated list)
+  - Wettbewerber-Domains (list all entered URLs, 
+    one per line)
+  - Social Media Profile (show only fields that 
+    were actually filled in — label: value pairs, 
+    e.g. "LinkedIn: https://...")
+  - Analysedatum und -uhrzeit (generate from 
+    export timestamp)
+  - Anzahl gecrawlter Seiten
+
+For any field that was left empty by the user, 
+omit that field entirely from the output — do not 
+show empty rows or "nicht angegeben" placeholders. 
+Only show fields that contain actual data.
+
+---
+
+CHANGE 2 — HTML export: new section
+
+Insert a new section between the FAQ section and 
+the Kontakt section at the bottom of the one-pager.
+
+Use the existing section-divider pattern:
+  <div class="section-divider">
+    <span>Analyseparameter</span>
+  </div>
+  <h2>Analyseparameter dieser Auswertung</h2>
+
+Then display the data as a clean two-column 
+definition list or table:
+  Column 1: field label (font-weight bold, 
+             color #787b86, font-size 12px, 
+             text-transform uppercase, 
+             letter-spacing 0.05em, width ~180px)
+  Column 2: field value (color #1a1d23, 
+             font-size 14px)
+
+For the Wettbewerber-Domains: show each URL on 
+its own line as a clickable link 
+(href, target="_blank").
+
+For Social Media: show as a compact list of 
+"Platform: URL" pairs, each on its own line.
+
+Use hardcoded hex colors only (no CSS variables).
+
+---
+
+CHANGE 3 — PDF export: new page
+
+After the FAQ page and before the Kontakt page, 
+add a new PDF page for "Analyseparameter".
+
+Build it as a self-contained HTML document 
+injected into an iframe, using the same technique 
+already established for the FAQ and Kontakt pages.
+
+Page structure:
+  - Heading: "Analyseparameter dieser Auswertung"
+  - Same two-column layout as the HTML export
+  - White background (#ffffff)
+  - Same font, same 12mm margin logic as all 
+    other PDF pages
+  - Wettbewerber URLs shown as plain text 
+    (not clickable links, since PDF is static)
+  - Social media entries as plain 
+    "Platform: URL" text
+
+---
+
+CHANGE 4 — Page order in both exports
+
+After this change, the complete export order must be:
+
+PDF pages:
+  1. Details
+  2. LLM-Auffindbarkeit
+  3. Wettbewerb
+  4. Empfehlungen
+  5. FAQ / So funktioniert's
+  6. Analyseparameter    ← new
+  7. Kontakt
+
+HTML one-pager sections (top to bottom):
+  Details content
+  LLM-Auffindbarkeit content
+  Wettbewerb content
+  Empfehlungen content
+  FAQ / So funktioniert's content
+  Analyseparameter content    ← new
+  Kontakt content
+
+---
+
+SELF-VERIFICATION after implementation
+
+After making the changes, verify the following 
+without requiring a new analysis run:
+
+CHECK 1 — Identify the data source
+Find where the analysis input parameters are 
+stored in the result object (field names and 
+location in the data structure). Report the 
+exact field names used.
+
+CHECK 2 — HTML export function
+Open the HTML export generation function and 
+confirm:
+  a) The "Analyseparameter" section exists in 
+     the generated HTML string
+  b) It appears after the FAQ section and before 
+     the Kontakt section
+  c) It reads data from the correct fields 
+     identified in CHECK 1
+  d) Empty fields are conditionally excluded
+  e) All styles use hardcoded hex values
+
+CHECK 3 — PDF export function
+Open the PDF export function and confirm:
+  a) An "Analyseparameter" iframe page is built 
+     and added to the PDF
+  b) It appears at position 6 (after FAQ, before 
+     Kontakt) in the pages array
+  c) It reads from the same data source as the 
+     HTML export
+  d) The iframe HTML is self-contained with 
+     inline styles
+
+CHECK 4 — Page order
+Confirm the pages array in the PDF export 
+function lists pages in exactly this order:
+  details, llm, competitors, recommendations, 
+  faq, analyseparameter, kontakt
+
+Report findings for each check with file name 
+and line number. If any check fails, fix it 
+immediately and re-verify.
+```
