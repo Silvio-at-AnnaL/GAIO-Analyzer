@@ -1,0 +1,149 @@
+Ich sehe das Problem klar. Die Empfehlungen haben englischen Inhalt direkt aus dem AI-Prompt — `finding`, `why`, `fix` Felder. Die bisherige German-Anweisung hat den Prompt erreicht aber nicht alle Ausgaben erfasst.
+
+```
+Fix two separate issues.
+
+---
+
+BUG 1 — Recommendations still generated in English
+
+The AI-generated recommendation fields (finding, 
+why, fix) are still being returned in English. 
+The previous fix added a German instruction but 
+it is not working reliably.
+
+Apply a more forceful approach:
+
+STEP A — Change the prompt structure.
+Find the prompt that requests recommendations 
+from the AI. Add the language instruction as 
+the very FIRST line of the prompt, before any 
+other content, in this exact form:
+
+  "KRITISCHE ANFORDERUNG: Alle Ausgaben 
+  ausnahmslos auf Deutsch. Kein einziges 
+  englisches Wort in irgendeinem Feld.
+  Sprache: Deutsch. Nur Deutsch."
+
+Also add it as the very LAST line of the prompt:
+
+  "WIEDERHOLUNG: Antworte ausschließlich auf 
+  Deutsch. Alle Felder — title, finding, 
+  why_it_matters, fix — müssen vollständig 
+  auf Deutsch sein. Englische Ausgaben sind 
+  nicht akzeptabel."
+
+STEP B — Add language validation after the 
+AI response is received.
+After parsing the recommendations JSON, run 
+a simple check on each recommendation's text: 
+detect if common English-only words appear 
+(e.g. "the ", "is ", "are ", "this ", "that ", 
+"with ", "for ", "page ", "site ", "missing ", 
+"add ", "use ", "ensure ", "improve ").
+
+If English words are detected in any field, 
+log a warning: 
+  console.warn('English detected in 
+  recommendations — retrying')
+Then make one retry API call with the same 
+prompt but prepend an additional line:
+  "FEHLER: Deine letzte Antwort enthielt 
+  englische Texte. Wiederhole die Ausgabe 
+  vollständig auf Deutsch."
+
+STEP C — Apply the same fix to ALL other 
+AI-generated text fields in the analysis:
+- Content analysis findings (use cases, 
+  buyer questions, technical depth, 
+  content gaps)
+- LLM discoverability gap explanations
+- Competitor insights (competitor_advantages, 
+  main_advantages, recommendation)
+- Executive summary
+
+Find each prompt for these and add the same 
+German-language instruction at the start 
+and end of each prompt.
+
+---
+
+BUG 2 — Kontakt page still renders at 
+wrong width in PDF (142mm instead of 210mm)
+
+The Analyseparameter page was fixed but the 
+Kontakt page was not. They use the same 
+iframe technique but Kontakt still has 
+incorrect dimensions.
+
+The fix from the previous iteration was not 
+applied consistently to the Kontakt page. 
+Apply it now explicitly.
+
+Find the code block that builds and captures 
+the Kontakt iframe page. Verify and enforce:
+
+  a) The iframe element width is set to 
+     exactly 1200px before capture:
+       kontaktIframe.style.width = '1200px'
+  
+  b) The HTML document written into the 
+     iframe has:
+       body { width: 1200px; 
+              box-sizing: border-box; }
+       * { max-width: 100%; 
+           box-sizing: border-box; }
+  
+  c) The dimension calculation uses:
+       const captureWidthPx = 1200
+       const captureHeightPx = Math.max(
+         body.scrollHeight, body.offsetHeight
+       ) + 60
+       const pdfPageWidthMm = 210
+       const pdfPageHeightMm = 
+         (captureHeightPx / captureWidthPx) 
+         * pdfPageWidthMm
+  
+  d) The addPage call uses:
+       pdf.addPage(
+         [pdfPageWidthMm, pdfPageHeightMm], 
+         'portrait'
+       )
+  
+  e) The addImage call uses:
+       pdf.addImage(
+         imgData, 'JPEG',
+         12, 12,   // margins
+         186,      // content width: 210-12-12
+         (captureHeightPx / captureWidthPx) * 186
+       )
+
+After making this change, also verify the 
+same pattern is correctly applied to the FAQ 
+and Analyseparameter iframe pages — confirm 
+all three use identical dimension calculation 
+code. If any differs, harmonize them to use 
+the same shared helper function to avoid 
+this divergence happening again.
+
+Create a helper function:
+  function calcPdfDimensions(
+    captureHeightPx: number, 
+    captureWidthPx: number = 1200
+  ) {
+    return {
+      pageW: 210,
+      pageH: (captureHeightPx / captureWidthPx) 
+             * 210,
+      imgX: 12,
+      imgY: 12,
+      imgW: 186,
+      imgH: (captureHeightPx / captureWidthPx) 
+            * 186,
+    }
+  }
+
+Use this function for ALL pages — both tab 
+panels and iframe pages — so dimension 
+calculation is never duplicated.
+```

@@ -17,6 +17,22 @@ import {
   Info, Clock, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 
+/**
+ * Computes consistent PDF page and image dimensions from a pixel capture.
+ * Page width is always 210mm; height scales proportionally.
+ * Image is placed with 12mm margins, so content width = 186mm.
+ */
+function calcPdfDimensions(
+  captureHeightPx: number,
+  captureWidthPx = 1200,
+): { pageW: number; pageH: number; imgX: number; imgY: number; imgW: number; imgH: number } {
+  const pageW = 210;
+  const margin = 12;
+  const imgW = pageW - margin * 2; // 186mm
+  const ratio = captureHeightPx / captureWidthPx;
+  return { pageW, pageH: ratio * pageW, imgX: margin, imgY: margin, imgW, imgH: ratio * imgW };
+}
+
 const MODULE_NAMES = [
   "Crawling Website",
   "Technisches SEO",
@@ -1166,6 +1182,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
         console.log("Kontakt iframe height:", kontaktH);
 
         if (kontaktH > 0) {
+          // Enforce 1200px width explicitly before capture.
+          kontaktIframe.style.width = `${CAPTURE_WIDTH_PX}px`;
           kontaktIframe.style.height = `${kontaktH + 60}px`;
           await new Promise((r) => setTimeout(r, 300));
 
@@ -1250,39 +1268,32 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       // ── FAQ final page ────────────────────────────────────────────────────────
       if (faqCapture) {
-        // BUG 1 FIX: separate page-height (210mm scale) from image-height (186mm scale).
-        const faqCapPx = faqCapture.captureHeightPx;
-        const faqPageHMm    = (faqCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;      // proportional to 210mm
-        const faqContentHMm = (faqCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W; // proportional to 186mm
-        pdf.addPage([PDF_MM_W, faqPageHMm], "portrait");
-        pdf.addImage(faqCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, faqContentHMm);
+        const d = calcPdfDimensions(faqCapture.captureHeightPx);
+        pdf.addPage([d.pageW, d.pageH], "portrait");
+        pdf.addImage(faqCapture.imgData, "JPEG", d.imgX, d.imgY, d.imgW, d.imgH);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
-        pdf.text(`FAQ / So funktioniert's · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+        pdf.text(`FAQ / So funktioniert's · ${today}`, d.imgX, d.imgY - 3);
       }
 
       // ── Analyseparameter page (page 6) ───────────────────────────────────────
       if (analyseparameterCapture) {
-        const apCapPx = analyseparameterCapture.captureHeightPx;
-        const apPageHMm    = (apCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;
-        const apContentHMm = (apCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
-        pdf.addPage([PDF_MM_W, apPageHMm], "portrait");
-        pdf.addImage(analyseparameterCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, apContentHMm);
+        const d = calcPdfDimensions(analyseparameterCapture.captureHeightPx);
+        pdf.addPage([d.pageW, d.pageH], "portrait");
+        pdf.addImage(analyseparameterCapture.imgData, "JPEG", d.imgX, d.imgY, d.imgW, d.imgH);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
-        pdf.text(`Analyseparameter · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+        pdf.text(`Analyseparameter · ${today}`, d.imgX, d.imgY - 3);
       }
 
       // ── Kontakt final page ────────────────────────────────────────────────────
       if (kontaktCapture) {
-        const kCapPx = kontaktCapture.captureHeightPx;
-        const kPageHMm    = (kCapPx / CAPTURE_WIDTH_PX) * PDF_MM_W;
-        const kContentHMm = (kCapPx / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
-        pdf.addPage([PDF_MM_W, kPageHMm], "portrait");
-        pdf.addImage(kontaktCapture.imgData, "JPEG", MARGIN_MM, MARGIN_MM, CONTENT_MM_W, kContentHMm);
+        const d = calcPdfDimensions(kontaktCapture.captureHeightPx);
+        pdf.addPage([d.pageW, d.pageH], "portrait");
+        pdf.addImage(kontaktCapture.imgData, "JPEG", d.imgX, d.imgY, d.imgW, d.imgH);
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
-        pdf.text(`Kontakt · ${today}`, MARGIN_MM, MARGIN_MM - 3);
+        pdf.text(`Kontakt · ${today}`, d.imgX, d.imgY - 3);
       }
 
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.

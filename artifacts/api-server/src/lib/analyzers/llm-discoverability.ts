@@ -170,7 +170,9 @@ async function rateQuestionsWithSources(
 
   const urlList = pageBlocks.map((p) => p.url);
 
-  const prompt = `Using ONLY the crawled website pages below as your knowledge source,
+  const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+
+Using ONLY the crawled website pages below as your knowledge source,
 rate how completely you could answer each question (1=cannot answer at all, 5=fully and specifically answerable).
 
 For each question, also identify the SINGLE best-matching page URL that supports the answer.
@@ -188,8 +190,10 @@ ${JSON.stringify(questions)}
 
 Return ONLY valid JSON:
 {"ratings": [
-  {"question": "<q>", "rating": <1-5>, "gap": "<short German explanation of what info is missing or why the rating>", "sourceUrl": <"url" or null>}
-]}`;
+  {"question": "<q>", "rating": <1-5>, "gap": "<kurze deutsche Erklärung was fehlt oder warum die Bewertung so ist>", "sourceUrl": <"url" or null>}
+]}
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
   try {
     const resp = await anthropic.messages.create({

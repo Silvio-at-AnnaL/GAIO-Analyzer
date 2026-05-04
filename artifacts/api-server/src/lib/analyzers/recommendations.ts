@@ -187,26 +187,54 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
   return recs;
 }
 
+// ─── Language guard ───────────────────────────────────────────────────────────
+
+const ENGLISH_MARKERS = [
+  "the ", "is ", "are ", "this ", "that ", "with ", "for ",
+  "page ", "site ", "missing ", "add ", "use ", "ensure ", "improve ",
+];
+
+function containsEnglish(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ENGLISH_MARKERS.some((m) => lower.includes(m));
+}
+
+function hasEnglishContent(recs: Recommendation[]): boolean {
+  return recs.some(
+    (r) =>
+      containsEnglish(r.finding) ||
+      containsEnglish(r.whyItMatters) ||
+      containsEnglish(r.fixInstruction),
+  );
+}
+
+function parseRecommendations(text: string): Recommendation[] | null {
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) return null;
+  try {
+    const parsed: Recommendation[] = JSON.parse(match[0]);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateRecommendations(
-  moduleResults: Record<string, unknown>,
-): Promise<Recommendation[]> {
-  const ruleBasedRecs = generateRuleBasedRecommendations(moduleResults);
+const GERMAN_PROMPT_PREFIX =
+  "KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. " +
+  "Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.\n\n";
 
-  let aiRecs: Recommendation[] = [];
-  try {
-    const resultsStr = JSON.stringify(moduleResults, null, 2).slice(0, 12000);
+const GERMAN_PROMPT_SUFFIX =
+  "\n\nWIEDERHOLUNG: Antworte ausschließlich auf Deutsch. " +
+  "Alle Felder — title, finding, why_it_matters, fix — müssen vollständig auf Deutsch sein. " +
+  "Englische Ausgaben sind nicht akzeptabel.";
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `IMPORTANT: You must respond entirely in German. Every word of every recommendation — the title, the problem description, the why_it_matters explanation, and the fix instruction — must be in German. Do not use any English words, phrases, or sentences anywhere in your response. This is a strict requirement.
-
-Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
+function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""): string {
+  return (
+    GERMAN_PROMPT_PREFIX +
+    retryPrefix +
+    `Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
 
 - "critical": must be fixed immediately (broken fundamentals: missing canonical, no HTTPS, 0 structured data, H1 absent)
 - "high_leverage": changes likely to produce major visibility gains (missing FAQPage schema, thin content, no use-case descriptions, hreflang errors, missing Organization schema)
@@ -223,17 +251,48 @@ Analysis findings:
 ${resultsStr}
 
 Return a JSON array (no markdown) of objects:
-[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]`,
-        },
-      ],
-    });
+[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]` +
+    GERMAN_PROMPT_SUFFIX
+  );
+}
 
-    const block = message.content[0];
-    if (block.type === "text") {
-      const match = block.text.match(/\[[\s\S]*\]/);
-      if (match) {
-        const parsed: Recommendation[] = JSON.parse(match[0]);
-        if (Array.isArray(parsed)) aiRecs = parsed;
+export async function generateRecommendations(
+  moduleResults: Record<string, unknown>,
+): Promise<Recommendation[]> {
+  const ruleBasedRecs = generateRuleBasedRecommendations(moduleResults);
+
+  let aiRecs: Recommendation[] = [];
+  try {
+    const resultsStr = JSON.stringify(moduleResults, null, 2).slice(0, 12000);
+
+    const callApi = async (content: string) => {
+      const msg = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        messages: [{ role: "user", content }],
+      });
+      const block = msg.content[0];
+      return block.type === "text" ? block.text : "";
+    };
+
+    const firstText = await callApi(buildRecommendationsPrompt(resultsStr));
+    const firstParsed = parseRecommendations(firstText);
+
+    if (firstParsed && firstParsed.length > 0) {
+      if (hasEnglishContent(firstParsed)) {
+        logger.warn("English detected in recommendations — retrying");
+        const retryText = await callApi(
+          buildRecommendationsPrompt(
+            resultsStr,
+            "FEHLER: Deine letzte Antwort enthielt englische Texte. " +
+            "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",
+          ),
+        );
+        const retryParsed = parseRecommendations(retryText);
+        if (retryParsed && retryParsed.length > 0) aiRecs = retryParsed;
+        else aiRecs = firstParsed;
+      } else {
+        aiRecs = firstParsed;
       }
     }
   } catch (err) {

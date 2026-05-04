@@ -72,7 +72,9 @@ async function generateFindings(
     compositeScore: number;
   },
 ): Promise<CompetitorFindings> {
-  const prompt = `You are an SEO and LLM-discoverability expert. Compare two B2B industrial websites based on their analysis scores.
+  const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+
+You are an SEO and LLM-discoverability expert. Compare two B2B industrial websites based on their analysis scores.
 
 Main site: ${mainDomain}
 Scores: Technical SEO=${mainScores.technicalScore}, Schema.org=${mainScores.schemaScore}, Content=${mainScores.contentScore}, Headings=${mainScores.headingScore}, FAQ=${mainScores.faqScore}
@@ -81,9 +83,11 @@ Competitor: ${competitorDomain}
 Scores: Technical SEO=${competitorScores.technicalScore}, Schema.org=${competitorScores.schemaScore}, Content=${competitorScores.contentScore}, Headings=${competitorScores.headingScore}, FAQ=${competitorScores.faqScore}, Composite=${competitorScores.compositeScore}
 
 Respond with a JSON object (no markdown) with exactly these three fields:
-- "betterThanYou": One concrete thing this competitor does better (German, 1-2 sentences)
-- "yourAdvantage": One area where the main site clearly outperforms this competitor (German, 1-2 sentences)
-- "recommendation": One specific, actionable improvement the main site should make based on this comparison (German, 1-2 sentences)`;
+- "betterThanYou": One concrete thing this competitor does better (auf Deutsch, 1-2 Sätze)
+- "yourAdvantage": One area where the main site clearly outperforms this competitor (auf Deutsch, 1-2 Sätze)
+- "recommendation": One specific, actionable improvement the main site should make based on this comparison (auf Deutsch, 1-2 Sätze)
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle drei Felder müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
   try {
     const response = await anthropic.messages.create({

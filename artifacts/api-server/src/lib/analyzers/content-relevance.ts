@@ -49,7 +49,7 @@ export async function analyzeContentRelevance(
       messages: [
         {
           role: "user",
-          content: `IMPORTANT: You must respond entirely in German. Every word of every finding must be in German. Do not use any English words, phrases, or sentences anywhere in your response. This is a strict requirement.
+          content: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
 
 Given this B2B industrial website content, evaluate:
 (1) Does it describe specific use cases and application scenarios?
@@ -70,7 +70,9 @@ Return a JSON object (no markdown formatting) with this structure:
     {"name": "Technical Depth", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
     {"name": "Content Gaps", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]}
   ]
-}`,
+}
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
         },
       ],
     });
