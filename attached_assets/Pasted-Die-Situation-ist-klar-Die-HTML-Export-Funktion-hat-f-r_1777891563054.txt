@@ -1,0 +1,153 @@
+Die Situation ist klar. Die HTML-Export-Funktion hat für den technischen Block nur eine vereinfachte Version gebaut — `robots.txt ✓ Ja` und `sitemap.xml ✓ Ja` — während die vollständige qualitative Analyse der drei Dateien fehlt. Hier der Prompt:
+
+```
+The HTML export is missing the full qualitative analysis 
+of robots.txt, sitemap, and llms.txt that is correctly 
+shown in the PDF export and in the app's Details tab. 
+Fix the HTML export generation function to include this 
+content.
+
+---
+
+PROBLEM 1 — "Technische Dateien" section missing entirely
+
+The HTML export shows only a simple detail-grid with:
+  robots.txt: ✓ Ja
+  sitemap.xml: ✓ Ja
+
+This must be replaced and extended with a full 
+"Technische Dateien" section that mirrors what the 
+Details tab shows in the app. The section must appear 
+directly after the technical details grid and before 
+the Schema.org section.
+
+---
+
+ROBOTS.TXT block
+
+Heading: "robots.txt — [gefunden / nicht gefunden]"
+
+If found, show:
+- A table listing each major LLM crawler and its status:
+  Columns: Crawler-Name | Status
+  Rows for: GPTBot, ChatGPT-User, ClaudeBot, 
+  anthropic-ai, GoogleBot, Google-Extended, 
+  PerplexityBot, Amazonbot, cohere-ai, 
+  meta-externalagent
+  Status values: "Erlaubt", "Blockiert", 
+  "Nicht erwähnt"
+  Color code: Erlaubt = green, Blockiert = red, 
+  Nicht erwähnt = gray
+
+- An overall assessment sentence below the table.
+  Example: "Keine LLM-Crawler explizit adressiert — 
+  Konfiguration für KI-Sichtbarkeit optimierungsbedürftig."
+
+- A collapsible raw content block (first 500 chars 
+  of the actual robots.txt content) in a styled 
+  <pre> or code block.
+
+If not found, show a muted notice:
+  "robots.txt nicht gefunden."
+
+---
+
+SITEMAP block
+
+Heading: "Sitemap — [gefunden / nicht gefunden]"
+Subheading shows the type: XML, XML-Index, HTML, 
+or keiner
+
+IMPORTANT: The label in the HTML export must be 
+"Sitemap" (not "sitemap.xml") to match the PDF. 
+The type (XML-Index, HTML, etc.) is shown as a 
+badge or sub-label next to the heading.
+
+If found, show a detail-grid with:
+  - Typ: XML / XML-Index / HTML-Sitemap
+  - URLs gesamt: [count]
+  - Crawl-Abdeckung: [percentage]% 
+    (how many crawled pages appear in sitemap)
+  - Älteste Lastmod: [date or —]
+  - Neueste Lastmod: [date or —]
+  - Spezial-Typen: Image-Sitemap / Video-Sitemap 
+    / — if none
+
+Below the grid, show the overall assessment sentence.
+
+If not found, show which fallback paths were tried 
+and a notice that no sitemap was found.
+
+---
+
+LLMS.TXT block
+
+Heading: "llms.txt — [gefunden / nicht gefunden]"
+
+If found, show:
+- Parsed content structured into its sections 
+  (title, description, linked pages)
+- Completeness assessment
+- Overall assessment sentence
+- Collapsible raw content block
+
+If NOT found (most common case), show a highlighted 
+notice box (amber/orange background) with:
+  "Verpasste Chance: llms.txt ist ein aufkommender 
+  Standard, mit dem Website-Betreiber strukturierte 
+  Informationen speziell für LLM-Crawler 
+  bereitstellen — ähnlich wie robots.txt, aber mit 
+  inhaltlichem Fokus für KI-Systeme wie ChatGPT, 
+  Claude und Perplexity."
+
+  Then below: "llms.txt nicht gefunden — eine 
+  verpasste Chance zur gezielten LLM-Optimierung."
+
+This matches exactly what the PDF and the app 
+already show for this case.
+
+---
+
+PROBLEM 2 — Data source
+
+The HTML export generation function must read the 
+same analysis result data fields that the app's 
+Details tab already uses to display this information. 
+These fields already exist in the result object — 
+they are being used correctly in the PDF and in the 
+live app view but are not being passed to the HTML 
+export function.
+
+Specifically, check that the HTML export function 
+receives and uses:
+  result.technical.robots_txt_content
+  result.technical.robots_txt_crawler_status 
+    (or equivalent field name)
+  result.technical.sitemap_type
+  result.technical.sitemap_url_count
+  result.technical.sitemap_crawl_coverage
+  result.technical.llms_txt_content
+  result.technical.llms_txt_found
+  (use whatever the actual field names are in the 
+  result object — check the data structure)
+
+Do not hardcode placeholder values. Read the actual 
+analysis data.
+
+---
+
+PROBLEM 3 — Consistent styling
+
+Use the same CSS classes and styling patterns already 
+present in the HTML export for other sections:
+- detail-grid / detail-item for metric grids
+- Tables with th/td for crawler status tables  
+- Highlighted notice box: 
+  background #fef3c7, border-left 4px solid #f59e0b,
+  border-radius 6px, padding 12px 16px
+- Muted notice: color #787b86, font-size 12px
+- Code/pre blocks: background #f4f5f7, 
+  font-family monospace, font-size 11px, 
+  padding 10px, border-radius 6px, 
+  overflow-x auto, max-height 120px, overflow-y auto
+```

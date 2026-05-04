@@ -108,6 +108,111 @@ function divider(label: string): string {
   return `<div class="section-divider"><span>${esc(label)}</span></div>`;
 }
 
+// ─── Technische Dateien sub-section ──────────────────────────────────────────
+
+function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): string {
+  type LlmCrawlerStatus = { name: string; status: "allowed" | "disallowed" | "not_mentioned" };
+  type RobotsAnalysis = { userAgents: string[]; llmCrawlers: LlmCrawlerStatus[]; siteBlockedAgents: string[]; crawlDelays: Array<{ agent: string; delay: number }>; sitemapUrls: string[]; summary: string };
+  type SitemapAnalysis = { type?: string; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
+  type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
+  type LlmsAnalysis = { present: boolean; title: string | null; description: string | null; sections: LlmsSection[]; linkedPageCount: number; hasDescription: boolean; summary: string };
+
+  const robotsTxtFound    = technicalSeo.robotsTxt as boolean;
+  const robotsAnalysis    = technicalSeo.robotsTxtAnalysis as RobotsAnalysis | null;
+  const robotsTxtContent  = technicalSeo.robotsTxtContent as string | null;
+  const sitemapType       = ((technicalSeo.sitemapType as string | undefined) ?? ((technicalSeo.sitemapXml as boolean) ? "xml" : "none"));
+  const sitemapFound      = sitemapType !== "none";
+  const sitemapAnalysis   = technicalSeo.sitemapXmlAnalysis as SitemapAnalysis | null;
+  const sitemapContent    = technicalSeo.sitemapXmlContent as string | null;
+  const llmsTxtFound      = technicalSeo.llmsTxt as boolean;
+  const llmsAnalysis      = technicalSeo.llmsTxtAnalysis as LlmsAnalysis | null;
+  const llmsTxtContent    = technicalSeo.llmsTxtContent as string | null;
+
+  const sitemapTypeBadge  = sitemapType === "xml" ? "XML" : sitemapType === "xml_index" ? "XML-Index" : sitemapType === "html" ? "HTML-Sitemap" : "nicht gefunden";
+
+  const subHead = (label: string, found: boolean, badge?: string) =>
+    `<h4 style="font-size:13px;font-weight:600;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid ${C.border};">${esc(label)} — <span style="color:${found ? "#22c55e" : "#ef4444"}">${badge ? esc(badge) : (found ? "gefunden" : "nicht gefunden")}</span></h4>`;
+
+  const rawBlock = (content: string, label = "Rohdaten anzeigen (erste 500 Zeichen)") =>
+    `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:${C.textMuted};user-select:none;">${esc(label)}</summary>
+    <pre style="background:${C.bg};font-family:monospace;font-size:11px;padding:10px;border-radius:6px;overflow-x:auto;max-height:120px;overflow-y:auto;margin-top:4px;white-space:pre-wrap;">${esc(content)}</pre></details>`;
+
+  let html = `<h3 style="margin-top:24px;">Technische Dateien</h3>`;
+
+  // ── robots.txt ──────────────────────────────────────────────────────────────
+  html += subHead("robots.txt", robotsTxtFound);
+  if (robotsTxtFound && robotsAnalysis) {
+    const statusColor = (s: string) => s === "allowed" ? "#22c55e" : s === "disallowed" ? "#ef4444" : "#9ca3af";
+    const statusLabel = (s: string) => s === "allowed" ? "Erlaubt" : s === "disallowed" ? "Blockiert" : "Nicht erwähnt";
+    html += `<table class="data-table">
+      <thead><tr><th>Crawler-Name</th><th>Status</th></tr></thead>
+      <tbody>
+        ${robotsAnalysis.llmCrawlers.map((c) => `<tr><td style="font-family:monospace;font-size:12px;">${esc(c.name)}</td><td style="color:${statusColor(c.status)};font-weight:600;">${statusLabel(c.status)}</td></tr>`).join("")}
+      </tbody>
+    </table>`;
+    if (robotsAnalysis.siteBlockedAgents.length > 0) {
+      html += `<div style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#991b1b;">
+        <strong>Kritisch:</strong> Vollständige Sperrung für: ${robotsAnalysis.siteBlockedAgents.map(esc).join(", ")}
+      </div>`;
+    }
+    html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(robotsAnalysis.summary)}</p>`;
+    if (robotsTxtContent) html += rawBlock(robotsTxtContent);
+  } else if (!robotsTxtFound) {
+    html += `<p style="font-size:12px;color:${C.textMuted};margin:4px 0 0;">robots.txt nicht gefunden.</p>`;
+  }
+
+  // ── Sitemap ─────────────────────────────────────────────────────────────────
+  html += subHead("Sitemap", sitemapFound, sitemapTypeBadge);
+  if (sitemapFound && sitemapAnalysis) {
+    const isXml  = sitemapType === "xml" || sitemapType === "xml_index";
+    const isHtml = sitemapType === "html";
+    html += `<div class="detail-grid">
+      <div class="detail-item"><div class="label">Typ</div><div class="val">${esc(sitemapTypeBadge)}</div></div>
+      <div class="detail-item"><div class="label">${isHtml ? "Verlinkungen gesamt" : "URLs gesamt"}</div><div class="val">${sitemapAnalysis.totalUrls}</div></div>
+      <div class="detail-item"><div class="label">Crawl-Abdeckung</div><div class="val">${sitemapAnalysis.crawledPageCoverage}%</div></div>
+      ${isXml ? `<div class="detail-item"><div class="label">Älteste Lastmod</div><div class="val">${sitemapAnalysis.oldestLastmod ? esc(sitemapAnalysis.oldestLastmod.slice(0, 10)) : "—"}</div></div>` : ""}
+      ${isXml ? `<div class="detail-item"><div class="label">Neueste Lastmod</div><div class="val">${sitemapAnalysis.newestLastmod ? esc(sitemapAnalysis.newestLastmod.slice(0, 10)) : "—"}</div></div>` : ""}
+      ${isXml ? `<div class="detail-item"><div class="label">Spezial-Typen</div><div class="val">${[sitemapAnalysis.hasImageSitemap && "Image", sitemapAnalysis.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</div></div>` : ""}
+      ${isHtml && sitemapAnalysis.htmlSitemapUrl ? `<div class="detail-item" style="grid-column:span 2;"><div class="label">Gefunden unter</div><div class="val" style="font-family:monospace;font-size:11px;word-break:break-all;">${esc(sitemapAnalysis.htmlSitemapUrl)}</div></div>` : ""}
+    </div>`;
+    if (isHtml && sitemapAnalysis.htmlSections && sitemapAnalysis.htmlSections.length > 0) {
+      html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0 4px;"><strong>Sektion-Überschriften:</strong> ${sitemapAnalysis.htmlSections.map(esc).join(", ")}</p>`;
+    }
+    html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(sitemapAnalysis.summary)}</p>`;
+    if (isHtml) {
+      html += `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#92400e;">
+        HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine <code>/sitemap.xml</code>.
+      </div>`;
+    }
+    if (sitemapContent) html += rawBlock(sitemapContent, isHtml ? "HTML-Vorschau (erste 500 Zeichen)" : "Rohdaten anzeigen (erste 500 Zeichen)");
+  } else if (!sitemapFound) {
+    html += `<p style="font-size:12px;color:${C.textMuted};margin:4px 0 0;">Keine Sitemap gefunden (weder <code>/sitemap.xml</code> noch HTML-Sitemap).</p>`;
+  }
+
+  // ── llms.txt ────────────────────────────────────────────────────────────────
+  html += subHead("llms.txt", llmsTxtFound);
+  if (llmsTxtFound && llmsAnalysis) {
+    html += `<div class="detail-grid">
+      <div class="detail-item"><div class="label">Titel</div><div class="val">${llmsAnalysis.title ? esc(llmsAnalysis.title) : "—"}</div></div>
+      <div class="detail-item"><div class="label">Beschreibung</div><div class="val">${llmsAnalysis.hasDescription ? "✓ Ja" : "✗ Nein"}</div></div>
+      <div class="detail-item"><div class="label">Sektionen</div><div class="val">${llmsAnalysis.sections.length}</div></div>
+      <div class="detail-item"><div class="label">Verlinkte Seiten</div><div class="val">${llmsAnalysis.linkedPageCount}</div></div>
+    </div>`;
+    if (llmsAnalysis.sections.length > 0) {
+      html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0 4px;"><strong>Sektionen:</strong> ${llmsAnalysis.sections.map((s) => esc(s.name)).join(", ")}</p>`;
+    }
+    html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(llmsAnalysis.summary)}</p>`;
+    if (llmsTxtContent) html += rawBlock(llmsTxtContent);
+  } else {
+    html += `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin:8px 0;font-size:12px;color:#92400e;">
+      <strong>Verpasste Chance:</strong> llms.txt ist ein aufkommender Standard, mit dem Website-Betreiber strukturierte Informationen speziell für LLM-Crawler bereitstellen — ähnlich wie robots.txt, aber mit inhaltlichem Fokus für KI-Systeme wie ChatGPT, Claude und Perplexity.
+    </div>
+    <p style="font-size:12px;color:${C.textMuted};margin:4px 0 0;">${esc((llmsAnalysis as LlmsAnalysis | null)?.summary ?? "llms.txt nicht gefunden — eine verpasste Chance zur gezielten LLM-Optimierung.")}</p>`;
+  }
+
+  return html;
+}
+
 // ─── Section renderers ────────────────────────────────────────────────────────
 
 function renderDetailsSection(report: Record<string, unknown>): string {
@@ -148,9 +253,12 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       <div class="detail-item"><div class="label">Antwortzeit</div><div class="val">${technicalSeo.responseTime} ms</div></div>
       <div class="detail-item"><div class="label">TTFB</div><div class="val">${technicalSeo.ttfb} ms</div></div>
       <div class="detail-item"><div class="label">robots.txt</div><div class="val">${(technicalSeo.robotsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label">sitemap.xml</div><div class="val">${(technicalSeo.sitemapXml as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
+      <div class="detail-item"><div class="label">Sitemap</div><div class="val">${(() => { const t = technicalSeo.sitemapType as string | undefined; if (t === "xml") return "XML ✓"; if (t === "xml_index") return "XML-Index ✓"; if (t === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓ Ja" : "✗ Nein"; })()}</div></div>
+      <div class="detail-item"><div class="label">llms.txt</div><div class="val">${(technicalSeo.llmsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">Canonical Tags</div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
     </div>`;
+
+    html += renderTechnischeDateienHtml(technicalSeo);
   }
 
   if (schemaOrg) {
