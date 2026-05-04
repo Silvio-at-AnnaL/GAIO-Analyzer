@@ -1,0 +1,74 @@
+Before the next test run, please self-verify that the 
+FAQ content update from the previous change is correctly 
+reflected in all three output locations. Do not wait 
+for a user-triggered analysis — check the source code 
+directly now.
+
+---
+
+VERIFICATION TASK
+
+Open the following three locations in the codebase 
+and confirm that each contains the updated FAQ content:
+
+CHECK 1 — Live app FAQ view component
+Find the component that renders the "FAQ / So 
+funktioniert's" page in the app (likely a React 
+component or a static content definition).
+Confirm it contains:
+  a) The updated "Was wird geprüft" text for 
+     "Technische SEO-Basis" including "llms.txt" 
+     and "Sitemap (.xml oder /sitemap*)"
+  b) The <sup>*</sup> superscript marker
+  c) The footnote block with the comparison table 
+     (sitemap.xml vs. /sitemap)
+  d) The conclusion paragraph
+
+CHECK 2 — HTML export generation function
+Find the function that generates the HTML export 
+file (likely in a file named report-export.ts, 
+exportUtils.ts, or similar).
+Confirm it contains:
+  a) The same updated "Was wird geprüft" text 
+     for "Technische SEO-Basis"
+  b) The <sup>*</sup> superscript marker
+  c) The footnote block with the comparison table 
+     using inline styles (no CSS variables)
+  d) The conclusion paragraph
+  e) All styles in the footnote block use hardcoded 
+     hex colors, not CSS custom properties like 
+     var(--color-*)
+
+CHECK 3 — PDF FAQ iframe generation
+Find the code that builds the FAQ HTML document 
+for the PDF export (the self-contained HTML string 
+injected into an iframe).
+Confirm it contains:
+  a) The same updated content as checks 1 and 2
+  b) The footnote block styles are inside the 
+     <style> block of the injected HTML document
+  c) No references to external stylesheets or 
+     CSS variables
+
+---
+
+WHAT TO DO BASED ON FINDINGS
+
+If all three match: report "Alle drei Locations 
+sind konsistent und enthalten den aktualisierten 
+FAQ-Inhalt." — no code changes needed.
+
+If any location is missing the update or still 
+shows the old text: apply the missing changes to 
+that specific location only, then confirm again.
+
+If the HTML export function uses a shared content 
+source (e.g. a constant or function that both the 
+live app and the export read from): confirm that 
+the shared source was updated and that both 
+consumers pick up the change correctly.
+
+Report back with the specific file names and 
+line numbers where the FAQ content was found 
+in each location, and whether each was up to 
+date or needed updating.
