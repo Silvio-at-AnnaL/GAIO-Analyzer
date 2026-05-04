@@ -204,7 +204,9 @@ export async function generateRecommendations(
       messages: [
         {
           role: "user",
-          content: `Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
+          content: `IMPORTANT: You must respond entirely in German. Every word of every recommendation — the title, the problem description, the why_it_matters explanation, and the fix instruction — must be in German. Do not use any English words, phrases, or sentences anywhere in your response. This is a strict requirement.
+
+Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
 
 - "critical": must be fixed immediately (broken fundamentals: missing canonical, no HTTPS, 0 structured data, H1 absent)
 - "high_leverage": changes likely to produce major visibility gains (missing FAQPage schema, thin content, no use-case descriptions, hreflang errors, missing Organization schema)

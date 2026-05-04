@@ -49,7 +49,9 @@ export async function analyzeContentRelevance(
       messages: [
         {
           role: "user",
-          content: `Given this B2B industrial website content, evaluate:
+          content: `IMPORTANT: You must respond entirely in German. Every word of every finding must be in German. Do not use any English words, phrases, or sentences anywhere in your response. This is a strict requirement.
+
+Given this B2B industrial website content, evaluate:
 (1) Does it describe specific use cases and application scenarios?
 (2) Does it answer likely buyer questions (ROI, specs, integrations, certifications, support)?
 (3) Is technical depth sufficient for expert-level users?

@@ -929,6 +929,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         tabValue: string;
       };
       const pages: PageData[] = [];
+      const currentDateString = new Date().toLocaleDateString("de-DE");
 
       for (const panel of panels) {
         const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
@@ -959,6 +960,21 @@ function ReportView({ analysisId }: { analysisId: string }) {
         // Neutralise all broken/external images before capture.
         neutraliseImages(panel);
 
+        // CHANGE 4 — Inject footer div so it appears at the bottom of each captured page.
+        const footerEl = document.createElement("div");
+        footerEl.id = "pdf-footer-injected";
+        footerEl.style.cssText =
+          "width:100%;margin-top:32px;padding-top:12px;border-top:1px solid #dde0e8;" +
+          "font-size:11px;color:#9ca3af;text-align:center;font-family:-apple-system,sans-serif;";
+        footerEl.textContent =
+          "IndustryStock.com/GAIO-Analyzer · Exportiert am " + currentDateString;
+        panel.appendChild(footerEl);
+        void panel.offsetHeight;
+        await new Promise((r) => setTimeout(r, 200));
+
+        // Re-measure height after footer injection.
+        const finalCaptureHeight = Math.max(panel.scrollHeight, panel.offsetHeight);
+
         // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
         try {
@@ -968,17 +984,20 @@ function ReportView({ analysisId }: { analysisId: string }) {
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
             width: captureWidth,
-            height: captureHeight,
+            height: finalCaptureHeight,
             skipFonts: true,
             filter: imageFilter,
           });
         } catch (imgErr) {
           console.warn("html-to-image failed for panel:", tabValue, imgErr);
           imgData = null;
+        } finally {
+          const injected = panel.querySelector("#pdf-footer-injected");
+          if (injected) panel.removeChild(injected);
         }
 
         const mmW = CONTENT_MM_W; // 186mm — content area after margins
-        const mmH = (captureHeight / captureWidth) * CONTENT_MM_W;
+        const mmH = (finalCaptureHeight / captureWidth) * CONTENT_MM_W;
 
         console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
 
@@ -1132,7 +1151,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktProfileB64));
         kontaktDoc.close();
 
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 1200));
 
         const kontaktBody = kontaktDoc.body as HTMLBodyElement;
         const kontaktH = Math.max(kontaktBody.scrollHeight, kontaktBody.offsetHeight);

@@ -705,7 +705,7 @@ ${tableRows}
       </tbody>
     </table>
   </div>
-  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+  <div class="note">IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
 </body>
 </html>`;
 }
@@ -831,7 +831,7 @@ export function buildFaqDocumentHtml(): string {
   <h2>Hinweise zur Genauigkeit</h2>
   <p>Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber. Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
 
-  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+  <div class="note">IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
 </body>
 </html>`;
 }
@@ -944,8 +944,7 @@ export function buildFaqPanelHtml(): string {
   <p style="${pStyle}">Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber. Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
 
   <div style="margin-top:32px;padding-top:16px;border-top:1px solid ${bdr};font-size:11px;color:${muted};">
-    GAIO Analyzer · <a href="https://gaio-analyzer.com" style="color:#3b82f6;text-decoration:none;">gaio-analyzer.com</a>
-    · Exportiert am ${new Date().toLocaleDateString("de-DE")}
+    IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}
   </div>
 </div>`;
 }
@@ -1005,7 +1004,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
 <head>
 <meta charset="UTF-8">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; max-width: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #ffffff;
@@ -1013,18 +1012,20 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
     font-size: 14px;
     line-height: 1.6;
     padding: 32px;
-    width: 1200px;
+    width: 1176px;
+    overflow: hidden;
   }
+  img { max-width: 200px; height: auto; }
   h1 { font-size: 20px; font-weight: 700; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 2px solid #dde0e8; }
   .card { border: 1px solid #dde0e8; border-radius: 10px; padding: 28px; max-width: 700px; }
   .logo { margin-bottom: 20px; }
-  .person { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #dde0e8; }
+  .person { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #dde0e8; }
   .name  { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
   .role  { font-size: 13px; color: #4a4d57; margin-bottom: 2px; }
-  .co    { font-size: 13px; color: #4a4d57; margin-bottom: 8px; }
-  .email { font-size: 13px; color: #3b82f6; font-weight: 500; }
-  .text  { font-size: 13px; color: #1a1d23; line-height: 1.7; margin-bottom: 10px; }
-  .sec   { font-size: 13px; color: #4a4d57; line-height: 1.7; margin-bottom: 20px; }
+  .co    { font-size: 13px; color: #4a4d57; margin-bottom: 8px; word-break: break-word; overflow-wrap: break-word; }
+  .email { font-size: 13px; color: #3b82f6; font-weight: 500; word-break: break-word; overflow-wrap: break-word; }
+  .text  { font-size: 13px; color: #1a1d23; line-height: 1.7; margin-bottom: 10px; word-break: break-word; overflow-wrap: break-word; }
+  .sec   { font-size: 13px; color: #4a4d57; line-height: 1.7; margin-bottom: 20px; word-break: break-word; overflow-wrap: break-word; }
   .cta   { display: inline-block; background: #3b82f6; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
   .note  { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
 </style>
@@ -1051,7 +1052,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
     </p>
     <a class="cta" href="mailto:Silvio.Haase@IndustryStock.com">E-Mail schreiben</a>
   </div>
-  <div class="note">GAIO Analyzer · gaio-analyzer.com · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+  <div class="note">IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
 </body>
 </html>`;
 }
