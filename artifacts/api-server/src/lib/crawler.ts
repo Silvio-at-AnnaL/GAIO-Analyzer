@@ -19,6 +19,9 @@ export interface CrawlResult {
   robotsTxt: string | null;
   sitemapXml: string | null;
   llmsTxt: string | null;
+  htmlSitemapHtml: string | null;
+  htmlSitemapUrl: string | null;
+  sitemapType: "xml" | "xml_index" | "html" | "none";
   robotsTxtExists: boolean;
   sitemapXmlExists: boolean;
   llmsTxtExists: boolean;
@@ -318,6 +321,162 @@ export async function fetchPage(url: string): Promise<CrawledPage | null> {
   }
 }
 
+// ─── Sitemap discovery helpers ────────────────────────────────────────────────
+
+function parseSitemapDeclarations(robotsTxt: string): string[] {
+  const urls: string[] = [];
+  for (const rawLine of robotsTxt.split("\n")) {
+    const line = rawLine.trim();
+    if (line.toLowerCase().startsWith("sitemap:")) {
+      const u = line.slice("sitemap:".length).trim();
+      if (u) urls.push(u);
+    }
+  }
+  return urls;
+}
+
+async function fetchSitemapIndexChildren(indexXml: string): Promise<string | null> {
+  const childUrls: string[] = [];
+  const locRe = /<loc>\s*(.*?)\s*<\/loc>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = locRe.exec(indexXml)) !== null && childUrls.length < 5) {
+    childUrls.push(m[1].trim());
+  }
+  if (childUrls.length === 0) return null;
+
+  const allLocs: string[] = [];
+  await Promise.allSettled(
+    childUrls.map(async (childUrl) => {
+      try {
+        const resp = await fetchWithTiming(childUrl, 5000);
+        if (resp.statusCode === 200 && resp.html.includes("<urlset")) {
+          const matches = [...resp.html.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)];
+          allLocs.push(...matches.map((x) => x[1].trim()));
+        }
+      } catch {
+        // skip
+      }
+    }),
+  );
+
+  if (allLocs.length === 0) return null;
+  return `<urlset>\n${allLocs.map((u) => `<url><loc>${u}</loc></url>`).join("\n")}\n</urlset>`;
+}
+
+interface SitemapDiscoveryResult {
+  sitemapXml: string | null;
+  htmlSitemapHtml: string | null;
+  htmlSitemapUrl: string | null;
+  sitemapXmlExists: boolean;
+  sitemapType: "xml" | "xml_index" | "html" | "none";
+}
+
+async function discoverSitemap(
+  origin: string,
+  robotsTxt: string | null,
+  homepageHtml: string,
+  homepageUrl: string,
+): Promise<SitemapDiscoveryResult> {
+  const none: SitemapDiscoveryResult = {
+    sitemapXml: null, htmlSitemapHtml: null, htmlSitemapUrl: null,
+    sitemapXmlExists: false, sitemapType: "none",
+  };
+
+  // Step 1: /sitemap.xml
+  try {
+    const resp = await fetchWithTiming(`${origin}/sitemap.xml`, 5000);
+    if (resp.statusCode === 200) {
+      if (resp.html.includes("<urlset")) {
+        return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml" };
+      }
+      if (resp.html.includes("<sitemapindex")) {
+        const merged = await fetchSitemapIndexChildren(resp.html);
+        return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+      }
+    }
+  } catch {
+    logger.debug("sitemap.xml not accessible");
+  }
+
+  // Step 2: /sitemap_index.xml
+  try {
+    const resp = await fetchWithTiming(`${origin}/sitemap_index.xml`, 5000);
+    if (resp.statusCode === 200 && resp.html.includes("<sitemapindex")) {
+      const merged = await fetchSitemapIndexChildren(resp.html);
+      return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+    }
+  } catch {
+    logger.debug("sitemap_index.xml not accessible");
+  }
+
+  // Step 3: robots.txt Sitemap: declarations
+  if (robotsTxt) {
+    for (const sitemapUrl of parseSitemapDeclarations(robotsTxt)) {
+      try {
+        const resp = await fetchWithTiming(sitemapUrl, 5000);
+        if (resp.statusCode === 200) {
+          if (resp.html.includes("<sitemapindex")) {
+            const merged = await fetchSitemapIndexChildren(resp.html);
+            return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+          }
+          if (resp.html.includes("<urlset")) {
+            return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml" };
+          }
+        }
+      } catch {
+        // skip
+      }
+    }
+  }
+
+  // Step 4A: HTML sitemap — known paths
+  const htmlPaths = [
+    "/sitemap", "/sitemap/", "/sitemap.html", "/sitemap.htm",
+    "/sitemap/index.html", "/site-map", "/site-map.html",
+    "/sitemaps", "/sitemaps.html", "/de/sitemap", "/en/sitemap",
+  ];
+  for (const path of htmlPaths) {
+    const url = `${origin}${path}`;
+    try {
+      const resp = await fetchWithTiming(url, 3000);
+      if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
+        return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: url, sitemapType: "html" };
+      }
+    } catch {
+      // skip
+    }
+  }
+
+  // Step 4B: HTML sitemap — homepage link search
+  if (homepageHtml) {
+    const $ = cheerio.load(homepageHtml);
+    let foundUrl: string | null = null;
+    $("a[href]").each((_, el) => {
+      if (foundUrl) return;
+      const href = $(el).attr("href") ?? "";
+      const text = $(el).text().trim();
+      if (
+        href.toLowerCase().includes("sitemap") &&
+        /sitemap|site\s*map|seitenübersicht|übersicht/i.test(text)
+      ) {
+        try { foundUrl = new URL(href, homepageUrl).href; } catch { /* skip */ }
+      }
+    });
+    if (foundUrl) {
+      try {
+        const resp = await fetchWithTiming(foundUrl, 3000);
+        if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
+          return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: foundUrl, sitemapType: "html" };
+        }
+      } catch {
+        // skip
+      }
+    }
+  }
+
+  return none;
+}
+
 export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
@@ -329,6 +488,9 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     robotsTxt: null,
     sitemapXml: null,
     llmsTxt: null,
+    htmlSitemapHtml: null,
+    htmlSitemapUrl: null,
+    sitemapType: "none",
     robotsTxtExists: false,
     sitemapXmlExists: false,
     llmsTxtExists: false,
@@ -347,20 +509,6 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     }
   } catch {
     logger.debug("robots.txt not accessible");
-  }
-
-  // ── sitemap.xml ───────────────────────────────────────────────────────────
-  try {
-    const sitemapResp = await fetchWithTiming(
-      `${base.protocol}//${baseDomain}/sitemap.xml`,
-      5000,
-    );
-    if (sitemapResp.statusCode === 200 && sitemapResp.html.includes("<urlset")) {
-      result.sitemapXml = sitemapResp.html;
-      result.sitemapXmlExists = true;
-    }
-  } catch {
-    logger.debug("sitemap.xml not accessible");
   }
 
   // ── llms.txt ──────────────────────────────────────────────────────────────
@@ -439,6 +587,17 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     categoryCounts.set("__root__", 1);
   } catch (err) {
     logger.warn({ url: homepageUrl, err }, "Failed to fetch homepage");
+  }
+
+  // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
+  {
+    const origin = `${base.protocol}//${baseDomain}`;
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, homepageUrl);
+    result.sitemapXml = sd.sitemapXml;
+    result.sitemapXmlExists = sd.sitemapXmlExists;
+    result.htmlSitemapHtml = sd.htmlSitemapHtml;
+    result.htmlSitemapUrl = sd.htmlSitemapUrl;
+    result.sitemapType = sd.sitemapType;
   }
 
   // ── Step 2: Collect all initial candidates from homepage links + sitemap ──

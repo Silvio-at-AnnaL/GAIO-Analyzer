@@ -92,19 +92,31 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
     }
   }
 
-  if (!techSeo.sitemapXml) {
+  const sitemapType = (sitemapAnalysis?.type as string) ?? (techSeo.sitemapXml ? "xml" : "none");
+  const hasXmlSitemap = sitemapType === "xml" || sitemapType === "xml_index";
+
+  if (sitemapType === "none") {
     recs.push({
-      tier: "high_leverage",
-      finding: "sitemap.xml fehlt",
+      tier: "critical",
+      finding: "Keine Sitemap gefunden (weder XML noch HTML)",
       whyItMatters:
-        "Ohne Sitemap entdecken Suchmaschinen und LLM-Crawler Seiten nur über interne Links — wichtige Produktseiten werden u.U. nicht indexiert.",
+        "Ohne Sitemap müssen Suchmaschinen und LLM-Crawler alle Seiten über interne Links entdecken — viele wichtige Seiten bleiben unentdeckt.",
       fixInstruction:
         "Erstellen Sie eine sitemap.xml im Root-Verzeichnis. Verwenden Sie ein CMS-Plugin (z.B. Yoast SEO für WordPress) oder generieren Sie die Sitemap automatisch aus Ihrer Routing-Konfiguration.",
     });
-  } else if (sitemapAnalysis && (sitemapAnalysis.totalUrls as number) < 5) {
+  } else if (sitemapType === "html") {
     recs.push({
       tier: "high_leverage",
-      finding: `sitemap.xml enthält nur ${sitemapAnalysis.totalUrls} URL(s)`,
+      finding: "Nur eine HTML-Sitemap gefunden — keine maschinenlesbare XML-Sitemap vorhanden",
+      whyItMatters:
+        "HTML-Sitemaps sind für Menschen gedacht, nicht für Crawler. Suchmaschinen und LLM-Crawler können XML-Sitemaps direkt verarbeiten, um alle URLs effizient zu indexieren.",
+      fixInstruction:
+        "Erstellen Sie zusätzlich eine /sitemap.xml und referenzieren Sie diese in der robots.txt:\nSitemap: https://ihre-domain.de/sitemap.xml",
+    });
+  } else if (hasXmlSitemap && sitemapAnalysis && (sitemapAnalysis.totalUrls as number) < 5) {
+    recs.push({
+      tier: "high_leverage",
+      finding: `Sitemap enthält nur ${sitemapAnalysis.totalUrls} URL(s)`,
       whyItMatters:
         "Eine sehr kleine Sitemap deutet darauf hin, dass wichtige Produkt- oder Serviceseiten fehlen.",
       fixInstruction:
@@ -112,12 +124,12 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
     });
   }
 
-  if (sitemapAnalysis && techSeo.sitemapXml) {
+  if (hasXmlSitemap && sitemapAnalysis) {
     const coverage = sitemapAnalysis.crawledPageCoverage as number;
     if (coverage < 50 && (sitemapAnalysis.totalUrls as number) > 0) {
       recs.push({
         tier: "high_leverage",
-        finding: `Nur ${coverage}% der gecrawlten Seiten sind in der sitemap.xml enthalten`,
+        finding: `Nur ${coverage}% der gecrawlten Seiten sind in der Sitemap enthalten`,
         whyItMatters:
           "Wichtige Produkt- und Serviceseiten, die Crawler besucht haben, fehlen in der Sitemap — das reduziert die Indexierungstiefe.",
         fixInstruction:
@@ -128,10 +140,10 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
 
   // ── NACHGEORDNET ────────────────────────────────────────────────────────────
 
-  if (sitemapAnalysis && techSeo.sitemapXml && !sitemapAnalysis.oldestLastmod) {
+  if (hasXmlSitemap && sitemapAnalysis && !sitemapAnalysis.oldestLastmod) {
     recs.push({
       tier: "secondary",
-      finding: "sitemap.xml enthält keine <lastmod>-Daten",
+      finding: "XML-Sitemap enthält keine <lastmod>-Daten",
       whyItMatters:
         "Ohne Lastmod-Daten können Crawler Seiten nicht nach Aktualität priorisieren — veraltete Inhalte werden möglicherweise überhäufig neu gecrawlt.",
       fixInstruction:
@@ -140,7 +152,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
   }
 
   if (
-    techSeo.sitemapXml &&
+    hasXmlSitemap &&
     robotsAnalysis &&
     (robotsAnalysis.sitemapUrls as string[]).length === 0
   ) {

@@ -1376,7 +1376,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                   {/* Remaining metrics */}
                   {[
                     { label: "robots.txt", val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
-                    { label: "sitemap.xml", val: (technicalSeo.sitemapXml as boolean) ? "✓" : "✗" },
+                    { label: "Sitemap", val: (() => { const t = technicalSeo.sitemapType as string; if (t === "xml") return "XML ✓"; if (t === "xml_index") return "XML-Index ✓"; if (t === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓" : "✗"; })() },
                     { label: "llms.txt", val: (technicalSeo.llmsTxt as boolean) ? "✓" : "✗" },
                     { label: "HTTPS", val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },
                     { label: "Viewport", val: (technicalSeo.mobileViewport as boolean) ? "✓" : "✗" },
@@ -1396,7 +1396,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           {technicalSeo && (() => {
             type LlmCrawlerStatus = { name: string; status: "allowed" | "disallowed" | "not_mentioned" };
             type RobotsAnalysis = { userAgents: string[]; llmCrawlers: LlmCrawlerStatus[]; siteBlockedAgents: string[]; crawlDelays: Array<{ agent: string; delay: number }>; sitemapUrls: string[]; summary: string };
-            type SitemapAnalysis = { totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; summary: string };
+            type SitemapAnalysis = { type?: "xml" | "xml_index" | "html" | "none"; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
             type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
             type LlmsAnalysis = { present: boolean; title: string | null; description: string | null; sections: LlmsSection[]; linkedPageCount: number; hasDescription: boolean; summary: string };
             const robots = technicalSeo.robotsTxtAnalysis as RobotsAnalysis | null;
@@ -1468,67 +1468,124 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
                   <div className="border-t border-border/50" />
 
-                  {/* sitemap.xml */}
+                  {/* Sitemap */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-semibold">sitemap.xml</span>
-                      <Badge variant={(technicalSeo.sitemapXml as boolean) ? "secondary" : "destructive"} className="font-mono text-xs">
-                        {(technicalSeo.sitemapXml as boolean) ? "gefunden" : "nicht gefunden"}
-                      </Badge>
-                    </div>
-                    {sitemap ? (
-                      <div className="space-y-3 pl-1">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground">URLs gesamt</p>
-                            <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
+                    {(() => {
+                      const sType = (sitemap?.type ?? (technicalSeo.sitemapType as string | undefined)) as "xml" | "xml_index" | "html" | "none" | undefined;
+                      const isXml = sType === "xml" || sType === "xml_index";
+                      const isHtml = sType === "html";
+                      const found = isXml || isHtml;
+                      const badgeLabel = sType === "xml" ? "XML" : sType === "xml_index" ? "XML-Index" : sType === "html" ? "HTML-Sitemap" : "nicht gefunden";
+                      return (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-semibold">Sitemap</span>
+                            <Badge variant={found ? "secondary" : "destructive"} className="font-mono text-xs">{badgeLabel}</Badge>
                           </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Typ</p>
-                            <p className="text-sm font-bold">{sitemap.isSitemapIndex ? "Sitemap-Index" : "Einzelne Sitemap"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
-                            <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Spezial-Typen</p>
-                            <p className="text-sm font-bold">{[sitemap.hasImageSitemap && "Bild", sitemap.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</p>
-                          </div>
-                          {sitemap.oldestLastmod && (
-                            <div>
-                              <p className="text-xs text-muted-foreground">Älteste Lastmod</p>
-                              <p className="text-sm font-mono">{sitemap.oldestLastmod.slice(0, 10)}</p>
-                            </div>
-                          )}
-                          {sitemap.newestLastmod && (
-                            <div>
-                              <p className="text-xs text-muted-foreground">Neueste Lastmod</p>
-                              <p className="text-sm font-mono">{sitemap.newestLastmod.slice(0, 10)}</p>
-                            </div>
-                          )}
-                          {Object.keys(sitemap.priorityDistribution).length > 0 && (
-                            <div className="col-span-2">
-                              <p className="text-xs text-muted-foreground mb-1">Priority-Verteilung</p>
-                              <div className="flex flex-wrap gap-1">
-                                {Object.entries(sitemap.priorityDistribution).sort(([a], [b]) => parseFloat(b) - parseFloat(a)).map(([val, count]) => (
-                                  <Badge key={val} variant="outline" className="font-mono text-xs">{val} × {count}</Badge>
-                                ))}
+                          {sitemap && isXml && (
+                            <div className="space-y-3 pl-1">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">URLs gesamt</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Typ</p>
+                                  <p className="text-sm font-bold">{sitemap.isSitemapIndex ? "Sitemap-Index" : "Einzelne Sitemap"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Spezial-Typen</p>
+                                  <p className="text-sm font-bold">{[sitemap.hasImageSitemap && "Bild", sitemap.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</p>
+                                </div>
+                                {sitemap.oldestLastmod && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Älteste Lastmod</p>
+                                    <p className="text-sm font-mono">{sitemap.oldestLastmod.slice(0, 10)}</p>
+                                  </div>
+                                )}
+                                {sitemap.newestLastmod && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Neueste Lastmod</p>
+                                    <p className="text-sm font-mono">{sitemap.newestLastmod.slice(0, 10)}</p>
+                                  </div>
+                                )}
+                                {Object.keys(sitemap.priorityDistribution).length > 0 && (
+                                  <div className="col-span-2">
+                                    <p className="text-xs text-muted-foreground mb-1">Priority-Verteilung</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {Object.entries(sitemap.priorityDistribution).sort(([a], [b]) => parseFloat(b) - parseFloat(a)).map(([val, count]) => (
+                                        <Badge key={val} variant="outline" className="font-mono text-xs">{val} × {count}</Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
+                              <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
+                              {sitemapContent && !pdfMode && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                                  <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
+                                </details>
+                              )}
                             </div>
                           )}
-                        </div>
-                        <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
-                        {sitemapContent && !pdfMode && (
-                          <details className="text-xs">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
-                            <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
-                          </details>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground pl-1">sitemap.xml wurde nicht gefunden oder ist nicht erreichbar.</p>
-                    )}
+                          {sitemap && isHtml && (
+                            <div className="space-y-3 pl-1">
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {sitemap.htmlSitemapUrl && (
+                                  <div className="col-span-2 md:col-span-3">
+                                    <p className="text-xs text-muted-foreground">Gefunden unter</p>
+                                    <p className="text-sm font-mono break-all">{sitemap.htmlSitemapUrl}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Verlinkungen gesamt</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Struktur-Sektionen</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.htmlSections?.length ?? 0}</p>
+                                </div>
+                                {sitemap.htmlSections && sitemap.htmlSections.length > 0 && (
+                                  <div className="col-span-2 md:col-span-3">
+                                    <p className="text-xs text-muted-foreground mb-1">Sektion-Überschriften</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {sitemap.htmlSections.map((s, i) => (
+                                        <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
+                              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+                                HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine <span className="font-mono">/sitemap.xml</span>.
+                              </div>
+                              {sitemapContent && !pdfMode && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">HTML-Vorschau (erste 500 Zeichen)</summary>
+                                  <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
+                                </details>
+                              )}
+                            </div>
+                          )}
+                          {!sitemap && !found && (
+                            <p className="text-xs text-muted-foreground pl-1">Keine Sitemap gefunden (weder XML noch HTML).</p>
+                          )}
+                          {!sitemap && found && (
+                            <p className="text-xs text-muted-foreground pl-1">Sitemap erkannt, aber keine Detailanalyse verfügbar.</p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div className="border-t border-border/50" />

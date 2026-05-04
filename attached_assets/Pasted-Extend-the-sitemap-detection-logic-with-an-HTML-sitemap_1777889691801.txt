@@ -1,0 +1,96 @@
+Extend the sitemap detection logic with an HTML 
+sitemap fallback.
+
+---
+
+CURRENT BEHAVIOR
+The crawler checks only for /sitemap.xml at the 
+root. If that file is not found, sitemap detection 
+stops.
+
+---
+
+CHANGE: Multi-step sitemap discovery
+
+Replace the single sitemap.xml check with a 
+waterfall search that tries multiple locations 
+in order, stopping at the first successful hit:
+
+STEP 1 — Check /sitemap.xml (keep existing behavior)
+
+STEP 2 — Check /sitemap_index.xml
+If /sitemap.xml returns 404 or is absent, try 
+/sitemap_index.xml. Parse it as a sitemap index 
+and follow the contained <sitemap><loc> entries 
+to fetch child sitemaps.
+
+STEP 3 — Check robots.txt for sitemap declarations
+Parse the already-fetched robots.txt content for 
+lines matching:
+  Sitemap: https://...
+Extract all declared sitemap URLs and fetch them.
+This step runs regardless of whether steps 1 and 2 
+succeeded — a site may declare a non-standard 
+sitemap path in robots.txt.
+
+STEP 4 — HTML sitemap search
+If no XML sitemap was found in steps 1–3, search 
+for an HTML sitemap using these approaches:
+
+  A) Check common HTML sitemap paths:
+     /sitemap, /sitemap/, /sitemap.html, 
+     /sitemap.htm, /sitemap/index.html,
+     /site-map, /site-map.html,
+     /sitemaps, /sitemaps.html,
+     /de/sitemap, /en/sitemap
+     Try each in sequence, stop at first 200 response.
+
+  B) If none of the above paths return a 200, 
+     search the already-crawled homepage HTML for 
+     links that likely point to an HTML sitemap:
+     Look for <a> tags where the href contains 
+     "sitemap" and the link text contains 
+     "sitemap", "site map", "seitenübersicht", 
+     or "übersicht" (case-insensitive).
+     If found, fetch that URL.
+
+---
+
+HTML SITEMAP ANALYSIS
+
+If an HTML sitemap is found (step 4), analyze it 
+differently from an XML sitemap:
+
+- Count the total number of links on the page
+- Extract the page structure: are links grouped 
+  into sections with headings? List the section 
+  headings found (these typically correspond to 
+  main navigation categories)
+- Identify how many of the crawled analysis pages 
+  appear in the HTML sitemap
+- Note the URL of the HTML sitemap that was found
+
+Display in the results under "Technische Dateien":
+  Type: HTML-Sitemap
+  Gefunden unter: [URL]
+  Verlinkungen gesamt: [count]
+  Struktur-Sektionen: [list of headings]
+  Abdeckung gecrawlter Seiten: [n]%
+
+---
+
+RESULT FIELD
+
+Add a new field to the analysis result:
+  sitemap_type: "xml" | "xml_index" | "html" | "none"
+
+Use this field in the Empfehlungen logic:
+- sitemap_type === "none": KRITISCH recommendation 
+  to create an XML sitemap
+- sitemap_type === "html": HOHER HEBEL recommendation 
+  to additionally create an XML sitemap, with 
+  explanation that XML sitemaps are machine-readable 
+  by search engines and LLM crawlers while HTML 
+  sitemaps are not
+- sitemap_type === "xml" or "xml_index": existing 
+  analysis logic applies as before

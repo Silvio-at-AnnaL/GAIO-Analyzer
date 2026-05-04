@@ -33,6 +33,7 @@ export interface RobotsTxtAnalysis {
 }
 
 export interface SitemapXmlAnalysis {
+  type: "xml" | "xml_index" | "html" | "none";
   totalUrls: number;
   isSitemapIndex: boolean;
   oldestLastmod: string | null;
@@ -41,6 +42,8 @@ export interface SitemapXmlAnalysis {
   hasImageSitemap: boolean;
   hasVideoSitemap: boolean;
   crawledPageCoverage: number;
+  htmlSitemapUrl: string | null;
+  htmlSections: string[];
   summary: string;
 }
 
@@ -67,6 +70,7 @@ export interface TechnicalSeoResult {
   robotsTxt: boolean;
   sitemapXml: boolean;
   llmsTxt: boolean;
+  sitemapType: "xml" | "xml_index" | "html" | "none";
   canonicalTags: { present: boolean; count: number };
   hreflang: { present: boolean; languages: string[]; consistent: boolean };
   metaTitles: { present: number; avgLength: number; tooShort: number; tooLong: number; missing: number };
@@ -97,9 +101,7 @@ function parseRobotsTxtBlocks(content: string): { blocks: RobotsBlock[]; sitemap
   let current: RobotsBlock | null = null;
 
   const flushCurrent = () => {
-    if (current && current.agents.length > 0) {
-      blocks.push(current);
-    }
+    if (current && current.agents.length > 0) blocks.push(current);
     current = null;
   };
 
@@ -109,7 +111,6 @@ function parseRobotsTxtBlocks(content: string): { blocks: RobotsBlock[]; sitemap
       if (line === "") flushCurrent();
       continue;
     }
-
     const colonIdx = line.indexOf(":");
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim().toLowerCase();
@@ -134,29 +135,22 @@ function parseRobotsTxtBlocks(content: string): { blocks: RobotsBlock[]; sitemap
       sitemapUrls.push(val);
     }
   }
-
   flushCurrent();
   return { blocks, sitemapUrls };
 }
 
 function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
   const { blocks, sitemapUrls } = parseRobotsTxtBlocks(content);
-
   const allUserAgents = [...new Set(blocks.flatMap((b) => b.agents))];
 
   const siteBlockedAgents: string[] = [];
   for (const block of blocks) {
-    if (block.disallows.includes("/")) {
-      siteBlockedAgents.push(...block.agents);
-    }
+    if (block.disallows.includes("/")) siteBlockedAgents.push(...block.agents);
   }
 
   const llmCrawlers: LlmCrawlerStatus[] = LLM_CRAWLER_NAMES.map((name) => {
     const nameLower = name.toLowerCase();
-    const matchingBlock = blocks.find((b) =>
-      b.agents.some((a) => a.toLowerCase() === nameLower),
-    );
-
+    const matchingBlock = blocks.find((b) => b.agents.some((a) => a.toLowerCase() === nameLower));
     if (!matchingBlock) return { name, status: "not_mentioned" };
     if (matchingBlock.disallows.includes("/")) return { name, status: "disallowed" };
     return { name, status: "allowed" };
@@ -187,17 +181,17 @@ function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
 
 // ─── sitemap.xml analyser ─────────────────────────────────────────────────────
 
-function analyzeSitemapXml(content: string, crawledPages: string[]): SitemapXmlAnalysis {
-  const isSitemapIndex = content.includes("<sitemapindex");
-
+function analyzeSitemapXml(
+  content: string,
+  type: "xml" | "xml_index",
+  crawledPages: string[],
+): SitemapXmlAnalysis {
+  const isSitemapIndex = type === "xml_index";
   const locMatches = [...content.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)];
   const totalUrls = locMatches.length;
 
   const lastmodMatches = [...content.matchAll(/<lastmod>\s*(.*?)\s*<\/lastmod>/gi)];
-  const dates = lastmodMatches
-    .map((m) => m[1].trim())
-    .filter((d) => /^\d{4}/.test(d))
-    .sort();
+  const dates = lastmodMatches.map((m) => m[1].trim()).filter((d) => /^\d{4}/.test(d)).sort();
   const oldestLastmod = dates.length > 0 ? dates[0] : null;
   const newestLastmod = dates.length > 0 ? dates[dates.length - 1] : null;
 
@@ -214,10 +208,8 @@ function analyzeSitemapXml(content: string, crawledPages: string[]): SitemapXmlA
   const sitemapUrls = locMatches.map((m) => m[1].trim());
   const normalise = (u: string) => u.replace(/\/$/, "").toLowerCase();
   const sitemapUrlSet = new Set(sitemapUrls.map(normalise));
-  const matchedCrawled = crawledPages.filter(
-    (p) => p !== "uploaded-page" && sitemapUrlSet.has(normalise(p)),
-  );
   const eligibleCrawled = crawledPages.filter((p) => p !== "uploaded-page");
+  const matchedCrawled = eligibleCrawled.filter((p) => sitemapUrlSet.has(normalise(p)));
   const crawledPageCoverage =
     eligibleCrawled.length > 0 ? Math.round((matchedCrawled.length / eligibleCrawled.length) * 100) : 0;
 
@@ -231,6 +223,7 @@ function analyzeSitemapXml(content: string, crawledPages: string[]): SitemapXmlA
   }
 
   return {
+    type,
     totalUrls,
     isSitemapIndex,
     oldestLastmod,
@@ -239,7 +232,61 @@ function analyzeSitemapXml(content: string, crawledPages: string[]): SitemapXmlA
     hasImageSitemap,
     hasVideoSitemap,
     crawledPageCoverage,
+    htmlSitemapUrl: null,
+    htmlSections: [],
     summary,
+  };
+}
+
+// ─── HTML sitemap analyser ────────────────────────────────────────────────────
+
+function analyzeHtmlSitemap(
+  html: string,
+  url: string,
+  crawledPages: string[],
+): SitemapXmlAnalysis {
+  const $ = cheerio.load(html);
+
+  const totalUrls = $("a[href]").length;
+
+  const htmlSections: string[] = [];
+  $("h1, h2, h3, h4").each((_, el) => {
+    const text = $(el).text().trim();
+    if (text && text.length < 120) htmlSections.push(text);
+  });
+
+  const linkHrefs = new Set<string>();
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    try {
+      const resolved = new URL(href, url);
+      linkHrefs.add(resolved.href.replace(/\/$/, "").toLowerCase());
+    } catch {
+      // skip
+    }
+  });
+
+  const eligibleCrawled = crawledPages.filter((p) => p !== "uploaded-page");
+  const matched = eligibleCrawled.filter((p) =>
+    linkHrefs.has(p.replace(/\/$/, "").toLowerCase()),
+  );
+  const crawledPageCoverage =
+    eligibleCrawled.length > 0 ? Math.round((matched.length / eligibleCrawled.length) * 100) : 0;
+
+  return {
+    type: "html",
+    totalUrls,
+    isSitemapIndex: false,
+    oldestLastmod: null,
+    newestLastmod: null,
+    priorityDistribution: {},
+    hasImageSitemap: false,
+    hasVideoSitemap: false,
+    crawledPageCoverage,
+    htmlSitemapUrl: url,
+    htmlSections: htmlSections.slice(0, 10),
+    summary: `HTML-Sitemap mit ${totalUrls} Links in ${htmlSections.length} Sektion${htmlSections.length !== 1 ? "en" : ""} — ${crawledPageCoverage}% der gecrawlten Seiten enthalten.`,
   };
 }
 
@@ -255,7 +302,6 @@ function analyzeLlmsTxt(content: string): LlmsTxtAnalysis {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
-
     if (line.startsWith("# ") && !title) {
       title = line.slice(2).trim();
     } else if (line.startsWith("> ")) {
@@ -328,9 +374,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
 
   for (const page of pages) {
     const $ = cheerio.load(page.html);
-
     if ($('link[rel="canonical"]').length > 0) canonicalCount++;
-
     const hreflangs = $('link[rel="alternate"][hreflang]');
     if (hreflangs.length > 0) {
       hreflangPresent = true;
@@ -340,7 +384,6 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
         if (lang) allLangs.add(lang);
       });
     }
-
     const title = $("title").text().trim();
     if (title) {
       titlePresent++;
@@ -350,7 +393,6 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
     } else {
       titleMissing++;
     }
-
     const desc = $('meta[name="description"]').attr("content")?.trim() || "";
     if (desc) {
       descPresent++;
@@ -360,12 +402,10 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
     } else {
       descMissing++;
     }
-
     $("img").each((_, el) => {
       totalImages++;
       if ($(el).attr("alt")?.trim()) imagesWithAlt++;
     });
-
     if ($('meta[name="viewport"]').length > 0) hasMobileViewport = true;
   }
 
@@ -394,14 +434,28 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
   score = Math.min(100, Math.max(0, score));
 
   const crawledPageUrls = pages.map((p) => p.url);
+  const sitemapType = crawlResult.sitemapType ?? (crawlResult.sitemapXmlExists ? "xml" : "none");
 
-  const robotsTxtAnalysis = crawlResult.robotsTxt
-    ? analyzeRobotsTxt(crawlResult.robotsTxt)
-    : null;
+  const robotsTxtAnalysis = crawlResult.robotsTxt ? analyzeRobotsTxt(crawlResult.robotsTxt) : null;
 
-  const sitemapXmlAnalysis = crawlResult.sitemapXml
-    ? analyzeSitemapXml(crawlResult.sitemapXml, crawledPageUrls)
-    : null;
+  let sitemapXmlAnalysis: SitemapXmlAnalysis | null = null;
+  let sitemapXmlContent: string | null = null;
+
+  if (crawlResult.sitemapXmlExists && crawlResult.sitemapXml) {
+    sitemapXmlAnalysis = analyzeSitemapXml(
+      crawlResult.sitemapXml,
+      sitemapType === "xml_index" ? "xml_index" : "xml",
+      crawledPageUrls,
+    );
+    sitemapXmlContent = crawlResult.sitemapXml.slice(0, 500);
+  } else if (sitemapType === "html" && crawlResult.htmlSitemapHtml && crawlResult.htmlSitemapUrl) {
+    sitemapXmlAnalysis = analyzeHtmlSitemap(
+      crawlResult.htmlSitemapHtml,
+      crawlResult.htmlSitemapUrl,
+      crawledPageUrls,
+    );
+    sitemapXmlContent = crawlResult.htmlSitemapHtml.slice(0, 500);
+  }
 
   const llmsTxtAnalysis: LlmsTxtAnalysis = crawlResult.llmsTxt
     ? analyzeLlmsTxt(crawlResult.llmsTxt)
@@ -423,6 +477,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
     robotsTxt: crawlResult.robotsTxtExists,
     sitemapXml: crawlResult.sitemapXmlExists,
     llmsTxt: crawlResult.llmsTxtExists,
+    sitemapType,
     canonicalTags: { present: canonicalCount > 0, count: canonicalCount },
     hreflang: { present: hreflangPresent, languages: Array.from(allLangs), consistent: hreflangConsistent },
     metaTitles: {
@@ -443,7 +498,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
     mobileViewport: hasMobileViewport,
     httpsEnforced,
     robotsTxtContent: crawlResult.robotsTxt ? crawlResult.robotsTxt.slice(0, 500) : null,
-    sitemapXmlContent: crawlResult.sitemapXml ? crawlResult.sitemapXml.slice(0, 500) : null,
+    sitemapXmlContent,
     llmsTxtContent: crawlResult.llmsTxt ? crawlResult.llmsTxt.slice(0, 500) : null,
     robotsTxtAnalysis,
     sitemapXmlAnalysis,
