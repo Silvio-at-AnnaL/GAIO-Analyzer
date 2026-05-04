@@ -1,0 +1,118 @@
+Das Bild zeigt klar drei Probleme: Der Footer schwebt mittig-rechts statt linksbündig, die Empfehlungen-Seite schneidet den Footer ab, und FAQ/Kontakt/Analyseparameter sind zu schmal.
+
+```
+Fix three PDF layout issues. All are independent 
+but must be fixed together in one pass.
+
+---
+
+CHANGE 1 — All pages must be exactly 210mm wide
+
+Currently some pages (Analyseparameter, Kontakt, 
+and potentially FAQ) are being created with 
+incorrect widths (138mm, 140mm, etc.).
+
+The root cause: when jsPDF calculates page 
+dimensions from the captured image, if the 
+captured element has a width other than 1200px 
+at capture time, the mmW calculation produces 
+a wrong result.
+
+Fix this by enforcing a fixed mmW of 210 for 
+every single page without exception:
+
+  const mmW = 210  // always fixed, never calculated
+
+Remove any code that calculates mmW from the 
+canvas or element width. mmW is always 210.
+
+Only mmH is variable (calculated from content 
+height):
+  const mmH = (captureHeight / captureWidth) * 210
+
+Where captureWidth is the actual pixel width of 
+the element at capture time — which must always 
+be 1200px. Enforce this by setting 
+element.style.width = '1200px' before every 
+capture and verifying element.offsetWidth === 1200 
+before calculating mmH.
+
+Apply this fix to ALL pages: tab panels (details, 
+llm, competitors, recommendations) AND iframe 
+pages (faq, analyseparameter, kontakt). For iframe 
+pages, set the iframe width to 1200px and the 
+body inside to width: 1200px before capture.
+
+---
+
+CHANGE 2 — Footer alignment: left-aligned, 
+matching content margin
+
+The footer text currently appears centered or 
+offset to the right. It must be left-aligned 
+and start at the same left position as the 
+page content (the 12mm margin).
+
+For the injected footer on tab panel pages 
+(details, llm, competitors, recommendations):
+Change the footer div style from text-align: center 
+to text-align: left. The footer is already inside 
+the content area which has the 12mm margin applied 
+at the jsPDF addImage level, so left-alignment 
+will automatically match the content left edge.
+
+For iframe pages (faq, analyseparameter, kontakt):
+In the iframe HTML's CSS, the footer element must 
+be styled as:
+  text-align: left;
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid #dde0e8;
+
+And the body padding must be set so that the 
+footer left edge matches the content left edge — 
+use padding: 0 (no horizontal body padding in 
+the iframe; the 12mm margin is handled by 
+jsPDF's addImage x-offset).
+
+---
+
+CHANGE 3 — Content pages cut off: increase 
+bottom padding to guarantee footer visibility
+
+The Empfehlungen page (and potentially others) 
+cuts off the footer because the injected footer 
+div is not being included in the scrollHeight 
+measurement used for mmH calculation.
+
+Fix this with two sub-changes:
+
+SUB-CHANGE A — Measure height AFTER footer 
+injection, not before.
+The current code may measure panel.scrollHeight 
+before appending the footer div. Ensure the 
+sequence is always:
+  1. panel.appendChild(footer)
+  2. void panel.offsetHeight  // force reflow
+  3. await new Promise(r => setTimeout(r, 200))
+  4. captureHeight = panel.scrollHeight  
+     // NOW measure — includes footer
+  5. call toJpeg(panel, ...)
+  6. panel.removeChild(footer)
+
+SUB-CHANGE B — Add a bottom padding buffer.
+After measuring scrollHeight, add 40px to the 
+captureHeight before calculating mmH. This 
+ensures the footer never gets clipped even if 
+there are minor rendering differences between 
+measurement and actual capture:
+
+  const mmH = ((captureHeight + 40) / 1200) * 210
+
+Apply this +40px buffer to ALL pages (both tab 
+panels and iframe pages).
+
+For iframe pages, set the iframe height to 
+scrollHeight + 60px before capture to give 
+similar breathing room.
+```

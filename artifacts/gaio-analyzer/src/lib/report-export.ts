@@ -693,7 +693,7 @@ export function buildAnalyseparameterDocumentHtml(params: InputParams): string {
     padding: 9px 0; border-bottom: 1px solid #dde0e8;
   }
   tr:last-child .lbl, tr:last-child .val { border-bottom: none; }
-  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; text-align: left; }
 </style>
 </head>
 <body>
@@ -748,7 +748,7 @@ export function buildFaqDocumentHtml(): string {
   .red    .tier { color: #ef4444; }
   .orange .tier { color: #f59e0b; }
   .yellow .tier { color: #eab308; }
-  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; text-align: left; }
 </style>
 </head>
 <body>
@@ -1012,7 +1012,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
     font-size: 14px;
     line-height: 1.6;
     padding: 32px;
-    width: 1176px;
+    width: 1200px;
     overflow: hidden;
   }
   img { max-width: 200px; height: auto; }
@@ -1027,7 +1027,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
   .text  { font-size: 13px; color: #1a1d23; line-height: 1.7; margin-bottom: 10px; word-break: break-word; overflow-wrap: break-word; }
   .sec   { font-size: 13px; color: #4a4d57; line-height: 1.7; margin-bottom: 20px; word-break: break-word; overflow-wrap: break-word; }
   .cta   { display: inline-block; background: #3b82f6; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
-  .note  { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; }
+  .note  { margin-top: 28px; padding-top: 16px; border-top: 1px solid #dde0e8; font-size: 11px; color: #787b86; text-align: left; }
 </style>
 </head>
 <body>

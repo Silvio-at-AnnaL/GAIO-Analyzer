@@ -965,7 +965,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         footerEl.id = "pdf-footer-injected";
         footerEl.style.cssText =
           "width:100%;margin-top:32px;padding-top:12px;border-top:1px solid #dde0e8;" +
-          "font-size:11px;color:#9ca3af;text-align:center;font-family:-apple-system,sans-serif;";
+          "font-size:11px;color:#9ca3af;text-align:left;font-family:-apple-system,sans-serif;";
         footerEl.textContent =
           "IndustryStock.com/GAIO-Analyzer · Exportiert am " + currentDateString;
         panel.appendChild(footerEl);
@@ -996,8 +996,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
           if (injected) panel.removeChild(injected);
         }
 
-        const mmW = CONTENT_MM_W; // 186mm — content area after margins
-        const mmH = (finalCaptureHeight / captureWidth) * CONTENT_MM_W;
+        const mmW = PDF_MM_W; // always 210mm — full page width
+        const mmH = ((finalCaptureHeight + 40) / captureWidth) * PDF_MM_W;
 
         console.log("Captured panel:", tabValue, "dimensions:", captureWidth, "x", captureHeight, "→", mmW.toFixed(1), "x", mmH.toFixed(1), "mm");
 
@@ -1053,17 +1053,19 @@ function ReportView({ analysisId }: { analysisId: string }) {
         }
 
         if (faqH > 0) {
-          // Resize iframe to exact content height, then wait for reflow.
-          faqIframe.style.height = `${faqH}px`;
+          // Resize iframe to content height + 60px breathing room, then wait for reflow.
+          faqIframe.style.height = `${faqH + 60}px`;
           await new Promise((r) => setTimeout(r, 300));
 
           const faqJpeg = await toJpeg(faqBody, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
+            width: CAPTURE_WIDTH_PX,
+            height: faqH + 60,
             skipFonts: true,
           });
-          faqCapture = { imgData: faqJpeg, mmH: (faqH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          faqCapture = { imgData: faqJpeg, mmH: ((faqH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
           console.log("FAQ page captured:", CAPTURE_WIDTH_PX, "x", faqH, "→", faqCapture.mmH.toFixed(1), "mm");
         }
       } catch (faqErr) {
@@ -1112,16 +1114,18 @@ function ReportView({ analysisId }: { analysisId: string }) {
         console.log("Analyseparameter iframe height:", apH);
 
         if (apH > 0) {
-          analyseparameterIframe.style.height = `${apH}px`;
+          analyseparameterIframe.style.height = `${apH + 60}px`;
           await new Promise((r) => setTimeout(r, 300));
 
           const apJpeg = await toJpeg(apBody, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
+            width: CAPTURE_WIDTH_PX,
+            height: apH + 60,
             skipFonts: true,
           });
-          analyseparameterCapture = { imgData: apJpeg, mmH: (apH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          analyseparameterCapture = { imgData: apJpeg, mmH: ((apH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
           console.log("Analyseparameter page captured:", analyseparameterCapture.mmH.toFixed(1), "mm");
         }
       } catch (apErr) {
@@ -1158,16 +1162,18 @@ function ReportView({ analysisId }: { analysisId: string }) {
         console.log("Kontakt iframe height:", kontaktH);
 
         if (kontaktH > 0) {
-          kontaktIframe.style.height = `${kontaktH}px`;
+          kontaktIframe.style.height = `${kontaktH + 60}px`;
           await new Promise((r) => setTimeout(r, 300));
 
           const kontaktJpeg = await toJpeg(kontaktBody, {
             quality: 0.92,
             backgroundColor: "#ffffff",
             pixelRatio: 1.5,
+            width: CAPTURE_WIDTH_PX,
+            height: kontaktH + 60,
             skipFonts: true,
           });
-          kontaktCapture = { imgData: kontaktJpeg, mmH: (kontaktH / CAPTURE_WIDTH_PX) * CONTENT_MM_W };
+          kontaktCapture = { imgData: kontaktJpeg, mmH: ((kontaktH + 60) / CAPTURE_WIDTH_PX) * PDF_MM_W };
           console.log("Kontakt page captured:", kontaktCapture.mmH.toFixed(1), "mm");
         }
       } catch (kontaktErr) {
