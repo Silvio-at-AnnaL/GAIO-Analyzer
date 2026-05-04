@@ -2,7 +2,7 @@ export function FaqView() {
   const modules = [
     {
       modul: "Technische SEO-Basis",
-      pruefung: "HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, Canonical-Tags, hreflang, Meta-Daten, Alt-Texte, Mobile-Viewport",
+      pruefung: "HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport",
       wichtig: "Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler",
     },
     {
@@ -80,12 +80,50 @@ export function FaqView() {
               {modules.map((m, i) => (
                 <tr key={i} className="border-b border-border last:border-0" style={{ background: i % 2 === 0 ? "transparent" : "hsl(var(--muted) / 0.3)" }}>
                   <td className="px-4 py-3 font-medium align-top">{m.modul}</td>
-                  <td className="px-4 py-3 text-muted-foreground align-top leading-relaxed">{m.pruefung}</td>
+                  <td className="px-4 py-3 text-muted-foreground align-top leading-relaxed" dangerouslySetInnerHTML={{ __html: m.pruefung }} />
                   <td className="px-4 py-3 text-muted-foreground align-top leading-relaxed">{m.wichtig}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+        <div style={{ background: "#f8f9fa", borderLeft: "3px solid #dde0e8", borderRadius: "6px", padding: "14px 16px", marginTop: "8px" }}>
+          <p className="text-xs font-semibold text-muted-foreground mb-2">
+            <sup>*</sup> sitemap.xml vs. /sitemap — was wird geprüft und warum beides relevant ist
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+            Der GAIO Analyzer sucht zuerst nach einer maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml sowie in robots.txt deklarierten Sitemap-Pfaden). Falls keine XML-Sitemap gefunden wird, sucht er nach einer HTML-Sitemap unter gängigen Pfaden wie /sitemap, /sitemap.html oder /seitenübersicht.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border border-border">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Kriterium</th>
+                  <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground">sitemap.xml</th>
+                  <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground">/sitemap (HTML)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {([
+                  ["Zweck", "Maschinenlesbare Übergabe an Crawler; enthält lastmod, priority, changefreq", "HTML-Seite mit internen Links zu allen wichtigen Seiten; für Menschen und Crawler lesbar"],
+                  ["Google / Search Console", "✅ Direkt einreichbar; Indexierungsstatus in Search Console sichtbar", "❌ Nicht einreichbar; kann aber selbst indexiert werden"],
+                  ["Interne Verlinkung", "❌ Wird nicht als Linkquelle gewertet", "✅ Interne Links zählen als Linkgraph und stärken PageRank-Verteilung"],
+                  ["LLM-Training-Crawler", "⚠️ Wird von manchen Crawlern (z.B. Common Crawl) gelesen, aber nicht als Content aufgenommen", "✅ HTML-Links werden direkt als Crawl-Einstiegspunkte verwertet — für Link-Following-Crawler direkter verwertbar"],
+                  ["LLM-Live-Retrieval (RAG)", "✅ Bessere XML-Indexierung = mehr Seiten im Suchindex = mehr Zitierchancen", "✅ Kann selbst gecrawlt und als Linking-Hub genutzt werden"],
+                  ["Skalierung", "✅ Bis 50.000 URLs; erweiterbar via Sitemap-Index; Spezialformate für Bilder, Videos, News", "⚠️ Bei großen Sites schwer wartbar; kein Ersatz für sitemap.xml"],
+                ] as [string, string, string][]).map(([k, v1, v2], i) => (
+                  <tr key={i} className="border-b border-border last:border-0" style={{ background: i % 2 === 1 ? "hsl(var(--muted) / 0.3)" : "transparent" }}>
+                    <td className="px-2 py-1.5 font-medium align-top whitespace-nowrap">{k}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground align-top leading-relaxed">{v1}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground align-top leading-relaxed">{v2}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground italic mt-3 leading-relaxed">
+            Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.
+          </p>
         </div>
       </section>
 

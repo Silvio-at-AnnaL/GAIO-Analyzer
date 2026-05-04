@@ -1,0 +1,125 @@
+```
+Update the "FAQ / So funktioniert's" content in three 
+places simultaneously: the live app FAQ view, the HTML 
+export generation function, and the PDF FAQ page 
+generation. All three must show identical content.
+
+---
+
+CHANGE 1 — Update table row in "Die Analyse-Module 
+im Überblick"
+
+Find the row for "Technische SEO-Basis" in the 
+modules overview table. Change the "Was wird geprüft" 
+cell from:
+
+  "HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, 
+  Canonical-Tags, hreflang, Meta-Titel und 
+  -Beschreibungen, Alt-Texte, Mobile-Viewport"
+
+To:
+
+  "HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, 
+  Sitemap (.xml oder /sitemap*), Canonical-Tags, 
+  hreflang, Meta-Titel und -Beschreibungen, 
+  Alt-Texte, Mobile-Viewport"
+
+The asterisk after /sitemap* must be rendered as a 
+superscript marker that references a footnote below 
+the table. Use a standard HTML superscript:
+  /sitemap<sup>*</sup>
+
+---
+
+CHANGE 2 — Add footnote below the modules table
+
+Directly below the "Die Analyse-Module im Überblick" 
+table, add a footnote marker and explanatory block. 
+Style it as a subtle, smaller-text note — not a 
+full section, just an annotation belonging to the 
+table above.
+
+Use this exact content:
+
+  <sup>*</sup> sitemap.xml vs. /sitemap — 
+  was wird geprüft und warum beides relevant ist
+
+  Then a short paragraph:
+
+  "Der GAIO Analyzer sucht zuerst nach einer 
+  maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml 
+  sowie in robots.txt deklarierten Sitemap-Pfaden). 
+  Falls keine XML-Sitemap gefunden wird, sucht er 
+  nach einer HTML-Sitemap unter gängigen Pfaden wie 
+  /sitemap, /sitemap.html oder /seitenübersicht."
+
+  Then a comparison table with this exact structure 
+  (styled smaller than the main tables, e.g. 
+  font-size 12px or 13px, with a light background):
+
+  Columns: Kriterium | sitemap.xml | /sitemap (HTML)
+
+  Rows:
+  Zweck | Maschinenlesbare Übergabe an Crawler; 
+  enthält lastmod, priority, changefreq | 
+  HTML-Seite mit internen Links zu allen wichtigen 
+  Seiten; für Menschen und Crawler lesbar
+
+  Google / Search Console | ✅ Direkt einreichbar; 
+  Indexierungsstatus in Search Console sichtbar | 
+  ❌ Nicht einreichbar; kann aber selbst indexiert 
+  werden
+
+  Interne Verlinkung | ❌ Wird nicht als Linkquelle 
+  gewertet | ✅ Interne Links zählen als Linkgraph 
+  und stärken PageRank-Verteilung
+
+  LLM-Training-Crawler | ⚠️ Wird von manchen 
+  Crawlern (z.B. Common Crawl) gelesen, aber nicht 
+  als Content aufgenommen | ✅ HTML-Links werden 
+  direkt als Crawl-Einstiegspunkte verwertet — 
+  für Link-Following-Crawler direkter verwertbar
+
+  LLM-Live-Retrieval (RAG) | ✅ Bessere XML-
+  Indexierung = mehr Seiten im Suchindex = mehr 
+  Zitierchancen | ✅ Kann selbst gecrawlt und als 
+  Linking-Hub genutzt werden
+
+  Skalierung | ✅ Bis 50.000 URLs; erweiterbar 
+  via Sitemap-Index; Spezialformate für Bilder, 
+  Videos, News | ⚠️ Bei großen Sites schwer 
+  wartbar; kein Ersatz für sitemap.xml
+
+  After the comparison table, add this conclusion 
+  paragraph in italics or muted color:
+
+  "Empfehlung: sitemap.xml und HTML-Sitemap 
+  schließen sich nicht aus — sie erfüllen 
+  unterschiedliche Funktionen. sitemap.xml ist 
+  für die Google-Indexierung unverzichtbar. 
+  Eine gepflegte HTML-Sitemap (/sitemap) hat 
+  zusätzlichen Wert als internes Verlinkungshub 
+  und als Crawl-Einstiegspunkt für LLM-Trainingscrawler 
+  — aber nur als Ergänzung, nicht als Ersatz."
+
+---
+
+STYLING NOTES
+
+The footnote block (marker, paragraph, comparison 
+table, conclusion) should be visually subordinate 
+to the main content:
+- Wrap in a div with background #f8f9fa or 
+  similar very light gray, border-left 3px solid 
+  #dde0e8, border-radius 6px, padding 14px 16px, 
+  margin-top 8px
+- The <sup>*</sup> marker in the table cell and 
+  the <sup>*</sup> at the start of the footnote 
+  block must visually correspond
+- In the live app FAQ view: apply these styles 
+  inline or via a dedicated CSS class
+- In the HTML export: use inline styles 
+  (no CSS variables)
+- In the PDF iframe: include the styles in the 
+  injected HTML document's <style> block
+```

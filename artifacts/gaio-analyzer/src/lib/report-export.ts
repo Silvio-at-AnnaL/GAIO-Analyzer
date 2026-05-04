@@ -489,7 +489,7 @@ ${divider("FAQ / So funktioniert's")}
 <table class="data-table">
   <thead><tr><th>Modul</th><th>Was wird geprüft</th><th>Warum es wichtig ist</th></tr></thead>
   <tbody>
-    <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
+    <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
     <tr><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
     <tr><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
     <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
@@ -497,6 +497,26 @@ ${divider("FAQ / So funktioniert's")}
     <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
   </tbody>
 </table>
+<div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
+<p style="font-size:12px;font-weight:600;color:#787b86;margin:0 0 8px;"><sup>*</sup> sitemap.xml vs. /sitemap — was wird geprüft und warum beides relevant ist</p>
+<p style="font-size:12px;color:#4a4d57;margin:0 0 10px;line-height:1.6;">Der GAIO Analyzer sucht zuerst nach einer maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml sowie in robots.txt deklarierten Sitemap-Pfaden). Falls keine XML-Sitemap gefunden wird, sucht er nach einer HTML-Sitemap unter gängigen Pfaden wie /sitemap, /sitemap.html oder /seitenübersicht.</p>
+<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dde0e8;margin:0 0 10px;">
+<thead><tr>
+<th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;white-space:nowrap;">Kriterium</th>
+<th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;">sitemap.xml</th>
+<th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;">/sitemap (HTML)</th>
+</tr></thead>
+<tbody>
+<tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Zweck</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">Maschinenlesbare Übergabe an Crawler; enthält lastmod, priority, changefreq</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">HTML-Seite mit internen Links zu allen wichtigen Seiten; für Menschen und Crawler lesbar</td></tr>
+<tr style="background:#f4f5f7;"><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Google / Search Console</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Direkt einreichbar; Indexierungsstatus in Search Console sichtbar</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">❌ Nicht einreichbar; kann aber selbst indexiert werden</td></tr>
+<tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Interne Verlinkung</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">❌ Wird nicht als Linkquelle gewertet</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Interne Links zählen als Linkgraph und stärken PageRank-Verteilung</td></tr>
+<tr style="background:#f4f5f7;"><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">LLM-Training-Crawler</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">⚠️ Wird von manchen Crawlern (z.B. Common Crawl) gelesen, aber nicht als Content aufgenommen</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ HTML-Links werden direkt als Crawl-Einstiegspunkte verwertet — für Link-Following-Crawler direkter verwertbar</td></tr>
+<tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">LLM-Live-Retrieval (RAG)</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Bessere XML-Indexierung = mehr Seiten im Suchindex = mehr Zitierchancen</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Kann selbst gecrawlt und als Linking-Hub genutzt werden</td></tr>
+<tr style="background:#f4f5f7;"><td style="padding:5px 8px;font-weight:500;vertical-align:top;white-space:nowrap;">Skalierung</td><td style="padding:5px 8px;color:#4a4d57;vertical-align:top;">✅ Bis 50.000 URLs; erweiterbar via Sitemap-Index; Spezialformate für Bilder, Videos, News</td><td style="padding:5px 8px;color:#4a4d57;vertical-align:top;">⚠️ Bei großen Sites schwer wartbar; kein Ersatz für sitemap.xml</td></tr>
+</tbody>
+</table>
+<p style="font-size:12px;color:#787b86;font-style:italic;margin:0;line-height:1.6;">Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.</p>
+</div>
 
 <h3>Score-Gewichtung (Gesamt-GAIO-Score)</h3>
 <table class="data-table">
@@ -600,7 +620,7 @@ export function buildFaqDocumentHtml(): string {
   <table>
     <thead><tr><th>Modul</th><th>Was wird geprüft</th><th>Warum es wichtig ist</th></tr></thead>
     <tbody>
-      <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
+      <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
       <tr><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
       <tr><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
       <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
@@ -608,6 +628,22 @@ export function buildFaqDocumentHtml(): string {
       <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
     </tbody>
   </table>
+  <div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
+  <p style="font-size:12px;font-weight:600;color:#787b86;margin:0 0 8px;"><sup>*</sup> sitemap.xml vs. /sitemap — was wird geprüft und warum beides relevant ist</p>
+  <p style="font-size:12px;color:#4a4d57;margin:0 0 10px;line-height:1.6;">Der GAIO Analyzer sucht zuerst nach einer maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml sowie in robots.txt deklarierten Sitemap-Pfaden). Falls keine XML-Sitemap gefunden wird, sucht er nach einer HTML-Sitemap unter gängigen Pfaden wie /sitemap, /sitemap.html oder /seitenübersicht.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dde0e8;margin:0 0 10px;">
+  <thead><tr><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;white-space:nowrap;">Kriterium</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;">sitemap.xml</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #dde0e8;background:#f4f5f7;color:#787b86;font-weight:600;">/sitemap (HTML)</th></tr></thead>
+  <tbody>
+  <tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Zweck</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">Maschinenlesbare Übergabe an Crawler; enthält lastmod, priority, changefreq</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">HTML-Seite mit internen Links; für Menschen und Crawler lesbar</td></tr>
+  <tr style="background:#f4f5f7;"><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Google / Search Console</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Direkt einreichbar; Indexierungsstatus sichtbar</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">❌ Nicht einreichbar; kann aber selbst indexiert werden</td></tr>
+  <tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">Interne Verlinkung</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">❌ Wird nicht als Linkquelle gewertet</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Interne Links stärken PageRank-Verteilung</td></tr>
+  <tr style="background:#f4f5f7;"><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">LLM-Training-Crawler</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">⚠️ Wird von manchen Crawlern gelesen, aber nicht als Content aufgenommen</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ HTML-Links als Crawl-Einstiegspunkte — direkter verwertbar</td></tr>
+  <tr><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;font-weight:500;vertical-align:top;white-space:nowrap;">LLM-Live-Retrieval (RAG)</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Mehr Seiten im Index = mehr Zitierchancen</td><td style="padding:5px 8px;border-bottom:1px solid #dde0e8;color:#4a4d57;vertical-align:top;">✅ Kann selbst gecrawlt und als Linking-Hub genutzt werden</td></tr>
+  <tr style="background:#f4f5f7;"><td style="padding:5px 8px;font-weight:500;vertical-align:top;white-space:nowrap;">Skalierung</td><td style="padding:5px 8px;color:#4a4d57;vertical-align:top;">✅ Bis 50.000 URLs; Sitemap-Index; Spezialformate</td><td style="padding:5px 8px;color:#4a4d57;vertical-align:top;">⚠️ Bei großen Sites schwer wartbar; kein Ersatz für sitemap.xml</td></tr>
+  </tbody>
+  </table>
+  <p style="font-size:12px;color:#787b86;font-style:italic;margin:0;line-height:1.6;">Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.</p>
+  </div>
 
   <h2>Score-Gewichtung (Gesamt-GAIO-Score)</h2>
   <table>
@@ -692,7 +728,7 @@ export function buildFaqPanelHtml(): string {
   <table style="${tblStyle}">
     <thead><tr><th style="${thStyle}">Modul</th><th style="${thStyle}">Was wird geprüft</th><th style="${thStyle}">Warum es wichtig ist</th></tr></thead>
     <tbody>
-      ${row(["Technische SEO-Basis","HTTP-Antwortzeit, HTTPS, robots.txt, sitemap.xml, Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport","Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler"])}
+      ${row(["Technische SEO-Basis","HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport","Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler"])}
       ${row(["Strukturierte Daten (Schema.org)","JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder","Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren"])}
       ${row(["Heading-Struktur","H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler","Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet"])}
       ${row(["Inhaltliche Relevanz (KI-gestützt)","Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken","LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten"])}
@@ -700,6 +736,26 @@ export function buildFaqPanelHtml(): string {
       ${row(["LLM-Sichtbarkeits-Simulation","Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)","Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben"], true)}
     </tbody>
   </table>
+  <div style="background:#f8f9fa;border-left:3px solid ${bdr};border-radius:6px;padding:14px 16px;margin-top:8px;">
+    <p style="font-size:12px;font-weight:600;color:${muted};margin:0 0 8px;"><sup>*</sup> sitemap.xml vs. /sitemap — was wird geprüft und warum beides relevant ist</p>
+    <p style="font-size:12px;color:${sec};margin:0 0 10px;line-height:1.6;">Der GAIO Analyzer sucht zuerst nach einer maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml sowie in robots.txt deklarierten Sitemap-Pfaden). Falls keine XML-Sitemap gefunden wird, sucht er nach einer HTML-Sitemap unter gängigen Pfaden wie /sitemap, /sitemap.html oder /seitenübersicht.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid ${bdr};margin:0 0 10px;">
+      <thead><tr>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid ${bdr};background:${bg};color:${muted};font-weight:600;white-space:nowrap;">Kriterium</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid ${bdr};background:${bg};color:${muted};font-weight:600;">sitemap.xml</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid ${bdr};background:${bg};color:${muted};font-weight:600;">/sitemap (HTML)</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="${tdStyle}white-space:nowrap;font-weight:500;">Zweck</td><td style="${tdStyle}">Maschinenlesbare Übergabe an Crawler; enthält lastmod, priority, changefreq</td><td style="${tdStyle}">HTML-Seite mit internen Links; für Menschen und Crawler lesbar</td></tr>
+        <tr><td style="${tdStyle}white-space:nowrap;font-weight:500;">Google / Search Console</td><td style="${tdStyle}">✅ Direkt einreichbar; Indexierungsstatus in Search Console sichtbar</td><td style="${tdStyle}">❌ Nicht einreichbar; kann aber selbst indexiert werden</td></tr>
+        <tr><td style="${tdStyle}white-space:nowrap;font-weight:500;">Interne Verlinkung</td><td style="${tdStyle}">❌ Wird nicht als Linkquelle gewertet</td><td style="${tdStyle}">✅ Interne Links stärken PageRank-Verteilung</td></tr>
+        <tr><td style="${tdStyle}white-space:nowrap;font-weight:500;">LLM-Training-Crawler</td><td style="${tdStyle}">⚠️ Wird von manchen Crawlern gelesen, aber nicht als Content aufgenommen</td><td style="${tdStyle}">✅ HTML-Links als Crawl-Einstiegspunkte — direkter verwertbar</td></tr>
+        <tr><td style="${tdStyle}white-space:nowrap;font-weight:500;">LLM-Live-Retrieval (RAG)</td><td style="${tdStyle}">✅ Mehr Seiten im Index = mehr Zitierchancen</td><td style="${tdStyle}">✅ Kann selbst gecrawlt und als Linking-Hub genutzt werden</td></tr>
+        <tr><td style="${tdLast}white-space:nowrap;font-weight:500;">Skalierung</td><td style="${tdLast}">✅ Bis 50.000 URLs; Sitemap-Index; Spezialformate</td><td style="${tdLast}">⚠️ Bei großen Sites schwer wartbar; kein Ersatz für sitemap.xml</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:${muted};font-style:italic;margin:0;line-height:1.6;">Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.</p>
+  </div>
 
   <h3 style="${h3Style}">Score-Gewichtung (Gesamt-GAIO-Score)</h3>
   <table style="${tblStyle}">
