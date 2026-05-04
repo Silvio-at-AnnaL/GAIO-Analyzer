@@ -1,0 +1,126 @@
+```
+The app currently checks for the existence of robots.txt 
+and sitemap.xml in the root directory of the analyzed 
+domain and reports only whether they are present or absent 
+(✓ / ✗). Extend this with the following three changes.
+
+---
+
+CHANGE 1 — Also check for llms.txt
+
+In the same step where robots.txt and sitemap.xml are 
+fetched, also fetch:
+  [domain]/llms.txt
+
+llms.txt is an emerging standard that allows website 
+owners to provide structured information specifically 
+for LLM crawlers — similar to robots.txt but for AI 
+systems. Treat it as a first-class file alongside the 
+other two.
+
+Store the raw content of all three files if found:
+  robots_txt_content: string | null
+  sitemap_xml_content: string | null
+  llms_txt_content: string | null
+
+---
+
+CHANGE 2 — Qualitative content analysis of all three files
+
+For each file that is present, perform a content analysis 
+and display the results in the Details tab under a section 
+labeled "Technische Dateien" (or expand the existing 
+technical details section).
+
+ROBOTS.TXT analysis — extract and display:
+- Which user agents are mentioned (list them)
+- Are major LLM crawlers explicitly addressed? Check for:
+  GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, 
+  GoogleBot, Google-Extended, PerplexityBot, 
+  Amazonbot, cohere-ai, meta-externalagent
+  For each: show whether it is Allowed, Disallowed, 
+  or not mentioned at all
+- Is the entire site blocked for any crawler? 
+  (Disallow: / for any agent) — flag this prominently 
+  as a critical finding
+- Crawl-delay directives: are any present, and for 
+  which agents?
+- Sitemap references: are sitemap URLs declared in 
+  robots.txt?
+- Overall assessment: one sentence summary of what 
+  the robots.txt configuration means for LLM visibility
+
+SITEMAP.XML analysis — extract and display:
+- Total number of URLs listed
+- Are the URLs grouped in a sitemap index (multiple 
+  sitemaps) or a single sitemap?
+- Date range: what is the oldest and newest 
+  <lastmod> date found?
+- Are there URLs with <priority> values? If yes, 
+  what is the distribution (e.g. how many at 1.0, 
+  0.8, 0.5 etc.)?
+- Are there image sitemaps or video sitemaps present?
+- Does the sitemap include the crawled pages that 
+  were actually visited during analysis? 
+  (Check: what % of crawled URLs appear in the sitemap)
+- Overall assessment: one sentence summary
+
+LLMS.TXT analysis — extract and display:
+- Is the file present at all? If not, flag this as 
+  a missed opportunity with a brief explanation of 
+  what llms.txt is and why it matters
+- If present: show the full parsed content structured 
+  into its sections. The llms.txt format typically 
+  contains:
+  - A title/name of the site or company
+  - A description or summary
+  - Links to key pages with descriptions
+  - Optional sections (docs, API, contact etc.)
+- Assess completeness: are key product/service pages 
+  linked? Is the description informative for an LLM?
+- Overall assessment: one sentence summary
+
+Display the raw file content (first 500 characters) 
+in a collapsible code block for each file, so users 
+can verify what was found.
+
+---
+
+CHANGE 3 — Include findings in Empfehlungen
+
+Pass the analysis results of all three files to the 
+recommendations engine so they are considered when 
+generating prioritized recommendations.
+
+Specifically, the following findings must automatically 
+generate recommendations if detected:
+
+KRITISCH tier:
+- robots.txt blocks ClaudeBot, GPTBot, or 
+  Google-Extended with Disallow: /
+- robots.txt does not exist at all
+
+HOHER HEBEL tier:
+- llms.txt does not exist 
+  → recommendation: create an llms.txt file with 
+  structured information about the company, products, 
+  and key pages to improve LLM discoverability
+- LLM crawlers (GPTBot, ClaudeBot, PerplexityBot) 
+  are not mentioned in robots.txt at all 
+  → recommendation: explicitly allow key LLM crawlers
+- sitemap.xml does not exist or lists fewer than 
+  5 URLs
+- Crawled product/service pages are missing from 
+  sitemap.xml
+
+NACHGEORDNET tier:
+- sitemap.xml has no <lastmod> dates
+- sitemap.xml is present but not referenced in robots.txt
+- llms.txt exists but has no description or fewer 
+  than 3 linked pages
+
+These recommendations must be generated in addition 
+to the existing AI-generated recommendations, not 
+instead of them. Merge them into the same three-tier 
+output structure.
+```

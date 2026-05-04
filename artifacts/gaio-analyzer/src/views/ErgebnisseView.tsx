@@ -1377,6 +1377,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
                   {[
                     { label: "robots.txt", val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
                     { label: "sitemap.xml", val: (technicalSeo.sitemapXml as boolean) ? "✓" : "✗" },
+                    { label: "llms.txt", val: (technicalSeo.llmsTxt as boolean) ? "✓" : "✗" },
                     { label: "HTTPS", val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },
                     { label: "Viewport", val: (technicalSeo.mobileViewport as boolean) ? "✓" : "✗" },
                     { label: "Alt-Text", val: `${technicalSeo.imageAltCoverage}%` },
@@ -1391,6 +1392,220 @@ function ReportView({ analysisId }: { analysisId: string }) {
               </CardContent>
             </Card>
           )}
+
+          {technicalSeo && (() => {
+            type LlmCrawlerStatus = { name: string; status: "allowed" | "disallowed" | "not_mentioned" };
+            type RobotsAnalysis = { userAgents: string[]; llmCrawlers: LlmCrawlerStatus[]; siteBlockedAgents: string[]; crawlDelays: Array<{ agent: string; delay: number }>; sitemapUrls: string[]; summary: string };
+            type SitemapAnalysis = { totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; summary: string };
+            type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
+            type LlmsAnalysis = { present: boolean; title: string | null; description: string | null; sections: LlmsSection[]; linkedPageCount: number; hasDescription: boolean; summary: string };
+            const robots = technicalSeo.robotsTxtAnalysis as RobotsAnalysis | null;
+            const sitemap = technicalSeo.sitemapXmlAnalysis as SitemapAnalysis | null;
+            const llms = technicalSeo.llmsTxtAnalysis as LlmsAnalysis | null;
+            const robotsContent = technicalSeo.robotsTxtContent as string | null;
+            const sitemapContent = technicalSeo.sitemapXmlContent as string | null;
+            const llmsContent = technicalSeo.llmsTxtContent as string | null;
+            const statusColor = (s: string) => s === "allowed" ? "text-green-600" : s === "disallowed" ? "text-red-600" : "text-muted-foreground";
+            const statusLabel = (s: string) => s === "allowed" ? "Erlaubt" : s === "disallowed" ? "Gesperrt" : "Nicht erwähnt";
+            return (
+              <Card>
+                <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Dateien</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+
+                  {/* robots.txt */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold">robots.txt</span>
+                      <Badge variant={(technicalSeo.robotsTxt as boolean) ? "secondary" : "destructive"} className="font-mono text-xs">
+                        {(technicalSeo.robotsTxt as boolean) ? "gefunden" : "nicht gefunden"}
+                      </Badge>
+                    </div>
+                    {robots ? (
+                      <div className="space-y-3 pl-1">
+                        {robots.siteBlockedAgents.length > 0 && (
+                          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                            <strong>Kritisch:</strong> Komplette Sperrung (Disallow: /) für: {robots.siteBlockedAgents.join(", ")}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-2 font-medium">LLM-Crawler Status</p>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                            {robots.llmCrawlers.map((c) => (
+                              <div key={c.name} className="flex items-center justify-between text-xs py-0.5 border-b border-border/40 last:border-0">
+                                <span className="font-mono">{c.name}</span>
+                                <span className={`font-medium ${statusColor(c.status)}`}>{statusLabel(c.status)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {robots.crawlDelays.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Crawl-Delay:</span> {robots.crawlDelays.map((d) => `${d.agent}: ${d.delay}s`).join(", ")}
+                          </div>
+                        )}
+                        {robots.sitemapUrls.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Sitemap-Referenzen:</span> {robots.sitemapUrls.join(", ")}
+                          </div>
+                        )}
+                        {robots.userAgents.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Erwähnte User-Agents:</span> {robots.userAgents.join(", ")}
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground italic">{robots.summary}</p>
+                        {robotsContent && !pdfMode && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                            <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{robotsContent}</pre>
+                          </details>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pl-1">robots.txt wurde nicht gefunden oder ist nicht erreichbar.</p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-border/50" />
+
+                  {/* sitemap.xml */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold">sitemap.xml</span>
+                      <Badge variant={(technicalSeo.sitemapXml as boolean) ? "secondary" : "destructive"} className="font-mono text-xs">
+                        {(technicalSeo.sitemapXml as boolean) ? "gefunden" : "nicht gefunden"}
+                      </Badge>
+                    </div>
+                    {sitemap ? (
+                      <div className="space-y-3 pl-1">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">URLs gesamt</p>
+                            <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Typ</p>
+                            <p className="text-sm font-bold">{sitemap.isSitemapIndex ? "Sitemap-Index" : "Einzelne Sitemap"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
+                            <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Spezial-Typen</p>
+                            <p className="text-sm font-bold">{[sitemap.hasImageSitemap && "Bild", sitemap.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</p>
+                          </div>
+                          {sitemap.oldestLastmod && (
+                            <div>
+                              <p className="text-xs text-muted-foreground">Älteste Lastmod</p>
+                              <p className="text-sm font-mono">{sitemap.oldestLastmod.slice(0, 10)}</p>
+                            </div>
+                          )}
+                          {sitemap.newestLastmod && (
+                            <div>
+                              <p className="text-xs text-muted-foreground">Neueste Lastmod</p>
+                              <p className="text-sm font-mono">{sitemap.newestLastmod.slice(0, 10)}</p>
+                            </div>
+                          )}
+                          {Object.keys(sitemap.priorityDistribution).length > 0 && (
+                            <div className="col-span-2">
+                              <p className="text-xs text-muted-foreground mb-1">Priority-Verteilung</p>
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(sitemap.priorityDistribution).sort(([a], [b]) => parseFloat(b) - parseFloat(a)).map(([val, count]) => (
+                                  <Badge key={val} variant="outline" className="font-mono text-xs">{val} × {count}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
+                        {sitemapContent && !pdfMode && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                            <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
+                          </details>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pl-1">sitemap.xml wurde nicht gefunden oder ist nicht erreichbar.</p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-border/50" />
+
+                  {/* llms.txt */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold">llms.txt</span>
+                      <Badge variant={(technicalSeo.llmsTxt as boolean) ? "secondary" : "outline"} className="font-mono text-xs">
+                        {(technicalSeo.llmsTxt as boolean) ? "gefunden" : "nicht gefunden"}
+                      </Badge>
+                    </div>
+                    {llms && !llms.present ? (
+                      <div className="pl-1 space-y-2">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <strong>Verpasste Chance:</strong> llms.txt ist ein aufkommender Standard, mit dem Website-Betreiber strukturierte Informationen speziell für LLM-Crawler bereitstellen — ähnlich wie robots.txt, aber mit inhaltlichem Fokus für KI-Systeme wie ChatGPT, Claude und Perplexity.
+                        </div>
+                        <p className="text-xs text-muted-foreground italic">{llms.summary}</p>
+                      </div>
+                    ) : llms && llms.present ? (
+                      <div className="space-y-3 pl-1">
+                        {llms.title && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Titel</p>
+                            <p className="text-sm font-semibold">{llms.title}</p>
+                          </div>
+                        )}
+                        {llms.description && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Beschreibung</p>
+                            <p className="text-sm">{llms.description}</p>
+                          </div>
+                        )}
+                        {llms.sections.length > 0 && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-2 font-medium">Abschnitte ({llms.sections.length})</p>
+                            <div className="space-y-2">
+                              {llms.sections.map((section, si) => (
+                                <div key={si} className="rounded-md border border-border/60 px-3 py-2">
+                                  <p className="text-xs font-semibold mb-1">{section.name}</p>
+                                  {section.links.length > 0 ? (
+                                    <ul className="space-y-0.5">
+                                      {section.links.map((link, li) => (
+                                        <li key={li} className="text-xs text-muted-foreground">
+                                          <span className="font-medium text-foreground">{link.title}</span>
+                                          {link.description && <span> — {link.description}</span>}
+                                          <span className="ml-1 font-mono text-[10px] opacity-60 break-all">{link.url}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground">Keine Links in diesem Abschnitt</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span><span className="font-medium">{llms.linkedPageCount}</span> verlinkte Seiten</span>
+                          <span>{llms.hasDescription ? "✓ Beschreibung vorhanden" : "✗ Keine Beschreibung"}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground italic">{llms.summary}</p>
+                        {llmsContent && !pdfMode && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                            <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{llmsContent}</pre>
+                          </details>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {schemaOrg && (
             <Card>

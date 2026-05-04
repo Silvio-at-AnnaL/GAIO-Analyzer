@@ -189,8 +189,10 @@ export async function runAnalysis(
           pages,
           robotsTxt: null,
           sitemapXml: null,
+          llmsTxt: null,
           robotsTxtExists: false,
           sitemapXmlExists: false,
+          llmsTxtExists: false,
           hreflangVariants: [],
         };
       } else {
@@ -220,8 +222,10 @@ export async function runAnalysis(
         pages,
         robotsTxt: null,
         sitemapXml: null,
+        llmsTxt: null,
         robotsTxtExists: false,
         sitemapXmlExists: false,
+        llmsTxtExists: false,
         hreflangVariants: [],
       };
       state.crawledPages = ["uploaded-page"];

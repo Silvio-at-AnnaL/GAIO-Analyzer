@@ -18,8 +18,10 @@ export interface CrawlResult {
   pages: CrawledPage[];
   robotsTxt: string | null;
   sitemapXml: string | null;
+  llmsTxt: string | null;
   robotsTxtExists: boolean;
   sitemapXmlExists: boolean;
+  llmsTxtExists: boolean;
   hreflangVariants: HreflangVariant[];
 }
 
@@ -326,8 +328,10 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     pages: [],
     robotsTxt: null,
     sitemapXml: null,
+    llmsTxt: null,
     robotsTxtExists: false,
     sitemapXmlExists: false,
+    llmsTxtExists: false,
     hreflangVariants: [],
   };
 
@@ -357,6 +361,20 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     }
   } catch {
     logger.debug("sitemap.xml not accessible");
+  }
+
+  // ── llms.txt ──────────────────────────────────────────────────────────────
+  try {
+    const llmsResp = await fetchWithTiming(
+      `${base.protocol}//${baseDomain}/llms.txt`,
+      5000,
+    );
+    if (llmsResp.statusCode === 200 && llmsResp.html.length > 0 && llmsResp.html.length < 200_000) {
+      result.llmsTxt = llmsResp.html;
+      result.llmsTxtExists = true;
+    }
+  } catch {
+    logger.debug("llms.txt not accessible");
   }
 
   const visited = new Set<string>();
