@@ -930,92 +930,131 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       const headerEl = document.getElementById("results-header");
       if (headerEl) {
-        // Clone the header into an isolated off-screen wrapper with a fixed 1200px
-        // width so Recharts SVG dimensions are viewport-independent in both dev and
-        // production environments.
-        const captureWrapper = document.createElement("div");
-        captureWrapper.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: -9999px;
-          width: ${CAPTURE_WIDTH_PX}px;
-          max-width: ${CAPTURE_WIDTH_PX}px;
-          overflow: hidden;
-          background: #ffffff;
-          z-index: -1;
-          isolation: isolate;
-        `;
-        document.body.appendChild(captureWrapper);
-
-        const headerClone = headerEl.cloneNode(true) as HTMLElement;
-        headerClone.style.cssText = `
-          width: ${CAPTURE_WIDTH_PX}px;
-          max-width: ${CAPTURE_WIDTH_PX}px;
-          overflow: visible;
-          position: relative;
-        `;
-        captureWrapper.appendChild(headerClone);
-
-        // Force explicit pixel dimensions on every ResponsiveContainer in the clone
-        // so Recharts cannot re-measure against the live viewport width.
-        headerClone.querySelectorAll<HTMLElement>(".recharts-responsive-container").forEach((el) => {
-          el.style.width     = "520px";
-          el.style.height    = "320px";
-          el.style.minWidth  = "520px";
-          el.style.minHeight = "320px";
-        });
-
-        // Pin the SVG size and reset the recharts-surface translateX to 0 so there
-        // is no horizontal offset in the captured image.
-        headerClone.querySelectorAll<SVGElement>(".recharts-responsive-container svg").forEach((svg) => {
-          svg.setAttribute("width", "520");
-          svg.setAttribute("height", "320");
-          svg.style.width  = "520px";
-          svg.style.height = "320px";
-          const surface = svg.querySelector<SVGGElement>("g.recharts-surface, g[class*='surface']");
-          if (surface) {
-            const current = surface.getAttribute("transform") || "";
-            const fixed = current.replace(/translate\([\d.]+,/, "translate(0,");
-            surface.setAttribute("transform", fixed);
+        // ── Step 1: Snapshot all SVG rendered dimensions before any style changes ──
+        interface SvgSnapshot {
+          el: SVGSVGElement;
+          origWidth: string | null;
+          origHeight: string | null;
+          origViewBox: string | null;
+          origStyle: string;
+          lockedW: number;
+          lockedH: number;
+        }
+        const svgSnapshots: SvgSnapshot[] = [];
+        headerEl.querySelectorAll("svg").forEach((svg) => {
+          const rect = svg.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            svgSnapshots.push({
+              el: svg as SVGSVGElement,
+              origWidth:   svg.getAttribute("width"),
+              origHeight:  svg.getAttribute("height"),
+              origViewBox: svg.getAttribute("viewBox"),
+              origStyle:   svg.getAttribute("style") || "",
+              lockedW: Math.round(rect.width),
+              lockedH: Math.round(rect.height),
+            });
           }
         });
 
-        neutraliseImages(headerClone);
+        // ── Step 2: Snapshot ResponsiveContainer dimensions ───────────────────────
+        interface ContainerSnapshot {
+          el: HTMLElement;
+          origWidth: string;
+          origHeight: string;
+          lockedW: number;
+          lockedH: number;
+        }
+        const containerSnapshots: ContainerSnapshot[] = [];
+        headerEl.querySelectorAll<HTMLElement>(".recharts-responsive-container").forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          containerSnapshots.push({
+            el,
+            origWidth:  el.style.width,
+            origHeight: el.style.height,
+            lockedW: Math.round(rect.width),
+            lockedH: Math.round(rect.height),
+          });
+        });
 
-        // Allow the cloned layout to settle.
-        void captureWrapper.offsetHeight;
-        await new Promise((r) => setTimeout(r, 600));
+        // ── Step 3: Freeze all dimensions on the live element ─────────────────────
+        const sidebar = document.querySelector<HTMLElement>("aside, nav, [class*='sidebar']");
+        const sidebarDisplay = sidebar?.style.display;
+        if (sidebar) sidebar.style.display = "none";
 
-        const headerH = captureWrapper.offsetHeight;
-        console.log("Header height:", headerH);
+        const origHeaderWidth    = headerEl.style.width;
+        const origHeaderOverflow = headerEl.style.overflow;
+        headerEl.style.overflow  = "visible";
 
-        if (headerH > 0) {
+        svgSnapshots.forEach(({ el, lockedW, lockedH }) => {
+          el.setAttribute("width",  String(lockedW));
+          el.setAttribute("height", String(lockedH));
+          el.style.width     = `${lockedW}px`;
+          el.style.height    = `${lockedH}px`;
+          el.style.minWidth  = `${lockedW}px`;
+          el.style.minHeight = `${lockedH}px`;
+          el.style.overflow  = "visible";
+        });
+
+        containerSnapshots.forEach(({ el, lockedW, lockedH }) => {
+          el.style.width     = `${lockedW}px`;
+          el.style.height    = `${lockedH}px`;
+          el.style.minWidth  = `${lockedW}px`;
+          el.style.minHeight = `${lockedH}px`;
+        });
+
+        // Normalize any recharts-surface translateX offset to 0.
+        headerEl.querySelectorAll<SVGGElement>("g[class*='surface']").forEach((g) => {
+          const t = g.getAttribute("transform") || "";
+          g.setAttribute("transform", t.replace(/translate\([^,]+,/, "translate(0,"));
+        });
+
+        neutraliseImages(headerEl);
+
+        // ── Step 4: Let layout stabilise ─────────────────────────────────────────
+        void headerEl.offsetHeight;
+        await new Promise((r) => setTimeout(r, 500));
+
+        // ── Step 5: Capture original element ─────────────────────────────────────
+        const captureW = Math.round(headerEl.getBoundingClientRect().width);
+        const captureH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
+        console.log("Header height:", captureH);
+
+        if (captureH > 0) {
           try {
-            headerImgData = await toJpeg(headerClone, {
+            headerImgData = await toJpeg(headerEl, {
               quality: 0.92,
               backgroundColor: "#ffffff",
               pixelRatio: 1.5,
               skipFonts: true,
-              width: CAPTURE_WIDTH_PX,
-              height: headerH,
-              filter: (node: HTMLElement) => {
-                if ((node as HTMLElement).tagName === "SCRIPT") return false;
-                if ((node as HTMLElement).tagName === "NOSCRIPT") return false;
-                if ((node as HTMLElement).tagName === "IMG") {
-                  const img = node as HTMLImageElement;
-                  if (!img.complete || img.naturalWidth === 0) return false;
-                }
-                return true;
-              },
+              width: captureW,
+              height: captureH,
+              filter: imageFilter,
             });
-            headerMmH = (headerH / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
-            console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
+            headerMmH = (captureH / captureW) * CONTENT_MM_W;
+            console.log("Header captured:", captureW, "x", captureH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
           } catch (hErr) {
             console.warn("Header capture failed:", hErr);
           }
         }
 
-        document.body.removeChild(captureWrapper);
+        // ── Step 6: Restore everything ────────────────────────────────────────────
+        if (sidebar) sidebar.style.display = sidebarDisplay ?? "";
+        headerEl.style.width    = origHeaderWidth;
+        headerEl.style.overflow = origHeaderOverflow;
+
+        svgSnapshots.forEach(({ el, origWidth, origHeight, origViewBox, origStyle }) => {
+          if (origWidth   !== null) el.setAttribute("width",   origWidth);   else el.removeAttribute("width");
+          if (origHeight  !== null) el.setAttribute("height",  origHeight);  else el.removeAttribute("height");
+          if (origViewBox !== null) el.setAttribute("viewBox", origViewBox); else el.removeAttribute("viewBox");
+          el.setAttribute("style", origStyle);
+        });
+
+        containerSnapshots.forEach(({ el, origWidth, origHeight }) => {
+          el.style.width     = origWidth;
+          el.style.height    = origHeight;
+          el.style.minWidth  = "";
+          el.style.minHeight = "";
+        });
       }
 
       // ── Capture each panel directly (original elements, real styles) ──────────

@@ -1,0 +1,191 @@
+The current clone-based header capture is producing 
+incorrect chart proportions in both environments: 
+the donut chart renders too large and the radar 
+chart too small. Abandon the clone approach entirely.
+
+---
+
+NEW APPROACH: Snapshot SVG dimensions from the 
+live DOM, then capture the original element
+
+This approach reads the actual rendered pixel 
+dimensions of every chart SVG in the header 
+BEFORE any style changes, locks those dimensions 
+explicitly into the SVG elements, captures, 
+then restores. No cloning, no isolated containers.
+
+STEP 1 — Read and snapshot all chart dimensions 
+from the live header element:
+
+  interface SvgSnapshot {
+    el: SVGSVGElement
+    origWidth: string | null
+    origHeight: string | null
+    origViewBox: string | null
+    origStyle: string
+    lockedW: number
+    lockedH: number
+  }
+
+  const svgSnapshots: SvgSnapshot[] = []
+  
+  const allSvgs = headerEl.querySelectorAll('svg')
+  allSvgs.forEach(svg => {
+    const rect = svg.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      svgSnapshots.push({
+        el: svg as SVGSVGElement,
+        origWidth: svg.getAttribute('width'),
+        origHeight: svg.getAttribute('height'),
+        origViewBox: svg.getAttribute('viewBox'),
+        origStyle: svg.getAttribute('style') || '',
+        lockedW: Math.round(rect.width),
+        lockedH: Math.round(rect.height)
+      })
+    }
+  })
+
+STEP 2 — Also snapshot the ResponsiveContainers:
+
+  interface ContainerSnapshot {
+    el: HTMLElement
+    origWidth: string
+    origHeight: string
+    lockedW: number
+    lockedH: number
+  }
+
+  const containerSnapshots: ContainerSnapshot[] = []
+  
+  headerEl.querySelectorAll(
+    '.recharts-responsive-container'
+  ).forEach(c => {
+    const el = c as HTMLElement
+    const rect = el.getBoundingClientRect()
+    containerSnapshots.push({
+      el,
+      origWidth: el.style.width,
+      origHeight: el.style.height,
+      lockedW: Math.round(rect.width),
+      lockedH: Math.round(rect.height)
+    })
+  })
+
+STEP 3 — Hide sidebar and freeze all dimensions:
+
+  // Hide sidebar
+  const sidebar = document.querySelector(
+    'aside, nav, [class*="sidebar"]'
+  ) as HTMLElement | null
+  const sidebarDisplay = sidebar?.style.display
+  if (sidebar) sidebar.style.display = 'none'
+
+  // Freeze header width
+  const origHeaderWidth = headerEl.style.width
+  const origHeaderOverflow = headerEl.style.overflow
+  headerEl.style.overflow = 'visible'
+
+  // Lock each SVG to its measured dimensions:
+  svgSnapshots.forEach(({ el, lockedW, lockedH }) => {
+    el.setAttribute('width', String(lockedW))
+    el.setAttribute('height', String(lockedH))
+    el.style.width = lockedW + 'px'
+    el.style.height = lockedH + 'px'
+    el.style.minWidth = lockedW + 'px'
+    el.style.minHeight = lockedH + 'px'
+    el.style.overflow = 'visible'
+  })
+
+  // Lock each ResponsiveContainer:
+  containerSnapshots.forEach(
+    ({ el, lockedW, lockedH }) => {
+    el.style.width = lockedW + 'px'
+    el.style.height = lockedH + 'px'
+    el.style.minWidth = lockedW + 'px'
+    el.style.minHeight = lockedH + 'px'
+  })
+
+  // Also fix any g.recharts-surface transform:
+  headerEl.querySelectorAll(
+    'g[class*="surface"]'
+  ).forEach(g => {
+    const gEl = g as SVGGElement
+    const t = gEl.getAttribute('transform') || ''
+    // Normalize any translateX offset to 0:
+    gEl.setAttribute('transform', 
+      t.replace(/translate\([^,]+,/, 
+                'translate(0,'))
+  })
+
+STEP 4 — Wait for layout stabilization:
+
+  void headerEl.offsetHeight
+  await new Promise(r => setTimeout(r, 500))
+
+STEP 5 — Capture the original element:
+
+  const captureW = Math.round(
+    headerEl.getBoundingClientRect().width
+  )
+  const captureH = headerEl.scrollHeight
+
+  const headerImgData = await toJpeg(headerEl, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: true,
+    width: captureW,
+    height: captureH,
+    filter: (node) => {
+      if (node.tagName === 'SCRIPT') return false
+      if (node.tagName === 'NOSCRIPT') return false
+      if (node.tagName === 'IMG') {
+        const img = node as HTMLImageElement
+        if (!img.complete || img.naturalWidth === 0)
+          return false
+      }
+      return true
+    }
+  })
+
+STEP 6 — Restore everything in finally block:
+
+  // Restore sidebar
+  if (sidebar && sidebarDisplay !== undefined)
+    sidebar.style.display = sidebarDisplay || ''
+  
+  // Restore header
+  headerEl.style.width = origHeaderWidth
+  headerEl.style.overflow = origHeaderOverflow
+
+  // Restore SVGs:
+  svgSnapshots.forEach(({ 
+    el, origWidth, origHeight, 
+    origViewBox, origStyle 
+  }) => {
+    if (origWidth !== null) 
+      el.setAttribute('width', origWidth)
+    else el.removeAttribute('width')
+    if (origHeight !== null) 
+      el.setAttribute('height', origHeight)
+    else el.removeAttribute('height')
+    if (origViewBox !== null)
+      el.setAttribute('viewBox', origViewBox)
+    else el.removeAttribute('viewBox')
+    el.setAttribute('style', origStyle)
+  })
+
+  // Restore containers:
+  containerSnapshots.forEach(
+    ({ el, origWidth, origHeight }) => {
+    el.style.width = origWidth
+    el.style.height = origHeight
+    el.style.minWidth = ''
+    el.style.minHeight = ''
+  })
+
+STEP 7 — Use captureW for mmH calculation:
+
+  const mmW = 210
+  const mmH = (captureH / captureW) * mmW
+  // Then add the 12mm margin logic as before
