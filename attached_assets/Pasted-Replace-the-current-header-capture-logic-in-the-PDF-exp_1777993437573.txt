@@ -1,0 +1,366 @@
+Replace the current header capture logic in the 
+PDF export with an iframe-based approach that 
+renders a fully static, viewport-independent 
+version of the header. No Recharts, no DOM 
+cloning. Pure SVG calculated from score data.
+
+---
+
+IMPLEMENTATION
+
+When the PDF export starts, before capturing 
+any tab panel, build the header page as a 
+self-contained HTML document injected into 
+an iframe — exactly like the FAQ and Kontakt 
+pages already work.
+
+The iframe document receives the score values 
+as data and draws two SVG charts mathematically.
+
+---
+
+DATA TO PASS INTO THE IFRAME
+
+Read these values from the current analysis 
+result before building the iframe HTML:
+
+  const scores = {
+    gaio: result.gaioScore,           // 0-100
+    technSeo: result.scores.technical,
+    schema: result.scores.schema,
+    headings: result.scores.headings,
+    inhalt: result.scores.content,
+    faq: result.scores.faq,
+    llm: result.scores.llm
+  }
+  
+  const domain = result.url || ''
+  const pageCount = result.crawledPages || 0
+  const exportDate = new Date()
+    .toLocaleDateString('de-DE')
+
+Inject these as a JSON string into the iframe 
+HTML via template literal.
+
+---
+
+IFRAME HTML STRUCTURE
+
+  <!DOCTYPE html>
+  <html><head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; 
+        padding: 0; }
+    body {
+      font-family: -apple-system, 
+        'Segoe UI', sans-serif;
+      background: #ffffff;
+      width: 1200px;
+      padding: 24px 32px;
+      color: #1a1d23;
+    }
+    .header-meta {
+      font-size: 12px;
+      color: #787b86;
+      margin-bottom: 20px;
+    }
+    .charts-row {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+    .chart-card {
+      flex: 1;
+      border: 1px solid #dde0e8;
+      border-radius: 12px;
+      padding: 20px;
+      background: #ffffff;
+    }
+    .chart-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #787b86;
+      margin-bottom: 16px;
+    }
+    .chart-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .scores-row {
+      display: flex;
+      gap: 12px;
+    }
+    .score-tile {
+      flex: 1;
+      border: 1px solid #dde0e8;
+      border-radius: 10px;
+      padding: 12px 8px;
+      text-align: center;
+      background: #ffffff;
+    }
+    .score-tile .label {
+      font-size: 11px;
+      color: #787b86;
+      margin-bottom: 6px;
+    }
+    .score-tile .val {
+      font-size: 22px;
+      font-weight: 800;
+    }
+  </style>
+  </head><body>
+
+  <div class="header-meta">
+    [DOMAIN] · Details · [DATE]
+  </div>
+
+  <div class="charts-row">
+
+    <!-- LEFT: Donut chart -->
+    <div class="chart-card">
+      <div class="chart-label">GAIO SCORE</div>
+      <div class="chart-center">
+        [DONUT_SVG]
+      </div>
+    </div>
+
+    <!-- RIGHT: Radar chart -->
+    <div class="chart-card">
+      <div class="chart-label">DIMENSIONEN</div>
+      <div class="chart-center">
+        [RADAR_SVG]
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Score tiles row -->
+  <div class="scores-row">
+    [SCORE_TILES]
+  </div>
+
+  </body></html>
+
+---
+
+DONUT SVG FORMULA
+
+Generate this SVG string from the gaio score:
+
+  function buildDonut(score: number): string {
+    const size = 200
+    const cx = 100, cy = 100
+    const r = 72
+    const strokeW = 22
+    const circ = 2 * Math.PI * r
+    
+    // Score color
+    const color = score >= 76 ? '#65a30d'
+      : score >= 61 ? '#ca8a04'
+      : score >= 41 ? '#d97706'
+      : '#dc2626'
+    
+    // Background arc (dark)
+    const bgColor = '#1e293b'
+    
+    // Foreground arc offset
+    const offset = circ * (1 - score / 100)
+    
+    return `
+    <svg width="${size}" height="${size}" 
+         viewBox="0 0 ${size} ${size}">
+      <!-- Background circle -->
+      <circle
+        cx="${cx}" cy="${cy}" r="${r}"
+        fill="none"
+        stroke="${bgColor}"
+        stroke-width="${strokeW}"
+      />
+      <!-- Score arc — starts at top (-90deg) -->
+      <circle
+        cx="${cx}" cy="${cy}" r="${r}"
+        fill="none"
+        stroke="${color}"
+        stroke-width="${strokeW}"
+        stroke-dasharray="${circ.toFixed(2)}"
+        stroke-dashoffset="${offset.toFixed(2)}"
+        stroke-linecap="butt"
+        transform="rotate(-90 ${cx} ${cy})"
+      />
+      <!-- Score label -->
+      <text x="${cx}" y="${cy - 8}" 
+            text-anchor="middle"
+            font-size="32" font-weight="800"
+            font-family="-apple-system,sans-serif"
+            fill="${color}">${score}</text>
+      <text x="${cx}" y="${cy + 18}"
+            text-anchor="middle"
+            font-size="14" font-weight="400"
+            font-family="-apple-system,sans-serif"
+            fill="#9ca3af">/100</text>
+    </svg>`
+  }
+
+---
+
+RADAR SVG FORMULA
+
+6 axes: Techn. SEO (top), Schema.org, Headings, 
+Inhalt, FAQ, LLM — clockwise from top.
+
+  function buildRadar(scores: {
+    technSeo: number, schema: number,
+    headings: number, inhalt: number,
+    faq: number, llm: number
+  }): string {
+    
+    const size = 260
+    const cx = 130, cy = 130
+    const maxR = 90  // max radius at score 100
+    const gridLevels = [25, 50, 75, 100]
+    
+    const axes = [
+      { label: 'Techn. SEO', val: scores.technSeo },
+      { label: 'Schema.org', val: scores.schema },
+      { label: 'Headings',   val: scores.headings },
+      { label: 'Inhalt',     val: scores.inhalt },
+      { label: 'FAQ',        val: scores.faq },
+      { label: 'LLM',        val: scores.llm },
+    ]
+    const n = axes.length
+    
+    // Point on axis i at radius r:
+    const pt = (i: number, r: number) => {
+      const angle = (i / n) * 2 * Math.PI 
+                    - Math.PI / 2
+      return {
+        x: cx + r * Math.cos(angle),
+        y: cy + r * Math.sin(angle)
+      }
+    }
+    
+    // Grid polygons:
+    const gridLines = gridLevels.map(level => {
+      const r = (level / 100) * maxR
+      const pts = Array.from({length: n}, 
+        (_, i) => pt(i, r))
+      const d = pts.map((p, i) => 
+        `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},
+        ${p.y.toFixed(1)}`).join(' ') + ' Z'
+      return `<path d="${d}" fill="none" 
+        stroke="#e2e8f0" stroke-width="1"/>`
+    }).join('\n')
+    
+    // Axis lines:
+    const axisLines = axes.map((_, i) => {
+      const end = pt(i, maxR)
+      return `<line x1="${cx}" y1="${cy}" 
+        x2="${end.x.toFixed(1)}" 
+        y2="${end.y.toFixed(1)}"
+        stroke="#e2e8f0" stroke-width="1"/>`
+    }).join('\n')
+    
+    // Data polygon:
+    const dataPts = axes.map((axis, i) => 
+      pt(i, (axis.val / 100) * maxR))
+    const dataPath = dataPts.map((p, i) => 
+      `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},
+      ${p.y.toFixed(1)}`).join(' ') + ' Z'
+    
+    // Labels (positioned beyond maxR):
+    const labelR = maxR + 20
+    const labels = axes.map((axis, i) => {
+      const p = pt(i, labelR)
+      const anchor = p.x < cx - 5 ? 'end'
+        : p.x > cx + 5 ? 'start' : 'middle'
+      return `<text x="${p.x.toFixed(1)}" 
+        y="${(p.y + 4).toFixed(1)}"
+        text-anchor="${anchor}"
+        font-size="11"
+        font-family="-apple-system,sans-serif"
+        fill="#6b7280">${axis.label}</text>`
+    }).join('\n')
+    
+    return `
+    <svg width="${size}" height="${size}"
+         viewBox="0 0 ${size} ${size}">
+      ${gridLines}
+      ${axisLines}
+      <path d="${dataPath}"
+        fill="#3b82f6" fill-opacity="0.2"
+        stroke="#3b82f6" stroke-width="2"/>
+      ${labels}
+    </svg>`
+  }
+
+---
+
+SCORE TILES
+
+  function buildScoreTiles(scores): string {
+    const scoreColor = (s: number) =>
+      s >= 76 ? '#65a30d'
+      : s >= 61 ? '#ca8a04'
+      : s >= 41 ? '#d97706'
+      : '#dc2626'
+    
+    const tiles = [
+      ['Techn. SEO', scores.technSeo],
+      ['Schema.org', scores.schema],
+      ['Headings',   scores.headings],
+      ['Inhalt',     scores.inhalt],
+      ['FAQ',        scores.faq],
+      ['LLM',        scores.llm],
+    ]
+    
+    return tiles.map(([label, val]) => `
+      <div class="score-tile">
+        <div class="label">${label}</div>
+        <div class="val" 
+          style="color:${scoreColor(val as number)}">
+          ${val}
+        </div>
+      </div>`).join('')
+  }
+
+---
+
+IFRAME CAPTURE (same technique as FAQ page)
+
+  const headerHtml = buildHeaderIframeHtml(scores, 
+    domain, pageCount, exportDate)
+
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = `
+    position: fixed; left: -9999px; top: 0;
+    width: 1200px; height: 600px;
+    border: none; opacity: 0;
+  `
+  document.body.appendChild(iframe)
+  iframe.contentDocument!.open()
+  iframe.contentDocument!.write(headerHtml)
+  iframe.contentDocument!.close()
+
+  await new Promise(r => setTimeout(r, 800))
+  
+  const body = iframe.contentDocument!.body
+  const h = Math.max(body.scrollHeight, 
+                     body.offsetHeight) + 40
+  iframe.style.height = h + 'px'
+  await new Promise(r => setTimeout(r, 300))
+
+  const headerImgData = await toJpeg(body, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: true
+  })
+  
+  document.body.removeChild(iframe)
+  
+  // Dimensions (consistent, always 1200px wide):
+  const dims = calcPdfDimensions(h, 1200)

@@ -928,133 +928,154 @@ function ReportView({ analysisId }: { analysisId: string }) {
       let headerImgData: string | null = null;
       let headerMmH = 0;
 
-      const headerEl = document.getElementById("results-header");
-      if (headerEl) {
-        // ── Step 1: Snapshot all SVG rendered dimensions before any style changes ──
-        interface SvgSnapshot {
-          el: SVGSVGElement;
-          origWidth: string | null;
-          origHeight: string | null;
-          origViewBox: string | null;
-          origStyle: string;
-          lockedW: number;
-          lockedH: number;
-        }
-        const svgSnapshots: SvgSnapshot[] = [];
-        headerEl.querySelectorAll("svg").forEach((svg) => {
-          const rect = svg.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            svgSnapshots.push({
-              el: svg as SVGSVGElement,
-              origWidth:   svg.getAttribute("width"),
-              origHeight:  svg.getAttribute("height"),
-              origViewBox: svg.getAttribute("viewBox"),
-              origStyle:   svg.getAttribute("style") || "",
-              lockedW: Math.round(rect.width),
-              lockedH: Math.round(rect.height),
-            });
-          }
-        });
+      // ── Build score data for the header iframe ────────────────────────────────
+      const hdrScores = {
+        gaio:      report.overallScore ?? 0,
+        technSeo:  (technicalSeo?.score as number)      ?? 0,
+        schema:    (schemaOrg?.score as number)          ?? 0,
+        headings:  (headingStructure?.score as number)   ?? 0,
+        inhalt:    (contentRelevance?.score as number)   ?? 0,
+        faq:       (faqQuality?.score as number)         ?? 0,
+        llm:       (llmDiscoverability?.score as number) ?? 0,
+      };
+      const hdrDomain     = report.url || "";
+      const hdrPageCount  = (report.crawledPages as string[] | null)?.length ?? 0;
+      const hdrDate       = new Date().toLocaleDateString("de-DE");
 
-        // ── Step 2: Snapshot ResponsiveContainer dimensions ───────────────────────
-        interface ContainerSnapshot {
-          el: HTMLElement;
-          origWidth: string;
-          origHeight: string;
-          lockedW: number;
-          lockedH: number;
-        }
-        const containerSnapshots: ContainerSnapshot[] = [];
-        headerEl.querySelectorAll<HTMLElement>(".recharts-responsive-container").forEach((el) => {
-          const rect = el.getBoundingClientRect();
-          containerSnapshots.push({
-            el,
-            origWidth:  el.style.width,
-            origHeight: el.style.height,
-            lockedW: Math.round(rect.width),
-            lockedH: Math.round(rect.height),
+      // Pure-SVG helper functions (no Recharts, no DOM dependency) ─────────────
+      const buildDonut = (score: number): string => {
+        const r = 72, strokeW = 22, cx = 100, cy = 100;
+        const circ = 2 * Math.PI * r;
+        const color = score >= 76 ? "#65a30d" : score >= 61 ? "#ca8a04" : score >= 41 ? "#d97706" : "#dc2626";
+        const offset = circ * (1 - score / 100);
+        return `<svg width="200" height="200" viewBox="0 0 200 200">
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1e293b" stroke-width="${strokeW}"/>
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${strokeW}"
+            stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"
+            stroke-linecap="butt" transform="rotate(-90 ${cx} ${cy})"/>
+          <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="32" font-weight="800"
+            font-family="-apple-system,sans-serif" fill="${color}">${score}</text>
+          <text x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="14"
+            font-family="-apple-system,sans-serif" fill="#9ca3af">/100</text>
+        </svg>`;
+      };
+
+      const buildRadar = (s: typeof hdrScores): string => {
+        const size = 260, cx = 130, cy = 130, maxR = 90;
+        const axes = [
+          { label: "Techn. SEO", val: s.technSeo },
+          { label: "Schema.org", val: s.schema },
+          { label: "Headings",   val: s.headings },
+          { label: "Inhalt",     val: s.inhalt },
+          { label: "FAQ",        val: s.faq },
+          { label: "LLM",        val: s.llm },
+        ];
+        const n = axes.length;
+        const pt = (i: number, r: number) => {
+          const a = (i / n) * 2 * Math.PI - Math.PI / 2;
+          return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+        };
+        const polyPath = (r: number) =>
+          Array.from({ length: n }, (_, i) => pt(i, r))
+            .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+            .join(" ") + " Z";
+        const gridLines = [25, 50, 75, 100]
+          .map((lvl) => `<path d="${polyPath((lvl / 100) * maxR)}" fill="none" stroke="#e2e8f0" stroke-width="1"/>`)
+          .join("");
+        const axisLines = axes
+          .map((_, i) => {
+            const end = pt(i, maxR);
+            return `<line x1="${cx}" y1="${cy}" x2="${end.x.toFixed(1)}" y2="${end.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>`;
+          })
+          .join("");
+        const dataPts = axes.map((ax, i) => pt(i, (ax.val / 100) * maxR));
+        const dataPath = dataPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") + " Z";
+        const labels = axes
+          .map((ax, i) => {
+            const p = pt(i, maxR + 20);
+            const anchor = p.x < cx - 5 ? "end" : p.x > cx + 5 ? "start" : "middle";
+            return `<text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" text-anchor="${anchor}"
+              font-size="11" font-family="-apple-system,sans-serif" fill="#6b7280">${ax.label}</text>`;
+          })
+          .join("");
+        return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+          ${gridLines}${axisLines}
+          <path d="${dataPath}" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2"/>
+          ${labels}
+        </svg>`;
+      };
+
+      const buildScoreTiles = (s: typeof hdrScores): string => {
+        const color = (v: number) => v >= 76 ? "#65a30d" : v >= 61 ? "#ca8a04" : v >= 41 ? "#d97706" : "#dc2626";
+        return ([
+          ["Techn. SEO", s.technSeo],
+          ["Schema.org", s.schema],
+          ["Headings",   s.headings],
+          ["Inhalt",     s.inhalt],
+          ["FAQ",        s.faq],
+          ["LLM",        s.llm],
+        ] as [string, number][])
+          .map(([label, val]) => `<div class="score-tile">
+            <div class="label">${label}</div>
+            <div class="val" style="color:${color(val)}">${val}</div>
+          </div>`)
+          .join("");
+      };
+
+      const buildHeaderIframeHtml = (): string => `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:1200px; padding:24px 32px; color:#1a1d23; }
+.header-meta { font-size:12px; color:#787b86; margin-bottom:20px; }
+.charts-row { display:flex; gap:24px; margin-bottom:20px; }
+.chart-card { flex:1; border:1px solid #dde0e8; border-radius:12px; padding:20px; background:#fff; }
+.chart-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#787b86; margin-bottom:16px; }
+.chart-center { display:flex; justify-content:center; align-items:center; }
+.scores-row { display:flex; gap:12px; }
+.score-tile { flex:1; border:1px solid #dde0e8; border-radius:10px; padding:12px 8px; text-align:center; background:#fff; }
+.score-tile .label { font-size:11px; color:#787b86; margin-bottom:6px; }
+.score-tile .val { font-size:22px; font-weight:800; }
+</style></head><body>
+<div class="header-meta">${hdrDomain} · ${hdrPageCount} Seiten · ${hdrDate}</div>
+<div class="charts-row">
+  <div class="chart-card"><div class="chart-label">GAIO SCORE</div><div class="chart-center">${buildDonut(hdrScores.gaio)}</div></div>
+  <div class="chart-card"><div class="chart-label">DIMENSIONEN</div><div class="chart-center">${buildRadar(hdrScores)}</div></div>
+</div>
+<div class="scores-row">${buildScoreTiles(hdrScores)}</div>
+</body></html>`;
+
+      // ── Render header into an off-screen iframe and capture ───────────────────
+      const headerIframe = document.createElement("iframe");
+      headerIframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1200px;height:600px;border:none;opacity:0;";
+      document.body.appendChild(headerIframe);
+      try {
+        const hDoc = headerIframe.contentDocument!;
+        hDoc.open();
+        hDoc.write(buildHeaderIframeHtml());
+        hDoc.close();
+
+        await new Promise((r) => setTimeout(r, 800));
+
+        const hBody = hDoc.body as HTMLBodyElement;
+        const hH = Math.max(hBody.scrollHeight, hBody.offsetHeight) + 40;
+        headerIframe.style.height = `${hH}px`;
+        await new Promise((r) => setTimeout(r, 300));
+
+        console.log("Header height:", hH);
+        if (hH > 0) {
+          headerImgData = await toJpeg(hBody, {
+            quality: 0.92,
+            backgroundColor: "#ffffff",
+            pixelRatio: 1.5,
+            skipFonts: true,
           });
-        });
-
-        // ── Step 3: Freeze all dimensions on the live element ─────────────────────
-        const sidebar = document.querySelector<HTMLElement>("aside, nav, [class*='sidebar']");
-        const sidebarDisplay = sidebar?.style.display;
-        if (sidebar) sidebar.style.display = "none";
-
-        const origHeaderWidth    = headerEl.style.width;
-        const origHeaderOverflow = headerEl.style.overflow;
-        headerEl.style.overflow  = "visible";
-
-        svgSnapshots.forEach(({ el, lockedW, lockedH }) => {
-          el.setAttribute("width",  String(lockedW));
-          el.setAttribute("height", String(lockedH));
-          el.style.width     = `${lockedW}px`;
-          el.style.height    = `${lockedH}px`;
-          el.style.minWidth  = `${lockedW}px`;
-          el.style.minHeight = `${lockedH}px`;
-          el.style.overflow  = "visible";
-        });
-
-        containerSnapshots.forEach(({ el, lockedW, lockedH }) => {
-          el.style.width     = `${lockedW}px`;
-          el.style.height    = `${lockedH}px`;
-          el.style.minWidth  = `${lockedW}px`;
-          el.style.minHeight = `${lockedH}px`;
-        });
-
-        // Normalize any recharts-surface translateX offset to 0.
-        headerEl.querySelectorAll<SVGGElement>("g[class*='surface']").forEach((g) => {
-          const t = g.getAttribute("transform") || "";
-          g.setAttribute("transform", t.replace(/translate\([^,]+,/, "translate(0,"));
-        });
-
-        neutraliseImages(headerEl);
-
-        // ── Step 4: Let layout stabilise ─────────────────────────────────────────
-        void headerEl.offsetHeight;
-        await new Promise((r) => setTimeout(r, 500));
-
-        // ── Step 5: Capture original element ─────────────────────────────────────
-        const captureW = Math.round(headerEl.getBoundingClientRect().width);
-        const captureH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
-        console.log("Header height:", captureH);
-
-        if (captureH > 0) {
-          try {
-            headerImgData = await toJpeg(headerEl, {
-              quality: 0.92,
-              backgroundColor: "#ffffff",
-              pixelRatio: 1.5,
-              skipFonts: true,
-              width: captureW,
-              height: captureH,
-              filter: imageFilter,
-            });
-            headerMmH = (captureH / captureW) * CONTENT_MM_W;
-            console.log("Header captured:", captureW, "x", captureH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
-          } catch (hErr) {
-            console.warn("Header capture failed:", hErr);
-          }
+          headerMmH = (hH / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
+          console.log("Header captured:", CAPTURE_WIDTH_PX, "x", hH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
         }
-
-        // ── Step 6: Restore everything ────────────────────────────────────────────
-        if (sidebar) sidebar.style.display = sidebarDisplay ?? "";
-        headerEl.style.width    = origHeaderWidth;
-        headerEl.style.overflow = origHeaderOverflow;
-
-        svgSnapshots.forEach(({ el, origWidth, origHeight, origViewBox, origStyle }) => {
-          if (origWidth   !== null) el.setAttribute("width",   origWidth);   else el.removeAttribute("width");
-          if (origHeight  !== null) el.setAttribute("height",  origHeight);  else el.removeAttribute("height");
-          if (origViewBox !== null) el.setAttribute("viewBox", origViewBox); else el.removeAttribute("viewBox");
-          el.setAttribute("style", origStyle);
-        });
-
-        containerSnapshots.forEach(({ el, origWidth, origHeight }) => {
-          el.style.width     = origWidth;
-          el.style.height    = origHeight;
-          el.style.minWidth  = "";
-          el.style.minHeight = "";
-        });
+      } catch (hErr) {
+        console.warn("Header capture failed:", hErr);
+      } finally {
+        document.body.removeChild(headerIframe);
       }
 
       // ── Capture each panel directly (original elements, real styles) ──────────
