@@ -247,8 +247,9 @@ export async function runAnalysis(
       state.currentModule = "Technisches SEO";
       state.progress = 10;
       save();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 600));
       state.technicalSeo = analyzeTechnicalSeo(crawlResult, url || "uploaded-page");
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "Technical SEO analysis failed");
       state.errors.push("Technical SEO analysis failed");
@@ -259,8 +260,9 @@ export async function runAnalysis(
       state.currentModule = "Schema.org / Strukturierte Daten";
       state.progress = 25;
       save();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 600));
       state.schemaOrg = analyzeSchemaOrg(pages);
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "Schema.org analysis failed");
       state.errors.push("Schema.org analysis failed");
@@ -271,8 +273,9 @@ export async function runAnalysis(
       state.currentModule = "Heading-Struktur";
       state.progress = 35;
       save();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 600));
       state.headingStructure = analyzeHeadings(pages, brandTerms);
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "Heading analysis failed");
       state.errors.push("Heading analysis failed");
@@ -294,7 +297,9 @@ export async function runAnalysis(
       state.currentModule = "FAQ-Qualität";
       state.progress = 60;
       save();
+      await new Promise((r) => setTimeout(r, 600));
       state.faqQuality = await analyzeFaq(pages);
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "FAQ analysis failed");
       state.errors.push("FAQ analysis failed");

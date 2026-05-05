@@ -1,0 +1,118 @@
+Fix two bugs in the analysis progress screen.
+
+---
+
+BUG 1 — Company name not showing in heading
+
+The heading shows the URL instead of the company 
+name despite the user having entered one.
+
+This is a data-reading bug. Find where the 
+progress view component reads the company name 
+and check the exact field path.
+
+The questionnaire/form data is stored in the 
+app's state (Zustand store or React context). 
+The company name field is likely named 
+"companyName", "company_name", or "name".
+
+Debug steps to apply in the fix:
+  a) Find the exact field name in the state 
+     store where the company name is stored
+  b) In the progress view component, log the 
+     value to console to confirm it is available:
+       console.log('Company name:', 
+         formData.companyName, 
+         'URL:', formData.url)
+  c) The heading logic should be:
+       const displayName = 
+         formData.companyName?.trim() || 
+         formData.url || 
+         'Unbekannt'
+  d) Make sure the component reads from the 
+     SAME state slice where the form saves the 
+     data — not a copy or a different selector
+
+---
+
+BUG 2 — Fast steps still being skipped in 
+progress display
+
+The previous fix (emitting running/done events 
+with 300ms delay) either was not applied 
+correctly, or the frontend is discarding the 
+events because they arrive too close together.
+
+Apply a two-part fix:
+
+PART A — Backend: increase the delay for fast 
+steps to 600ms (not 300ms) and verify the emit 
+pattern is in place for all four affected steps:
+
+  For each of these steps:
+    Technisches SEO
+    Schema.org / Strukturierte Daten  
+    Heading-Struktur
+    FAQ-Qualität
+
+  The code must follow this exact sequence:
+    1. emit status="running" for the step
+    2. await asyncio.sleep(0.6)  ← 600ms
+    3. run the actual computation
+    4. emit status="done" for the step
+    5. await asyncio.sleep(0.2)  ← small gap 
+       before next step starts
+
+  If the current code emits "running" and "done" 
+  without a sleep between them, the SSE stream 
+  batches both events and the frontend only 
+  processes one. The sleep between "running" 
+  and the computation forces them into separate 
+  SSE frames.
+
+PART B — Frontend: fallback completion sweep
+
+Even if backend events are missed, the frontend 
+must never show a step as "waiting" once the 
+analysis is complete. Add this logic to the 
+progress view:
+
+When the final "complete" event is received 
+(or when analysisStatus changes to "done"), 
+before navigating to the results view, check 
+which steps are still in "waiting" state and 
+mark them all as "done":
+
+  const allStepNames = [
+    'Crawling Website',
+    'Technisches SEO', 
+    'Schema.org / Strukturierte Daten',
+    'Heading-Struktur',
+    'Inhaltliche Relevanz (KI-Analyse)',
+    'FAQ-Qualität',
+    'LLM-Auffindbarkeit',
+    'Wettbewerbsvergleich',
+    'Empfehlungen generieren'
+  ]
+
+  // When analysis completes, force all steps done:
+  const completedSteps = new Set(
+    progressEvents
+      .filter(e => e.status === 'done')
+      .map(e => e.module)
+  )
+  
+  const missingSteps = allStepNames.filter(
+    name => !completedSteps.has(name)
+  )
+  
+  // Add synthetic "done" events for missing steps:
+  missingSteps.forEach(name => {
+    addProgress({ module: name, status: 'done' })
+  })
+
+This ensures that even if backend events are 
+dropped or batched, the user always sees all 
+steps completed when the analysis finishes — 
+never a mix of green checkmarks and grey waiting 
+circles.

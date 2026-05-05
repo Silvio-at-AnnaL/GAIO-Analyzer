@@ -48,7 +48,7 @@ const MODULE_NAMES = [
 function ProgressView({ analysisId, onComplete }: { analysisId: string; onComplete: () => void }) {
   const [completedModules, setCompletedModules] = useState<string[]>([]);
   const [currentModuleName, setCurrentModuleName] = useState<string | null>(null);
-  const { companyName } = useAppStore();
+  const { domainForm } = useAppStore();
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -66,6 +66,8 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
       setCurrentModuleName(report.currentModule);
     }
     if (report?.status === "completed") {
+      // Sweep: mark every step as completed so the UI never shows grey circles when done.
+      setCompletedModules(MODULE_NAMES);
       setTimeout(() => onComplete(), 400);
     }
   }, [report, currentModuleName, completedModules, onComplete]);
@@ -79,7 +81,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
         <h1 className="text-2xl font-bold tracking-tight">
           {isFailed
             ? "Analyse fehlgeschlagen"
-            : `Analyse für ${companyName?.trim() || report?.url || "…"} läuft…`}
+            : `Analyse für ${domainForm.companyName?.trim() || domainForm.url || report?.url || "…"} läuft…`}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           {report?.url ? `Crawle ${report.url}` : "Verarbeite Daten…"}
