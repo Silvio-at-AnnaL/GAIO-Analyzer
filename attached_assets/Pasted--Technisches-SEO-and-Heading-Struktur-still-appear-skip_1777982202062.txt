@@ -1,0 +1,89 @@
+"Technisches SEO" and "Heading-Struktur" still 
+appear skipped despite the 600ms delay fix. 
+Schema.org now works. This alternating pattern 
+(skip, show, skip) is diagnostic: the 2-second 
+polling interval is the root cause, not the 
+backend delays.
+
+---
+
+ROOT CAUSE
+
+The frontend polls for progress every 2 seconds. 
+The backend runs fast steps sequentially:
+  Technisches SEO: running → 600ms → done → 200ms
+  Schema.org:      running → 600ms → done → 200ms  
+  Heading-Struktur: running → 600ms → done → 200ms
+
+Total for all three: about 2.4 seconds.
+The poller fires every 2 seconds and catches 
+roughly every other step — which matches exactly 
+what the user sees.
+
+---
+
+FIX: Two-pronged approach
+
+PART A — Reduce frontend polling interval 
+from 2000ms to 400ms.
+
+Find the setInterval or polling loop in the 
+frontend progress component. Change the interval:
+  
+  OLD: setInterval(pollProgress, 2000)
+  NEW: setInterval(pollProgress, 400)
+
+This ensures the poller fires fast enough to 
+catch every step that lasts 600ms.
+
+Also check if there is a debounce or throttle 
+on the polling function and remove or reduce 
+it to match the new 400ms interval.
+
+PART B — Increase the delay for the two 
+specific problematic steps.
+
+"Technisches SEO" runs first among the fast 
+steps — the poller may fire just after its 
+"running" state is set and before the 600ms 
+completes. Increase its delay to 1000ms:
+
+  emit "Technisches SEO" running
+  await asyncio.sleep(1.0)   ← was 0.6
+  run technical SEO analysis
+  emit "Technisches SEO" done
+  await asyncio.sleep(0.3)
+
+Apply the same 1000ms delay to "Heading-Struktur".
+Keep "Schema.org" and "FAQ-Qualität" at 600ms 
+since they already work.
+
+PART C — Verify MODULE_NAMES array matches 
+backend step names exactly.
+
+The frontend fallback (setting all steps to done 
+on completion) only works if the step names in 
+the MODULE_NAMES array match the exact strings 
+sent by the backend.
+
+Check that these strings match character for 
+character (including spaces, dots, slashes, 
+capitalization and special characters):
+
+Frontend MODULE_NAMES must contain exactly:
+  'Crawling Website'
+  'Technisches SEO'
+  'Schema.org / Strukturierte Daten'
+  'Heading-Struktur'
+  'Inhaltliche Relevanz (KI-Analyse)'
+  'FAQ-Qualität'
+  'LLM-Auffindbarkeit'
+  'Wettbewerbsvergleich'
+  'Empfehlungen generieren'
+
+Backend must emit these exact same strings as 
+the module name in every progress event.
+
+Print both lists to the console on app start 
+to make mismatches immediately visible:
+  console.log('Frontend steps:', MODULE_NAMES)

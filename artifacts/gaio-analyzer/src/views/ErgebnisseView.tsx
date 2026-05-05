@@ -54,7 +54,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
     query: {
       enabled: !!analysisId,
       queryKey: getGetAnalysisReportQueryKey(analysisId),
-      refetchInterval: 2000,
+      refetchInterval: 400,
     },
   });
 
