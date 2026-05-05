@@ -1,0 +1,124 @@
+Make three changes to the analysis progress screen 
+(the view shown while an analysis is running).
+
+---
+
+CHANGE 1 — Update the heading
+
+Find the component that renders the analysis 
+progress view. Change the heading from:
+  "Analyse läuft…"
+to:
+  "Analyse für [Unternehmensname] läuft…"
+
+Where [Unternehmensname] is read from the 
+questionnaire/form state (the company name 
+field). If no company name was entered, fall 
+back to the domain URL.
+
+---
+
+CHANGE 2 & 3 — Add a friendly waiting message
+
+Directly below the "Crawle https://..." subtitle 
+line and above the progress bar, insert a new 
+text block styled as follows:
+
+Text content:
+  "Die von mir jetzt durchzuführende Analyse ist 
+  sehr umfangreich und kann daher bis zu 10 Minuten 
+  dauern. Wie wäre es, wenn Sie sich einen Kaffee, 
+  Tee oder — je nach Tageszeit — ein anderes Getränk 
+  holen und mich kurz arbeiten lassen?
+
+  Bitte schließen Sie diesen Tab oder dieses Fenster 
+  auf keinen Fall, da ich sonst ebenfalls gehe … 
+  und dann müssten wir noch einmal von vorne 
+  anfangen."
+
+Styling:
+  - Font size: same as the "Crawle https://..." 
+    subtitle line
+  - Font color: same as the heading 
+    "Analyse für [Name] läuft…"
+  - Add margin-top of about 16px to separate it 
+    from the subtitle
+  - Add margin-bottom of about 24px to separate 
+    it from the progress bar below
+  - The two paragraphs are separated by a blank 
+    line (use two <p> tags or <br><br>)
+  - No border, no background, no card — just plain 
+    text in the flow
+
+---
+
+CHANGE 4 — Force all progress steps to be 
+marked as completed
+
+Currently the steps "Technisches SEO", 
+"Schema.org / Strukturierte Daten" and 
+"Heading-Struktur" (and sometimes others) are 
+skipped in the progress display — they jump from 
+"waiting" directly to the next step without ever 
+showing as "running" or "done". The results are 
+still generated correctly, but the UI skips 
+marking them.
+
+Root cause: these steps are fast (no API call 
+needed) and complete before the frontend receives 
+a progress event for them. The frontend never 
+sees them as "running" because they are already 
+done when the next event arrives.
+
+Fix this on the BACKEND: before moving to the 
+next analysis step, always emit a progress event 
+for the current step with status "running", then 
+a short pause, then emit "done". This ensures 
+the frontend always sees every step transition.
+
+Specifically, in the backend analysis pipeline, 
+enforce this pattern for EVERY step:
+
+  # Before running each step:
+  emit_progress(step_name, status="running")
+  
+  # Run the actual analysis:
+  result = run_step()
+  
+  # After completing:
+  emit_progress(step_name, status="done")
+
+For the fast synchronous steps (Technical SEO, 
+Schema.org, Heading Structure) that complete 
+almost instantly, add a minimal artificial delay 
+of 300ms between the "running" emit and the 
+actual computation — just enough for the frontend 
+to receive and render the "running" state before 
+"done" arrives:
+
+  emit_progress("Technisches SEO", "running")
+  await asyncio.sleep(0.3)
+  tech_result = analyze_technical_seo(...)
+  emit_progress("Technisches SEO", "done")
+
+Apply this to every single step in the pipeline 
+without exception:
+  1. Crawling Website
+  2. Technisches SEO
+  3. Schema.org / Strukturierte Daten
+  4. Heading-Struktur
+  5. Inhaltliche Relevanz (KI-Analyse)
+  6. FAQ-Qualität
+  7. LLM-Auffindbarkeit
+  8. Wettbewerbsvergleich
+  9. Empfehlungen generieren
+
+The 300ms delay only applies to the three fast 
+synchronous steps (2, 3, 4). All other steps 
+already take longer than 300ms naturally and 
+need no artificial delay.
+
+Also fix the step label "FAQ-Qualitaet" (with 
+umlaut missing): rename it to "FAQ-Qualität" 
+in both the frontend step list and any backend 
+progress event names.

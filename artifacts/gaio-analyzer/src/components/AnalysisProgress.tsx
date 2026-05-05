@@ -15,7 +15,7 @@ const MODULE_NAMES = [
   "Schema.org / Strukturierte Daten",
   "Heading-Struktur",
   "Inhaltliche Relevanz (KI-Analyse)",
-  "FAQ-Qualitaet",
+  "FAQ-Qualität",
   "LLM-Auffindbarkeit",
   "Wettbewerbsvergleich",
   "Empfehlungen generieren",

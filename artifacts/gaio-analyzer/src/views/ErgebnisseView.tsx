@@ -39,7 +39,7 @@ const MODULE_NAMES = [
   "Schema.org / Strukturierte Daten",
   "Heading-Struktur",
   "Inhaltliche Relevanz (KI-Analyse)",
-  "FAQ-Qualitaet",
+  "FAQ-Qualität",
   "LLM-Auffindbarkeit",
   "Wettbewerbsvergleich",
   "Empfehlungen generieren",
@@ -48,6 +48,7 @@ const MODULE_NAMES = [
 function ProgressView({ analysisId, onComplete }: { analysisId: string; onComplete: () => void }) {
   const [completedModules, setCompletedModules] = useState<string[]>([]);
   const [currentModuleName, setCurrentModuleName] = useState<string | null>(null);
+  const { companyName } = useAppStore();
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -76,11 +77,23 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
     <div className="max-w-xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          {isFailed ? "Analyse fehlgeschlagen" : "Analyse läuft…"}
+          {isFailed
+            ? "Analyse fehlgeschlagen"
+            : `Analyse für ${companyName.trim() || report?.url || "…"} läuft…`}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           {report?.url ? `Crawle ${report.url}` : "Verarbeite Daten…"}
         </p>
+        {!isFailed && (
+          <div className="text-sm mt-4 mb-6" style={{ color: "hsl(var(--foreground))" }}>
+            <p>
+              Die von mir jetzt durchzuführende Analyse ist sehr umfangreich und kann daher bis zu 10 Minuten dauern. Wie wäre es, wenn Sie sich einen Kaffee, Tee oder — je nach Tageszeit — ein anderes Getränk holen und mich kurz arbeiten lassen?
+            </p>
+            <p className="mt-3">
+              Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall, da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">

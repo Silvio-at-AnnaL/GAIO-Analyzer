@@ -247,6 +247,7 @@ export async function runAnalysis(
       state.currentModule = "Technisches SEO";
       state.progress = 10;
       save();
+      await new Promise((r) => setTimeout(r, 300));
       state.technicalSeo = analyzeTechnicalSeo(crawlResult, url || "uploaded-page");
     } catch (err) {
       logger.error({ err }, "Technical SEO analysis failed");
@@ -258,6 +259,7 @@ export async function runAnalysis(
       state.currentModule = "Schema.org / Strukturierte Daten";
       state.progress = 25;
       save();
+      await new Promise((r) => setTimeout(r, 300));
       state.schemaOrg = analyzeSchemaOrg(pages);
     } catch (err) {
       logger.error({ err }, "Schema.org analysis failed");
@@ -269,6 +271,7 @@ export async function runAnalysis(
       state.currentModule = "Heading-Struktur";
       state.progress = 35;
       save();
+      await new Promise((r) => setTimeout(r, 300));
       state.headingStructure = analyzeHeadings(pages, brandTerms);
     } catch (err) {
       logger.error({ err }, "Heading analysis failed");
@@ -288,7 +291,7 @@ export async function runAnalysis(
 
     // Module 5: FAQ Quality
     try {
-      state.currentModule = "FAQ-Qualitaet";
+      state.currentModule = "FAQ-Qualität";
       state.progress = 60;
       save();
       state.faqQuality = await analyzeFaq(pages);
