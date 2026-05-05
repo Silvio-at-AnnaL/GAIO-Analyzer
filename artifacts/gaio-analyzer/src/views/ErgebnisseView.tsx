@@ -87,12 +87,23 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
           {report?.url ? `Crawle ${report.url}` : "Verarbeite Daten…"}
         </p>
         {!isFailed && (
-          <div className="text-sm mt-4 mb-6" style={{ color: "hsl(var(--foreground))" }}>
+          <div className="text-sm mt-4 mb-6 space-y-3" style={{ color: "hsl(var(--foreground))" }}>
             <p>
-              Die von mir jetzt durchzuführende Analyse ist sehr umfangreich und kann daher bis zu 10 Minuten dauern. Wie wäre es, wenn Sie sich einen Kaffee, Tee oder — je nach Tageszeit — ein anderes Getränk holen und mich kurz arbeiten lassen?
+              Die von mir jetzt durchzuführende{" "}
+              <i><b>Analyse</b></i> ist wirklich sehr umfangreich und{" "}
+              <i><b>kann bis zu 10 Minuten dauern</b></i>.{" "}
+              Insbesondere ganz am Ende — bei den „Empfehlungen generieren" — wird Ihre Geduld
+              wahrscheinlich wirklich auf die Probe gestellt! Aber gerade da soll ich ja auch
+              besonders genau sein, oder?
             </p>
-            <p className="mt-3">
-              Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall, da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen.
+            <p>Aber: Nicht verzweifeln — bisher habe ich noch jede Analyse zu Ende gebracht!</p>
+            <p>
+              Wie wäre es, wenn Sie sich in der Zwischenzeit einen Kaffee, Tee oder — je nach
+              Tageszeit — ein anderes Getränk holen und mich kurz arbeiten lassen?
+            </p>
+            <p>
+              <b>Wichtig:</b> Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall,
+              da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen.
             </p>
           </div>
         )}

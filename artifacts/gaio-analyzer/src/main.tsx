@@ -1,13 +1,20 @@
-// Suppress AbortErrors that fire when in-flight poll requests are cancelled
-// on component unmount during navigation — these are expected, not real errors.
-window.addEventListener("unhandledrejection", (event) => {
-  if (
-    event.reason instanceof DOMException &&
-    event.reason.name === "AbortError"
-  ) {
-    event.preventDefault();
-  }
-});
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      const reason = event.reason;
+      if (
+        reason?.name === "AbortError" ||
+        (typeof reason?.message === "string" &&
+          reason.message.includes("aborted"))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
+}
 
 import { createRoot } from "react-dom/client";
 import App from "./App";

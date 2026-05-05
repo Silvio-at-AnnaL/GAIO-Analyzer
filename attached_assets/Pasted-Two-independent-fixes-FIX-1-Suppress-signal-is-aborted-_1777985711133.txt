@@ -1,0 +1,116 @@
+Two independent fixes.
+
+---
+
+FIX 1 — Suppress "signal is aborted without 
+reason" error overlay permanently
+
+The previous fix did not work. Use the nuclear 
+option: disable the Vite HMR overlay specifically 
+for this error.
+
+In vite.config.ts, add the following:
+
+  export default defineConfig({
+    server: {
+      hmr: {
+        overlay: false
+      }
+    }
+    // ... rest of config
+  })
+
+This disables the red runtime error overlay 
+entirely during development. Real errors will 
+still appear in the browser console — only the 
+visual overlay is suppressed.
+
+Additionally, add the global unhandledrejection 
+suppressor in main.tsx at the very top, before 
+any imports or ReactDOM calls:
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener(
+      'unhandledrejection',
+      (event) => {
+        const reason = event.reason
+        if (
+          reason?.name === 'AbortError' ||
+          (typeof reason?.message === 'string' && 
+           reason.message.includes('aborted'))
+        ) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+        }
+      },
+      true  // capture phase
+    )
+  }
+
+---
+
+FIX 2 — Replace the waiting message text
+
+Find the waiting message text block that was 
+added before the progress bar in the analysis 
+progress view. Replace its entire content with 
+the following. Render it as actual HTML — 
+do not escape the tags, do not render them as 
+plain text:
+
+  <p>
+    Die von mir jetzt durchzuführende 
+    <i><b>Analyse</b></i> ist wirklich sehr 
+    umfangreich und 
+    <i><b>kann bis zu 10 Minuten dauern</b></i>. 
+    Insbesondere ganz am Ende — bei den 
+    „Empfehlungen generieren" — wird Ihre Geduld 
+    wahrscheinlich wirklich auf die Probe gestellt! 
+    Aber gerade da soll ich ja auch besonders 
+    genau sein, oder?
+  </p>
+  <p>
+    Aber: Nicht verzweifeln — bisher habe ich 
+    noch jede Analyse zu Ende gebracht!
+  </p>
+  <p>
+    Wie wäre es, wenn Sie sich in der 
+    Zwischenzeit einen Kaffee, Tee oder — je 
+    nach Tageszeit — ein anderes Getränk holen 
+    und mich kurz arbeiten lassen?
+  </p>
+  <p>
+    <b>Wichtig:</b> Bitte schließen Sie diesen 
+    Tab oder dieses Fenster auf keinen Fall, da 
+    ich sonst ebenfalls gehe … und dann müssten 
+    wir noch einmal von vorne anfangen.
+  </p>
+
+In React this must be rendered using JSX 
+elements, not dangerouslySetInnerHTML:
+
+  <p>
+    Die von mir jetzt durchzuführende{' '}
+    <i><b>Analyse</b></i> ist wirklich sehr 
+    umfangreich und{' '}
+    <i><b>kann bis zu 10 Minuten dauern</b></i>.
+    {' '}Insbesondere ganz am Ende — bei den 
+    „Empfehlungen generieren" — wird Ihre Geduld 
+    wahrscheinlich wirklich auf die Probe 
+    gestellt! Aber gerade da soll ich ja auch 
+    besonders genau sein, oder?
+  </p>
+  <p>Aber: Nicht verzweifeln — bisher habe ich 
+  noch jede Analyse zu Ende gebracht!</p>
+  <p>Wie wäre es, wenn Sie sich in der 
+  Zwischenzeit einen Kaffee, Tee oder — je nach 
+  Tageszeit — ein anderes Getränk holen und mich 
+  kurz arbeiten lassen?</p>
+  <p><b>Wichtig:</b> Bitte schließen Sie diesen 
+  Tab oder dieses Fenster auf keinen Fall, da ich 
+  sonst ebenfalls gehe … und dann müssten wir 
+  noch einmal von vorne anfangen.</p>
+
+Keep the existing font size and color styling 
+from the previous implementation. Only the 
+text content changes.
