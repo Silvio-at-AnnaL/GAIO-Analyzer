@@ -283,12 +283,12 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     </table>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((technicalSeo.score as number) ?? 0)}">${technicalSeo.score}/100</div></div>
-      <div class="detail-item"><div class="label"><span title="Gesamtzeit vom Request bis zur vollständigen Serverantwort. Gut: unter 400 ms. Akzeptabel: 400–800 ms. Kritisch: über 800 ms.">Antwortzeit ⓘ</span></div><div class="val">${rtMs} ms${responseTimeBadge(rtMs)}</div></div>
-      <div class="detail-item"><div class="label"><span title="Time to First Byte — Zeit bis das erste Datenbyte eintrifft. Gut: unter 200 ms. Akzeptabel: 200–500 ms. Kritisch: über 500 ms.">TTFB ⓘ</span></div><div class="val">${ttfbMs} ms${ttfbBadge(ttfbMs)}</div></div>
+      <div class="detail-item"><div class="label"><span title="Gesamtzeit vom Request bis zur vollständigen Serverantwort. Gut: unter 400 ms. Akzeptabel: 400–800 ms. Kritisch: über 800 ms.">Antwortzeit <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></div><div class="val">${rtMs} ms${responseTimeBadge(rtMs)}</div></div>
+      <div class="detail-item"><div class="label"><span title="Time to First Byte — Zeit bis das erste Datenbyte eintrifft. Gut: unter 200 ms. Akzeptabel: 200–500 ms. Kritisch: über 500 ms.">TTFB <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></div><div class="val">${ttfbMs} ms${ttfbBadge(ttfbMs)}</div></div>
       <div class="detail-item"><div class="label">robots.txt</div><div class="val">${(technicalSeo.robotsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">Sitemap</div><div class="val">${(() => { const t = technicalSeo.sitemapType as string | undefined; if (t === "xml") return "XML ✓"; if (t === "xml_index") return "XML-Index ✓"; if (t === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓ Ja" : "✗ Nein"; })()}</div></div>
       <div class="detail-item"><div class="label">llms.txt</div><div class="val">${(technicalSeo.llmsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label"><span title="Canonical Tags verhindern Duplicate-Content-Probleme, indem sie Suchmaschinen die bevorzugte URL einer Seite mitteilen.">Canonical Tags ⓘ</span></div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
+      <div class="detail-item"><div class="label"><span title="Canonical Tags verhindern Duplicate-Content-Probleme, indem sie Suchmaschinen die bevorzugte URL einer Seite mitteilen.">Canonical Tags <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
     </div>`;
 
     html += renderTechnischeDateienHtml(technicalSeo);
@@ -564,7 +564,7 @@ ${divider("FAQ / So funktioniert's")}
 <p style="font-size:12px;color:#787b86;font-style:italic;margin:0;line-height:1.6;">Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.</p>
 </div>
 
-<h3>Score-Gewichtung (Gesamt-GAIO-Score)</h3>
+<h3 id="faq-score-gewichtung">Score-Gewichtung (Gesamt-GAIO-Score)</h3>
 <table class="data-table">
   <thead><tr><th>Modul</th><th>Gewichtung</th><th>Begründung</th></tr></thead>
   <tbody>
@@ -1265,7 +1265,7 @@ export function generateHtmlReport(
 
   <div class="overall">
     <div class="val" style="color:${scoreColor(overallScore)}">${overallScore}<span style="font-size:24px;font-weight:400;color:${C.textMuted}">/100</span></div>
-    <div class="lbl">GAIO Gesamtscore ${SCORE_INFO_LINK}</div>
+    <div class="lbl">GAIO Gesamtscore <a href="#faq-score-gewichtung" style="margin-left:4px;color:#9ca3af;font-size:11px;font-weight:400;text-decoration:none;" title="Score-Gewichtung ansehen">ⓘ</a></div>
   </div>
 
   <h3 style="margin-bottom:8px;">Dimensionen im Überblick</h3>
