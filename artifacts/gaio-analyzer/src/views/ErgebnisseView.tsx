@@ -930,67 +930,83 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       const headerEl = document.getElementById("results-header");
       if (headerEl) {
-        // Ensure width matches capture width, force reflow, then measure.
-        const prevHeaderWidth = headerEl.style.width;
-        headerEl.style.width = `${CAPTURE_WIDTH_PX}px`;
-        void headerEl.offsetHeight;
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-        await new Promise((r) => setTimeout(r, 400));
+        // Clone the header into an isolated off-screen wrapper with a fixed 1200px
+        // width so Recharts SVG dimensions are viewport-independent in both dev and
+        // production environments.
+        const captureWrapper = document.createElement("div");
+        captureWrapper.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: -9999px;
+          width: ${CAPTURE_WIDTH_PX}px;
+          max-width: ${CAPTURE_WIDTH_PX}px;
+          overflow: hidden;
+          background: #ffffff;
+          z-index: -1;
+          isolation: isolate;
+        `;
+        document.body.appendChild(captureWrapper);
 
-        // B — Fix radar chart horizontal offset: pin every ResponsiveContainer to
-        // its exact rendered pixel size, set explicit SVG dimensions, and clear the
-        // recharts-surface overflow so the capture sees the same layout as the screen.
-        const radarContainers = Array.from(
-          headerEl.querySelectorAll<HTMLElement>(".recharts-responsive-container")
-        );
-        const savedContainerStyles: Array<{ el: HTMLElement; width: string; height: string; overflow: string }> = [];
-        radarContainers.forEach((el) => {
-          savedContainerStyles.push({ el, width: el.style.width, height: el.style.height, overflow: el.style.overflow });
-          const rect = el.getBoundingClientRect();
-          el.style.width    = `${rect.width}px`;
-          el.style.height   = `${rect.height}px`;
-          el.style.overflow = "visible";
+        const headerClone = headerEl.cloneNode(true) as HTMLElement;
+        headerClone.style.cssText = `
+          width: ${CAPTURE_WIDTH_PX}px;
+          max-width: ${CAPTURE_WIDTH_PX}px;
+          overflow: visible;
+          position: relative;
+        `;
+        captureWrapper.appendChild(headerClone);
+
+        // Force explicit pixel dimensions on every ResponsiveContainer in the clone
+        // so Recharts cannot re-measure against the live viewport width.
+        headerClone.querySelectorAll<HTMLElement>(".recharts-responsive-container").forEach((el) => {
+          el.style.width     = "520px";
+          el.style.height    = "320px";
+          el.style.minWidth  = "520px";
+          el.style.minHeight = "320px";
         });
 
-        // Pin inner SVG dimensions and clear surface overflow so no transform offset occurs.
-        headerEl.querySelectorAll<SVGElement>(".recharts-responsive-container svg").forEach((svg) => {
-          const rect = svg.getBoundingClientRect();
-          svg.setAttribute("width",  String(Math.round(rect.width)));
-          svg.setAttribute("height", String(Math.round(rect.height)));
-          const surface = svg.querySelector(".recharts-surface");
-          if (surface) surface.setAttribute("style", "overflow:visible;display:block;");
+        // Pin the SVG size and reset the recharts-surface translateX to 0 so there
+        // is no horizontal offset in the captured image.
+        headerClone.querySelectorAll<SVGElement>(".recharts-responsive-container svg").forEach((svg) => {
+          svg.setAttribute("width", "520");
+          svg.setAttribute("height", "320");
+          svg.style.width  = "520px";
+          svg.style.height = "320px";
+          const surface = svg.querySelector<SVGGElement>("g.recharts-surface, g[class*='surface']");
+          if (surface) {
+            const current = surface.getAttribute("transform") || "";
+            const fixed = current.replace(/translate\([\d.]+,/, "translate(0,");
+            surface.setAttribute("transform", fixed);
+          }
         });
 
-        // Fix the chart card flex alignment during capture.
-        const dimensionenCard = headerEl.querySelector<HTMLElement>(
-          '[class*="dimensionen"],[class*="radar"],[class*="chart-card"]'
-        );
-        if (dimensionenCard) {
-          dimensionenCard.style.overflow       = "visible";
-          dimensionenCard.style.display        = "flex";
-          dimensionenCard.style.alignItems     = "center";
-          dimensionenCard.style.justifyContent = "center";
-        }
+        neutraliseImages(headerClone);
 
-        // Force reflow and allow layout to settle after dimension changes.
-        void headerEl.offsetHeight;
-        await new Promise((r) => setTimeout(r, 400));
+        // Allow the cloned layout to settle.
+        void captureWrapper.offsetHeight;
+        await new Promise((r) => setTimeout(r, 600));
 
-        neutraliseImages(headerEl);
-
-        const headerH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
+        const headerH = captureWrapper.offsetHeight;
         console.log("Header height:", headerH);
 
         if (headerH > 0) {
           try {
-            headerImgData = await toJpeg(headerEl, {
+            headerImgData = await toJpeg(headerClone, {
               quality: 0.92,
               backgroundColor: "#ffffff",
               pixelRatio: 1.5,
+              skipFonts: true,
               width: CAPTURE_WIDTH_PX,
               height: headerH,
-              skipFonts: true,
-              filter: imageFilter,
+              filter: (node: HTMLElement) => {
+                if ((node as HTMLElement).tagName === "SCRIPT") return false;
+                if ((node as HTMLElement).tagName === "NOSCRIPT") return false;
+                if ((node as HTMLElement).tagName === "IMG") {
+                  const img = node as HTMLImageElement;
+                  if (!img.complete || img.naturalWidth === 0) return false;
+                }
+                return true;
+              },
             });
             headerMmH = (headerH / CAPTURE_WIDTH_PX) * CONTENT_MM_W;
             console.log("Header captured:", CAPTURE_WIDTH_PX, "x", headerH, "→", CONTENT_MM_W.toFixed(1), "x", headerMmH.toFixed(1), "mm");
@@ -999,21 +1015,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           }
         }
 
-        // Restore container styles (SVG attribute changes are intentionally left;
-        // React will re-render on the next state update).
-        savedContainerStyles.forEach(({ el, width, height, overflow }) => {
-          el.style.width    = width;
-          el.style.height   = height;
-          el.style.overflow = overflow;
-        });
-        if (dimensionenCard) {
-          dimensionenCard.style.overflow       = "";
-          dimensionenCard.style.display        = "";
-          dimensionenCard.style.alignItems     = "";
-          dimensionenCard.style.justifyContent = "";
-        }
-
-        headerEl.style.width = prevHeaderWidth;
+        document.body.removeChild(captureWrapper);
       }
 
       // ── Capture each panel directly (original elements, real styles) ──────────

@@ -1,0 +1,146 @@
+The radar chart in the PDF export is correctly 
+positioned in the narrow Replit dev preview but 
+shifts out of position in the live/production 
+environment where the full browser viewport is 
+wider. The root cause: Recharts ResponsiveContainer 
+measures its parent container width at render time. 
+A wider viewport = wider container = different SVG 
+internal transform = offset.
+
+The PDF capture must produce identical results 
+regardless of the user's screen width.
+
+---
+
+FIX: Normalize the header to a fixed width 
+before capture, independent of viewport
+
+Currently the code sets width: 1200px on the 
+panel elements before capture, but the PARENT 
+CONTAINER of the results header may be wider 
+than 1200px in live mode, causing Recharts to 
+calculate its dimensions against the parent 
+width rather than the element width.
+
+Replace the current header capture code with 
+this approach:
+
+STEP 1 — Create a completely isolated capture 
+container with a fixed, constrained width:
+
+  const captureWrapper = document.createElement('div')
+  captureWrapper.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    width: 1200px;
+    max-width: 1200px;
+    overflow: hidden;
+    background: #ffffff;
+    z-index: -1;
+    isolation: isolate;
+  `
+  document.body.appendChild(captureWrapper)
+
+STEP 2 — Clone the header element into this 
+isolated container:
+
+  const headerClone = headerEl.cloneNode(true) 
+    as HTMLElement
+  headerClone.style.cssText = `
+    width: 1200px;
+    max-width: 1200px;
+    overflow: visible;
+    position: relative;
+  `
+  captureWrapper.appendChild(headerClone)
+
+STEP 3 — Find the ResponsiveContainer inside 
+the clone and force explicit pixel dimensions:
+
+  const responsiveContainers = 
+    headerClone.querySelectorAll(
+      '.recharts-responsive-container'
+    )
+  
+  responsiveContainers.forEach(container => {
+    const el = container as HTMLElement
+    // Get the original rendered size from the 
+    // ORIGINAL element (not the clone):
+    const originalContainers = 
+      headerEl.querySelectorAll(
+        '.recharts-responsive-container'
+      )
+    // Use a fixed size that works at 1200px 
+    // header width — the radar chart container 
+    // is typically about half the header width:
+    el.style.width = '520px'
+    el.style.height = '320px'
+    el.style.minWidth = '520px'
+    el.style.minHeight = '320px'
+  })
+
+STEP 4 — Also fix the SVG inside the 
+ResponsiveContainer in the clone:
+
+  const radarSvgs = headerClone.querySelectorAll(
+    '.recharts-responsive-container svg'
+  )
+  radarSvgs.forEach(svg => {
+    const svgEl = svg as SVGElement
+    svgEl.setAttribute('width', '520')
+    svgEl.setAttribute('height', '320')
+    svgEl.style.width = '520px'
+    svgEl.style.height = '320px'
+    // Remove any transform offset on the 
+    // recharts surface layer:
+    const surface = svgEl.querySelector(
+      'g.recharts-surface, g[class*="surface"]'
+    ) as SVGGElement | null
+    if (surface) {
+      const currentTransform = 
+        surface.getAttribute('transform') || ''
+      // Reset translateX to 0, keep translateY:
+      const fixed = currentTransform.replace(
+        /translate\([\d.]+,/,
+        'translate(0,'
+      )
+      surface.setAttribute('transform', fixed)
+    }
+  })
+
+STEP 5 — Wait for layout:
+  void captureWrapper.offsetHeight
+  await new Promise(r => setTimeout(r, 600))
+
+STEP 6 — Capture the clone (not the original):
+  const headerImgData = await toJpeg(
+    headerClone, {
+    quality: 0.92,
+    backgroundColor: '#ffffff',
+    pixelRatio: 1.5,
+    skipFonts: true,
+    width: 1200,
+    height: captureWrapper.offsetHeight,
+    filter: (node) => {
+      if (node.tagName === 'SCRIPT') return false
+      if (node.tagName === 'NOSCRIPT') return false
+      if (node.tagName === 'IMG') {
+        const img = node as HTMLImageElement
+        if (!img.complete || img.naturalWidth === 0)
+          return false
+      }
+      return true
+    }
+  })
+
+STEP 7 — Clean up:
+  document.body.removeChild(captureWrapper)
+
+This approach is 100% viewport-independent 
+because the clone lives in an isolated 1200px 
+container that is identical in both dev and 
+live environments. The Recharts SVG dimensions 
+are hardcoded in the clone rather than 
+calculated from the live DOM, eliminating 
+the offset entirely.
