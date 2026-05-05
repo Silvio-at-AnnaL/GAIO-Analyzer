@@ -120,6 +120,21 @@ function stars(n: number): string {
   return "★".repeat(Math.max(0, Math.min(5, n))) + "☆".repeat(Math.max(0, 5 - n));
 }
 
+const SCORE_INFO_LINK = `<a href="#faq-score-interpretation" style="margin-left:4px;color:#9ca3af;font-size:11px;font-weight:400;text-decoration:none;" title="Score-Interpretation ansehen">ⓘ</a>`;
+const moduleInfoLink = (id: string): string =>
+  `<a href="#${id}" style="margin-left:4px;color:#9ca3af;font-size:11px;font-weight:400;text-decoration:none;" title="Modul-Details ansehen">ⓘ</a>`;
+
+function responseTimeBadge(ms: number): string {
+  if (ms < 400) return `<span style="color:#16a34a;font-size:11px"> ● Gut</span>`;
+  if (ms <= 800) return `<span style="color:#d97706;font-size:11px"> ● Akzeptabel</span>`;
+  return `<span style="color:#dc2626;font-size:11px"> ● Kritisch</span>`;
+}
+function ttfbBadge(ms: number): string {
+  if (ms < 200) return `<span style="color:#16a34a;font-size:11px"> ● Gut</span>`;
+  if (ms <= 500) return `<span style="color:#d97706;font-size:11px"> ● Akzeptabel</span>`;
+  return `<span style="color:#dc2626;font-size:11px"> ● Kritisch</span>`;
+}
+
 function divider(label: string): string {
   return `<div class="section-divider"><span>${esc(label)}</span></div>`;
 }
@@ -252,26 +267,28 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     const httpsPct       = (technicalSeo.httpsEnforced as boolean) ? 100 : 0;
     const viewportPct    = (technicalSeo.mobileViewport as boolean) ? 100 : 0;
 
+    const rtMs   = (technicalSeo.responseTime as number) ?? 0;
+    const ttfbMs = (technicalSeo.ttfb as number) ?? 0;
     html += `
     <h3>SEO-Metriken Abdeckung</h3>
     <table class="data-table">
       <thead><tr><th>Metrik</th><th>Wert</th></tr></thead>
       <tbody>
-        <tr><td>Meta-Titel</td><td>${metaTitlePct}%</td></tr>
-        <tr><td>Meta-Beschreibung</td><td>${metaDescPct}%</td></tr>
-        <tr><td>Alt-Texte</td><td>${altPct}%</td></tr>
-        <tr><td>HTTPS</td><td>${httpsPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
-        <tr><td>Viewport</td><td>${viewportPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
+        <tr><td><span title="Seitentitel in Browser-Tab und Suchergebnissen. Optimal: 50–60 Zeichen.">Meta-Titel <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaTitlePct}%</td></tr>
+        <tr><td><span title="Kurzbeschreibung der Seite in Suchergebnissen. Optimal: 70–160 Zeichen.">Meta-Beschreibung <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaDescPct}%</td></tr>
+        <tr><td><span title="Bildbeschreibungen für Suchmaschinen und Screenreader. Sollte für alle inhaltlichen Bilder gesetzt sein.">Alt-Texte <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${altPct}%</td></tr>
+        <tr><td><span title="Verschlüsselte Verbindung. Pflichtanforderung für SEO und Nutzervertrauen.">HTTPS <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${httpsPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
+        <tr><td><span title="Mobile-Optimierung. Steuert die Darstellung auf Smartphones und Tablets.">Viewport <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${viewportPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
       </tbody>
     </table>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((technicalSeo.score as number) ?? 0)}">${technicalSeo.score}/100</div></div>
-      <div class="detail-item"><div class="label">Antwortzeit</div><div class="val">${technicalSeo.responseTime} ms</div></div>
-      <div class="detail-item"><div class="label">TTFB</div><div class="val">${technicalSeo.ttfb} ms</div></div>
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((technicalSeo.score as number) ?? 0)}">${technicalSeo.score}/100</div></div>
+      <div class="detail-item"><div class="label"><span title="Gesamtzeit vom Request bis zur vollständigen Serverantwort. Gut: unter 400 ms. Akzeptabel: 400–800 ms. Kritisch: über 800 ms.">Antwortzeit ⓘ</span></div><div class="val">${rtMs} ms${responseTimeBadge(rtMs)}</div></div>
+      <div class="detail-item"><div class="label"><span title="Time to First Byte — Zeit bis das erste Datenbyte eintrifft. Gut: unter 200 ms. Akzeptabel: 200–500 ms. Kritisch: über 500 ms.">TTFB ⓘ</span></div><div class="val">${ttfbMs} ms${ttfbBadge(ttfbMs)}</div></div>
       <div class="detail-item"><div class="label">robots.txt</div><div class="val">${(technicalSeo.robotsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">Sitemap</div><div class="val">${(() => { const t = technicalSeo.sitemapType as string | undefined; if (t === "xml") return "XML ✓"; if (t === "xml_index") return "XML-Index ✓"; if (t === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓ Ja" : "✗ Nein"; })()}</div></div>
       <div class="detail-item"><div class="label">llms.txt</div><div class="val">${(technicalSeo.llmsTxt as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      <div class="detail-item"><div class="label">Canonical Tags</div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
+      <div class="detail-item"><div class="label"><span title="Canonical Tags verhindern Duplicate-Content-Probleme, indem sie Suchmaschinen die bevorzugte URL einer Seite mitteilen.">Canonical Tags ⓘ</span></div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
     </div>`;
 
     html += renderTechnischeDateienHtml(technicalSeo);
@@ -284,11 +301,11 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <h3>Schema.org / Strukturierte Daten</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((schemaOrg.score as number) ?? 0)}">${schemaOrg.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((schemaOrg.score as number) ?? 0)}">${schemaOrg.score}/100</div></div>
       <div class="detail-item"><div class="label">Typen erkannt</div><div class="val">${types.length}</div></div>
     </div>
     ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}
-    ${missingTypes.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">Fehlende empfohlene Typen: <span style="color:#d97706;">${missingTypes.map(esc).join(", ")}</span></p>` : ""}`;
+    ${missingTypes.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">Fehlende wichtige Typen: ${missingTypes.map((t) => `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px;">${esc(t)}</span>`).join("")}</p>` : ""}`;
   }
 
   if (headings) {
@@ -297,7 +314,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <h3>Heading-Struktur</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
       <div class="detail-item"><div class="label">H1-Tags</div><div class="val">${h1}</div></div>
     </div>
     ${issues.length > 0 ? `<ul style="font-size:12px;color:${C.textSec};margin:6px 0;padding-left:16px;">${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}`;
@@ -307,7 +324,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <h3>Inhaltliche Relevanz</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((content.score as number) ?? 0)}">${content.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((content.score as number) ?? 0)}">${content.score}/100</div></div>
     </div>`;
   }
 
@@ -315,7 +332,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <h3>FAQ-Qualität</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((faq.score as number) ?? 0)}">${faq.score}/100</div></div>
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((faq.score as number) ?? 0)}">${faq.score}/100</div></div>
       <div class="detail-item"><div class="label">FAQ gefunden</div><div class="val">${(faq.faqFound as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       ${(faq.questionCount as number | undefined) !== undefined ? `<div class="detail-item"><div class="label">Fragen</div><div class="val">${faq.questionCount}</div></div>` : ""}
     </div>`;
@@ -355,9 +372,9 @@ function renderLlmSection(report: Record<string, unknown>): string {
   let html = divider("LLM-Auffindbarkeit");
   html += `<h2>LLM-Auffindbarkeit</h2>
   <div class="score-grid">
-    ${partA ? `<div class="score-card"><div class="label">Teil A – Auffindbarkeit (70%)</div><div class="val" style="color:${scoreColor(partA.score)}">${partA.score}</div><div class="meta">Ø ${partA.avgRating.toFixed(2)} / 5</div></div>` : ""}
-    ${partB ? `<div class="score-card"><div class="label">Teil B – Informationstiefe (30%)</div><div class="val" style="color:${scoreColor(partB.score)}">${partB.score}</div><div class="meta">Ø ${partB.avgRating.toFixed(2)} / 5</div></div>` : ""}
-    <div class="score-card"><div class="label">Gesamt (gewichtet)</div><div class="val" style="color:${scoreColor(llmScore)}">${llmScore}</div><div class="meta">Ø ${avgRating.toFixed(2)} / 5</div></div>
+    ${partA ? `<div class="score-card"><div class="label">Teil A – Auffindbarkeit (70%) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partA.score)}">${partA.score}</div><div class="meta">Ø ${partA.avgRating.toFixed(2)} / 5</div></div>` : ""}
+    ${partB ? `<div class="score-card"><div class="label">Teil B – Informationstiefe (30%) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partB.score)}">${partB.score}</div><div class="meta">Ø ${partB.avgRating.toFixed(2)} / 5</div></div>` : ""}
+    <div class="score-card"><div class="label">Gesamt (gewichtet) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(llmScore)}">${llmScore}</div><div class="meta">Ø ${avgRating.toFixed(2)} / 5</div></div>
   </div>`;
 
   const renderPartQuestions = (part: LlmPart): string => `
@@ -409,11 +426,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       html: `<tr style="background:${C.bg};">
         <td><strong>${esc(myDomain)}</strong> <span style="font-size:10px;color:${C.textMuted}">(Ihre Seite)</span></td>
         <td><strong style="color:${scoreColor(myScore)}">${myScore}</strong></td>
-        <td style="color:${scoreColor(myTechnical)}">${myTechnical}</td>
-        <td style="color:${scoreColor(mySchema)}">${mySchema}</td>
-        <td style="color:${scoreColor(myContent)}">${myContent}</td>
-        <td style="color:${scoreColor(myHeadings)}">${myHeadings}</td>
-        <td style="color:${scoreColor(myFaq)}">${myFaq}</td>
+        <td><strong style="color:${scoreColor(myTechnical)}">${myTechnical}</strong></td>
+        <td><strong style="color:${scoreColor(mySchema)}">${mySchema}</strong></td>
+        <td><strong style="color:${scoreColor(myContent)}">${myContent}</strong></td>
+        <td><strong style="color:${scoreColor(myHeadings)}">${myHeadings}</strong></td>
+        <td><strong style="color:${scoreColor(myFaq)}">${myFaq}</strong></td>
       </tr>`,
     },
     ...cc.competitors.map((c) => ({
@@ -421,11 +438,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       html: `<tr>
         <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">Nicht erreichbar</span>` : ""}</td>
         <td style="color:${scoreColor(c.compositeScore)}"><strong>${c.compositeScore}</strong></td>
-        <td>${c.error ? "—" : c.technicalScore}</td>
-        <td>${c.error ? "—" : c.schemaScore}</td>
-        <td>${c.error ? "—" : c.contentScore}</td>
-        <td>${c.error ? "—" : c.headingScore}</td>
-        <td>${c.error ? "—" : c.faqScore}</td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.technicalScore)}"`}>${c.error ? "—" : c.technicalScore}</td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.schemaScore)}"`}>${c.error ? "—" : c.schemaScore}</td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.contentScore)}"`}>${c.error ? "—" : c.contentScore}</td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.headingScore)}"`}>${c.error ? "—" : c.headingScore}</td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.faqScore)}"`}>${c.error ? "—" : c.faqScore}</td>
       </tr>`,
     })),
   ].sort((a, b) => b.compositeScore - a.compositeScore);
@@ -518,12 +535,12 @@ ${divider("FAQ / So funktioniert's")}
 <table class="data-table">
   <thead><tr><th>Modul</th><th>Was wird geprüft</th><th>Warum es wichtig ist</th></tr></thead>
   <tbody>
-    <tr id="faq-modul-technicalSeo"><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
-    <tr id="faq-modul-schemaOrg"><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
-    <tr id="faq-modul-headingStructure"><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
-    <tr id="faq-modul-contentRelevance"><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
-    <tr id="faq-modul-faqQuality"><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
-    <tr id="faq-modul-llmDiscoverability"><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
+    <tr id="faq-modul-techn-seo"><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
+    <tr id="faq-modul-schema"><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
+    <tr id="faq-modul-headings"><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
+    <tr id="faq-modul-inhalt"><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
+    <tr id="faq-modul-faq"><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
+    <tr id="faq-modul-llm"><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
   </tbody>
 </table>
 <div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
@@ -1083,12 +1100,12 @@ export function generateHtmlReport(
   const crawledCount = ((report.crawledPages as string[]) ?? []).length;
 
   const scoreDefs = [
-    { name: "Technisches SEO",      score: ((report.technicalSeo        as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Schema.org",           score: ((report.schemaOrg           as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Heading-Struktur",     score: ((report.headingStructure    as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "Inhaltliche Relevanz", score: ((report.contentRelevance    as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "FAQ-Qualität",         score: ((report.faqQuality          as Record<string, unknown>)?.score as number) ?? 0 },
-    { name: "LLM-Auffindbarkeit",   score: ((report.llmDiscoverability  as Record<string, unknown>)?.score as number) ?? 0 },
+    { name: "Technisches SEO",      score: ((report.technicalSeo        as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-techn-seo" },
+    { name: "Schema.org",           score: ((report.schemaOrg           as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-schema"    },
+    { name: "Heading-Struktur",     score: ((report.headingStructure    as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-headings"  },
+    { name: "Inhaltliche Relevanz", score: ((report.contentRelevance    as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-inhalt"    },
+    { name: "FAQ-Qualität",         score: ((report.faqQuality          as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-faq"       },
+    { name: "LLM-Auffindbarkeit",   score: ((report.llmDiscoverability  as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-llm"       },
   ];
 
   const bodyContent = [
@@ -1248,14 +1265,14 @@ export function generateHtmlReport(
 
   <div class="overall">
     <div class="val" style="color:${scoreColor(overallScore)}">${overallScore}<span style="font-size:24px;font-weight:400;color:${C.textMuted}">/100</span></div>
-    <div class="lbl">GAIO Gesamtscore</div>
+    <div class="lbl">GAIO Gesamtscore ${SCORE_INFO_LINK}</div>
   </div>
 
   <h3 style="margin-bottom:8px;">Dimensionen im Überblick</h3>
   <table class="data-table">
     <thead><tr><th>Dimension</th><th>Score</th></tr></thead>
     <tbody>
-      ${scoreDefs.map((s) => `<tr><td>${esc(s.name)}</td><td style="font-weight:700;color:${scoreColor(s.score)}">${s.score}/100</td></tr>`).join("")}
+      ${scoreDefs.map((s) => `<tr><td>${esc(s.name)}${moduleInfoLink(s.faqId)}</td><td style="font-weight:700;color:${scoreColor(s.score)}">${s.score}/100</td></tr>`).join("")}
     </tbody>
   </table>
 

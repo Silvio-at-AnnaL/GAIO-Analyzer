@@ -1,0 +1,177 @@
+Ich habe die Datei vollständig geprüft. Hier ist was fehlt:
+
+**Erledigt ✅:** target_blank, Sortierung Wettbewerb, Domain-Name fett, fehlende Schema-Typen (als Text), Unternehmensname im Titel
+
+**Fehlt noch:**
+
+```
+The following items from the previous change request 
+were not implemented in the HTML export. Apply all 
+of them now.
+
+---
+
+MISSING 1 — Competitor table: all sub-score cells 
+need color AND the analyzed domain row must be 
+fully bold
+
+Currently only the "Gesamt" column has color. 
+The columns Techn., Schema, Inhalt, Headings, FAQ 
+have plain unstyled numbers.
+
+Apply the scoreColor function to EVERY numeric 
+score cell in the entire competitor table, 
+including all sub-score columns:
+  91-100 → #16a34a
+  76-90  → #65a30d
+  61-75  → #ca8a04
+  41-60  → #d97706
+  0-40   → #dc2626
+
+Also: the analyzed domain row currently only has 
+<strong> on the domain name cell. Wrap the content 
+of ALL cells in that row with <strong> tags, 
+including every score value.
+
+---
+
+MISSING 2 — SCORE ⓘ anchor icons
+
+The ⓘ icon after "Score" labels is not present 
+anywhere in the document. Add it to:
+- The "GAIO Gesamtscore" label in the overall 
+  score display
+- Every "Score" label in detail-grid items 
+  (Technical SEO, Schema.org, Headings, Inhalt, 
+  FAQ, LLM sections)
+- The score-card labels in the LLM section
+
+First, add this id to the score interpretation 
+table in the FAQ section:
+  id="faq-score-interpretation"
+
+Then after every "Score" text, append:
+  <a href="#faq-score-interpretation" 
+     style="margin-left:4px;color:#9ca3af;
+     font-size:11px;font-weight:400;
+     text-decoration:none;" 
+     title="Score-Interpretation ansehen"> ⓘ</a>
+
+---
+
+MISSING 3 — Dimension table ⓘ anchor icons
+
+The dimension overview table rows (Technisches SEO, 
+Schema.org, Heading-Struktur, Inhaltliche Relevanz, 
+FAQ-Qualität, LLM-Auffindbarkeit) have no ⓘ icons.
+
+First, add these ids to the corresponding rows 
+in the modules overview table in the FAQ section:
+  id="faq-modul-techn-seo"
+  id="faq-modul-schema"
+  id="faq-modul-headings"
+  id="faq-modul-inhalt"
+  id="faq-modul-faq"
+  id="faq-modul-llm"
+
+Then in the dimension table, after each dimension 
+label in column 1, append an anchor icon:
+  Technisches SEO → links to #faq-modul-techn-seo
+  Schema.org      → #faq-modul-schema
+  Heading-Struktur → #faq-modul-headings
+  Inhaltliche Relevanz → #faq-modul-inhalt
+  FAQ-Qualität    → #faq-modul-faq
+  LLM-Auffindbarkeit → #faq-modul-llm
+
+Same style as the SCORE icon above.
+
+---
+
+MISSING 4 — SEO metrics table: ⓘ tooltips
+
+The SEO-Metriken table rows have no tooltips.
+Replace each plain metric label with a span 
+containing a title attribute and ⓘ icon.
+Use these title texts:
+
+  Meta-Titel: "Seitentitel in Browser-Tab und 
+    Suchergebnissen. Optimal: 50–60 Zeichen."
+  Meta-Beschreibung: "Kurzbeschreibung der Seite 
+    in Suchergebnissen. Optimal: 70–160 Zeichen."
+  Alt-Texte: "Bildbeschreibungen für Suchmaschinen 
+    und Screenreader. Sollte für alle inhaltlichen 
+    Bilder gesetzt sein."
+  HTTPS: "Verschlüsselte Verbindung. Pflichtanforderung 
+    für SEO und Nutzervertrauen."
+  Viewport: "Mobile-Optimierung. Steuert die 
+    Darstellung auf Smartphones und Tablets."
+
+Pattern for each:
+  <span title="[tooltip]">[label] <span 
+  style="color:#9ca3af;font-size:10px;
+  cursor:help"> ⓘ</span></span>
+
+---
+
+MISSING 5 — Antwortzeit and TTFB: colored 
+status badge
+
+Currently showing only the raw millisecond value 
+(e.g. "1259 ms") with no status indication.
+After the ms value, append a colored status badge:
+
+Antwortzeit thresholds:
+  < 400ms  → <span style="color:#16a34a;
+              font-size:11px"> ● Gut</span>
+  400-800ms → <span style="color:#d97706;
+              font-size:11px"> ● Akzeptabel</span>
+  > 800ms  → <span style="color:#dc2626;
+              font-size:11px"> ● Kritisch</span>
+
+TTFB thresholds:
+  < 200ms  → Gut (green #16a34a)
+  200-500ms → Akzeptabel (amber #d97706)
+  > 500ms  → Kritisch (red #dc2626)
+
+Also add title attribute to both labels:
+  Antwortzeit: "Gesamtzeit vom Request bis 
+    zur vollständigen Serverantwort. 
+    Gut: unter 400 ms. Akzeptabel: 400–800 ms. 
+    Kritisch: über 800 ms."
+  TTFB: "Time to First Byte — Zeit bis das erste 
+    Datenbyte eintrifft. Gut: unter 200 ms. 
+    Akzeptabel: 200–500 ms. Kritisch: über 500 ms."
+
+---
+
+MISSING 6 — Canonical Tags tooltip
+
+The "Canonical Tags" label in the detail-grid 
+has no tooltip. Add a title attribute:
+  title="Canonical Tags verhindern 
+  Duplicate-Content-Probleme, indem sie 
+  Suchmaschinen die bevorzugte URL einer Seite 
+  mitteilen."
+
+---
+
+MISSING 7 — Missing schema types: use red pill 
+styling
+
+Currently "Fehlende empfohlene Typen" shows type 
+names in plain orange color. Replace with red 
+pill badges matching the specified style:
+
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  display: inline-block;
+  margin: 2px;
+
+Change the label from "Fehlende empfohlene Typen" 
+to "Fehlende wichtige Typen" to match the app 
+and previous specification.
+```
