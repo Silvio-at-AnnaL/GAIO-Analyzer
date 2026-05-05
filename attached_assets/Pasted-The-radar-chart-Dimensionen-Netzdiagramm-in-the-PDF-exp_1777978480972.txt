@@ -1,0 +1,122 @@
+The radar chart (Dimensionen/Netzdiagramm) in the 
+PDF export still shows a horizontal offset — the 
+chart is shifted slightly to the right within its 
+container. The donut chart next to it renders 
+correctly. This is a capture-time layout issue 
+specific to the Recharts RadarChart component.
+
+---
+
+ROOT CAUSE
+
+Recharts uses a ResizeObserver and positions its 
+SVG based on the measured container width at 
+render time. During PDF capture, the container 
+dimensions change momentarily, causing the SVG's 
+internal viewBox or transform to be calculated 
+against a different width than the visible area — 
+resulting in a horizontal shift.
+
+---
+
+FIX: Force explicit dimensions on the radar chart 
+container before capture
+
+In the handlePdfExport function, before capturing 
+the results header, find the radar chart container 
+element and apply explicit fixed dimensions.
+
+STEP 1 — Identify the radar chart container.
+The radar chart is inside a div that is a sibling 
+of the GAIO Score donut chart, both inside the 
+results header. Find it using a selector — check 
+the actual class names used in the codebase, 
+likely something like:
+  .recharts-responsive-container
+  or a parent div of the RadarChart component
+
+STEP 2 — Before capture, fix the container size:
+  const radarContainers = headerEl.querySelectorAll(
+    '.recharts-responsive-container'
+  )
+  const savedStyles: Array<{el: HTMLElement, 
+    width: string, height: string}> = []
+  
+  radarContainers.forEach(el => {
+    const htmlEl = el as HTMLElement
+    savedStyles.push({
+      el: htmlEl,
+      width: htmlEl.style.width,
+      height: htmlEl.style.height
+    })
+    // Fix to exact pixel dimensions matching 
+    // the container's actual rendered size:
+    const rect = htmlEl.getBoundingClientRect()
+    htmlEl.style.width = rect.width + 'px'
+    htmlEl.style.height = rect.height + 'px'
+  })
+
+STEP 3 — Also find the SVG element inside the 
+radar chart and fix its dimensions:
+  const radarSvgs = headerEl.querySelectorAll(
+    '.recharts-responsive-container svg'
+  )
+  radarSvgs.forEach(svg => {
+    const svgEl = svg as SVGElement
+    const rect = svgEl.getBoundingClientRect()
+    svgEl.setAttribute('width', 
+      String(Math.round(rect.width)))
+    svgEl.setAttribute('height', 
+      String(Math.round(rect.height)))
+    // Remove any transform that could cause offset:
+    const surface = svgEl.querySelector(
+      '.recharts-surface'
+    )
+    if (surface) {
+      surface.setAttribute('style', 
+        'overflow: visible; display: block;')
+    }
+  })
+
+STEP 4 — Wait for layout to settle after 
+the dimension fix:
+  void headerEl.offsetHeight
+  await new Promise(r => setTimeout(r, 400))
+
+STEP 5 — Capture the header as usual with toJpeg.
+
+STEP 6 — After capture, restore original styles:
+  savedStyles.forEach(({ el, width, height }) => {
+    el.style.width = width
+    el.style.height = height
+  })
+  // SVG attribute changes don't need restoration 
+  // since the component will re-render on next 
+  // React update
+
+---
+
+ADDITIONAL FIX: If the offset persists, it may 
+be caused by the chart's parent flex container 
+not being centered correctly during capture.
+
+After the dimension fixes above and before 
+calling toJpeg, also add:
+  const dimensionenCard = headerEl.querySelector(
+    '[class*="dimensionen"], [class*="radar"], 
+    [class*="chart-card"]'
+  ) as HTMLElement
+  if (dimensionenCard) {
+    dimensionenCard.style.overflow = 'visible'
+    dimensionenCard.style.display = 'flex'
+    dimensionenCard.style.alignItems = 'center'
+    dimensionenCard.style.justifyContent = 'center'
+  }
+
+Restore after capture:
+  if (dimensionenCard) {
+    dimensionenCard.style.overflow = ''
+    dimensionenCard.style.display = ''
+    dimensionenCard.style.alignItems = ''
+    dimensionenCard.style.justifyContent = ''
+  }

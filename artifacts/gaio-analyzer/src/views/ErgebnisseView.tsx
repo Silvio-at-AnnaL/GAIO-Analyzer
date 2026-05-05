@@ -911,17 +911,44 @@ function ReportView({ analysisId }: { analysisId: string }) {
         await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         await new Promise((r) => setTimeout(r, 400));
 
-        // B — Force the Recharts ResponsiveContainer (radar chart) to an explicit
-        // pixel width so html-to-image captures it correctly instead of rendering
-        // at zero / clipped size.
-        const radarResponsive = headerEl.querySelector<HTMLElement>(".recharts-responsive-container");
-        const prevRadarWidth    = radarResponsive?.style.width    ?? "";
-        const prevRadarOverflow = radarResponsive?.style.overflow ?? "";
-        if (radarResponsive) {
-          radarResponsive.style.width    = "100%";
-          radarResponsive.style.overflow = "visible";
-          void radarResponsive.offsetHeight;
+        // B — Fix radar chart horizontal offset: pin every ResponsiveContainer to
+        // its exact rendered pixel size, set explicit SVG dimensions, and clear the
+        // recharts-surface overflow so the capture sees the same layout as the screen.
+        const radarContainers = Array.from(
+          headerEl.querySelectorAll<HTMLElement>(".recharts-responsive-container")
+        );
+        const savedContainerStyles: Array<{ el: HTMLElement; width: string; height: string; overflow: string }> = [];
+        radarContainers.forEach((el) => {
+          savedContainerStyles.push({ el, width: el.style.width, height: el.style.height, overflow: el.style.overflow });
+          const rect = el.getBoundingClientRect();
+          el.style.width    = `${rect.width}px`;
+          el.style.height   = `${rect.height}px`;
+          el.style.overflow = "visible";
+        });
+
+        // Pin inner SVG dimensions and clear surface overflow so no transform offset occurs.
+        headerEl.querySelectorAll<SVGElement>(".recharts-responsive-container svg").forEach((svg) => {
+          const rect = svg.getBoundingClientRect();
+          svg.setAttribute("width",  String(Math.round(rect.width)));
+          svg.setAttribute("height", String(Math.round(rect.height)));
+          const surface = svg.querySelector(".recharts-surface");
+          if (surface) surface.setAttribute("style", "overflow:visible;display:block;");
+        });
+
+        // Fix the chart card flex alignment during capture.
+        const dimensionenCard = headerEl.querySelector<HTMLElement>(
+          '[class*="dimensionen"],[class*="radar"],[class*="chart-card"]'
+        );
+        if (dimensionenCard) {
+          dimensionenCard.style.overflow       = "visible";
+          dimensionenCard.style.display        = "flex";
+          dimensionenCard.style.alignItems     = "center";
+          dimensionenCard.style.justifyContent = "center";
         }
+
+        // Force reflow and allow layout to settle after dimension changes.
+        void headerEl.offsetHeight;
+        await new Promise((r) => setTimeout(r, 400));
 
         neutraliseImages(headerEl);
 
@@ -946,10 +973,18 @@ function ReportView({ analysisId }: { analysisId: string }) {
           }
         }
 
-        // Restore radar container styles.
-        if (radarResponsive) {
-          radarResponsive.style.width    = prevRadarWidth;
-          radarResponsive.style.overflow = prevRadarOverflow;
+        // Restore container styles (SVG attribute changes are intentionally left;
+        // React will re-render on the next state update).
+        savedContainerStyles.forEach(({ el, width, height, overflow }) => {
+          el.style.width    = width;
+          el.style.height   = height;
+          el.style.overflow = overflow;
+        });
+        if (dimensionenCard) {
+          dimensionenCard.style.overflow       = "";
+          dimensionenCard.style.display        = "";
+          dimensionenCard.style.alignItems     = "";
+          dimensionenCard.style.justifyContent = "";
         }
 
         headerEl.style.width = prevHeaderWidth;
