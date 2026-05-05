@@ -91,9 +91,11 @@ function esc(s: string): string {
 }
 
 function scoreColor(s: number): string {
-  if (s >= 71) return "#22c55e";
-  if (s >= 41) return "#f59e0b";
-  return "#ef4444";
+  if (s >= 91) return "#16a34a";
+  if (s >= 76) return "#65a30d";
+  if (s >= 61) return "#ca8a04";
+  if (s >= 41) return "#d97706";
+  return "#dc2626";
 }
 
 function tierLabel(tier: string): string {
@@ -277,13 +279,16 @@ function renderDetailsSection(report: Record<string, unknown>): string {
 
   if (schemaOrg) {
     const types = (schemaOrg.detectedTypes as string[] | undefined) ?? [];
+    const RECOMMENDED_SCHEMA_TYPES = ["Organization", "WebSite", "FAQPage", "Product", "BreadcrumbList", "Article", "LocalBusiness"];
+    const missingTypes = RECOMMENDED_SCHEMA_TYPES.filter((t) => !types.includes(t));
     html += `
     <h3>Schema.org / Strukturierte Daten</h3>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">Score</div><div class="val" style="color:${scoreColor((schemaOrg.score as number) ?? 0)}">${schemaOrg.score}/100</div></div>
       <div class="detail-item"><div class="label">Typen erkannt</div><div class="val">${types.length}</div></div>
     </div>
-    ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}`;
+    ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}
+    ${missingTypes.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">Fehlende empfohlene Typen: <span style="color:#d97706;">${missingTypes.map(esc).join(", ")}</span></p>` : ""}`;
   }
 
   if (headings) {
@@ -330,7 +335,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <h3>Gecrawlte Seiten (${crawledPages.length})</h3>
     <ul style="margin:4px 0;padding-left:16px;font-size:12px;color:${C.textSec};">
-      ${crawledPages.map((p) => `<li><a href="${esc(p)}" style="color:${C.accent};">${esc(p)}</a></li>`).join("")}
+      ${crawledPages.map((p) => `<li><a href="${esc(p)}" target="_blank" rel="noopener" style="color:${C.accent};">${esc(p)}</a></li>`).join("")}
     </ul>`;
   }
 
@@ -397,13 +402,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   let html = divider("Wettbewerb");
   html += `<h2>Wettbewerbsvergleich</h2>`;
 
-  html += `
-  <table class="comp-table">
-    <thead><tr>
-      <th>Domain</th><th>Gesamt</th><th>Techn.</th><th>Schema</th><th>Inhalt</th><th>Headings</th><th>FAQ</th>
-    </tr></thead>
-    <tbody>
-      <tr style="background:${C.bg};">
+  type SortedRow = { compositeScore: number; html: string };
+  const sortedRows: SortedRow[] = [
+    {
+      compositeScore: myScore,
+      html: `<tr style="background:${C.bg};">
         <td><strong>${esc(myDomain)}</strong> <span style="font-size:10px;color:${C.textMuted}">(Ihre Seite)</span></td>
         <td><strong style="color:${scoreColor(myScore)}">${myScore}</strong></td>
         <td style="color:${scoreColor(myTechnical)}">${myTechnical}</td>
@@ -411,9 +414,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
         <td style="color:${scoreColor(myContent)}">${myContent}</td>
         <td style="color:${scoreColor(myHeadings)}">${myHeadings}</td>
         <td style="color:${scoreColor(myFaq)}">${myFaq}</td>
-      </tr>
-      ${cc.competitors.map((c) => `
-      <tr>
+      </tr>`,
+    },
+    ...cc.competitors.map((c) => ({
+      compositeScore: c.compositeScore,
+      html: `<tr>
         <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">Nicht erreichbar</span>` : ""}</td>
         <td style="color:${scoreColor(c.compositeScore)}"><strong>${c.compositeScore}</strong></td>
         <td>${c.error ? "—" : c.technicalScore}</td>
@@ -421,7 +426,17 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
         <td>${c.error ? "—" : c.contentScore}</td>
         <td>${c.error ? "—" : c.headingScore}</td>
         <td>${c.error ? "—" : c.faqScore}</td>
-      </tr>`).join("")}
+      </tr>`,
+    })),
+  ].sort((a, b) => b.compositeScore - a.compositeScore);
+
+  html += `
+  <table class="comp-table">
+    <thead><tr>
+      <th>Domain</th><th>Gesamt</th><th>Techn.</th><th>Schema</th><th>Inhalt</th><th>Headings</th><th>FAQ</th>
+    </tr></thead>
+    <tbody>
+      ${sortedRows.map((r) => r.html).join("")}
     </tbody>
   </table>`;
 
@@ -503,12 +518,12 @@ ${divider("FAQ / So funktioniert's")}
 <table class="data-table">
   <thead><tr><th>Modul</th><th>Was wird geprüft</th><th>Warum es wichtig ist</th></tr></thead>
   <tbody>
-    <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
-    <tr><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
-    <tr><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
-    <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
-    <tr><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
-    <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
+    <tr id="faq-modul-technicalSeo"><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
+    <tr id="faq-modul-schemaOrg"><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
+    <tr id="faq-modul-headingStructure"><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
+    <tr id="faq-modul-contentRelevance"><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
+    <tr id="faq-modul-faqQuality"><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
+    <tr id="faq-modul-llmDiscoverability"><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
   </tbody>
 </table>
 <div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
@@ -546,14 +561,14 @@ ${divider("FAQ / So funktioniert's")}
 </table>
 
 <h3>Score-Interpretation</h3>
-<table class="data-table">
+<table class="data-table" id="faq-score-interpretation">
   <thead><tr><th>Score</th><th>Bewertung</th><th>Bedeutung</th></tr></thead>
   <tbody>
-    <tr><td><strong style="color:#ef4444">0–40</strong></td><td>Kritisch</td><td>Grundlegende Defizite — LLMs können diese Website kaum als verlässliche Quelle nutzen</td></tr>
-    <tr><td><strong style="color:#f59e0b">41–60</strong></td><td>Ausbaufähig</td><td>Technische Basis teilweise vorhanden, aber inhaltliche Lücken limitieren die LLM-Sichtbarkeit erheblich</td></tr>
-    <tr><td><strong style="color:#84cc16">61–75</strong></td><td>Solide</td><td>Gute Ausgangsbasis — gezielte Maßnahmen können die Sichtbarkeit spürbar steigern</td></tr>
-    <tr><td><strong style="color:#22c55e">76–90</strong></td><td>Stark</td><td>Überdurchschnittlich gut aufgestellt — Feinoptimierung empfohlen</td></tr>
-    <tr><td><strong style="color:#22c55e">91–100</strong></td><td>Exzellent</td><td>Best-in-class LLM-Readiness</td></tr>
+    <tr><td><strong style="color:#dc2626">0–40</strong></td><td>Kritisch</td><td>Grundlegende Defizite — LLMs können diese Website kaum als verlässliche Quelle nutzen</td></tr>
+    <tr><td><strong style="color:#d97706">41–60</strong></td><td>Ausbaufähig</td><td>Technische Basis teilweise vorhanden, aber inhaltliche Lücken limitieren die LLM-Sichtbarkeit erheblich</td></tr>
+    <tr><td><strong style="color:#ca8a04">61–75</strong></td><td>Solide</td><td>Gute Ausgangsbasis — gezielte Maßnahmen können die Sichtbarkeit spürbar steigern</td></tr>
+    <tr><td><strong style="color:#65a30d">76–90</strong></td><td>Stark</td><td>Überdurchschnittlich gut aufgestellt — Feinoptimierung empfohlen</td></tr>
+    <tr><td><strong style="color:#16a34a">91–100</strong></td><td>Exzellent</td><td>Best-in-class LLM-Readiness</td></tr>
   </tbody>
 </table>
 
@@ -1091,7 +1106,7 @@ export function generateHtmlReport(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GAIO Analysebericht – ${esc(url)}</title>
+<title>GAIO Analysebericht – ${esc(opts.inputParams?.companyName?.trim() ? opts.inputParams.companyName.trim() : url)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -1228,7 +1243,7 @@ export function generateHtmlReport(
 </head>
 <body>
 <div class="container">
-  <h1>GAIO Analysebericht</h1>
+  <h1>GAIO Analysebericht${opts.inputParams?.companyName?.trim() ? ` – ${esc(opts.inputParams.companyName.trim())}` : ""}</h1>
   <p class="subtitle">${esc(url)} · ${crawledCount} Seiten · ${new Date().toLocaleDateString("de-DE")}</p>
 
   <div class="overall">

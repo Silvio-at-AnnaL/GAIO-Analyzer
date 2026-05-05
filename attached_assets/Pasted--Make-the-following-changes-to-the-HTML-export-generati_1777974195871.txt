@@ -1,0 +1,248 @@
+```
+Make the following changes to the HTML export 
+generation function. Priority: keep file size 
+minimal — use anchors instead of overlays, 
+inline tooltips via CSS title attribute or tiny 
+CSS-only tooltips, no JavaScript where avoidable.
+
+All changes apply to the HTML export only 
+unless explicitly stated otherwise.
+
+---
+
+A1 — All outgoing links: target="_blank"
+
+In the HTML export generation function, find 
+every place where <a href="..."> tags are 
+written. Add target="_blank" rel="noopener" 
+to all of them. This includes: crawled page 
+URLs, competitor URLs, source URLs in LLM 
+section, and any other external links.
+
+---
+
+A2 — Competitor table improvements
+
+A2.1 — Sort rows by Gesamt score descending.
+Before generating the competitor table rows, 
+sort the data array (analyzed site + all 
+competitors) by their composite/Gesamt score 
+from highest to lowest. The analyzed site 
+appears wherever its score ranks it — not 
+forced to top or bottom.
+
+A2.2 — Analyzed domain row: bold all cells.
+For the row representing the analyzed site, 
+wrap every <td> content in <strong> tags.
+
+A2.3 — Color all score values using this scale:
+  91-100: color #16a34a  (Exzellent)
+  76-90:  color #65a30d  (Stark)
+  61-75:  color #ca8a04  (Solide)
+  41-60:  color #d97706  (Ausbaufähig)
+  0-40:   color #dc2626  (Kritisch)
+
+Apply this to every numeric score cell in the 
+competitor table AND in the "Dimensionen im 
+Überblick" table. Create a helper function 
+scoreColor(n) that returns the hex value to 
+avoid code duplication.
+
+---
+
+A3 — SCORE tooltip: anchor to FAQ section
+
+Wherever the word "SCORE" or "Score" appears 
+in a table header, display label, or card 
+label, append a small info icon that links 
+to the score interpretation section in the 
+FAQ part of the same document.
+
+Implementation (minimal code):
+  - Give the FAQ score interpretation table 
+    an id: id="faq-score-interpretation"
+  - After every "Score" text, append:
+    <a href="#faq-score-interpretation" 
+       style="margin-left:4px;color:#9ca3af;
+       font-size:11px;font-weight:400;
+       text-decoration:none;" 
+       title="Score-Interpretation ansehen"> ⓘ</a>
+
+This uses a plain anchor — zero JS, minimal 
+HTML overhead.
+
+---
+
+A4 — Dimensions table: "i" icons per dimension
+
+In the "Dimensionen im Überblick" table 
+(the score overview table with 6 dimensions), 
+add an anchor icon after each dimension name 
+in column 1. Each links to the corresponding 
+row in the modules overview table in the FAQ 
+section.
+
+Give the modules overview table rows ids:
+  id="faq-modul-techn-seo"
+  id="faq-modul-schema"
+  id="faq-modul-headings"
+  id="faq-modul-inhalt"
+  id="faq-modul-faq"
+  id="faq-modul-llm"
+
+Then in the dimensions display table, after 
+each dimension label:
+  Techn. SEO → append ⓘ linking to 
+    #faq-modul-techn-seo
+  Schema.org → #faq-modul-schema
+  Headings → #faq-modul-headings
+  Inhalt → #faq-modul-inhalt
+  FAQ → #faq-modul-faq
+  LLM → #faq-modul-llm
+
+Same style as the SCORE icon in A3.
+
+---
+
+A5 — Technical analysis section
+
+A5.1 — SEO-Metriken table: column 1 tooltips
+Add a CSS title attribute tooltip to each 
+metric label. Use the HTML title attribute 
+(zero JS, zero extra markup):
+
+  Meta-Titel: "Seitentitel im Browser-Tab 
+    und in Suchergebnissen. Optimal: 50–60 
+    Zeichen."
+  Meta-Beschreibung: "Kurzbeschreibung der 
+    Seite in Suchergebnissen. Optimal: 
+    70–160 Zeichen."
+  Alt-Texte: "Bildbeschreibungen für 
+    Suchmaschinen und Screenreader. Sollte 
+    für alle inhaltlichen Bilder gesetzt sein."
+  HTTPS: "Verschlüsselte Verbindung. 
+    Grundvoraussetzung für SEO und 
+    Nutzervertrauen."
+  Viewport: "Mobile-Optimierung. Steuert 
+    die Darstellung auf Smartphones 
+    und Tablets."
+
+Wrap each metric label in a <span> with the 
+title attribute and append an ⓘ icon:
+  <span title="[tooltip text]">[label] <span 
+  style="color:#9ca3af;font-size:10px;
+  cursor:help">ⓘ</span></span>
+
+A5.2.1 — Antwortzeit and TTFB: 
+use existing app tooltips.
+Add title attributes:
+  Antwortzeit: "Gesamtzeit vom Request bis 
+    zur vollständigen Serverantwort. 
+    Gut: unter 400 ms. Akzeptabel: 400–800 ms. 
+    Kritisch: über 800 ms."
+  TTFB: "Time to First Byte — Zeit bis das 
+    erste Datenbyte vom Server eintrifft. 
+    Gut: unter 200 ms. Akzeptabel: 200–500 ms. 
+    Kritisch: über 500 ms."
+
+A5.2.2 — Antwortzeit and TTFB: 
+colored status label.
+After the millisecond value, append a colored 
+status badge using the same thresholds as 
+the app:
+  Antwortzeit:
+    < 400ms  → <span style="color:#16a34a">
+                ● Gut</span>
+    400-800ms → <span style="color:#d97706">
+                ● Akzeptabel</span>
+    > 800ms  → <span style="color:#dc2626">
+                ● Kritisch</span>
+  TTFB:
+    < 200ms  → Gut (green)
+    200-500ms → Akzeptabel (amber)
+    > 500ms  → Kritisch (red)
+
+A5.2.3 — Canonical Tags tooltip:
+  title="Canonical Tags verhindern 
+  Duplicate-Content-Probleme, indem sie 
+  Suchmaschinen die bevorzugte URL einer 
+  Seite mitteilen."
+
+A5.3 — Schema.org: also show missing types.
+After the "Erkannte Typen" badges, add a 
+second line:
+  "Fehlende wichtige Typen:" 
+  followed by badges for each missing type 
+  using a red/error style:
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+  (same pill/badge shape as the existing 
+  recognized types badges)
+
+If there are no missing types, omit this 
+line entirely.
+
+---
+
+A6 — Report title: include company name
+
+Find the main report heading at the top of 
+the HTML export. Currently it reads:
+  "GAIO-Analysebericht"
+
+Change to:
+  "GAIO-Analysebericht für [Unternehmensname]"
+
+Where [Unternehmensname] is read from the 
+analysis input data (the company name field 
+from Domainanalyse – Basisdaten). If no 
+company name was entered, fall back to the 
+domain name without https:// and www.
+
+---
+
+SPACING — All "i" icons must have a space 
+before them.
+Every ⓘ icon (in all changes above) must be 
+preceded by a non-breaking space or a 
+regular space:
+  "[label] ⓘ" not "[label]ⓘ"
+This applies to all A3, A4, A5.1, A5.2.1, 
+A5.2.3 tooltip icons.
+
+---
+
+B — PDF: Radar chart position fix
+
+The radar chart (Dimensionen / Netzdiagramm) 
+has been shifting to the right in the PDF 
+since the page height calculation changes.
+
+This is caused by the chart's SVG or container 
+not being re-centered after the layout 
+changes made during PDF capture preparation.
+
+Find the radar chart component in the results 
+header and ensure its container has:
+  - width: 100% (not a fixed pixel width)
+  - text-align: center or margin: 0 auto
+  - overflow: visible (not hidden)
+
+Before capturing the results header for PDF, 
+add this to the header element temporarily:
+  headerEl.style.overflow = 'visible'
+
+Also ensure the chart container inside the 
+header has no absolute or fixed positioning 
+that could cause drift when the surrounding 
+layout changes.
+
+If the chart uses a ResponsiveContainer from 
+Recharts (or similar), ensure its parent div 
+has an explicit pixel width set during capture:
+  chartContainer.style.width = '500px'
+  chartContainer.style.minWidth = '500px'
+Set this before the animation frame wait and 
+restore it after capture.
+```

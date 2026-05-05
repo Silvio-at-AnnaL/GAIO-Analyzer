@@ -911,6 +911,18 @@ function ReportView({ analysisId }: { analysisId: string }) {
         await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         await new Promise((r) => setTimeout(r, 400));
 
+        // B — Force the Recharts ResponsiveContainer (radar chart) to an explicit
+        // pixel width so html-to-image captures it correctly instead of rendering
+        // at zero / clipped size.
+        const radarResponsive = headerEl.querySelector<HTMLElement>(".recharts-responsive-container");
+        const prevRadarWidth    = radarResponsive?.style.width    ?? "";
+        const prevRadarOverflow = radarResponsive?.style.overflow ?? "";
+        if (radarResponsive) {
+          radarResponsive.style.width    = "100%";
+          radarResponsive.style.overflow = "visible";
+          void radarResponsive.offsetHeight;
+        }
+
         neutraliseImages(headerEl);
 
         const headerH = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : headerEl.offsetHeight;
@@ -932,6 +944,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
           } catch (hErr) {
             console.warn("Header capture failed:", hErr);
           }
+        }
+
+        // Restore radar container styles.
+        if (radarResponsive) {
+          radarResponsive.style.width    = prevRadarWidth;
+          radarResponsive.style.overflow = prevRadarOverflow;
         }
 
         headerEl.style.width = prevHeaderWidth;
