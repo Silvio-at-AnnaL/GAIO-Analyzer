@@ -311,7 +311,7 @@ export function DomainAnalyseView() {
           )}
         </div>
 
-        {/* AI Pre-fill button — only in Phase 1 */}
+        {/* AI Pre-fill button — MODE A only */}
         {!phase2Visible && (
           <div className="space-y-2">
             <Button
@@ -345,6 +345,20 @@ export function DomainAnalyseView() {
               </button>
             </p>
           </div>
+        )}
+
+        {/* Switch back to KI mode — MODE B only */}
+        {phase2Visible && (
+          <p className="text-xs text-center text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setPhase2Visible(false)}
+              className="underline hover:text-foreground transition-colors"
+              data-testid="button-switch-to-ai"
+            >
+              ← Mit KI vorausfüllen
+            </button>
+          </p>
         )}
 
         {/* Crawled pages selection — only shown after at least one analysis */}
