@@ -531,11 +531,30 @@ export function DomainAnalyseView() {
 
           {/* Prefill success notice */}
           {prefillMutation.isSuccess && !prefillError && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-start gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-              <p className="text-xs text-primary/90 leading-relaxed">
-                KI-Vorschläge wurden eingefügt. Bitte überprüfen und bei Bedarf anpassen.
-              </p>
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-3">
+              <div className="flex items-start gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                <p className="text-xs text-primary/90 leading-relaxed">
+                  KI-Vorschläge wurden eingefügt. Bitte überprüfen und bei Bedarf anpassen.
+                </p>
+              </div>
+
+              {prefillMutation.data?.crawl_failed && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed pl-5">
+                  ⚠ Website konnte nicht gecrawlt werden — Vorschläge basieren nur auf dem Unternehmensnamen.
+                </p>
+              )}
+
+              {prefillMutation.data?.content_summary && (
+                <div className="border-t border-primary/20 pt-3 pl-5 space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Erkannte Produkte / Leistungen:
+                  </p>
+                  <p className="text-xs text-foreground/70 leading-relaxed">
+                    {prefillMutation.data.content_summary}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

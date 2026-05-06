@@ -93,6 +93,8 @@ export const PrefillQuestionnaireResponse = zod.object({
       url: zod.string(),
     }),
   ),
+  content_summary: zod.string().nullable(),
+  crawl_failed: zod.boolean(),
 });
 
 /**

@@ -10,4 +10,7 @@ import type { PrefillCompetitor } from "./prefillCompetitor";
 export interface PrefillResponse {
   personas: string;
   competitors: PrefillCompetitor[];
+  /** @nullable */
+  content_summary: string | null;
+  crawl_failed: boolean;
 }

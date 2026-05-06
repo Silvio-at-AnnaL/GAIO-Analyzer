@@ -18,6 +18,9 @@ export interface PrefillCompetitor {
 export interface PrefillResponse {
   personas: string;
   competitors: PrefillCompetitor[];
+  /** @nullable */
+  content_summary: string | null;
+  crawl_failed: boolean;
 }
 
 export interface HealthStatus {

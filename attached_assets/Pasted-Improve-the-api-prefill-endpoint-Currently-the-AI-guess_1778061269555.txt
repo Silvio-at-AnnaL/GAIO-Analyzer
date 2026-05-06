@@ -1,0 +1,157 @@
+Improve the /api/prefill endpoint. Currently 
+the AI guesses target audiences and competitors 
+from the company name and URL alone. It must 
+instead first fetch and read actual website 
+content — specifically "About us" and product 
+pages — before drawing any conclusions.
+
+---
+
+NEW BACKEND LOGIC FOR /api/prefill
+
+STEP 1 — Crawl the website before calling AI
+
+Before calling Claude, use the existing crawler 
+module to fetch a targeted selection of pages 
+from the submitted URL.
+
+Use a reduced crawl (max 8 pages) with this 
+priority order — adapt the existing priority 
+scoring already in the crawler:
+
+  Priority 1 (fetch first):
+    Paths containing: ueber-uns, ueber-uns, 
+    about, about-us, about-us, unternehmen, 
+    company, wir-ueber-uns, philosophy, 
+    philosophie, mission, vision, team
+
+  Priority 2 (fetch next):
+    Paths containing: produkt, produkte, 
+    product, products, loesungen, solutions, 
+    leistungen, services, portfolio, 
+    sortiment, angebot
+
+  Stop crawling once 8 pages are fetched 
+  or no more priority URLs are found.
+
+Extract the text content from each fetched 
+page (strip HTML, keep meaningful text, 
+max 1500 characters per page).
+
+STEP 2 — Build a content summary
+
+Combine the extracted page texts into a 
+structured summary string:
+  "=== [page URL] ===\n[text]\n\n"
+  
+Limit total content to 8000 characters 
+(truncate longest pages first if needed).
+
+STEP 3 — Send enriched prompt to Claude
+
+Replace the current simple prompt with this 
+multi-step prompt:
+
+  "You are a B2B market analyst. 
+  
+  A company has submitted its website for 
+  analysis. I have crawled the following 
+  pages from their website and extracted 
+  the text content:
+
+  [CRAWLED_CONTENT]
+
+  Company name: [company_name]
+  Website: [url]
+
+  Based EXCLUSIVELY on the actual website 
+  content above (not on general assumptions), 
+  perform the following analysis:
+
+  TASK 1 — TARGET AUDIENCES
+  Identify the primary B2B buyer personas 
+  for this company based on the products, 
+  services and use cases described on the 
+  website. Include:
+  - Which industries are explicitly or 
+    implicitly addressed?
+  - Which job titles or roles are likely 
+    decision makers or users?
+  - What buying criteria or problems does 
+    the company solve?
+  Write 3-5 concise sentences in German. 
+  Be specific to what you actually read 
+  on the website — no generic B2B personas.
+
+  TASK 2 — COMPETITORS
+  Based on the specific products and 
+  services you found on this website, 
+  identify 5-8 direct competitors — 
+  companies that sell similar or identical 
+  products to the same target industries.
+  
+  Rules for competitor selection:
+  - Must be direct product competitors, 
+    not adjacent or complementary companies
+  - Must be real companies with real 
+    websites you are confident exist
+  - Prefer companies of similar size and 
+    market focus where possible
+  - Do NOT list distributors, partners or 
+    customers of the analyzed company
+  - If you are uncertain about a URL, 
+    omit that competitor rather than 
+    guessing
+
+  Return ONLY valid JSON, no other text:
+  {
+    'content_summary': '<2-3 sentences 
+      in German summarizing what products/
+      services the company actually offers, 
+      based on the crawled pages>',
+    'personas': '<German prose text, 
+      3-5 sentences>',
+    'competitors': [
+      { 'name': '<company>', 
+        'url': 'https://...' },
+      ...
+    ]
+  }
+  
+  CRITICAL: Base your analysis ONLY on 
+  the website content provided above. 
+  Do not use general knowledge about the 
+  company name. If the crawled content is 
+  insufficient to identify reliable 
+  competitors, return fewer than 5 rather 
+  than guessing."
+
+STEP 4 — Return enriched response
+
+Add the content_summary field to the API 
+response and display it in the frontend 
+as a small muted text block below the 
+pre-fill button, labeled:
+  "Erkannte Produkte / Leistungen:"
+  [content_summary text]
+
+This gives the user immediate transparency 
+about what the AI actually found on the 
+website — and helps them judge whether the 
+pre-filled competitors and personas are 
+plausible.
+
+---
+
+ERROR FALLBACK
+
+If the crawler returns 0 pages (site blocked, 
+timeout, JS-only rendering):
+- Skip Step 1 and 2
+- Call Claude with company name and URL only
+- Add a notice in the response:
+  crawl_failed: true
+- Show in frontend below the button:
+  "⚠ Website konnte nicht gecrawlt werden — 
+  Vorschläge basieren nur auf dem 
+  Unternehmensnamen."
