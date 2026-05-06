@@ -34,8 +34,6 @@ export function DomainAnalyseView() {
 
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
   const [showAllPages, setShowAllPages] = useState(false);
-  const [showSocial, setShowSocial] = useState(false);
-
   // Whether Phase 2 fields (competitors + personas) are visible
   const [phase2Visible, setPhase2Visible] = useState(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
@@ -649,39 +647,30 @@ export function DomainAnalyseView() {
             />
           </section>
 
-          {/* Section: Social Media (collapsible) */}
+          {/* Section: Social Media */}
           <section className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setShowSocial((v) => !v)}
-              className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 hover:text-foreground transition-colors"
-            >
-              <span className="flex items-center gap-1">
-                Social Media &amp; Online-Profile
-                <span className="normal-case font-normal ml-1 opacity-60">(optional)</span>
-              </span>
-              {showSocial ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
+              Social Media &amp; Online-Profile
+              <span className="normal-case font-normal ml-1 opacity-60">(optional)</span>
+            </h2>
 
-            {showSocial && (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                {SOCIAL_PLATFORMS.map(({ key, label }) => (
-                  <div key={key} className="space-y-1">
-                    <Label htmlFor={`social-${key}`} className="text-muted-foreground text-xs">
-                      {label}
-                    </Label>
-                    <Input
-                      id={`social-${key}`}
-                      value={domainForm.social[key as keyof typeof domainForm.social]}
-                      onChange={(e) => updateSocial(key, e.target.value)}
-                      placeholder="https://..."
-                      className="text-xs"
-                      data-testid={`input-social-${key}`}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              {SOCIAL_PLATFORMS.map(({ key, label }) => (
+                <div key={key} className="space-y-1">
+                  <Label htmlFor={`social-${key}`} className="text-muted-foreground text-xs">
+                    {label}
+                  </Label>
+                  <Input
+                    id={`social-${key}`}
+                    value={domainForm.social[key as keyof typeof domainForm.social]}
+                    onChange={(e) => updateSocial(key, e.target.value)}
+                    placeholder="https://..."
+                    className="text-xs"
+                    data-testid={`input-social-${key}`}
+                  />
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* CTA */}
