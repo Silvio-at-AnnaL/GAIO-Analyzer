@@ -332,7 +332,7 @@ export function DomainAnalyseView() {
               )}
             </Button>
             <p className="text-xs text-center text-muted-foreground">
-              KI schlägt Personas und Wettbewerber automatisch vor —{" "}
+              KI schlägt Zielgruppen und Wettbewerber automatisch vor —{" "}
               <button
                 type="button"
                 onClick={handleRevealManually}
