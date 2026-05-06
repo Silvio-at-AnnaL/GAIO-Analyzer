@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 
@@ -547,27 +547,45 @@ export function DomainAnalyseView() {
             </h2>
 
             <div className="space-y-2">
-              {domainForm.competitors.map((comp, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <Input
-                    type="url"
-                    value={comp}
-                    onChange={(e) => updateCompetitor(i, e.target.value)}
-                    onBlur={(e) => updateCompetitor(i, e.target.value)}
-                    placeholder="https://www.wettbewerber.de"
-                    data-testid={`input-competitor-${i}`}
-                  />
-                  {domainForm.competitors.length > 1 && (
-                    <button
-                      onClick={() => removeCompetitor(i)}
-                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      aria-label="Entfernen"
+              {domainForm.competitors.map((comp, i) => {
+                const isValidUrl = comp.startsWith("http://") || comp.startsWith("https://");
+                return (
+                  <div key={i} className="flex gap-2 items-center">
+                    <a
+                      href={isValidUrl ? comp : undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Website öffnen"
+                      tabIndex={isValidUrl ? 0 : -1}
+                      className="shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                      style={{
+                        opacity: isValidUrl ? 1 : 0.3,
+                        pointerEvents: isValidUrl ? "auto" : "none",
+                        cursor: isValidUrl ? "pointer" : "default",
+                      }}
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
+                      <Globe style={{ width: 18, height: 18 }} />
+                    </a>
+                    <Input
+                      type="url"
+                      value={comp}
+                      onChange={(e) => updateCompetitor(i, e.target.value)}
+                      onBlur={(e) => updateCompetitor(i, e.target.value)}
+                      placeholder="https://www.wettbewerber.de"
+                      data-testid={`input-competitor-${i}`}
+                    />
+                    {domainForm.competitors.length > 1 && (
+                      <button
+                        onClick={() => removeCompetitor(i)}
+                        className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        aria-label="Entfernen"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
               {domainForm.competitors.length < 10 && domainForm.competitors.every((c) => c.trim() !== "") && (
                 <Button
                   variant="ghost"
