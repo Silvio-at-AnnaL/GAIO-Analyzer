@@ -4,9 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
-import { useStartAnalysis } from "@workspace/api-client-react";
+import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 
 const SOCIAL_PLATFORMS = [
   { key: "linkedin", label: "LinkedIn" },
@@ -30,8 +30,15 @@ export function DomainAnalyseView() {
   } = useAppStore();
 
   const startAnalysis = useStartAnalysis();
+  const prefillMutation = usePrefillQuestionnaire();
+
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
   const [showAllPages, setShowAllPages] = useState(false);
+  const [showSocial, setShowSocial] = useState(false);
+
+  // Whether Phase 2 fields (competitors + personas) are visible
+  const [phase2Visible, setPhase2Visible] = useState(false);
+  const [prefillError, setPrefillError] = useState<string | null>(null);
 
   // Local editable URL list — initialized from crawledPages, can be modified
   const [editablePages, setEditablePages] = useState<string[]>([]);
@@ -41,6 +48,15 @@ export function DomainAnalyseView() {
   const [newUrlValue, setNewUrlValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
   const newUrlInputRef = useRef<HTMLInputElement>(null);
+  const phase2Ref = useRef<HTMLDivElement>(null);
+
+  // Show phase 2 if there's already data in the form (e.g. returning user)
+  useEffect(() => {
+    const hasData =
+      domainForm.competitors.some((c) => c.trim() !== "") ||
+      domainForm.personas.trim() !== "";
+    if (hasData) setPhase2Visible(true);
+  }, []);
 
   // Sync editablePages + selectedPages when a new crawl result arrives
   useEffect(() => {
@@ -64,6 +80,15 @@ export function DomainAnalyseView() {
       newUrlInputRef.current?.focus();
     }
   }, [addingNew]);
+
+  // Scroll phase2 into view after it becomes visible
+  useEffect(() => {
+    if (phase2Visible) {
+      setTimeout(() => {
+        phase2Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [phase2Visible]);
 
   const updateField = <K extends keyof typeof domainForm>(key: K, value: typeof domainForm[K]) => {
     setDomainForm({ ...domainForm, [key]: value });
@@ -96,6 +121,50 @@ export function DomainAnalyseView() {
     return Object.keys(errs).length === 0;
   };
 
+  const validatePhase1 = () => {
+    const errs: { companyName?: string; url?: string } = {};
+    if (!domainForm.companyName.trim()) errs.companyName = "Bitte Unternehmensname eingeben";
+    if (!domainForm.url.trim()) errs.url = "Bitte Website-URL eingeben";
+    else if (!domainForm.url.startsWith("http")) errs.url = "Bitte eine gültige URL eingeben (https://...)";
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handlePrefill = () => {
+    if (!validatePhase1()) return;
+    setPrefillError(null);
+
+    prefillMutation.mutate(
+      {
+        data: {
+          company_name: domainForm.companyName.trim(),
+          url: domainForm.url.trim(),
+        },
+      },
+      {
+        onSuccess: (result) => {
+          const competitorUrls = result.competitors.map((c) => c.url);
+          const filledUrls = competitorUrls.length > 0 ? [...competitorUrls, ""] : [""];
+          setDomainForm({
+            ...domainForm,
+            personas: result.personas || domainForm.personas,
+            competitors: filledUrls,
+          });
+          setPhase2Visible(true);
+        },
+        onError: () => {
+          setPrefillError("KI-Vorausfüllung fehlgeschlagen. Bitte füllen Sie die Felder manuell aus.");
+          setPhase2Visible(true);
+        },
+      }
+    );
+  };
+
+  const handleRevealManually = () => {
+    setPrefillError(null);
+    setPhase2Visible(true);
+  };
+
   // ── URL list helpers ──────────────────────────────────────────────────────
 
   const togglePage = (url: string) => {
@@ -124,8 +193,6 @@ export function DomainAnalyseView() {
       const next = [...editablePages];
       next[editingIndex] = newUrl;
       setEditablePages(next);
-
-      // Update selectedPages: replace old URL with new URL if it was selected
       setSelectedPages(selectedPages.map((u) => (u === oldUrl ? newUrl : u)));
     }
 
@@ -166,7 +233,6 @@ export function DomainAnalyseView() {
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
-    // Pass explicit URLs whenever we have an editable list with at least one selection
     const hasEditableList = editablePages.length > 0;
     const explicitUrls = hasEditableList && selectedPages.length > 0 ? selectedPages : null;
 
@@ -245,6 +311,42 @@ export function DomainAnalyseView() {
           )}
         </div>
 
+        {/* AI Pre-fill button — only in Phase 1 */}
+        {!phase2Visible && (
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors"
+              onClick={handlePrefill}
+              disabled={prefillMutation.isPending}
+              data-testid="button-ai-prefill"
+            >
+              {prefillMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  KI analysiert Unternehmen…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Mit KI vorausfüllen
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              KI schlägt Personas und Wettbewerber automatisch vor —{" "}
+              <button
+                type="button"
+                onClick={handleRevealManually}
+                className="underline hover:text-foreground transition-colors"
+                data-testid="button-manual-fill"
+              >
+                manuell ausfüllen
+              </button>
+            </p>
+          </div>
+        )}
+
         {/* Crawled pages selection — only shown after at least one analysis */}
         {editablePages.length > 0 && (
           <div
@@ -278,7 +380,6 @@ export function DomainAnalyseView() {
                     key={`${url}-${idx}`}
                     className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/50 transition-colors"
                   >
-                    {/* Checkbox */}
                     <input
                       type="checkbox"
                       checked={selectedPages.includes(url)}
@@ -287,7 +388,6 @@ export function DomainAnalyseView() {
                     />
 
                     {isEditing ? (
-                      /* Inline edit mode */
                       <div className="flex-1 flex items-center gap-1.5">
                         <input
                           ref={editInputRef}
@@ -318,7 +418,6 @@ export function DomainAnalyseView() {
                         </button>
                       </div>
                     ) : (
-                      /* Display mode */
                       <div className="flex-1 flex items-start gap-1.5 min-w-0">
                         <span
                           className="flex-1 break-all text-foreground/80 leading-tight cursor-default"
@@ -343,7 +442,6 @@ export function DomainAnalyseView() {
                 );
               })}
 
-              {/* New URL input row */}
               {addingNew && (
                 <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-muted/30">
                   <input
@@ -386,7 +484,6 @@ export function DomainAnalyseView() {
               )}
             </div>
 
-            {/* Show more / less toggle */}
             {editablePages.length > MAX_VISIBLE_PAGES && (
               <button
                 type="button"
@@ -407,7 +504,6 @@ export function DomainAnalyseView() {
               </button>
             )}
 
-            {/* Add URL button */}
             {!addingNew && (
               <button
                 type="button"
@@ -422,104 +518,136 @@ export function DomainAnalyseView() {
         )}
       </section>
 
-      {/* Section: Wettbewerber */}
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
-          Wettbewerber-Domains
-          <Tooltip text="Die Website-Adresse/n Ihrer wichtigsten Wettbewerber" />
-        </h2>
+      {/* Phase 2: Competitors + Personas — revealed after prefill or manual toggle */}
+      {phase2Visible && (
+        <div ref={phase2Ref} className="space-y-8">
 
-        <div className="space-y-2">
-          {domainForm.competitors.map((comp, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Input
-                type="url"
-                value={comp}
-                onChange={(e) => updateCompetitor(i, e.target.value)}
-                onBlur={(e) => updateCompetitor(i, e.target.value)}
-                placeholder="https://www.wettbewerber.de"
-                data-testid={`input-competitor-${i}`}
-              />
-              {domainForm.competitors.length > 1 && (
-                <button
-                  onClick={() => removeCompetitor(i)}
-                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Entfernen"
+          {/* Prefill error notice */}
+          {prefillError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
+              {prefillError}
+            </div>
+          )}
+
+          {/* Prefill success notice */}
+          {prefillMutation.isSuccess && !prefillError && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-start gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+              <p className="text-xs text-primary/90 leading-relaxed">
+                KI-Vorschläge wurden eingefügt. Bitte überprüfen und bei Bedarf anpassen.
+              </p>
+            </div>
+          )}
+
+          {/* Section: Wettbewerber */}
+          <section className="space-y-4">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
+              Wettbewerber-Domains
+              <Tooltip text="Die Website-Adresse/n Ihrer wichtigsten Wettbewerber" />
+            </h2>
+
+            <div className="space-y-2">
+              {domainForm.competitors.map((comp, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    type="url"
+                    value={comp}
+                    onChange={(e) => updateCompetitor(i, e.target.value)}
+                    onBlur={(e) => updateCompetitor(i, e.target.value)}
+                    placeholder="https://www.wettbewerber.de"
+                    data-testid={`input-competitor-${i}`}
+                  />
+                  {domainForm.competitors.length > 1 && (
+                    <button
+                      onClick={() => removeCompetitor(i)}
+                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Entfernen"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {domainForm.competitors.length < 10 && domainForm.competitors.every((c) => c.trim() !== "") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDomainForm({ ...domainForm, competitors: [...domainForm.competitors, ""] })}
+                  className="text-muted-foreground text-xs"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Weiteren Wettbewerber hinzufügen
+                </Button>
               )}
             </div>
-          ))}
-          {domainForm.competitors.length < 10 && domainForm.competitors.every((c) => c.trim() !== "") && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDomainForm({ ...domainForm, competitors: [...domainForm.competitors, ""] })}
-              className="text-muted-foreground text-xs"
+          </section>
+
+          {/* Section: Zielgruppen */}
+          <section className="space-y-4">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
+              Zielgruppen / Käuferpersonas
+              <Tooltip text="Hier Ihre Zielbranchen und Zielpersonen (Einkäufer, Projektingenieure, R+D…) eintragen" />
+            </h2>
+
+            <Textarea
+              value={domainForm.personas}
+              onChange={(e) => updateField("personas", e.target.value)}
+              placeholder="z. B. Einkaufsleiter in der Automobilindustrie, Projektingenieure im Maschinenbau, F&E-Verantwortliche..."
+              className="min-h-[96px]"
+              data-testid="input-personas"
+            />
+          </section>
+
+          {/* Section: Social Media (collapsible) */}
+          <section className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowSocial((v) => !v)}
+              className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 hover:text-foreground transition-colors"
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Weiteren Wettbewerber hinzufügen
-            </Button>
-          )}
+              <span className="flex items-center gap-1">
+                Social Media &amp; Online-Profile
+                <span className="normal-case font-normal ml-1 opacity-60">(optional)</span>
+              </span>
+              {showSocial ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {showSocial && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                {SOCIAL_PLATFORMS.map(({ key, label }) => (
+                  <div key={key} className="space-y-1">
+                    <Label htmlFor={`social-${key}`} className="text-muted-foreground text-xs">
+                      {label}
+                    </Label>
+                    <Input
+                      id={`social-${key}`}
+                      value={domainForm.social[key as keyof typeof domainForm.social]}
+                      onChange={(e) => updateSocial(key, e.target.value)}
+                      placeholder="https://..."
+                      className="text-xs"
+                      data-testid={`input-social-${key}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* CTA */}
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={handleStart}
+            disabled={startAnalysis.isPending}
+            data-testid="button-start-analysis"
+          >
+            {startAnalysis.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : null}
+            Analyse starten
+          </Button>
         </div>
-      </section>
-
-      {/* Section: Social Media */}
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
-          Social Media &amp; Online-Profile
-        </h2>
-        <p className="text-xs text-muted-foreground -mt-2">Optional — URL oder Profilname</p>
-
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          {SOCIAL_PLATFORMS.map(({ key, label }) => (
-            <div key={key} className="space-y-1">
-              <Label htmlFor={`social-${key}`} className="text-muted-foreground text-xs">
-                {label}
-              </Label>
-              <Input
-                id={`social-${key}`}
-                value={domainForm.social[key as keyof typeof domainForm.social]}
-                onChange={(e) => updateSocial(key, e.target.value)}
-                placeholder="https://..."
-                className="text-xs"
-                data-testid={`input-social-${key}`}
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Section: Zielgruppen */}
-      <section className="space-y-4">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
-          Zielgruppen / Käuferpersonas
-          <Tooltip text="Hier Ihre Zielbranchen und Zielpersonen (Einkäufer, Projektingenieure, R+D…) eintragen" />
-        </h2>
-
-        <Textarea
-          value={domainForm.personas}
-          onChange={(e) => updateField("personas", e.target.value)}
-          placeholder="z. B. Einkaufsleiter in der Automobilindustrie, Projektingenieure im Maschinenbau, F&E-Verantwortliche..."
-          className="min-h-[96px]"
-          data-testid="input-personas"
-        />
-      </section>
-
-      {/* CTA */}
-      <Button
-        size="lg"
-        className="w-full"
-        onClick={handleStart}
-        disabled={startAnalysis.isPending}
-        data-testid="button-start-analysis"
-      >
-        {startAnalysis.isPending ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-        ) : null}
-        Analyse starten
-      </Button>
+      )}
     </div>
   );
 }

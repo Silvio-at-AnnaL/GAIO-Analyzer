@@ -1,0 +1,182 @@
+Add a new AI-powered pre-fill feature to the 
+"Domainanalyse – Basisdaten" form. The user 
+enters only company name and URL, clicks one 
+button, and the AI fills in target audiences 
+and competitor URLs automatically. The user 
+can then review and edit before starting the 
+analysis.
+
+---
+
+FORM FLOW CHANGE
+
+The form now has two distinct phases:
+
+PHASE 1 — Minimal input (shown on first load):
+  - Unternehmensname (required)
+  - Website-URL (required)
+  - Button: "🔍 Zielgruppen & Wettbewerber ermitteln"
+
+PHASE 2 — After AI pre-fill (revealed after 
+  the button is clicked and AI responds):
+  - Zielgruppen / Käuferpersonas (textarea, 
+    pre-filled and editable)
+  - Wettbewerber-Domains (list, pre-filled 
+    and editable — same UI as currently exists)
+  - All other existing optional fields 
+    (Social Media etc.) remain available 
+    but collapsed under a 
+    "Weitere Angaben (optional)" toggle
+  - Button: "🚀 Analyse starten"
+
+The transition from Phase 1 to Phase 2 is 
+animated — the new fields slide or fade in 
+below the existing two fields.
+
+---
+
+THE AI PRE-FILL BUTTON
+
+When the user clicks 
+"🔍 Zielgruppen & Wettbewerber ermitteln":
+
+1. Validate that both Unternehmensname and 
+   Website-URL are filled. Show inline error 
+   if not.
+
+2. Show a loading state on the button:
+   "⏳ Analysiere Unternehmen…"
+   Disable the button during the request.
+
+3. Send a request to the backend with:
+   { company_name: string, url: string }
+
+4. Backend creates a new API endpoint:
+   POST /api/prefill
+   
+   This endpoint calls the Claude API with 
+   this prompt:
+
+   "You are a B2B market research assistant. 
+   Analyze the following company and provide 
+   structured information.
+
+   Company: [company_name]
+   Website: [url]
+
+   Fetch and analyze the website content to 
+   understand the company's industry, products, 
+   and market position. Then provide:
+
+   1. TARGET AUDIENCES: A concise description 
+   of the primary B2B buyer personas for this 
+   company. Include: relevant industries, job 
+   titles/roles of decision makers, and key 
+   buying criteria. Write 3-5 sentences in 
+   German. Be specific to this company, not 
+   generic.
+
+   2. COMPETITORS: Identify 5-8 real direct 
+   competitors of this company. These must be 
+   actual companies with real websites that 
+   operate in the same market segment. 
+   Return only companies you are confident 
+   exist and compete directly.
+
+   Return ONLY valid JSON, no other text:
+   {
+     'personas': '<German text describing 
+       target audiences and buyer personas>',
+     'competitors': [
+       { 'name': '<company name>', 
+         'url': 'https://...' },
+       ...
+     ]
+   }
+
+   All text fields must be in German."
+
+   Use web_search tool if available to look 
+   up the company's website and verify 
+   competitor URLs before returning them.
+
+5. Return the parsed JSON to the frontend.
+
+6. Frontend populates the fields:
+   - personas textarea: filled with the 
+     returned German text
+   - competitor URL list: filled with the 
+     returned URLs (using the existing 
+     dynamic URL list component)
+
+7. Button changes to: 
+   "✓ Vorausgefüllt — Angaben prüfen und 
+   ggf. anpassen"
+   Style: green/success state, not disabled 
+   (can be clicked again to re-run the AI 
+   pre-fill if needed)
+
+---
+
+EDITABLE RESULTS
+
+After pre-fill, all fields remain fully editable:
+
+Personas textarea:
+  - Pre-filled with AI text
+  - User can edit freely
+  - No restrictions
+
+Competitor URL list:
+  - Pre-filled with AI-suggested URLs
+  - Each URL shows the company name as a 
+    label above the URL input (read from 
+    the 'name' field returned by AI)
+  - User can: uncheck to exclude, edit the 
+    URL, delete the entry, add new entries
+  - Same "+" button and dynamic add behavior 
+    as currently exists
+
+---
+
+ERROR HANDLING
+
+If the AI pre-fill request fails or times out:
+  - Show an inline error below the button:
+    "Automatische Ermittlung nicht möglich. 
+    Bitte füllen Sie die Felder manuell aus."
+  - Reveal Phase 2 fields empty so the user 
+    can fill them manually
+  - Button resets to original state
+
+If the AI returns fewer than 3 competitors:
+  - Fill what was returned
+  - Add a notice: "Nur [n] Wettbewerber 
+    gefunden — bitte ggf. ergänzen"
+
+---
+
+BACKEND ENDPOINT DETAILS
+
+POST /api/prefill
+Request body: { company_name: string, url: string }
+Response: { personas: string, competitors: 
+  Array<{ name: string, url: string }> }
+
+Timeout: 30 seconds (AI + web search can be slow)
+Return HTTP 200 with partial data if one field 
+fails — never return empty if one field succeeded.
+
+Use the same Anthropic client already configured 
+in the app. Enable web_search tool if the app's 
+Claude setup supports it, to look up actual 
+competitor websites.
+
+Strip any markdown, bullet points or numbering 
+from the personas text before returning — 
+plain prose only.
+
+Validate all competitor URLs: must start with 
+http:// or https://. Auto-prefix https:// if 
+missing. Remove any that don't look like valid 
+domain URLs.

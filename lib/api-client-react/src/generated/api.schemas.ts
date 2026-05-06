@@ -5,6 +5,21 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface PrefillBody {
+  company_name: string;
+  url: string;
+}
+
+export interface PrefillCompetitor {
+  name: string;
+  url: string;
+}
+
+export interface PrefillResponse {
+  personas: string;
+  competitors: PrefillCompetitor[];
+}
+
 export interface HealthStatus {
   status: string;
 }

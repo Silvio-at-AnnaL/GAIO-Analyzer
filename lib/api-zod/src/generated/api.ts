@@ -77,6 +77,25 @@ export const StartAnalysisBody = zod.object({
 });
 
 /**
+ * Uses AI to suggest buyer personas and competitor URLs from company name and website URL
+ * @summary AI pre-fill for questionnaire
+ */
+export const PrefillQuestionnaireBody = zod.object({
+  company_name: zod.string(),
+  url: zod.string(),
+});
+
+export const PrefillQuestionnaireResponse = zod.object({
+  personas: zod.string(),
+  competitors: zod.array(
+    zod.object({
+      name: zod.string(),
+      url: zod.string(),
+    }),
+  ),
+});
+
+/**
  * Returns the completed analysis report
  * @summary Get analysis report
  */

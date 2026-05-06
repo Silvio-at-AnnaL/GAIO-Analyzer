@@ -67,6 +67,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /prefill:
+    post:
+      operationId: prefillQuestionnaire
+      tags: [analysis]
+      summary: AI pre-fill for questionnaire
+      description: Uses AI to suggest buyer personas and competitor URLs from company name and website URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrefillBody"
+      responses:
+        "200":
+          description: Pre-fill suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrefillResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: AI error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /analyze/{id}:
     get:
       operationId: getAnalysisReport
@@ -95,6 +127,41 @@ paths:
 
 components:
   schemas:
+    PrefillBody:
+      type: object
+      properties:
+        company_name:
+          type: string
+        url:
+          type: string
+      required:
+        - company_name
+        - url
+
+    PrefillCompetitor:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+      required:
+        - name
+        - url
+
+    PrefillResponse:
+      type: object
+      properties:
+        personas:
+          type: string
+        competitors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrefillCompetitor"
+      required:
+        - personas
+        - competitors
+
     HealthStatus:
       type: object
       properties:

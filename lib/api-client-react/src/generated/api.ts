@@ -22,6 +22,8 @@ import type {
   AnalysisStarted,
   ErrorResponse,
   HealthStatus,
+  PrefillBody,
+  PrefillResponse,
   StartAnalysisBody,
 } from "./api.schemas";
 
@@ -271,6 +273,93 @@ export const useStartAnalysis = <
   TContext
 > => {
   return useMutation(getStartAnalysisMutationOptions(options));
+};
+
+/**
+ * Uses AI to suggest buyer personas and competitor URLs from company name and website URL
+ * @summary AI pre-fill for questionnaire
+ */
+export const getPrefillQuestionnaireUrl = () => {
+  return `/api/prefill`;
+};
+
+export const prefillQuestionnaire = async (
+  prefillBody: PrefillBody,
+  options?: RequestInit,
+): Promise<PrefillResponse> => {
+  return customFetch<PrefillResponse>(getPrefillQuestionnaireUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(prefillBody),
+  });
+};
+
+export const getPrefillQuestionnaireMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prefillQuestionnaire>>,
+    TError,
+    { data: BodyType<PrefillBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof prefillQuestionnaire>>,
+  TError,
+  { data: BodyType<PrefillBody> },
+  TContext
+> => {
+  const mutationKey = ["prefillQuestionnaire"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof prefillQuestionnaire>>,
+    { data: BodyType<PrefillBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return prefillQuestionnaire(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PrefillQuestionnaireMutationResult = NonNullable<
+  Awaited<ReturnType<typeof prefillQuestionnaire>>
+>;
+export type PrefillQuestionnaireMutationBody = BodyType<PrefillBody>;
+export type PrefillQuestionnaireMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary AI pre-fill for questionnaire
+ */
+export const usePrefillQuestionnaire = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prefillQuestionnaire>>,
+    TError,
+    { data: BodyType<PrefillBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof prefillQuestionnaire>>,
+  TError,
+  { data: BodyType<PrefillBody> },
+  TContext
+> => {
+  return useMutation(getPrefillQuestionnaireMutationOptions(options));
 };
 
 /**
