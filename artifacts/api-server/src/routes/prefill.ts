@@ -70,7 +70,9 @@ function extractInternalLinks(html: string, baseUrl: string, baseDomain: string)
   return results;
 }
 
-// ── Fetch with timeout ────────────────────────────────────────────────────────
+// ── Fetch helpers ─────────────────────────────────────────────────────────────
+
+const CRAWLER_UA = "GAIOAnalyzer/1.0 (Website Audit Tool)";
 
 async function fetchHtml(url: string, timeoutMs = 8000): Promise<string | null> {
   const controller = new AbortController();
@@ -78,10 +80,7 @@ async function fetchHtml(url: string, timeoutMs = 8000): Promise<string | null> 
   try {
     const resp = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        "User-Agent": "GAIOAnalyzer/1.0 (Website Audit Tool)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
+      headers: { "User-Agent": CRAWLER_UA, Accept: "text/html,application/xhtml+xml,*/*;q=0.8" },
       redirect: "follow",
     });
     if (!resp.ok) return null;
@@ -91,6 +90,224 @@ async function fetchHtml(url: string, timeoutMs = 8000): Promise<string | null> 
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Try HEAD first (fast), fall back to GET if HEAD fails or returns 4xx/5xx.
+ * Many servers return 405 for HEAD, so the fallback matters.
+ */
+async function verifyUrl(url: string, timeoutMs: number): Promise<boolean> {
+  if (timeoutMs <= 0) return false;
+  const cap = Math.min(timeoutMs, 6000);
+
+  // HEAD attempt
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), cap);
+    try {
+      const resp = await fetch(url, {
+        method: "HEAD",
+        signal: ctrl.signal,
+        redirect: "follow",
+        headers: { "User-Agent": CRAWLER_UA },
+      });
+      clearTimeout(t);
+      if (resp.status < 400) return true;
+      // 4xx/5xx from HEAD — fall through to GET
+    } catch {
+      clearTimeout(t);
+      // network error — fall through to GET
+    }
+  } catch {
+    // ignore
+  }
+
+  // GET fallback
+  const remaining = Math.min(timeoutMs, 6000);
+  if (remaining <= 0) return false;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), remaining);
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        signal: ctrl.signal,
+        redirect: "follow",
+        headers: { "User-Agent": CRAWLER_UA },
+      });
+      clearTimeout(t);
+      return resp.status < 400;
+    } catch {
+      clearTimeout(t);
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+// ── Attempt 2: Ask Claude to correct a broken URL ────────────────────────────
+
+async function claudeCorrectUrl(name: string, originalUrl: string): Promise<string | null> {
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 100,
+      messages: [
+        {
+          role: "user",
+          content: `Find the correct official website URL for this company: '${name}'
+
+The URL I have is '${originalUrl}' but it appears to be unreachable — it may contain a typo, wrong umlaut spelling, missing hyphen, or wrong TLD.
+
+Return ONLY a JSON object, no other text:
+{ "url": "https://..." }
+
+Rules:
+- Return the main homepage URL only
+- Must start with https://
+- If you are not confident about the correct URL, return the original URL unchanged rather than guessing`,
+        },
+      ],
+    });
+
+    const text = response.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { type: "text"; text: string }).text)
+      .join("");
+
+    const match = text.match(/\{[^}]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    const u = typeof parsed.url === "string" ? parsed.url.trim() : null;
+    return u && u.startsWith("https://") ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Attempt 4: Ask Claude for a replacement competitor ────────────────────────
+
+async function claudeFindReplacement(
+  failedName: string,
+  contentSummary: string | null,
+  confirmedNames: Set<string>,
+): Promise<{ name: string; url: string } | null> {
+  try {
+    const confirmedList = Array.from(confirmedNames).join(", ") || "none yet";
+    const context = contentSummary ?? "No content summary available";
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 150,
+      messages: [
+        {
+          role: "user",
+          content: `The following competitor could not be verified online: '${failedName}'
+
+Based on this company's product context:
+${context}
+
+Suggest ONE different direct competitor that:
+- Sells similar products to the same industries
+- Is NOT in this list of already confirmed competitors: ${confirmedList}
+- Has a website you are highly confident exists and is reachable
+
+Return ONLY JSON, no other text:
+{ "name": "...", "url": "https://..." }
+
+If you cannot suggest a reliable replacement, return:
+{ "name": null, "url": null }`,
+        },
+      ],
+    });
+
+    const text = response.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { type: "text"; text: string }).text)
+      .join("");
+
+    const match = text.match(/\{[^}]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (!parsed.name || !parsed.url) return null;
+    if (typeof parsed.name !== "string" || typeof parsed.url !== "string") return null;
+    if (!parsed.url.startsWith("https://")) return null;
+    return { name: parsed.name.trim(), url: parsed.url.trim() };
+  } catch {
+    return null;
+  }
+}
+
+// ── Full 4-attempt validation pipeline for one competitor ─────────────────────
+
+async function validateCompetitor(
+  competitor: { name: string; url: string },
+  contentSummary: string | null,
+  confirmedNames: Set<string>,
+): Promise<{ name: string; url: string; verified: boolean }> {
+  const deadline = Date.now() + 15000;
+
+  // ATTEMPT 1 — verify AI-suggested URL
+  const rem1 = deadline - Date.now();
+  if (rem1 > 0) {
+    const valid = await verifyUrl(competitor.url, Math.min(rem1, 6000));
+    logger.info(
+      { url: competitor.url, status: valid ? "valid" : "unreachable" },
+      "Prefill validate: Checking",
+    );
+    if (valid) {
+      confirmedNames.add(competitor.name.toLowerCase());
+      return { ...competitor, verified: true };
+    }
+  }
+
+  // ATTEMPT 2 — ask Claude to correct the URL
+  const rem2 = deadline - Date.now();
+  let correctedUrl: string | null = null;
+  if (rem2 > 1000) {
+    correctedUrl = await claudeCorrectUrl(competitor.name, competitor.url);
+  }
+
+  // ATTEMPT 3 — verify the corrected URL
+  if (correctedUrl && correctedUrl !== competitor.url) {
+    const rem3 = deadline - Date.now();
+    if (rem3 > 0) {
+      const valid3 = await verifyUrl(correctedUrl, Math.min(rem3, 6000));
+      logger.info(
+        { original: competitor.url, corrected: correctedUrl, valid: valid3 },
+        "Prefill validate: Corrected",
+      );
+      if (valid3) {
+        confirmedNames.add(competitor.name.toLowerCase());
+        return { name: competitor.name, url: correctedUrl, verified: true };
+      }
+    }
+  }
+
+  // ATTEMPT 4 — ask Claude for a replacement competitor
+  const rem4 = deadline - Date.now();
+  if (rem4 > 1000) {
+    const replacement = await claudeFindReplacement(competitor.name, contentSummary, confirmedNames);
+    if (replacement) {
+      const rem5 = deadline - Date.now();
+      if (rem5 > 0) {
+        const valid5 = await verifyUrl(replacement.url, Math.min(rem5, 4000));
+        logger.info(
+          { failed: competitor.name, replacement: replacement.name, valid: valid5 },
+          "Prefill validate: Replaced",
+        );
+        if (valid5) {
+          confirmedNames.add(replacement.name.toLowerCase());
+          return { ...replacement, verified: true };
+        }
+      }
+    }
+  }
+
+  // All attempts exhausted — return original with verified: false
+  logger.info({ url: competitor.url }, "Prefill validate: Could not verify — keeping original");
+  return { ...competitor, verified: false };
 }
 
 // ── Mini-crawl for prefill (max 8 pages) ─────────────────────────────────────
@@ -105,14 +322,12 @@ async function miniCrawl(inputUrl: string, maxPages = 8): Promise<PageContent[]>
   const baseDomain = base.hostname;
   const results: PageContent[] = [];
 
-  // Always fetch homepage first
   const homepageHtml = await fetchHtml(inputUrl, 10000);
   if (!homepageHtml) return results;
 
   const homepageText = extractText(homepageHtml);
   if (homepageText) results.push({ url: inputUrl, text: homepageText });
 
-  // Discover and score internal links from homepage
   const links = extractInternalLinks(homepageHtml, inputUrl, baseDomain)
     .filter((u) => u !== inputUrl)
     .map((u) => ({ url: u, score: scorePrefillUrl(u) }))
@@ -120,7 +335,6 @@ async function miniCrawl(inputUrl: string, maxPages = 8): Promise<PageContent[]>
     .sort((a, b) => b.score - a.score)
     .slice(0, maxPages - 1);
 
-  // Fetch all discovered pages in parallel
   const fetched = await Promise.allSettled(
     links.map(async ({ url }) => {
       const html = await fetchHtml(url);
@@ -148,13 +362,12 @@ function buildContentSummary(pages: PageContent[], maxTotal = 8000): string {
   const sections = pages.map((p) => `=== ${p.url} ===\n${p.text}`);
   let summary = sections.join("\n\n");
   if (summary.length > maxTotal) {
-    // Truncate to max, keeping section headers intact
     summary = summary.slice(0, maxTotal) + "\n[content truncated]";
   }
   return summary;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 function normaliseUrl(raw: string): string | null {
   const s = raw.trim();
@@ -277,8 +490,12 @@ router.post("/prefill", async (req, res): Promise<void> => {
   // STEP 2 — Build content summary
   const crawledContent = buildContentSummary(pages, 8000);
 
-  // STEP 3 — Call Claude
+  // STEP 3 — Call Claude for initial analysis
   const prompt = buildPrompt(company_name, url, crawledContent, crawlFailed);
+
+  let personas = "";
+  let rawCompetitors: { name: string; url: string }[] = [];
+  let content_summary: string | null = null;
 
   try {
     const response = await anthropic.messages.create({
@@ -308,10 +525,10 @@ router.post("/prefill", async (req, res): Promise<void> => {
       return;
     }
 
-    const personas = typeof parsed.personas === "string" ? stripMarkdown(parsed.personas) : "";
+    personas = typeof parsed.personas === "string" ? stripMarkdown(parsed.personas) : "";
 
-    const rawCompetitors = Array.isArray(parsed.competitors) ? parsed.competitors : [];
-    const competitors = rawCompetitors
+    const raw = Array.isArray(parsed.competitors) ? parsed.competitors : [];
+    rawCompetitors = raw
       .filter(
         (c): c is { name: string; url: string } =>
           c && typeof c === "object" && typeof c.name === "string" && typeof c.url === "string",
@@ -319,17 +536,39 @@ router.post("/prefill", async (req, res): Promise<void> => {
       .map((c) => ({ name: c.name.trim(), url: normaliseUrl(c.url) ?? c.url }))
       .filter((c) => c.url.startsWith("http"));
 
-    const content_summary =
+    content_summary =
       typeof parsed.content_summary === "string" && parsed.content_summary.trim()
         ? stripMarkdown(parsed.content_summary)
         : null;
-
-    // STEP 4 — Return enriched response
-    res.json({ personas, competitors, content_summary, crawl_failed: crawlFailed });
   } catch (err) {
     logger.error({ err }, "Prefill: AI call failed");
     res.status(500).json({ error: "AI service error" });
+    return;
   }
+
+  // STEP 4 — Validate & correct competitor URLs in parallel
+  logger.info({ count: rawCompetitors.length }, "Prefill: starting URL validation");
+  const confirmedNames = new Set<string>();
+
+  const validatedCompetitors = await Promise.all(
+    rawCompetitors.map((c) => validateCompetitor(c, content_summary, confirmedNames)),
+  );
+
+  logger.info(
+    {
+      total: validatedCompetitors.length,
+      verified: validatedCompetitors.filter((c) => c.verified).length,
+    },
+    "Prefill: validation complete",
+  );
+
+  // STEP 5 — Return enriched response
+  res.json({
+    personas,
+    competitors: validatedCompetitors,
+    content_summary,
+    crawl_failed: crawlFailed,
+  });
 });
 
 export default router;

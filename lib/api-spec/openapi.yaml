@@ -145,9 +145,12 @@ components:
           type: string
         url:
           type: string
+        verified:
+          type: boolean
       required:
         - name
         - url
+        - verified
 
     PrefillResponse:
       type: object

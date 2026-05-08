@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 
@@ -37,6 +37,7 @@ export function DomainAnalyseView() {
   // Whether Phase 2 fields (competitors + personas) are visible
   const [phase2Visible, setPhase2Visible] = useState(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
+  const [competitorVerified, setCompetitorVerified] = useState<Record<string, boolean>>({});
 
   // Local editable URL list — initialized from crawledPages, can be modified
   const [editablePages, setEditablePages] = useState<string[]>([]);
@@ -148,6 +149,11 @@ export function DomainAnalyseView() {
             personas: result.personas || domainForm.personas,
             competitors: filledUrls,
           });
+          const verifiedMap: Record<string, boolean> = {};
+          result.competitors.forEach((c) => {
+            verifiedMap[c.url] = c.verified;
+          });
+          setCompetitorVerified(verifiedMap);
           setPhase2Visible(true);
         },
         onError: () => {
@@ -605,6 +611,21 @@ export function DomainAnalyseView() {
                       placeholder="https://www.wettbewerber.de"
                       data-testid={`input-competitor-${i}`}
                     />
+                    {comp in competitorVerified && (
+                      competitorVerified[comp] ? (
+                        <CheckCircle2
+                          className="shrink-0 w-4 h-4 text-green-500"
+                          aria-label="URL verifiziert"
+                        />
+                      ) : (
+                        <span
+                          title="URL konnte nicht automatisch verifiziert werden — bitte prüfen"
+                          className="shrink-0 flex items-center"
+                        >
+                          <AlertTriangle className="w-4 h-4 text-amber-500" aria-label="URL nicht verifiziert" />
+                        </span>
+                      )
+                    )}
                     {domainForm.competitors.length > 1 && (
                       <button
                         onClick={() => removeCompetitor(i)}

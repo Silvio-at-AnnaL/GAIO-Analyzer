@@ -13,6 +13,7 @@ export interface PrefillBody {
 export interface PrefillCompetitor {
   name: string;
   url: string;
+  verified: boolean;
 }
 
 export interface PrefillResponse {

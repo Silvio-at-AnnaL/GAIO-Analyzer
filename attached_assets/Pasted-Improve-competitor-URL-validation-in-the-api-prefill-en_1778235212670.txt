@@ -1,0 +1,131 @@
+Improve competitor URL validation in the 
+/api/prefill endpoint. Currently incorrect 
+URLs (typos, missing umlauts, wrong hyphens) 
+are returned without verification. Implement 
+a multi-step validation and correction loop 
+for each competitor URL before returning 
+the final list.
+
+---
+
+NEW VALIDATION LOGIC
+
+After the AI returns the initial competitor 
+list, run each competitor through this 
+validation pipeline before returning the 
+response to the frontend. Process competitors 
+in parallel (Promise.all) to keep response 
+time reasonable.
+
+For each competitor { name, url }:
+
+ATTEMPT 1 — Check the AI-suggested URL:
+  Try a HEAD request (fallback to GET) 
+  with a 6-second timeout.
+  If status 200–399: URL is valid → keep it.
+  If unreachable, timeout, or 4xx/5xx: 
+  → proceed to ATTEMPT 2.
+
+ATTEMPT 2 — Search for the correct URL:
+  Call Claude with this focused prompt:
+  
+  "Find the correct official website URL 
+  for this company: '[competitor_name]'
+  
+  The URL I have is '[original_url]' but 
+  it appears to be unreachable — it may 
+  contain a typo, wrong umlaut spelling, 
+  missing hyphen, or wrong TLD.
+  
+  Return ONLY a JSON object, no other text:
+  { 'url': 'https://...' }
+  
+  Rules:
+  - Return the main homepage URL only
+  - Must start with https://
+  - If you are not confident about the 
+    correct URL, return the original URL 
+    unchanged rather than guessing"
+
+  Parse the returned URL.
+  
+ATTEMPT 3 — Verify the corrected URL:
+  Try a HEAD request on the URL from 
+  Attempt 2 with a 6-second timeout.
+  If reachable: use this corrected URL.
+  If still unreachable: → proceed to 
+  ATTEMPT 4.
+
+ATTEMPT 4 — Find a replacement competitor:
+  Call Claude with this prompt:
+  
+  "The following competitor could not be 
+  verified online: '[competitor_name]'
+  
+  Based on this company's product context:
+  [content_summary from Step 2]
+  
+  Suggest ONE different direct competitor 
+  that:
+  - Sells similar products to the same 
+    industries
+  - Is NOT in this list of already 
+    confirmed competitors: [confirmed_list]
+  - Has a website you are highly confident 
+    exists and is reachable
+  
+  Return ONLY JSON, no other text:
+  { 'name': '...', 'url': 'https://...' }
+  
+  If you cannot suggest a reliable 
+  replacement, return: 
+  { 'name': null, 'url': null }"
+
+  If a replacement is returned, verify 
+  it with one final HEAD request.
+  If reachable: add to final list.
+  If not: drop the entry entirely 
+  (better to return 4 verified competitors 
+  than 5 with a broken URL).
+
+---
+
+IMPLEMENTATION DETAILS
+
+Track confirmed competitors in a Set to 
+prevent duplicates when searching for 
+replacements.
+
+Log each validation step to the console:
+  console.log('Checking:', url, '→', status)
+  console.log('Corrected:', original, '→', corrected)
+  console.log('Replaced:', failed_name, '→', replacement_name)
+
+HEAD request helper — use the same httpx 
+or fetch client already in the project. 
+Always follow redirects (up to 3 hops). 
+Accept any status < 400 as valid.
+
+Total timeout budget per competitor: 
+max 15 seconds across all attempts combined. 
+If budget exceeded: keep original URL and 
+add a flag { verified: false } to that entry.
+
+Add a verified field to each competitor 
+in the response:
+  { 
+    'name': '...', 
+    'url': 'https://...', 
+    'verified': true | false 
+  }
+
+In the frontend, show a small ✓ or ⚠ 
+indicator next to each competitor URL 
+based on this field:
+  verified: true  → subtle green ✓ 
+                    (small, not intrusive)
+  verified: false → subtle amber ⚠ 
+                    with tooltip:
+                    "URL konnte nicht 
+                    automatisch verifiziert 
+                    werden — bitte prüfen"

@@ -91,6 +91,7 @@ export const PrefillQuestionnaireResponse = zod.object({
     zod.object({
       name: zod.string(),
       url: zod.string(),
+      verified: zod.boolean(),
     }),
   ),
   content_summary: zod.string().nullable(),

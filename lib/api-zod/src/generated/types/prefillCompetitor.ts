@@ -9,4 +9,5 @@
 export interface PrefillCompetitor {
   name: string;
   url: string;
+  verified: boolean;
 }
