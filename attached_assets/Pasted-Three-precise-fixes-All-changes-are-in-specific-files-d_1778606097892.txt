@@ -1,0 +1,102 @@
+Three precise fixes. All changes are in specific 
+files — do not touch other files.
+
+---
+
+FIX 1 — Card borders: visible in both light 
+and dark mode
+
+File: artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+
+The current border style rgba(255,255,255,0.18) 
+is invisible on light card backgrounds in light 
+mode. Replace with a border color that works in 
+both modes.
+
+Find these two Card elements (around line 1571):
+
+  CARD 1 (Gauge):
+    style={{ border: '1.5px solid rgba(255,255,255,0.18)' }}
+  
+  CARD 2 (Radar, md:col-span-2):
+    style={{ border: '1.5px solid rgba(255,255,255,0.18)', background: '#1e2235' }}
+
+Change the border on CARD 1 to use the CSS 
+variable so it adapts to light/dark mode:
+  style={{ border: '1.5px solid hsl(var(--border))' }}
+
+Keep CARD 2 border as white (it has a dark 
+#1e2235 background, so white is correct):
+  style={{ 
+    border: '1.5px solid rgba(255,255,255,0.18)',
+    background: '#1e2235' 
+  }}
+
+---
+
+FIX 2 — Sidebar logo: bigger, aligned with 
+page title
+
+File: artifacts/gaio-analyzer/src/components/layout/Sidebar.tsx
+
+The main content area has py-8 (32px top padding) 
+before the page title. The logo top edge must sit 
+at the same vertical position as the "Ergebnisse" 
+h1 and the export buttons.
+
+Replace the entire logo div (the div with 
+height: "56px") with:
+
+  <div
+    style={{
+      paddingTop: 32,
+      paddingBottom: 16,
+      paddingLeft: 16,
+      paddingRight: 16,
+    }}
+  >
+    <img
+      src="/brand-logo.png"
+      alt="GAIO Analyzer"
+      style={{
+        width: '100%',
+        height: 'auto',
+        maxHeight: 48,
+        objectFit: 'contain',
+        objectPosition: 'left center',
+        display: 'block',
+      }}
+    />
+  </div>
+
+The paddingTop: 32 matches py-8 in the main 
+content area, so the logo top edge visually 
+aligns with the page title.
+maxHeight: 48 gives the logo more vertical 
+space than the previous 56px - 10px - 10px = 36px.
+
+---
+
+FIX 3 — Analysis progress: remove font-mono 
+from step labels
+
+File: artifacts/gaio-analyzer/src/components/AnalysisProgress.tsx
+
+The card title at approximately line 67 has:
+  className="text-lg flex items-center gap-2"
+  with a child span: className="font-mono text-sm"
+
+The font-mono on the current module name span 
+(line ~73) makes it look different from sidebar.
+Change:
+  <span className="font-mono text-sm">
+to:
+  <span className="text-sm font-medium">
+
+Also at line 113, the step name span already 
+has text-sm font-medium — leave that unchanged.
+
+Check if any other text elements in this file 
+use font-mono and remove it from all of them 
+except code/technical output (error messages 
+are ok to keep font-mono).
