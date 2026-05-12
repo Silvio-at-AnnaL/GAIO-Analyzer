@@ -1,0 +1,161 @@
+Create a welcome/landing screen that replaces the 
+empty state when the user first opens the app 
+(before any analysis has been run). The left 
+sidebar stays unchanged.
+
+---
+
+WHERE THIS APPEARS
+
+In Home.tsx (or the routing logic), when 
+activeView === 1 (Domainanalyse – Basisdaten) 
+AND no previous analysis result exists in the 
+store (report is null), show the new WelcomeView 
+instead of the DomainAnalyseView.
+
+Once the user either:
+  a) types in the URL input and clicks the CTA, or
+  b) clicks "manuell ausfüllen"
+→ switch to the normal DomainAnalyseView as usual.
+
+If a report already exists (returning user with 
+cached result), show the normal DomainAnalyseView 
+directly — skip the welcome screen.
+
+---
+
+CREATE: new file 
+src/views/WelcomeView.tsx
+
+The component receives no props. On CTA click, 
+it calls setActiveView(1) and pre-fills the URL 
+field in the form store with whatever the user 
+typed, then shows DomainAnalyseView.
+
+LAYOUT (single column, max-width 680px, py-8 px-8):
+
+SECTION 1 — Eyebrow + Headline + Subline
+
+  Eyebrow (small, uppercase, accent color, 
+  with a short horizontal line before it):
+    "KI-Sichtbarkeit & SEO-Analyse"
+
+  Headline (large, bold, tight tracking):
+    "Wie gut findet ChatGPT Ihre Website?"
+    The word "ChatGPT" in the primary/accent 
+    color of the app (hsl(var(--primary))).
+
+  Subline (muted, max-width 520px):
+    "Der GAIO Analyzer untersucht Ihre 
+    B2B-Website auf LLM-Auffindbarkeit und 
+    klassische SEO-Grundlagen — und zeigt, 
+    was geändert werden muss, damit 
+    KI-Systeme Ihr Unternehmen empfehlen."
+
+SECTION 2 — URL quick-entry bar
+
+  A single-row flex container (max-width 560px):
+    Left: text input, placeholder 
+      "https://www.ihre-website.de"
+    Right: primary button "Analyse starten →"
+  
+  Below the bar, small muted text:
+    "Oder mit KI vorausfüllen — Zielgruppen 
+    & Wettbewerber werden automatisch 
+    ermittelt."
+    The "mit KI vorausfüllen" part is a 
+    clickable link that navigates to 
+    DomainAnalyseView in KI-mode.
+
+  On button click:
+    - Take the URL value from the input
+    - If not empty: pre-fill the URL field 
+      in the questionnaire store
+    - Navigate to DomainAnalyseView in 
+      KI pre-fill mode (same as clicking 
+      "Mit KI vorausfüllen" on the form)
+
+SECTION 3 — Horizontal divider
+
+SECTION 4 — Three feature tiles (3-column grid)
+
+  Tile 1 (blue accent icon):
+    Icon: Bot or Robot (lucide: Bot)
+    Title: "LLM-Sichtbarkeit messen"
+    Text: "Wir simulieren, wie ChatGPT, 
+    Gemini und Claude Ihre Website 
+    wahrnehmen — und wo Informationen 
+    fehlen."
+
+  Tile 2 (amber accent icon):
+    Icon: Radar or ChartArea (lucide: Radar)
+    Title: "Wettbewerb vergleichen"
+    Text: "Sehen Sie sofort, ob Konkurrenten 
+    in denselben KI-Antworten auftauchen — 
+    und warum."
+
+  Tile 3 (green accent icon):
+    Icon: ListChecks (lucide: ListChecks)
+    Title: "Priorisierte Maßnahmen"
+    Text: "Kritisch, hoher Hebel, 
+    nachgeordnet — klare Empfehlungen 
+    direkt aus der Analyse."
+
+  Each tile:
+    - border: 0.5px solid hsl(var(--border))
+    - border-radius: 12px
+    - padding: 20px
+    - Icon in a small colored rounded square 
+      (36×36px) above the title
+    - Icon square colors:
+      Tile 1: background hsl(217 91% 95%) 
+               color hsl(217 91% 40%)
+      Tile 2: background hsl(43 96% 94%) 
+               color hsl(43 96% 25%)
+      Tile 3: background hsl(142 71% 94%) 
+               color hsl(142 71% 25%)
+
+SECTION 5 — Score preview panel (dark card)
+
+  A dark card (background #1e2235, 
+  border-radius 12px, padding 20px 24px) 
+  showing what a real result looks like.
+  
+  Layout: three columns separated by subtle 
+  dividers:
+  
+  COL 1: Big score number
+    Label (tiny, muted): "Beispiel-Ergebnis"
+    Number (52px, bold): "43"
+    Color: #f59e0b (amber = Ausbaufähig)
+    Below: small label "Ausbaufähig" in same 
+    color, 11px
+
+  COL 2: Mini horizontal bar chart
+    4 rows, each: label + bar + number
+    Techn. SEO  ████████░░  86   (#ef4444)
+    Schema.org  █░░░░░░░░░   8   (#a855f7)
+    Inhalt      ███░░░░░░░  33   (#22c55e)
+    LLM         ██░░░░░░░░  27   (#06b6d4)
+    Bar track: rgba(255,255,255,0.1)
+    Bar fill: the dimension color
+    Labels and numbers: rgba(255,255,255,0.5)
+
+  COL 3: Explanatory text
+    "So sieht ein typisches Ergebnis aus. 
+    Technische Grundlagen stimmen oft — 
+    aber für KI-Systeme fehlen verwertbare 
+    Inhalte, strukturierte Daten und 
+    FAQ-Strukturen."
+    Font-size: 13px, color rgba(255,255,255,0.6)
+
+---
+
+The welcome screen must use the same 
+py-8 px-8 spacing as all other views so 
+the page title aligns with the sidebar 
+logo top edge (as previously set up).
+
+Use lucide-react icons — they are already 
+installed. Import Bot, Radar, ListChecks 
+from 'lucide-react'.
