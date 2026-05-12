@@ -1567,11 +1567,13 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
 
       {/* Score overview + dimension cards — captured as header in PDF */}
       <div id="results-header" className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
 
           {/* Left: GAIO Score */}
-          <Card className="overflow-hidden">
-            <ScoreDonut score={report.overallScore ?? 0} />
+          <Card className="overflow-hidden h-full">
+            <div className="flex items-center justify-center h-full p-4">
+              <ScoreDonut score={report.overallScore ?? 0} />
+            </div>
           </Card>
 
           {/* Right: RadarDimensions (col-span-2) */}

@@ -123,17 +123,29 @@ export function RadarDimensions({ dimensions }: {
                 </span>
               </div>
               <div style={{ display: "flex", gap: 2 }}>
-                {Array.from({ length: 10 }, (_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      flex: 1,
-                      height: 9,
-                      borderRadius: 2,
-                      background: i < Math.round(d.value / 10) ? d.color : "rgba(255,255,255,0.1)",
-                    }}
-                  />
-                ))}
+                {Array.from({ length: 10 }, (_, i) => {
+                  const fullSegments = Math.floor(d.value / 10);
+                  const fraction = (d.value % 10) / 10;
+                  let segmentBg: string;
+                  if (i < fullSegments) {
+                    segmentBg = d.color;
+                  } else if (i === fullSegments && fraction > 0) {
+                    segmentBg = `linear-gradient(to right, ${d.color} ${fraction * 100}%, rgba(255,255,255,0.1) ${fraction * 100}%)`;
+                  } else {
+                    segmentBg = "rgba(255,255,255,0.1)";
+                  }
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: 9,
+                        borderRadius: 2,
+                        background: segmentBg,
+                      }}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}

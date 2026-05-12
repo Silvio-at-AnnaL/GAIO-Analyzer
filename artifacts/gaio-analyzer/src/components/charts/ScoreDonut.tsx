@@ -29,8 +29,18 @@ export function ScoreDonut({ score }: Props) {
   });
 
   return (
-    <div style={{ background: '#1e2235', borderRadius: 12, padding: '20px 24px 14px' }}>
-      <svg width="260" height="165" viewBox="0 0 260 165">
+    <div style={{
+      background: '#1e2235',
+      borderRadius: 12,
+      padding: '24px 24px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      height: '100%',
+      minHeight: 260,
+    }}>
+      <svg width="260" height="175" viewBox="0 0 260 175">
         <defs>
           <linearGradient id="zoneR" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.7" />
@@ -79,8 +89,10 @@ export function ScoreDonut({ score }: Props) {
             <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
               stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
             <text x={t.lx} y={t.ly + 4}
-              textAnchor="middle" fontSize={9}
-              fill="rgba(255,255,255,0.4)"
+              textAnchor="middle"
+              fontSize={11}
+              fontWeight={600}
+              fill="rgba(255,255,255,0.85)"
               fontFamily="DM Sans,sans-serif">
               {t.label}
             </text>
@@ -106,19 +118,24 @@ export function ScoreDonut({ score }: Props) {
           {score}
         </text>
 
-        {/* Legend */}
-        <rect x="28" y="150" width="7" height="5" rx="1" fill="#ef4444" opacity="0.8" />
-        <text x="39" y="156" fontSize={8.5}
-          fill="rgba(255,255,255,0.4)"
-          fontFamily="DM Sans,sans-serif">Kritisch</text>
-        <rect x="90" y="150" width="7" height="5" rx="1" fill="#f59e0b" opacity="0.8" />
-        <text x="101" y="156" fontSize={8.5}
-          fill="rgba(255,255,255,0.4)"
-          fontFamily="DM Sans,sans-serif">Ausbaufähig</text>
-        <rect x="165" y="150" width="7" height="5" rx="1" fill="#22c55e" opacity="0.8" />
-        <text x="176" y="156" fontSize={8.5}
-          fill="rgba(255,255,255,0.4)"
-          fontFamily="DM Sans,sans-serif">Stark</text>
+        {/* Legend — centered */}
+        <g transform="translate(0, 150)">
+          <rect x="18" y="0" width="8" height="8" rx="2" fill="#ef4444" />
+          <text x="30" y="7.5" fontSize={11} fontWeight={600}
+            fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
+            Kritisch
+          </text>
+          <rect x="93" y="0" width="8" height="8" rx="2" fill="#f59e0b" />
+          <text x="105" y="7.5" fontSize={11} fontWeight={600}
+            fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
+            Ausbaufähig
+          </text>
+          <rect x="195" y="0" width="8" height="8" rx="2" fill="#22c55e" />
+          <text x="207" y="7.5" fontSize={11} fontWeight={600}
+            fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
+            Stark
+          </text>
+        </g>
       </svg>
     </div>
   );
