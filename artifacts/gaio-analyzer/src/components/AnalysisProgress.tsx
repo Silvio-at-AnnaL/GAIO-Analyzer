@@ -70,14 +70,14 @@ export function AnalysisProgress({ analysisId, onComplete }: Props) {
             ) : (
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
             )}
-            <span className="font-mono text-sm">
+            <span className="text-sm font-medium">
               {report?.currentModule || "Initialisierung..."}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <div className="flex justify-between text-xs text-muted-foreground font-mono">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>Fortschritt</span>
               <span>{Math.round(progress)}%</span>
             </div>

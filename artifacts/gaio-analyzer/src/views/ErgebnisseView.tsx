@@ -1570,7 +1570,7 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
 
           {/* Left: GAIO Score */}
-          <Card className="overflow-hidden h-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)' }}>
+          <Card className="overflow-hidden h-full" style={{ border: '1.5px solid hsl(var(--border))' }}>
             <div className="flex items-center justify-center h-full p-4">
               <ScoreDonut score={report.overallScore ?? 0} />
             </div>
