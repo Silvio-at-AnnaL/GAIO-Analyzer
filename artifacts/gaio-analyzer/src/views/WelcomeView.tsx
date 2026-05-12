@@ -185,12 +185,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
       <div style={{ height: 1, background: "hsl(var(--border))", marginBottom: "2rem" }} />
 
       {/* Section 4 — Feature tiles */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gap: "0.875rem",
-        marginBottom: "2rem",
-      }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-9">
         {/* Tile 1 */}
         <div style={{
           border: "0.5px solid hsl(var(--border))",
@@ -262,64 +257,50 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
       </div>
 
       {/* Section 5 — Score preview panel */}
-      <div style={{
-        background: "#1e2235",
-        borderRadius: 12,
-        padding: "20px 24px",
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        gap: "24px",
-        alignItems: "center",
-      }}>
-        {/* Col 1: Big score */}
-        <div style={{ textAlign: "center", minWidth: 80 }}>
-          <div style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.4)", marginBottom: 4, letterSpacing: "0.05em" }}>
-            Beispiel-Ergebnis
-          </div>
-          <div style={{ fontSize: 52, fontWeight: 700, lineHeight: 1, color: "#f59e0b" }}>
-            43
-          </div>
-          <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, fontWeight: 500 }}>
-            Ausbaufähig
-          </div>
-        </div>
+      <div style={{ background: "#1e2235", borderRadius: 12, padding: "20px 24px" }}>
+        <div className="flex flex-col md:flex-row items-start gap-6">
 
-        {/* Col 2: Mini bar chart */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {DEMO_BARS.map(bar => (
-            <div key={bar.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", width: 80, flexShrink: 0 }}>
-                {bar.label}
-              </div>
-              <div style={{
-                flex: 1,
-                height: 6,
-                borderRadius: 3,
-                background: "rgba(255,255,255,0.1)",
-                overflow: "hidden",
-              }}>
-                <div style={{
-                  width: `${bar.value}%`,
-                  height: "100%",
-                  background: bar.color,
-                  borderRadius: 3,
-                }} />
-              </div>
-              <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", width: 24, textAlign: "right", flexShrink: 0 }}>
-                {bar.value}
-              </div>
+          {/* Score number */}
+          <div className="shrink-0" style={{ textAlign: "center", minWidth: 80 }}>
+            <div style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.4)", marginBottom: 4, letterSpacing: "0.05em" }}>
+              Beispiel-Ergebnis
             </div>
-          ))}
-        </div>
+            <div style={{ fontSize: 52, fontWeight: 700, lineHeight: 1, color: "#f59e0b" }}>
+              43
+            </div>
+            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, fontWeight: 500 }}>
+              Ausbaufähig
+            </div>
+          </div>
 
-        {/* Col 3: Explanatory text */}
-        <div style={{
-          fontSize: 13,
-          color: "rgba(255,255,255,0.6)",
-          lineHeight: 1.6,
-          maxWidth: 180,
-        }}>
-          So sieht ein typisches Ergebnis aus. Technische Grundlagen stimmen oft — aber für KI-Systeme fehlen verwertbare Inhalte, strukturierte Daten und FAQ-Strukturen.
+          {/* Vertical divider — desktop only */}
+          <div className="hidden md:block w-px self-stretch" style={{ background: "rgba(255,255,255,0.1)" }} />
+
+          {/* Bar chart */}
+          <div className="flex-1 w-full space-y-2">
+            {DEMO_BARS.map(bar => (
+              <div key={bar.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", width: 80, flexShrink: 0 }}>
+                  {bar.label}
+                </div>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                  <div style={{ width: `${bar.value}%`, height: "100%", background: bar.color, borderRadius: 9999 }} />
+                </div>
+                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", width: 24, textAlign: "right", flexShrink: 0 }}>
+                  {bar.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Horizontal divider — mobile only */}
+          <div className="block md:hidden w-full h-px" style={{ background: "rgba(255,255,255,0.1)" }} />
+
+          {/* Description text */}
+          <div className="flex-1" style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
+            So sieht ein typisches Ergebnis aus. Technische Grundlagen stimmen oft — aber für KI-Systeme fehlen verwertbare Inhalte, strukturierte Daten und FAQ-Strukturen.
+          </div>
+
         </div>
       </div>
 
