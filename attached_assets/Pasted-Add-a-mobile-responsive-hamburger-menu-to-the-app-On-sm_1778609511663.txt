@@ -1,0 +1,105 @@
+Add a mobile-responsive hamburger menu to the 
+app. On small screens (< 768px) the sidebar 
+collapses and can be opened via a hamburger 
+button. On desktop (≥ 768px) the sidebar 
+stays permanently visible as it is now.
+
+---
+
+CHANGE 1 — Sidebar.tsx: hide on mobile by default
+
+Add responsive classes to the <aside> element.
+Currently: className="w-60 shrink-0 h-screen sticky top-0 flex flex-col border-r"
+
+Change to: 
+  className="w-60 shrink-0 h-screen sticky 
+    top-0 flex flex-col border-r 
+    hidden md:flex"
+
+This hides the sidebar on mobile and shows 
+it from md (768px) upward.
+
+---
+
+CHANGE 2 — Create a mobile drawer
+
+The sidebar content on mobile slides in from 
+the left as an overlay using the shadcn Sheet 
+component (already installed in the project).
+
+In Sidebar.tsx, refactor as follows:
+
+Extract the sidebar inner content (nav items 
++ logo + footer) into a shared component 
+called SidebarContent that takes 
+onNavigate?: () => void as a prop. 
+Each nav button calls onNavigate?.() after 
+setActiveView(id) to close the drawer on 
+mobile after navigation.
+
+Then export two things:
+  1. Sidebar (desktop) — the existing <aside> 
+     with hidden md:flex, renders SidebarContent
+  2. MobileNav — a new component that renders 
+     only on mobile (block md:hidden) containing:
+     - A hamburger button (Menu icon from lucide)
+     - A Sheet from @/components/ui/sheet that 
+       opens from the left (side="left")
+     - SidebarContent inside the SheetContent, 
+       with onNavigate closing the sheet
+
+---
+
+CHANGE 3 — Home.tsx: add MobileNav to header
+
+Import MobileNav from the Sidebar file.
+
+In the <main> element, add a mobile top bar 
+that is only visible on small screens 
+(block md:hidden). Place it as the first 
+child inside <main>, above the view content:
+
+  <div className="flex items-center gap-3 
+    px-4 py-3 border-b md:hidden 
+    sticky top-0 bg-background z-10">
+    <MobileNav />
+    <span className="text-sm font-semibold 
+      text-foreground">
+      GAIO Analyzer
+    </span>
+  </div>
+
+This gives mobile users a top bar with 
+the hamburger button on the left and the 
+app name as context.
+
+---
+
+CHANGE 4 — Sheet styling
+
+The SheetContent for mobile should match 
+the sidebar visually:
+  - Same width: w-60 (240px)
+  - Same background: hsl(var(--sidebar))
+  - No default Sheet padding — let 
+    SidebarContent handle its own spacing
+
+In the SheetContent, add:
+  className="w-60 p-0"
+  style={{ background: "hsl(var(--sidebar))" }}
+
+The Sheet overlay (backdrop) uses the 
+default shadcn behavior — semi-transparent 
+dark overlay, click outside to close.
+
+---
+
+CHANGE 5 — Preserve desktop layout
+
+On md and above:
+  - The aside sidebar renders normally 
+    (hidden md:flex)
+  - The mobile top bar is hidden (md:hidden)
+  - No behavioral changes to desktop layout
+  - The MobileNav component renders nothing 
+    on desktop (wrapped in md:hidden)

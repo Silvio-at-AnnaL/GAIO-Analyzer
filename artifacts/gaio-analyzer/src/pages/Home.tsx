@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppProvider, useAppStore } from "@/store/appStore";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { Sidebar, MobileNav } from "@/components/layout/Sidebar";
 import { DomainAnalyseView } from "@/views/DomainAnalyseView";
 import { HtmlAnalyseView } from "@/views/HtmlAnalyseView";
 import { ErgebnisseView } from "@/views/ErgebnisseView";
@@ -20,6 +20,12 @@ function AppContent() {
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b md:hidden sticky top-0 bg-background z-10">
+          <MobileNav />
+          <span className="text-sm font-semibold text-foreground">GAIO Analyzer</span>
+        </div>
+
         <div className="px-8 py-8 min-h-full">
           {activeView === 1 && showWelcome && (
             <WelcomeView onDismiss={() => setWelcomeDismissed(true)} />
