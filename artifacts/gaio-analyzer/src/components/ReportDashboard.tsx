@@ -8,21 +8,15 @@ import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
-  PolarRadiusAxis,
   Radar,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
-import { ScoreDonut } from "./charts/ScoreDonut";
 import { generateHtmlReport } from "@/lib/report-export";
 
 interface Props {
@@ -85,6 +79,12 @@ export function ReportDashboard({ analysisId }: Props) {
   const highRecs = recommendations.filter((r) => r.tier === "high_leverage");
   const secondaryRecs = recommendations.filter((r) => r.tier === "secondary");
 
+  const score = report.overallScore ?? 0;
+  const scoreColor = score >= 71 ? "#22c55e" : score >= 41 ? "#f59e0b" : "#ef4444";
+  const svgR = 54;
+  const svgCirc = 2 * Math.PI * svgR;
+  const scoreOffset = svgCirc * (1 - score / 100);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -100,47 +100,76 @@ export function ReportDashboard({ analysisId }: Props) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="md:col-span-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-mono text-muted-foreground">GAIO Score</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center py-4">
-            <ScoreDonut score={report.overallScore ?? 0} />
-          </CardContent>
-        </Card>
+      {/* Unified hero panel */}
+      <Card className="overflow-hidden" style={{ background: "linear-gradient(to bottom right, var(--hero-grad-from), var(--hero-grad-to))" }}>
+        <CardContent className="p-0">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_3fr] divide-y md:divide-y-0 md:divide-x divide-border/40">
+            {/* COL 1: GAIO Score */}
+            <div className="flex flex-col items-center justify-center p-6 gap-3">
+              <svg width="140" height="140" viewBox="0 0 140 140">
+                <defs>
+                  <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor={scoreColor} stopOpacity="1" />
+                    <stop offset="100%" stopColor={scoreColor} stopOpacity="0.7" />
+                  </linearGradient>
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                    <feMerge>
+                      <feMergeNode in="coloredBlur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle cx="70" cy="70" r={svgR} fill="none" stroke="hsl(217 25% 18%)" strokeWidth="10" strokeLinecap="round" />
+                <circle
+                  cx="70" cy="70" r={svgR}
+                  fill="none"
+                  stroke="url(#scoreGrad)"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  strokeDasharray={svgCirc}
+                  strokeDashoffset={scoreOffset}
+                  transform="rotate(-90 70 70)"
+                  filter="url(#glow)"
+                  style={{ transition: "stroke-dashoffset 1s ease" }}
+                />
+                <text x="70" y="65" textAnchor="middle" fontSize="30" fontWeight="800" fill={scoreColor} fontFamily="DM Sans, sans-serif">{score}</text>
+                <text x="70" y="85" textAnchor="middle" fontSize="11" fill="hsl(215 16% 55%)" fontFamily="DM Sans, sans-serif">/ 100</text>
+              </svg>
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">GAIO Score</p>
+            </div>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-mono text-muted-foreground">Dimensionen im Ueberblick</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="hsl(217 25% 20%)" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(215 20% 65%)", fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(215 20% 65%)", fontSize: 9 }} />
-                <Radar name="Score" dataKey="value" stroke="hsl(217 91% 60%)" fill="hsl(217 91% 60%)" fillOpacity={0.25} strokeWidth={2} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+            {/* COL 2: Radar chart */}
+            <div className="p-4 flex flex-col">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Dimensionen</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="hsl(217 25% 22%)" strokeDasharray="3 3" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: "hsl(215 16% 60%)", fontFamily: "DM Sans, sans-serif" }} />
+                  <Radar name="Score" dataKey="value" stroke="hsl(217 91% 60%)" strokeWidth={2.5} fill="hsl(217 91% 60%)" fillOpacity={0.15} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        {radarData.map((dim) => (
-          <Card key={dim.subject}>
-            <CardContent className="py-3 px-4 text-center">
-              <p className="text-xs text-muted-foreground font-mono">{dim.subject}</p>
-              <p className={`text-2xl font-bold font-mono ${
-                dim.value >= 71 ? "text-green-500" : dim.value >= 41 ? "text-yellow-500" : "text-red-500"
-              }`}>
-                {dim.value}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            {/* COL 3: Dimension tiles */}
+            <div className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Einzelwerte</p>
+              <div className="grid grid-cols-2 gap-2">
+                {radarData.map((dim) => (
+                  <div key={dim.subject} className="border border-border/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{dim.subject}</p>
+                    <p className={`text-xl font-bold ${
+                      dim.value >= 71 ? "text-green-500" : dim.value >= 41 ? "text-yellow-500" : "text-red-500"
+                    }`}>
+                      {dim.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="details" className="space-y-4">
         <TabsList>
@@ -255,18 +284,20 @@ export function ReportDashboard({ analysisId }: Props) {
               </CardHeader>
               <CardContent className="space-y-3">
                 {((contentRelevance.dimensions as Array<{ name: string; score: number; findings: string[] }>) || []).map((dim) => (
-                  <div key={dim.name} className="space-y-1">
+                  <div key={dim.name} className="space-y-2 pb-4 border-b border-border/40 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">{dim.name}</span>
-                      <span className={`font-mono text-sm font-bold ${
+                      <span className={`text-sm font-bold ${
                         dim.score >= 7 ? "text-green-500" : dim.score >= 4 ? "text-yellow-500" : "text-red-500"
                       }`}>
                         {dim.score}/10
                       </span>
                     </div>
-                    <ul className="text-xs text-muted-foreground space-y-0.5">
+                    <ul className="space-y-2 mt-2 pl-4">
                       {dim.findings.map((f, i) => (
-                        <li key={i}>- {f}</li>
+                        <li key={i} className="text-sm text-muted-foreground leading-relaxed list-disc marker:text-primary/60">
+                          {f}
+                        </li>
                       ))}
                     </ul>
                   </div>

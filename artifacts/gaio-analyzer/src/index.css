@@ -138,6 +138,10 @@
   --letter-spacing-base: 0em;
   --letter-spacing-wide: 0.03em;
 
+  /* Hero panel gradient */
+  --hero-grad-from: hsl(220 18% 98%);
+  --hero-grad-to: hsl(220 15% 96%);
+
   /* Text colors (light mode) */
   --color-text-primary: #1a1a2e;
   --color-text-secondary: #4a4a6a;
@@ -189,6 +193,10 @@
   --sidebar-accent-foreground: 210 40% 95%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-ring: 217 91% 60%;
+
+  /* Hero panel gradient */
+  --hero-grad-from: hsl(222 28% 10%);
+  --hero-grad-to: hsl(222 28% 8%);
 
   /* Text colors (dark mode) */
   --color-text-primary: #e8e8f0;

@@ -61,17 +61,7 @@ export function Sidebar() {
               <span className="shrink-0 flex items-center" style={{ width: 15, height: 15 }}>
                 <Icon style={{ width: 15, height: 15 }} />
               </span>
-              <span className="flex-1 text-xs leading-tight">
-                <span
-                  style={{
-                    opacity: 0.3,
-                    fontFamily: "monospace",
-                    fontSize: 10,
-                    marginRight: 4,
-                  }}
-                >
-                  {id}.
-                </span>
+              <span className="flex-1 text-sm font-medium leading-tight">
                 {label}
               </span>
             </button>

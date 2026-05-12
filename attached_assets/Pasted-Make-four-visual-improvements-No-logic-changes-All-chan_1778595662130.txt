@@ -1,0 +1,218 @@
+Make four visual improvements. No logic changes.
+All changes are in ReportDashboard.tsx, 
+ScoreDonut.tsx, Sidebar.tsx and index.css only.
+
+---
+
+CHANGE 1 — Sidebar: remove number prefixes, 
+match font size to tab nav
+
+In Sidebar.tsx:
+Remove the number prefix span entirely:
+  DELETE: <span className="opacity-40 mr-1 
+    font-mono">{id}.</span>
+
+The label spans should read exactly like the 
+tab triggers in the results view (TabsList). 
+Find what font size the Tabs component uses 
+for its triggers — likely text-sm (0.875rem). 
+Set sidebar nav item labels to the same size:
+  text-sm font-medium (not font-mono)
+
+---
+
+CHANGE 2 — Score header: modern redesign
+
+Replace the current two-card layout 
+(GAIO Score card + Dimensionen card) with 
+a single unified hero panel that feels 
+contemporary.
+
+In ReportDashboard.tsx, replace the 
+grid section at lines ~103–143 with:
+
+A single card with a subtle gradient 
+background. In light mode: gradient from 
+hsl(220 18% 98%) to hsl(220 15% 96%).
+In dark mode: from hsl(222 28% 10%) to 
+hsl(222 28% 8%).
+
+Internal layout: three-column grid 
+on desktop (1fr | 2fr | 3fr):
+  COL 1: GAIO Score display
+  COL 2: Radar chart
+  COL 3: 6 dimension score tiles (2×3 grid)
+
+GAIO Score display (COL 1):
+Replace ScoreDonut entirely with a pure 
+SVG approach directly in ReportDashboard 
+— no Recharts PieChart. Build it inline:
+
+  const scoreColor = score >= 71 
+    ? '#22c55e' : score >= 41 
+    ? '#f59e0b' : '#ef4444'
+  const r = 54, circ = 2 * Math.PI * r
+  const offset = circ * (1 - score / 100)
+
+  <div className="flex flex-col items-center 
+    justify-center h-full gap-3">
+    <svg width="140" height="140" 
+      viewBox="0 0 140 140">
+      <defs>
+        <linearGradient id="scoreGrad" 
+          x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" 
+            stopColor={scoreColor} 
+            stopOpacity="1"/>
+          <stop offset="100%" 
+            stopColor={scoreColor} 
+            stopOpacity="0.7"/>
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" 
+            result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      {/* Track */}
+      <circle cx="70" cy="70" r={r}
+        fill="none"
+        stroke="hsl(217 25% 18%)"
+        strokeWidth="10"
+        strokeLinecap="round"
+      />
+      {/* Score arc */}
+      <circle cx="70" cy="70" r={r}
+        fill="none"
+        stroke="url(#scoreGrad)"
+        strokeWidth="10"
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+        transform="rotate(-90 70 70)"
+        filter="url(#glow)"
+        style={{ transition: 
+          'stroke-dashoffset 1s ease' }}
+      />
+      {/* Center text */}
+      <text x="70" y="65" 
+        textAnchor="middle" 
+        fontSize="30" fontWeight="800"
+        fill={scoreColor}
+        fontFamily="DM Sans, sans-serif">
+        {score}
+      </text>
+      <text x="70" y="85"
+        textAnchor="middle"
+        fontSize="11" 
+        fill="hsl(215 16% 55%)"
+        fontFamily="DM Sans, sans-serif">
+        / 100
+      </text>
+    </svg>
+    <div className="text-center">
+      <p className="text-xs font-semibold 
+        uppercase tracking-widest 
+        text-muted-foreground">
+        GAIO Score
+      </p>
+    </div>
+  </div>
+
+Radar chart (COL 2):
+Keep Recharts RadarChart but improve styling:
+  - Remove PolarRadiusAxis entirely 
+    (no number rings, they look dated)
+  - PolarGrid: stroke="hsl(217 25% 22%)" 
+    strokeDasharray="3 3" 
+  - Radar fill: use a gradient:
+    Add SVG defs inside the chart via 
+    customized prop or wrap in a div 
+    with a gradient overlay approach.
+    Simpler: fill="hsl(217 91% 60%)" 
+    fillOpacity={0.15}
+    stroke="hsl(217 91% 60%)" 
+    strokeWidth={2.5}
+  - PolarAngleAxis tick: 
+    fontSize={11} 
+    fill="hsl(215 16% 60%)"
+    fontFamily="DM Sans, sans-serif"
+  - Card title: "Dimensionen" 
+    (fix the "Ueberblick" typo)
+  - Height: 220px
+
+Dimension tiles (COL 3):
+Replace the separate bottom grid with 
+tiles inside this unified card.
+2 columns × 3 rows, each tile:
+  - Subtle border: border border-border/50
+  - border-radius: rounded-lg
+  - padding: p-3
+  - Dimension label: text-xs text-muted-foreground uppercase tracking-wide
+  - Score value: text-xl font-bold with 
+    score-appropriate color (green/amber/red)
+  - No font-mono on scores
+
+The three sections are separated by 
+subtle vertical dividers (border-r 
+border-border/40) on desktop.
+
+---
+
+CHANGE 3 — Remove ScoreDonut.tsx dependency
+
+Since the donut is now inline SVG in 
+ReportDashboard, the ScoreDonut.tsx import 
+and component reference can be removed.
+Delete the import line and the component 
+usage. Keep the ScoreDonut.tsx file itself 
+(it may be used elsewhere) but remove it 
+from ReportDashboard.
+
+---
+
+CHANGE 4 — Content relevance: 
+readable bullet list
+
+In ReportDashboard.tsx around line 267–270, 
+the findings list currently renders as:
+  <li key={i}>- {f}</li>
+
+Replace with proper bullet styling:
+
+  <ul className="space-y-2 mt-2 pl-4">
+    {dim.findings.map((f, i) => (
+      <li key={i} 
+        className="text-sm text-muted-foreground 
+          leading-relaxed list-disc 
+          marker:text-primary/60">
+        {f}
+      </li>
+    ))}
+  </ul>
+
+Changes:
+  - list-style: disc (real bullet points)
+  - pl-4: indentation from the left
+  - space-y-2: 8px gap between bullet points
+  - text-sm (up from text-xs): better readability
+  - leading-relaxed: more line height within 
+    each bullet
+  - marker color: primary at 60% opacity 
+    (subtle accent color on the dot)
+  - Remove the hardcoded "- " dash prefix
+    from the text: change {f} (the dash 
+    is in the li content, not the data)
+
+Also increase the space between dimension 
+blocks from space-y-1 to space-y-4 in 
+the outer map container, and add a subtle 
+separator between blocks:
+
+  <div key={dim.name} 
+    className="space-y-2 pb-4 
+      border-b border-border/40 
+      last:border-0 last:pb-0">
