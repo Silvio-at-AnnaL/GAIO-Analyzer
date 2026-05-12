@@ -1570,14 +1570,14 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
 
           {/* Left: GAIO Score */}
-          <Card className="overflow-hidden h-full" style={{ border: '1.5px solid hsl(var(--border))' }}>
-            <div className="flex items-center justify-center h-full p-4">
-              <ScoreDonut score={report.overallScore ?? 0} />
-            </div>
-          </Card>
+          <div className="overflow-hidden h-full flex items-center justify-center"
+            style={{ background: '#1e2235', borderRadius: '0.5rem', minHeight: 260 }}>
+            <ScoreDonut score={report.overallScore ?? 0} />
+          </div>
 
           {/* Right: RadarDimensions (col-span-2) */}
-          <Card className="md:col-span-2 overflow-hidden h-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)', background: '#1e2235' }}>
+          <div className="md:col-span-2 overflow-hidden h-full"
+            style={{ background: '#1e2235', borderRadius: '0.5rem' }}>
             <RadarDimensions dimensions={[
               { label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" },
               { label: "Schema.org", value: radarData[1].value, color: "#a855f7" },
@@ -1586,7 +1586,7 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
               { label: "FAQ",        value: radarData[4].value, color: "#f59e0b" },
               { label: "LLM",        value: radarData[5].value, color: "#06b6d4" },
             ]} />
-          </Card>
+          </div>
 
         </div>
       </div>
@@ -1981,15 +1981,39 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Inhaltliche Relevanz</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {((contentRelevance.dimensions as Array<{ name: string; score: number; findings: string[] }>) || []).map((dim) => (
-                  <div key={dim.name} className="space-y-1">
+                  <div key={dim.name} className="space-y-2 pb-3 border-b border-border/30 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">{dim.name}</span>
                       <span className="font-mono text-sm font-bold" style={{ color: dim.score >= 7 ? "hsl(142 71% 45%)" : dim.score >= 4 ? "hsl(43 96% 50%)" : "hsl(0 84% 60%)" }}>
                         {dim.score}/10
                       </span>
                     </div>
-                    <ul className="text-xs text-muted-foreground space-y-0.5">
-                      {dim.findings.map((f, i) => <li key={i}>– {f}</li>)}
+                    <ul style={{ paddingLeft: 0, margin: 0, listStyle: 'none' }}>
+                      {dim.findings.map((f, i) => {
+                        const text = f.replace(/^[-–]\s*/, '');
+                        return (
+                          <li key={i} style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'flex-start',
+                            marginBottom: '0.375rem',
+                            fontSize: '0.75rem',
+                            lineHeight: '1.55',
+                            color: 'hsl(var(--muted-foreground))',
+                          }}>
+                            <span style={{
+                              flexShrink: 0,
+                              marginTop: '0.35rem',
+                              width: '5px',
+                              height: '5px',
+                              borderRadius: '50%',
+                              background: 'hsl(var(--muted-foreground))',
+                              opacity: 0.5,
+                            }} />
+                            <span>{text}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 ))}

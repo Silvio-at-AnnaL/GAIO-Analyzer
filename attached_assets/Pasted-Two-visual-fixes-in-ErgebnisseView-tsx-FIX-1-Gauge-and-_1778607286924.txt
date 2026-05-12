@@ -1,0 +1,155 @@
+Two visual fixes in ErgebnisseView.tsx.
+
+---
+
+FIX 1 — Gauge and radar cards: no visible 
+card frame, flush dark backgrounds
+
+The gauge card shows a white border and 
+white card background around the dark 
+ScoreDonut inner div. Both charts should 
+appear as two flush dark panels sitting 
+side by side with no visible card 
+boundaries.
+
+In ErgebnisseView.tsx, find the two Card 
+elements in the results header grid 
+(around line 1571). Replace both with 
+plain divs — no Card component:
+
+  OLD (two Card elements):
+    <Card className="overflow-hidden h-full" 
+      style={{ border: ... }}>
+      <div className="flex items-center 
+        justify-center h-full p-4">
+        <ScoreDonut ... />
+      </div>
+    </Card>
+
+    <Card className="md:col-span-2 
+      overflow-hidden h-full" 
+      style={{ border: ..., 
+               background: '#1e2235' }}>
+      <RadarDimensions ... />
+    </Card>
+
+  NEW (two plain divs):
+    <div className="overflow-hidden h-full 
+      flex items-center justify-center"
+      style={{ 
+        background: '#1e2235',
+        borderRadius: '0.5rem',
+        minHeight: 260,
+      }}>
+      <ScoreDonut score={report.overallScore 
+        ?? 0} />
+    </div>
+
+    <div className="md:col-span-2 
+      overflow-hidden h-full"
+      style={{ 
+        background: '#1e2235',
+        borderRadius: '0.5rem',
+      }}>
+      <RadarDimensions dimensions={[
+        { label: "Techn. SEO", 
+          value: radarData[0].value, 
+          color: "#ef4444" },
+        { label: "Schema.org", 
+          value: radarData[1].value, 
+          color: "#a855f7" },
+        { label: "Headings",   
+          value: radarData[2].value, 
+          color: "#3b82f6" },
+        { label: "Inhalt",     
+          value: radarData[3].value, 
+          color: "#22c55e" },
+        { label: "FAQ",        
+          value: radarData[4].value, 
+          color: "#f59e0b" },
+        { label: "LLM",        
+          value: radarData[5].value, 
+          color: "#06b6d4" },
+      ]} />
+    </div>
+
+Both divs now share identical dark 
+backgrounds with no visible border.
+The grid gap provides the visual 
+separation between them.
+
+---
+
+FIX 2 — Content relevance findings: 
+real bullet points with hanging indent
+
+In ErgebnisseView.tsx at line 1992, 
+the findings list currently reads:
+
+  <ul className="text-xs text-muted-foreground 
+    space-y-0.5">
+    {dim.findings.map((f, i) => 
+      <li key={i}>– {f}</li>
+    )}
+  </ul>
+
+Replace with:
+
+  <ul style={{
+    paddingLeft: 0,
+    margin: 0,
+    listStyle: 'none',
+  }}>
+    {dim.findings.map((f, i) => {
+      // Strip any leading dash/dash-space 
+      // from the data itself
+      const text = f.replace(/^[-–]\s*/, '')
+      return (
+        <li key={i} style={{
+          display: 'flex',
+          gap: '0.5rem',
+          alignItems: 'flex-start',
+          marginBottom: '0.375rem',
+          fontSize: '0.75rem',
+          lineHeight: '1.55',
+          color: 'hsl(var(--muted-foreground))',
+        }}>
+          <span style={{
+            flexShrink: 0,
+            marginTop: '0.35rem',
+            width: '5px',
+            height: '5px',
+            borderRadius: '50%',
+            background: 'hsl(var(--muted-foreground))',
+            opacity: 0.5,
+          }} />
+          <span>{text}</span>
+        </li>
+      )
+    })}
+  </ul>
+
+This gives:
+- A real circular bullet (not a dash 
+  from the text content)
+- The bullet sits at flex-start so it 
+  stays at the top of the first line
+- The text span wraps independently, 
+  creating automatic hanging indent — 
+  continuation lines align under the 
+  first character of text, not under 
+  the bullet
+- gap: 0.5rem provides the space 
+  between bullet and text
+- f.replace strips any "– " or "- " 
+  prefix already in the data so it 
+  does not double up
+
+Also increase space between dimension 
+blocks for better separation. Change 
+the outer div from:
+  className="space-y-1"
+to:
+  className="space-y-2 pb-3 
+    border-b border-border/30 
+    last:border-0 last:pb-0"
