@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 const NAV_ITEMS: { id: ActiveView; icon: React.ElementType; label: string }[] = [
   { id: 1, icon: Globe, label: "Domainanalyse – Basisdaten" },
@@ -105,32 +104,34 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="block md:hidden">
+    <>
+      {/* Backdrop overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Slide-in drawer */}
+      <div
+        className={`fixed top-0 left-0 h-screen w-60 z-50 flex flex-col border-r transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        style={{
+          background: "hsl(var(--sidebar))",
+          borderColor: "hsl(var(--sidebar-border))",
+        }}
+      >
+        <SidebarContent onNavigate={() => setOpen(false)} />
+      </div>
+
+      {/* Hamburger button */}
       <button
         onClick={() => setOpen(true)}
-        style={{
-          background: "none",
-          border: "none",
-          padding: 4,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          color: "hsl(var(--foreground))",
-        }}
+        className="p-1 rounded-md hover:bg-muted transition-colors"
         aria-label="Menü öffnen"
       >
-        <Menu size={22} />
+        <Menu className="w-5 h-5" />
       </button>
-
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent
-          side="left"
-          className="w-60 p-0 flex flex-col"
-          style={{ background: "hsl(var(--sidebar))" }}
-        >
-          <SidebarContent onNavigate={() => setOpen(false)} />
-        </SheetContent>
-      </Sheet>
-    </div>
+    </>
   );
 }

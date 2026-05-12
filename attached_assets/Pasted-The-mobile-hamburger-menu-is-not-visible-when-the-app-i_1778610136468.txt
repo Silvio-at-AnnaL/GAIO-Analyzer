@@ -1,0 +1,130 @@
+The mobile hamburger menu is not visible when 
+the app is viewed at mobile viewport width. 
+The sidebar correctly disappears but no 
+hamburger button appears to replace it.
+
+Diagnose and fix the issue by checking these 
+three things in order:
+
+---
+
+CHECK 1 — Is MobileNav rendering at all?
+
+Open Home.tsx and verify that MobileNav is:
+  a) Imported from the Sidebar file
+  b) Actually rendered in the JSX — it must 
+     be OUTSIDE the <main> scrollable area, 
+     not inside a div that is itself hidden
+
+The correct structure in Home.tsx should be:
+
+  <div className="flex h-screen 
+    overflow-hidden bg-background">
+    
+    {/* Desktop sidebar — hidden on mobile */}
+    <Sidebar />
+    
+    {/* Right side: mobile bar + content */}
+    <div className="flex-1 flex flex-col 
+      overflow-hidden">
+      
+      {/* Mobile top bar — visible only 
+          on small screens */}
+      <div className="flex items-center 
+        gap-3 px-4 py-3 border-b 
+        md:hidden sticky top-0 
+        bg-background z-10">
+        <MobileNav />
+        <span className="text-sm 
+          font-semibold">
+          GAIO Analyzer
+        </span>
+      </div>
+      
+      {/* Main scrollable content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-8 py-8 min-h-full">
+          {activeView === 1 && ...}
+          ...
+        </div>
+      </main>
+      
+    </div>
+  </div>
+
+If the current structure differs from this, 
+rewrite Home.tsx to match it exactly.
+
+---
+
+CHECK 2 — Is MobileNav exported correctly?
+
+Open Sidebar.tsx and verify:
+  a) SidebarContent is a separate inner 
+     component (not exported)
+  b) Sidebar is exported as named export
+  c) MobileNav is also exported as named 
+     export from the same file
+
+The MobileNav component must contain:
+  - A button with the Menu icon (from lucide)
+    visible always (no md:hidden on the button 
+    itself — the whole MobileNav div has 
+    block md:hidden in Home.tsx)
+  - A Sheet component that opens from the left
+
+If MobileNav is not exported or is missing, 
+add it now.
+
+---
+
+CHECK 3 — Sheet import
+
+Verify that Sheet, SheetContent, SheetTrigger 
+are imported from "@/components/ui/sheet" in 
+Sidebar.tsx. If the sheet component doesn't 
+exist yet, use a simpler approach instead:
+
+FALLBACK (if Sheet is unavailable):
+Replace the Sheet with a plain state-based 
+drawer using a fixed overlay div:
+
+  const [open, setOpen] = useState(false)
+
+  // Overlay backdrop:
+  {open && (
+    <div 
+      className="fixed inset-0 bg-black/50 
+        z-40 md:hidden"
+      onClick={() => setOpen(false)}
+    />
+  )}
+
+  // Drawer panel:
+  <div className={`fixed top-0 left-0 
+    h-screen w-60 z-50 flex flex-col 
+    border-r transition-transform 
+    duration-200 md:hidden
+    ${open 
+      ? 'translate-x-0' 
+      : '-translate-x-full'
+    }`}
+    style={{ 
+      background: 'hsl(var(--sidebar))',
+      borderColor: 'hsl(var(--sidebar-border))'
+    }}>
+    <SidebarContent 
+      onNavigate={() => setOpen(false)} 
+    />
+  </div>
+
+  // Hamburger trigger button:
+  <button 
+    onClick={() => setOpen(true)}
+    className="p-1 rounded-md 
+      hover:bg-muted transition-colors">
+    <Menu className="w-5 h-5" />
+  </button>
+
+This fallback requires no external 
+component and is guaranteed to work.
