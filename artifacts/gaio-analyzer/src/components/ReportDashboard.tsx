@@ -5,10 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Star, AlertTriangle, AlertCircle, Info } from "lucide-react";
 import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  Radar,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -17,6 +13,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import { RadarDimensions } from "./charts/RadarDimensions";
 import { generateHtmlReport } from "@/lib/report-export";
 
 interface Props {
@@ -103,7 +100,7 @@ export function ReportDashboard({ analysisId }: Props) {
       {/* Unified hero panel */}
       <Card className="overflow-hidden" style={{ background: "linear-gradient(to bottom right, var(--hero-grad-from), var(--hero-grad-to))" }}>
         <CardContent className="p-0">
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_3fr] divide-y md:divide-y-0 md:divide-x divide-border/40">
+          <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] divide-y md:divide-y-0 md:divide-x divide-border/40">
             {/* COL 1: GAIO Score */}
             <div className="flex flex-col items-center justify-center p-6 gap-3">
               <svg width="140" height="140" viewBox="0 0 140 140">
@@ -139,34 +136,15 @@ export function ReportDashboard({ analysisId }: Props) {
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">GAIO Score</p>
             </div>
 
-            {/* COL 2: Radar chart */}
-            <div className="p-4 flex flex-col">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Dimensionen</p>
-              <ResponsiveContainer width="100%" height={220}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="hsl(217 25% 22%)" strokeDasharray="3 3" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: "hsl(215 16% 60%)", fontFamily: "DM Sans, sans-serif" }} />
-                  <Radar name="Score" dataKey="value" stroke="hsl(217 91% 60%)" strokeWidth={2.5} fill="hsl(217 91% 60%)" fillOpacity={0.15} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* COL 3: Dimension tiles */}
-            <div className="p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Einzelwerte</p>
-              <div className="grid grid-cols-2 gap-2">
-                {radarData.map((dim) => (
-                  <div key={dim.subject} className="border border-border/50 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{dim.subject}</p>
-                    <p className={`text-xl font-bold ${
-                      dim.value >= 71 ? "text-green-500" : dim.value >= 41 ? "text-yellow-500" : "text-red-500"
-                    }`}>
-                      {dim.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* COL 2: Radar + legend */}
+            <RadarDimensions dimensions={[
+              { label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" },
+              { label: "Schema.org", value: radarData[1].value, color: "#a855f7" },
+              { label: "Headings",   value: radarData[2].value, color: "#3b82f6" },
+              { label: "Inhalt",     value: radarData[3].value, color: "#22c55e" },
+              { label: "FAQ",        value: radarData[4].value, color: "#f59e0b" },
+              { label: "LLM",        value: radarData[5].value, color: "#06b6d4" },
+            ]} />
           </div>
         </CardContent>
       </Card>

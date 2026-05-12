@@ -1,0 +1,225 @@
+Replace the current Recharts RadarChart in 
+ReportDashboard.tsx with a fully custom SVG 
+radar chart component that looks like the 
+reference image: dark background card, 
+circular concentric rings, colored axis 
+markers, golden filled polygon, and a 
+side legend with segmented score bars.
+
+---
+
+CREATE: New file 
+src/components/charts/RadarDimensions.tsx
+
+This component renders everything — chart 
++ legend — as pure SVG/JSX. No Recharts.
+
+interface Dimension {
+  label: string
+  value: number   // 0–100
+  color: string   // hex
+}
+
+interface Props {
+  dimensions: Dimension[]
+}
+
+export function RadarDimensions({ 
+  dimensions 
+}: Props) {
+
+The 6 dimensions with their fixed colors:
+  const COLORS = {
+    'Techn. SEO': '#ef4444',   // red
+    'Schema.org': '#a855f7',   // purple
+    'Headings':   '#3b82f6',   // blue
+    'Inhalt':     '#22c55e',   // green
+    'FAQ':        '#f59e0b',   // amber
+    'LLM':        '#06b6d4',   // cyan
+  }
+
+CHART GEOMETRY:
+  const CX = 160, CY = 160     // center
+  const MAX_R = 120            // outer ring radius
+  const RINGS = 5              // concentric circles
+  const N = dimensions.length  // 6
+
+Point on axis i at radius r:
+  const pt = (i, r) => {
+    const angle = (i / N) * 2 * Math.PI 
+                  - Math.PI / 2
+    return {
+      x: CX + r * Math.cos(angle),
+      y: CY + r * Math.sin(angle)
+    }
+  }
+
+CONCENTRIC CIRCLE RINGS:
+  {Array.from({length: RINGS}, (_, i) => {
+    const r = (MAX_R / RINGS) * (i + 1)
+    return <circle key={i}
+      cx={CX} cy={CY} r={r}
+      fill="none"
+      stroke="rgba(255,255,255,0.12)"
+      strokeWidth={i === RINGS-1 ? 2 : 1}
+    />
+  })}
+
+AXIS LINES (center to edge):
+  {dimensions.map((_, i) => {
+    const end = pt(i, MAX_R)
+    return <line key={i}
+      x1={CX} y1={CY}
+      x2={end.x} y2={end.y}
+      stroke="rgba(255,255,255,0.15)"
+      strokeWidth={1}
+    />
+  })}
+
+DATA POLYGON (golden fill):
+  const dataPoints = dimensions.map((d, i) => 
+    pt(i, (d.value / 100) * MAX_R))
+  
+  const polyPoints = dataPoints
+    .map(p => `${p.x},${p.y}`)
+    .join(' ')
+  
+  <polygon
+    points={polyPoints}
+    fill="rgba(212,170,60,0.35)"
+    stroke="rgba(212,170,60,0.9)"
+    strokeWidth={2}
+    strokeLinejoin="round"
+  />
+
+  // Data point dots on the polygon vertices:
+  {dataPoints.map((p, i) => (
+    <circle key={i}
+      cx={p.x} cy={p.y} r={4}
+      fill={dimensions[i].color}
+      stroke="rgba(255,255,255,0.6)"
+      strokeWidth={1.5}
+    />
+  ))}
+
+COLORED SQUARE MARKERS at MAX_R 
+(on each axis endpoint):
+  {dimensions.map((d, i) => {
+    const end = pt(i, MAX_R + 10)
+    return <rect key={i}
+      x={end.x - 5} y={end.y - 5}
+      width={10} height={10}
+      fill={d.color}
+      rx={1}
+    />
+  })}
+
+AXIS LABELS (outside the square markers):
+  Position labels at MAX_R + 28 from center.
+  Use textAnchor based on x position:
+    x < CX - 5 → "end"
+    x > CX + 5 → "start"
+    else → "middle"
+
+  <text
+    x={labelPt.x} y={labelPt.y + 4}
+    textAnchor={anchor}
+    fontSize={11}
+    fontFamily="DM Sans, sans-serif"
+    fontWeight={600}
+    fill="rgba(255,255,255,0.85)"
+  >
+    {d.label}
+  </text>
+
+---
+
+LEGEND (right side, inside same card):
+
+Render beside the SVG as a flex column.
+Each row:
+  <div className="flex flex-col gap-1">
+    <div className="flex items-center 
+      justify-between gap-2">
+      <span className="text-xs font-bold"
+        style={{ color: d.color }}>
+        {d.label}
+      </span>
+      <span className="text-sm font-bold 
+        text-white">{d.value}</span>
+    </div>
+    <!-- Segmented bar: 10 squares -->
+    <div className="flex gap-0.5">
+      {Array.from({length: 10}, (_, i) => {
+        const filled = i < Math.round(
+          d.value / 10)
+        return <div key={i}
+          style={{
+            width: 14, height: 10,
+            borderRadius: 2,
+            background: filled 
+              ? d.color 
+              : 'rgba(255,255,255,0.12)'
+          }}
+        />
+      })}
+    </div>
+  </div>
+
+---
+
+CARD WRAPPER:
+
+The entire component sits inside a card 
+with a dark background regardless of 
+light/dark mode:
+  background: #1e2235   (dark navy)
+  border-radius: 12px
+  padding: 20px
+  
+Layout: flex row with gap-6
+  LEFT: SVG (width=320 height=320)
+  RIGHT: legend flex col with gap-4, 
+    flex-1, justify-center
+
+The card has no CardHeader title — 
+the legend itself acts as the key.
+
+---
+
+INTEGRATION in ReportDashboard.tsx:
+
+Replace the Recharts RadarChart card 
+(currently md:col-span-2) with:
+
+  <RadarDimensions dimensions={[
+    { label: 'Techn. SEO', 
+      value: radarData[0].value,
+      color: '#ef4444' },
+    { label: 'Schema.org', 
+      value: radarData[1].value,
+      color: '#a855f7' },
+    { label: 'Headings',   
+      value: radarData[2].value,
+      color: '#3b82f6' },
+    { label: 'Inhalt',     
+      value: radarData[3].value,
+      color: '#22c55e' },
+    { label: 'FAQ',        
+      value: radarData[4].value,
+      color: '#f59e0b' },
+    { label: 'LLM',        
+      value: radarData[5].value,
+      color: '#06b6d4' },
+  ]} />
+
+Remove the Recharts imports 
+(RadarChart, PolarGrid, PolarAngleAxis, 
+PolarRadiusAxis, Radar) from 
+ReportDashboard.tsx if they are no 
+longer used after this change.
+
+Also remove the Dimensionen card wrapper 
+and its CardHeader — the RadarDimensions 
+component is self-contained with its 
+own dark card styling.
