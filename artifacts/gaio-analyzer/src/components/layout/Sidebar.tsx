@@ -81,7 +81,7 @@ export function Sidebar() {
           opacity: 0.4,
         }}
       >
-        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v1.0</p>
+        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v2.0</p>
         <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>IndustryStock.com</p>
       </div>
     </aside>
