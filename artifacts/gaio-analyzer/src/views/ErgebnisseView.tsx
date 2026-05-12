@@ -1570,14 +1570,14 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
 
           {/* Left: GAIO Score */}
-          <Card className="overflow-hidden h-full">
+          <Card className="overflow-hidden h-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)' }}>
             <div className="flex items-center justify-center h-full p-4">
               <ScoreDonut score={report.overallScore ?? 0} />
             </div>
           </Card>
 
           {/* Right: RadarDimensions (col-span-2) */}
-          <div className="md:col-span-2">
+          <Card className="md:col-span-2 overflow-hidden h-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)', background: '#1e2235' }}>
             <RadarDimensions dimensions={[
               { label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" },
               { label: "Schema.org", value: radarData[1].value, color: "#a855f7" },
@@ -1586,7 +1586,7 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
               { label: "FAQ",        value: radarData[4].value, color: "#f59e0b" },
               { label: "LLM",        value: radarData[5].value, color: "#06b6d4" },
             ]} />
-          </div>
+          </Card>
 
         </div>
       </div>
