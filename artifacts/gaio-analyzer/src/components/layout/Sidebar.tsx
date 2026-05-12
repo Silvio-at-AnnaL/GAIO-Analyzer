@@ -21,20 +21,21 @@ export function Sidebar() {
         borderColor: "hsl(var(--sidebar-border))",
       }}
     >
+      {/* Brand logo */}
       <div
-        className="flex items-center gap-2.5 px-5 h-14 border-b shrink-0"
+        className="px-4 h-16 flex items-center border-b shrink-0"
         style={{ borderColor: "hsl(var(--sidebar-border))" }}
       >
-        <div className="w-3 h-3 rounded-sm bg-primary animate-pulse shrink-0" />
-        <span
-          className="font-bold text-sm tracking-tight"
-          style={{ color: "hsl(var(--sidebar-foreground))", fontFamily: "var(--font-family-base)" }}
-        >
-          GAIO Analyzer
-        </span>
+        <img
+          src="/brand-logo.png"
+          alt="GAIO Analyzer"
+          className="h-8 w-auto object-contain"
+          style={{ display: "block" }}
+        />
       </div>
 
-      <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
+      {/* Navigation */}
+      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map(({ id, icon: Icon, label }) => {
           const isActive = activeView === id;
           return (
@@ -42,18 +43,35 @@ export function Sidebar() {
               key={id}
               onClick={() => setActiveView(id)}
               data-testid={`nav-item-${id}`}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors"
+              className="w-full flex items-center gap-3 py-2.5 text-left transition-all"
               style={{
+                paddingLeft: "calc(0.75rem - 3px)",
+                paddingRight: "0.75rem",
+                borderLeft: isActive
+                  ? "3px solid hsl(var(--sidebar-primary))"
+                  : "3px solid transparent",
+                borderRadius: "0 6px 6px 0",
                 background: isActive ? "hsl(var(--sidebar-accent))" : "transparent",
-                color: isActive ? "hsl(var(--sidebar-primary))" : "hsl(var(--sidebar-foreground))",
+                color: isActive
+                  ? "hsl(var(--sidebar-accent-foreground))"
+                  : "hsl(var(--sidebar-foreground))",
                 fontWeight: isActive ? 600 : 400,
               }}
             >
-              <span className="shrink-0 w-4 h-4 flex items-center">
-                <Icon className="w-4 h-4" />
+              <span className="shrink-0 flex items-center" style={{ width: 15, height: 15 }}>
+                <Icon style={{ width: 15, height: 15 }} />
               </span>
               <span className="flex-1 text-xs leading-tight">
-                <span className="opacity-40 mr-1 font-mono">{id}.</span>
+                <span
+                  style={{
+                    opacity: 0.3,
+                    fontFamily: "monospace",
+                    fontSize: 10,
+                    marginRight: 4,
+                  }}
+                >
+                  {id}.
+                </span>
                 {label}
               </span>
             </button>
@@ -61,15 +79,17 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Footer attribution */}
       <div
-        className="px-4 py-3 border-t text-xs"
+        className="px-4 py-3 border-t"
         style={{
           borderColor: "hsl(var(--sidebar-border))",
           color: "hsl(var(--sidebar-foreground))",
-          opacity: 0.35,
+          opacity: 0.4,
         }}
       >
-        GAIO Analyzer v1.0
+        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v1.0</p>
+        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>IndustryStock.com</p>
       </div>
     </aside>
   );

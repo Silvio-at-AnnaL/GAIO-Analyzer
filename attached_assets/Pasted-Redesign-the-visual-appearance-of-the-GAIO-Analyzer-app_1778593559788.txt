@@ -1,0 +1,193 @@
+Redesign the visual appearance of the GAIO Analyzer 
+app. Do NOT change any functionality, routing, 
+state management, or data logic. Only change 
+CSS, design tokens, and visual presentation.
+
+The target aesthetic: a professional, modern 
+B2B SaaS dashboard — clean white content area, 
+darker refined sidebar, strong typographic 
+hierarchy, polished card styling. Reference 
+visual direction: enterprise analytics tools 
+(think Vercel dashboard, Linear, or the 
+is-website-leads-dashboard.netlify.app mockup).
+
+---
+
+CHANGE 1 — Sidebar: replace logo area with 
+brand image
+
+In Sidebar.tsx, replace the current header 
+(animated blue dot + "GAIO Analyzer" text) with 
+the Brand.png logo from the public folder.
+
+  <div className="px-4 h-16 flex items-center 
+    border-b shrink-0" ...>
+    <img 
+      src="/brand-logo.png" 
+      alt="GAIO Analyzer" 
+      className="h-8 w-auto object-contain"
+    />
+  </div>
+
+The logo must be left-aligned, height 32px, 
+preserve aspect ratio. No text next to it.
+Remove the animated dot entirely.
+
+---
+
+CHANGE 2 — Sidebar: visual refinement
+
+Update the sidebar design tokens in index.css 
+for light mode:
+
+  --sidebar: 222 28% 11%;          ← dark sidebar
+  --sidebar-foreground: 215 20% 70%;
+  --sidebar-border: 222 25% 16%;
+  --sidebar-primary: 217 91% 65%;  ← active item accent
+  --sidebar-accent: 222 25% 18%;   ← active item bg
+  --sidebar-accent-foreground: 210 40% 95%;
+
+For dark mode, deepen it further:
+  --sidebar: 222 30% 7%;
+  --sidebar-border: 222 25% 12%;
+  --sidebar-accent: 222 25% 14%;
+
+In Sidebar.tsx, update the nav item styling:
+- Active item: left border accent line 
+  (3px solid hsl(var(--sidebar-primary))) 
+  + subtle background
+- Inactive item: no background, muted text, 
+  slightly lighter on hover
+- The number prefix (1. 2. 3.) should be 
+  more muted — opacity 0.3, monospace, 
+  font-size 10px
+- Icon size: 15px, always shown
+
+Add the version text at the bottom with 
+the IndustryStock.com attribution:
+  "GAIO Analyzer v1.0
+  IndustryStock.com"
+  Both lines small (10px), muted.
+
+---
+
+CHANGE 3 — Content area: background + 
+main layout
+
+Update light mode background to a very 
+slightly warm off-white:
+  --background: 220 15% 96%;
+
+Update card styling for more depth:
+  --card: 0 0% 100%;
+  --card-border: 214 20% 90%;
+
+Add a subtle box-shadow to cards:
+In the global CSS, add:
+  .card, [class*="rounded-"][class*="border"] {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 
+                0 1px 2px rgba(0,0,0,0.04);
+  }
+
+---
+
+CHANGE 4 — Typography refinement
+
+Change the base font from Inter to 
+"DM Sans" — a slightly warmer, more 
+friendly professional sans-serif. Load 
+from Google Fonts:
+
+  @import url('https://fonts.googleapis.com/
+  css2?family=DM+Sans:ital,opsz,wght@0,9..40,
+  300;0,9..40,400;0,9..40,500;0,9..40,600;
+  0,9..40,700;1,9..40,400&display=swap');
+
+Update the font variables:
+  --app-font-sans: 'DM Sans', system-ui, 
+    -apple-system, sans-serif;
+  --font-family-base: 'DM Sans', system-ui, 
+    -apple-system, sans-serif;
+
+Keep all font SIZE and WEIGHT variables 
+unchanged. Only the typeface changes.
+
+---
+
+CHANGE 5 — Page headers: more visual weight
+
+In the main content area, page titles 
+(h1 elements like "Domainanalyse – Basisdaten", 
+"Ergebnisse", etc.) should have:
+  - font-size: 1.5rem (slightly smaller than 
+    current --font-size-2xl)
+  - font-weight: 700
+  - letter-spacing: -0.02em
+  - color: hsl(var(--foreground)) at full 
+    opacity (no muting)
+  - margin-bottom: 4px
+
+The subtitle lines below page titles 
+(small gray description text) should be:
+  - font-size: 0.82rem
+  - color: hsl(var(--muted-foreground))
+  - margin-bottom: 24px
+
+---
+
+CHANGE 6 — Primary button refinement
+
+The "Analyse starten" and "Mit KI vorausfüllen" 
+buttons should have:
+  - Slightly more padding: 12px 24px
+  - font-weight: 600
+  - border-radius: 8px (--radius-md)
+  - No uppercase transform
+  - Subtle hover: brightness 108%, 
+    translateY(-1px), shadow deepens
+
+---
+
+CHANGE 7 — Form inputs
+
+Input fields and textareas should have:
+  - border-radius: 8px
+  - border: 1.5px solid hsl(var(--border))
+  - On focus: border-color switches to 
+    hsl(var(--primary)) with a soft glow:
+    box-shadow: 0 0 0 3px 
+      hsl(var(--primary) / 0.12)
+  - Background: hsl(var(--card)) not 
+    --background (slightly whiter)
+
+---
+
+CHANGE 8 — Section labels / group headers
+
+Small uppercase section labels like 
+"UNTERNEHMEN & WEBSITE", 
+"WETTBEWERBER-DOMAINS", etc. should be:
+  - font-size: 10px
+  - font-weight: 700
+  - letter-spacing: 0.1em
+  - color: hsl(var(--muted-foreground))
+  - text-transform: uppercase
+  - margin-bottom: 12px
+
+This matches the visual language of the 
+reference design exactly.
+
+---
+
+IMPORTANT CONSTRAINTS
+- Do not change any component logic or 
+  state management
+- Do not change layout structure (sidebar 
+  width, main content positioning)  
+- Do not change chart colors or score 
+  color coding (red/amber/green stays)
+- Dark mode must continue to work — test 
+  that all token changes have corresponding 
+  dark mode values
+- Brand.png path: /brand-logo.png 
+  (already in public folder)
