@@ -8,22 +8,24 @@ interface WelcomeViewProps {
 
 export function WelcomeView({ onDismiss }: WelcomeViewProps) {
   const { domainForm, setDomainForm } = useAppStore();
+  const [companyInput, setCompanyInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
 
-  function handleStart() {
-    const url = urlInput.trim();
-    if (url) {
-      setDomainForm({ ...domainForm, url });
-    }
+  function applyAndDismiss() {
+    setDomainForm({
+      ...domainForm,
+      ...(companyInput.trim() ? { companyName: companyInput.trim() } : {}),
+      ...(urlInput.trim() ? { url: urlInput.trim() } : {}),
+    });
     onDismiss();
   }
 
+  function handleStart() {
+    applyAndDismiss();
+  }
+
   function handleKiPrefill() {
-    const url = urlInput.trim();
-    if (url) {
-      setDomainForm({ ...domainForm, url });
-    }
-    onDismiss();
+    applyAndDismiss();
   }
 
   const DEMO_BARS = [
@@ -76,45 +78,82 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
         </p>
       </div>
 
-      {/* Section 2 — URL quick-entry */}
+      {/* Section 2 — Company + URL quick-entry */}
       <div className="mb-10">
-        <div style={{ display: "flex", gap: "0.5rem", maxWidth: 560 }}>
-          <input
-            type="url"
-            value={urlInput}
-            onChange={e => setUrlInput(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleStart()}
-            placeholder="https://www.ihre-website.de"
-            style={{
-              flex: 1,
-              height: 42,
-              padding: "0 0.875rem",
-              borderRadius: "0.5rem",
-              border: "1.5px solid hsl(var(--border))",
-              background: "hsl(var(--background))",
-              color: "hsl(var(--foreground))",
-              fontSize: "0.875rem",
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={handleStart}
-            style={{
-              height: 42,
-              paddingLeft: "1.1rem",
-              paddingRight: "1.1rem",
-              borderRadius: "0.5rem",
-              background: "hsl(var(--primary))",
-              color: "hsl(var(--primary-foreground))",
-              fontWeight: 600,
-              fontSize: "0.875rem",
-              border: "none",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Analyse starten →
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 560 }}>
+
+          {/* Row 1 — Company name */}
+          <div>
+            <label style={{
+              display: "block",
+              fontSize: "0.75rem",
+              fontWeight: 500,
+              color: "hsl(var(--muted-foreground))",
+              marginBottom: 5,
+            }}>
+              Unternehmensname
+            </label>
+            <input
+              type="text"
+              value={companyInput}
+              onChange={e => setCompanyInput(e.target.value)}
+              placeholder="Muster GmbH"
+              style={{
+                width: "100%",
+                height: 42,
+                padding: "0 0.875rem",
+                borderRadius: "0.5rem",
+                border: "1.5px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
+                color: "hsl(var(--foreground))",
+                fontSize: "0.875rem",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Row 2 — URL + button */}
+          <div style={{ display: "flex" }}>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleStart()}
+              placeholder="https://www.ihre-website.de"
+              style={{
+                flex: 1,
+                height: 42,
+                padding: "0 0.875rem",
+                borderRadius: "0.5rem 0 0 0.5rem",
+                border: "1.5px solid hsl(var(--border))",
+                borderRight: "none",
+                background: "hsl(var(--background))",
+                color: "hsl(var(--foreground))",
+                fontSize: "0.875rem",
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={handleStart}
+              style={{
+                height: 42,
+                paddingLeft: "1.1rem",
+                paddingRight: "1.1rem",
+                borderRadius: "0 0.5rem 0.5rem 0",
+                background: "hsl(var(--primary))",
+                color: "hsl(var(--primary-foreground))",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                border: "none",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              Analyse starten →
+            </button>
+          </div>
         </div>
 
         <p style={{
