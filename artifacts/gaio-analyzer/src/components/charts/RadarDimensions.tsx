@@ -1,34 +1,24 @@
-interface Dimension {
-  label: string;
-  value: number;
-  color: string;
-}
-
-interface Props {
-  dimensions: Dimension[];
-}
-
-export function RadarDimensions({ dimensions }: Props) {
-  const CX = 160, CY = 160;
-  const MAX_R = 120;
-  const RINGS = 5;
+export function RadarDimensions({ dimensions }: {
+  dimensions: Array<{ label: string; value: number; color: string }>;
+}) {
+  const CX = 160, CY = 160, MAX_R = 120, RINGS = 5;
   const N = dimensions.length;
 
   const pt = (i: number, r: number) => {
     const angle = (i / N) * 2 * Math.PI - Math.PI / 2;
-    return {
-      x: CX + r * Math.cos(angle),
-      y: CY + r * Math.sin(angle),
-    };
+    return { x: CX + r * Math.cos(angle), y: CY + r * Math.sin(angle) };
   };
 
   const dataPoints = dimensions.map((d, i) => pt(i, (d.value / 100) * MAX_R));
   const polyPoints = dataPoints.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
-    <div style={{ background: "#1e2235", borderRadius: 12, padding: 20 }}>
-      <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
-        <svg width={320} height={320} viewBox="0 0 320 320" style={{ flexShrink: 0 }}>
+    <div style={{ background: "#1e2235", borderRadius: 12, padding: 20, height: "100%", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", gap: 16, alignItems: "center", height: "100%" }}>
+
+        {/* Chart SVG */}
+        <svg width={280} height={280} viewBox="0 0 320 320" style={{ flexShrink: 0 }}>
+
           {/* Concentric rings */}
           {Array.from({ length: RINGS }, (_, i) => {
             const r = (MAX_R / RINGS) * (i + 1);
@@ -39,7 +29,7 @@ export function RadarDimensions({ dimensions }: Props) {
                 cy={CY}
                 r={r}
                 fill="none"
-                stroke="rgba(255,255,255,0.12)"
+                stroke={i === RINGS - 1 ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.1)"}
                 strokeWidth={i === RINGS - 1 ? 2 : 1}
               />
             );
@@ -61,31 +51,31 @@ export function RadarDimensions({ dimensions }: Props) {
             );
           })}
 
-          {/* Data polygon */}
+          {/* Filled polygon */}
           <polygon
             points={polyPoints}
-            fill="rgba(212,170,60,0.35)"
-            stroke="rgba(212,170,60,0.9)"
+            fill="rgba(212,170,60,0.3)"
+            stroke="rgba(212,170,60,0.85)"
             strokeWidth={2}
             strokeLinejoin="round"
           />
 
-          {/* Data point dots */}
+          {/* Dots on data points */}
           {dataPoints.map((p, i) => (
             <circle
               key={i}
               cx={p.x}
               cy={p.y}
-              r={4}
+              r={5}
               fill={dimensions[i].color}
-              stroke="rgba(255,255,255,0.6)"
+              stroke="rgba(255,255,255,0.7)"
               strokeWidth={1.5}
             />
           ))}
 
-          {/* Colored square markers at axis tips */}
+          {/* Square markers at axis tips */}
           {dimensions.map((d, i) => {
-            const end = pt(i, MAX_R + 10);
+            const end = pt(i, MAX_R + 12);
             return (
               <rect
                 key={i}
@@ -99,17 +89,15 @@ export function RadarDimensions({ dimensions }: Props) {
             );
           })}
 
-          {/* Axis labels */}
+          {/* Labels */}
           {dimensions.map((d, i) => {
-            const labelPt = pt(i, MAX_R + 28);
-            let anchor: "start" | "middle" | "end" = "middle";
-            if (labelPt.x < CX - 5) anchor = "end";
-            else if (labelPt.x > CX + 5) anchor = "start";
+            const lp = pt(i, MAX_R + 30);
+            const anchor = lp.x < CX - 5 ? "end" : lp.x > CX + 5 ? "start" : "middle";
             return (
               <text
                 key={i}
-                x={labelPt.x}
-                y={labelPt.y + 4}
+                x={lp.x}
+                y={lp.y + 4}
                 textAnchor={anchor}
                 fontSize={11}
                 fontFamily="DM Sans, sans-serif"
@@ -123,32 +111,29 @@ export function RadarDimensions({ dimensions }: Props) {
         </svg>
 
         {/* Legend */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, justifyContent: "center" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, justifyContent: "center" }}>
           {dimensions.map((d) => (
-            <div key={d.label} className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold" style={{ color: d.color }}>
+            <div key={d.label}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: d.color }}>
                   {d.label}
                 </span>
-                <span className="text-sm font-bold" style={{ color: "white" }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "white" }}>
                   {d.value}
                 </span>
               </div>
-              <div className="flex gap-0.5">
-                {Array.from({ length: 10 }, (_, i) => {
-                  const filled = i < Math.round(d.value / 10);
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        width: 14,
-                        height: 10,
-                        borderRadius: 2,
-                        background: filled ? d.color : "rgba(255,255,255,0.12)",
-                      }}
-                    />
-                  );
-                })}
+              <div style={{ display: "flex", gap: 2 }}>
+                {Array.from({ length: 10 }, (_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: 9,
+                      borderRadius: 2,
+                      background: i < Math.round(d.value / 10) ? d.color : "rgba(255,255,255,0.1)",
+                    }}
+                  />
+                ))}
               </div>
             </div>
           ))}

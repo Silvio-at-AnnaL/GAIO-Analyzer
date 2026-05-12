@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
+import { RadarDimensions } from "@/components/charts/RadarDimensions";
 import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams } from "@/lib/report-export";
 import {
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
+  ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from "recharts";
 import {
@@ -1537,43 +1538,31 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
       {/* Score overview + dimension cards — captured as header in PDF */}
       <div id="results-header" className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          {/* Left: GAIO Score */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GAIO Score</CardTitle>
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                GAIO Score
+              </CardTitle>
             </CardHeader>
             <CardContent className="flex justify-center py-2">
               <ScoreDonut score={report.overallScore ?? 0} />
             </CardContent>
           </Card>
-          <Card className="md:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dimensionen</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="hsl(var(--border))" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                  <Radar dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={2} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Dimension scores */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-          {radarData.map((d) => (
-            <Card key={d.subject}>
-              <CardContent className="py-3 px-3 text-center">
-                <p className="text-xs text-muted-foreground leading-tight">{d.subject}</p>
-                <p className="text-xl font-bold mt-0.5" style={{ color: scoreBadgeColor(d.value) }}>
-                  {d.value}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+          {/* Right: RadarDimensions (col-span-2) */}
+          <div className="md:col-span-2">
+            <RadarDimensions dimensions={[
+              { label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" },
+              { label: "Schema.org", value: radarData[1].value, color: "#a855f7" },
+              { label: "Headings",   value: radarData[2].value, color: "#3b82f6" },
+              { label: "Inhalt",     value: radarData[3].value, color: "#22c55e" },
+              { label: "FAQ",        value: radarData[4].value, color: "#f59e0b" },
+              { label: "LLM",        value: radarData[5].value, color: "#06b6d4" },
+            ]} />
+          </div>
+
         </div>
       </div>
 
