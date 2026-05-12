@@ -1,49 +1,125 @@
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-
-interface Props {
-  score: number;
-}
+interface Props { score: number }
 
 export function ScoreDonut({ score }: Props) {
-  const data = [
-    { name: "Score", value: score },
-    { name: "Remaining", value: 100 - score },
-  ];
+  const cx = 130, cy = 130, r = 100;
+  const trackLen = Math.PI * r;
 
-  const getColor = (s: number) => {
-    if (s >= 71) return "hsl(142 71% 45%)";
-    if (s >= 41) return "hsl(35 92% 65%)";
-    return "hsl(0 84% 60%)";
-  };
+  const zoneColor = score >= 71 ? '#22c55e'
+    : score >= 41 ? '#f59e0b' : '#ef4444';
 
-  const color = getColor(score);
+  const activeLen = (score / 100) * trackLen;
+
+  const needleAngle = Math.PI * (score / 100 - 1);
+  const needleLen = 85;
+  const nx = cx + needleLen * Math.cos(needleAngle);
+  const ny = cy + needleLen * Math.sin(needleAngle);
+
+  const ticks = [0, 25, 50, 75, 100].map(v => {
+    const a = Math.PI * (v / 100 - 1);
+    const ro = 107, ri = 99;
+    return {
+      x1: cx + ro * Math.cos(a),
+      y1: cy + ro * Math.sin(a),
+      x2: cx + ri * Math.cos(a),
+      y2: cy + ri * Math.sin(a),
+      lx: cx + 118 * Math.cos(a),
+      ly: cy + 118 * Math.sin(a),
+      label: String(v),
+    };
+  });
 
   return (
-    <div className="relative w-40 h-40">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={65}
-            startAngle={90}
-            endAngle={-270}
-            dataKey="value"
-            strokeWidth={0}
-          >
-            <Cell fill={color} />
-            <Cell fill="hsl(217 25% 15%)" />
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold font-mono" style={{ color }}>
+    <div style={{ background: '#1e2235', borderRadius: 12, padding: '20px 24px 14px' }}>
+      <svg width="260" height="165" viewBox="0 0 260 165">
+        <defs>
+          <linearGradient id="zoneR" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.7" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.2" />
+          </linearGradient>
+          <linearGradient id="zoneA" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.2" />
+          </linearGradient>
+          <linearGradient id="zoneG" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.7" />
+          </linearGradient>
+        </defs>
+
+        {/* Zone background arcs */}
+        <path d="M 30 130 A 100 100 0 0 1 230 130"
+          fill="none" stroke="url(#zoneR)" strokeWidth="14"
+          strokeLinecap="butt"
+          strokeDasharray={`${trackLen * 0.4} ${trackLen}`} />
+        <path d="M 30 130 A 100 100 0 0 1 230 130"
+          fill="none" stroke="url(#zoneA)" strokeWidth="14"
+          strokeLinecap="butt"
+          strokeDasharray={`${trackLen * 0.3} ${trackLen}`}
+          strokeDashoffset={-trackLen * 0.4} />
+        <path d="M 30 130 A 100 100 0 0 1 230 130"
+          fill="none" stroke="url(#zoneG)" strokeWidth="14"
+          strokeLinecap="butt"
+          strokeDasharray={`${trackLen * 0.3} ${trackLen}`}
+          strokeDashoffset={-trackLen * 0.7} />
+
+        {/* Full track border */}
+        <path d="M 30 130 A 100 100 0 0 1 230 130"
+          fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="15"
+          strokeLinecap="round" />
+
+        {/* Active score arc */}
+        <path d="M 30 130 A 100 100 0 0 1 230 130"
+          fill="none" stroke={zoneColor} strokeWidth="14"
+          strokeLinecap="round"
+          strokeDasharray={`${activeLen} ${trackLen}`} />
+
+        {/* Tick marks */}
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+              stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+            <text x={t.lx} y={t.ly + 4}
+              textAnchor="middle" fontSize={9}
+              fill="rgba(255,255,255,0.4)"
+              fontFamily="DM Sans,sans-serif">
+              {t.label}
+            </text>
+          </g>
+        ))}
+
+        {/* Needle */}
+        <line x1={cx} y1={cy} x2={nx} y2={ny}
+          stroke="white" strokeWidth="2.5"
+          strokeLinecap="round" />
+        <polygon
+          points={`${cx - 6},${cy} ${cx + 6},${cy} ${cx},${cy - 12}`}
+          fill="white" opacity="0.9" />
+        <circle cx={cx} cy={cy} r="7"
+          fill="#1e2235" stroke="white" strokeWidth="2" />
+        <circle cx={cx} cy={cy} r="3" fill="white" />
+
+        {/* Score display */}
+        <text x={cx} y={112} textAnchor="middle"
+          fontSize={36} fontWeight="800"
+          fill={zoneColor}
+          fontFamily="DM Sans,sans-serif">
           {score}
-        </span>
-        <span className="text-xs text-muted-foreground font-mono">/100</span>
-      </div>
+        </text>
+
+        {/* Legend */}
+        <rect x="28" y="150" width="7" height="5" rx="1" fill="#ef4444" opacity="0.8" />
+        <text x="39" y="156" fontSize={8.5}
+          fill="rgba(255,255,255,0.4)"
+          fontFamily="DM Sans,sans-serif">Kritisch</text>
+        <rect x="90" y="150" width="7" height="5" rx="1" fill="#f59e0b" opacity="0.8" />
+        <text x="101" y="156" fontSize={8.5}
+          fill="rgba(255,255,255,0.4)"
+          fontFamily="DM Sans,sans-serif">Ausbaufähig</text>
+        <rect x="165" y="150" width="7" height="5" rx="1" fill="#22c55e" opacity="0.8" />
+        <text x="176" y="156" fontSize={8.5}
+          fill="rgba(255,255,255,0.4)"
+          fontFamily="DM Sans,sans-serif">Stark</text>
+      </svg>
     </div>
   );
 }
