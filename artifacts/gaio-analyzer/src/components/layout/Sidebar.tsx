@@ -22,15 +22,17 @@ export function Sidebar() {
       }}
     >
       {/* Brand logo */}
-      <div
-        className="px-4 h-16 flex items-center border-b shrink-0"
-        style={{ borderColor: "hsl(var(--sidebar-border))" }}
-      >
+      <div className="px-3 flex items-center justify-start shrink-0" style={{ height: "56px" }}>
         <img
           src="/brand-logo.png"
           alt="GAIO Analyzer"
-          className="h-8 w-auto object-contain"
-          style={{ display: "block" }}
+          style={{
+            height: "100%",
+            width: "100%",
+            objectFit: "contain",
+            objectPosition: "left center",
+            padding: "10px 12px",
+          }}
         />
       </div>
 

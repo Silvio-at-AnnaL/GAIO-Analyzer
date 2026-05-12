@@ -110,7 +110,7 @@ export function AnalysisProgress({ analysisId, onComplete }: Props) {
                   ) : (
                     <div className="w-4 h-4 rounded-full border border-muted-foreground/20 shrink-0" />
                   )}
-                  <span className="font-mono text-xs">{name}</span>
+                  <span className="text-sm font-medium">{name}</span>
                 </div>
               );
             })}
