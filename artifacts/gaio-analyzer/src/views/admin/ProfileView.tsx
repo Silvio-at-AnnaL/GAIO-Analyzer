@@ -49,6 +49,7 @@ export function ProfileView() {
   const [emailMsg,   setEmailMsg]  = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
   const [awaitingCode, setAwaitingCode] = useState(false);
+  const [inlineCode,  setInlineCode] = useState<string | null>(null);
   const [verifyCode,  setVerifyCode] = useState("");
   const [verifyMsg,   setVerifyMsg] = useState("");
 
@@ -91,13 +92,20 @@ export function ProfileView() {
   }
 
   async function saveEmail(e: React.FormEvent) {
-    e.preventDefault(); setEmailMsg(""); setEmailSaving(true);
+    e.preventDefault(); setEmailMsg(""); setEmailSaving(true); setInlineCode(null);
     const res = await adminFetch("/api/admin/profile", { method: "PATCH", body: JSON.stringify({ newEmail }) });
     const data = await res.json();
     setEmailSaving(false);
     if (res.ok) {
-      if (data.requiresVerification) { setAwaitingCode(true); setEmailMsg("Bestätigungscode wurde an Ihre aktuelle E-Mail gesendet."); }
-      else { await refreshUser(); setNewEmail(""); setEmailMsg("✓ E-Mail aktualisiert"); }
+      if (data.requiresVerification) {
+        setAwaitingCode(true);
+        if (data.code) {
+          setInlineCode(data.code);
+          setEmailMsg("Kein E-Mail-Server konfiguriert – Ihr Code wird direkt angezeigt:");
+        } else {
+          setEmailMsg("Bestätigungscode wurde an Ihre aktuelle E-Mail gesendet.");
+        }
+      } else { await refreshUser(); setNewEmail(""); setEmailMsg("✓ E-Mail aktualisiert"); }
     } else setEmailMsg(data.error ?? "Fehler");
   }
 
@@ -105,7 +113,7 @@ export function ProfileView() {
     e.preventDefault(); setVerifyMsg("");
     const res = await adminFetch("/api/admin/verify-code", { method: "POST", body: JSON.stringify({ code: verifyCode, purpose: "email_change" }) });
     const data = await res.json();
-    if (res.ok) { await refreshUser(); setAwaitingCode(false); setNewEmail(""); setVerifyCode(""); setEmailMsg("✓ E-Mail erfolgreich geändert"); }
+    if (res.ok) { await refreshUser(); setAwaitingCode(false); setNewEmail(""); setVerifyCode(""); setInlineCode(null); setEmailMsg("✓ E-Mail erfolgreich geändert"); }
     else setVerifyMsg(data.error ?? "Ungültiger Code");
   }
 
@@ -173,6 +181,13 @@ export function ProfileView() {
           <Field label="Aktuelle E-Mail" value={user?.email ?? ""} onChange={() => {}} type="email" />
           <Field label="Neue E-Mail" value={newEmail} onChange={setNewEmail} type="email" />
           {emailMsg && <p className="text-sm" style={{ color: emailMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}>{emailMsg}</p>}
+          {inlineCode && (
+            <div className="rounded-lg p-4 space-y-1" style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--primary) / 0.4)" }}>
+              <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Ihr Bestätigungscode (15 Min. gültig):</p>
+              <p className="text-3xl font-mono font-bold tracking-widest" style={{ color: "hsl(var(--primary))" }}>{inlineCode}</p>
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Geben Sie diesen Code im Feld unten ein.</p>
+            </div>
+          )}
           {!awaitingCode && (
             <button type="submit" disabled={emailSaving || !newEmail}
               className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"

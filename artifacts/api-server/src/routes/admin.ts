@@ -293,7 +293,7 @@ adminRouter.patch("/profile", requireAuth, async (req: Request, res: Response) =
       subject: "Ihr Bestätigungscode – GAIO Analyzer",
       text: `Ihr Bestätigungscode lautet:\n\n${code}\n\nDieser Code ist 15 Minuten gültig.\nFalls Sie diese Änderung nicht beantragt haben, ignorieren Sie diese E-Mail.`,
     });
-    res.json({ requiresVerification: true }); return;
+    res.json({ requiresVerification: true, code }); return;
   }
 
   const updatedUser = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as unknown as DbUser;
