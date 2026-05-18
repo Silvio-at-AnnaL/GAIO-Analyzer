@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
-import { db } from "../lib/admin-db.js";
+import { db, saveAnalysisExport } from "../lib/admin-db.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
@@ -320,6 +320,132 @@ adminRouter.post("/verify-code", requireAuth, (req: Request, res: Response) => {
 
   const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as unknown as DbUser;
   res.json({ user: safeUser(updated) });
+});
+
+// ── Analysis log ──────────────────────────────────────────────────────────────
+
+interface AnalysisLogRow {
+  id: number;
+  analysis_uuid: string | null;
+  domain: string;
+  company_name: string | null;
+  triggered_by: string | null;
+  gaio_score: number | null;
+  scores_json: string | null;
+  pages_crawled: number | null;
+  status: string;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  html_export_id: number | null;
+}
+
+// POST /api/admin/analysis-log/:id/export — NO auth (called from frontend during HTML export)
+adminRouter.post("/analysis-log/:id/export", (req: Request, res: Response) => {
+  const logId = parseInt(String(req.params.id), 10);
+  if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+
+  const { htmlContent } = req.body ?? {};
+  if (!htmlContent || typeof htmlContent !== "string") {
+    res.status(400).json({ error: "htmlContent fehlt" }); return;
+  }
+
+  const entry = db.prepare("SELECT id FROM analysis_log WHERE id = ?").get(logId) as unknown as { id: number } | undefined;
+  if (!entry) {
+    res.status(404).json({ error: "Analyseeintrag nicht gefunden" }); return;
+  }
+
+  try {
+    const exportId = saveAnalysisExport(logId, htmlContent);
+    res.json({ exportId });
+  } catch (err) {
+    logger.error({ err }, "Failed to save analysis export");
+    res.status(500).json({ error: "Export konnte nicht gespeichert werden" });
+  }
+});
+
+// GET /api/admin/analysis-log — admin only, paginated
+adminRouter.get("/analysis-log", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
+  const limit  = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "25"), 10) || 25));
+  const offset = (page - 1) * limit;
+  const statusParam = typeof req.query.status === "string" && req.query.status ? req.query.status : null;
+  const searchParam = typeof req.query.search === "string" && req.query.search ? `%${req.query.search}%` : null;
+
+  // Use IS NULL pattern to avoid dynamic SQL spreading — always 5 fixed params
+  const total = (db.prepare(`
+    SELECT COUNT(*) as c FROM analysis_log al
+    WHERE (? IS NULL OR al.status = ?)
+      AND (? IS NULL OR al.domain LIKE ? OR al.company_name LIKE ?)
+  `).get(statusParam, statusParam, searchParam, searchParam, searchParam) as unknown as { c: number }).c;
+
+  const rows = db.prepare(`
+    SELECT al.*,
+       CASE WHEN ae.id IS NOT NULL THEN 1 ELSE 0 END as has_html_export
+     FROM analysis_log al
+     LEFT JOIN analysis_exports ae ON ae.id = al.html_export_id
+     WHERE (? IS NULL OR al.status = ?)
+       AND (? IS NULL OR al.domain LIKE ? OR al.company_name LIKE ?)
+     ORDER BY al.started_at DESC
+     LIMIT ? OFFSET ?
+  `).all(statusParam, statusParam, searchParam, searchParam, searchParam, limit, offset) as unknown as (AnalysisLogRow & { has_html_export: number })[];
+
+  const storageRow = db.prepare(
+    "SELECT COALESCE(SUM(LENGTH(html_content)) / 1024, 0) as total_kb FROM analysis_exports"
+  ).get() as unknown as { total_kb: number };
+
+  const items = rows.map(r => ({
+    id: r.id,
+    domain: r.domain,
+    companyName: r.company_name,
+    triggeredBy: r.triggered_by,
+    gaioScore: r.gaio_score,
+    scoresJson: r.scores_json,
+    pagesCrawled: r.pages_crawled,
+    status: r.status,
+    errorMessage: r.error_message,
+    startedAt: r.started_at,
+    completedAt: r.completed_at,
+    hasHtmlExport: r.has_html_export === 1,
+  }));
+
+  res.json({ items, total, page, pages: Math.ceil(total / limit), storageTotalKb: storageRow.total_kb });
+});
+
+// GET /api/admin/analysis-log/:id/export — admin only, returns HTML file
+adminRouter.get("/analysis-log/:id/export", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const logId = parseInt(String(req.params.id), 10);
+  if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+
+  const row = db.prepare(
+    "SELECT ae.html_content, al.domain, al.started_at FROM analysis_exports ae JOIN analysis_log al ON al.id = ae.analysis_id WHERE al.id = ?"
+  ).get(logId) as unknown as { html_content: string; domain: string; started_at: string } | undefined;
+
+  if (!row) { res.status(404).json({ error: "Kein HTML-Export vorhanden" }); return; }
+
+  const date = row.started_at.slice(0, 10).replace(/-/g, "");
+  const safeDomain = row.domain.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+  const filename = `GAIO-${safeDomain}-${date}.html`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(row.html_content);
+});
+
+// DELETE /api/admin/analysis-log/:id — admin only
+adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const logId = parseInt(String(req.params.id), 10);
+  if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+
+  const entry = db.prepare("SELECT id, html_export_id FROM analysis_log WHERE id = ?").get(logId) as unknown as { id: number; html_export_id: number | null } | undefined;
+  if (!entry) { res.status(404).json({ error: "Eintrag nicht gefunden" }); return; }
+
+  if (entry.html_export_id) {
+    db.prepare("DELETE FROM analysis_exports WHERE id = ?").run(entry.html_export_id);
+  }
+  db.prepare("DELETE FROM analysis_log WHERE id = ?").run(logId);
+
+  res.json({ ok: true });
 });
 
 export default adminRouter;

@@ -26,7 +26,8 @@ router.post("/analyze", async (req, res): Promise<void> => {
 
   const id = uuidv4();
 
-  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null);
+  const userSession = Array.isArray(req.ip) ? req.ip[0] : (req.ip ?? null);
+  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null, userSession);
 
   res.status(201).json({ id, status: "running" });
 });

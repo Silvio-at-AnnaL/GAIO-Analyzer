@@ -46,6 +46,31 @@ db.exec(`
     value      TEXT NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS analysis_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_uuid   TEXT,
+    domain          TEXT NOT NULL,
+    company_name    TEXT,
+    triggered_by    TEXT,
+    user_session    TEXT,
+    gaio_score      INTEGER,
+    scores_json     TEXT,
+    pages_crawled   INTEGER,
+    status          TEXT NOT NULL DEFAULT 'running',
+    error_message   TEXT,
+    started_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at    DATETIME,
+    html_export_id  INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS analysis_exports (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id     INTEGER NOT NULL REFERENCES analysis_log(id),
+    html_content    TEXT NOT NULL,
+    file_size_kb    INTEGER,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const count = (db.prepare("SELECT COUNT(*) as c FROM users").get() as unknown as { c: number }).c;
@@ -66,4 +91,48 @@ export function getSetting(key: string): string | null {
 export function setSetting(key: string, value: string): void {
   db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
     .run(key, value);
+}
+
+// ── Analysis log helpers ──────────────────────────────────────────────────────
+
+export function createAnalysisLog(opts: {
+  uuid: string;
+  domain: string;
+  companyName?: string | null;
+  mode: "url" | "html";
+  userSession?: string | null;
+}): number {
+  const result = db.prepare(`
+    INSERT INTO analysis_log (analysis_uuid, domain, company_name, triggered_by, user_session, status, started_at)
+    VALUES (?, ?, ?, ?, ?, 'running', CURRENT_TIMESTAMP)
+  `).run(opts.uuid, opts.domain, opts.companyName ?? null, opts.mode, opts.userSession ?? null);
+  return Number(result.lastInsertRowid);
+}
+
+export function updateAnalysisLogComplete(id: number, gaioScore: number, scoresJson: string, pagesCrawled: number): void {
+  db.prepare(`
+    UPDATE analysis_log
+    SET status = 'completed', completed_at = CURRENT_TIMESTAMP,
+        gaio_score = ?, scores_json = ?, pages_crawled = ?
+    WHERE id = ?
+  `).run(gaioScore, scoresJson, pagesCrawled, id);
+}
+
+export function updateAnalysisLogFailed(id: number, errorMessage: string): void {
+  db.prepare(`
+    UPDATE analysis_log
+    SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error_message = ?
+    WHERE id = ?
+  `).run(errorMessage, id);
+}
+
+export function saveAnalysisExport(analysisLogId: number, htmlContent: string): number {
+  const fileSizeKb = Math.round(htmlContent.length / 1024);
+  const result = db.prepare(`
+    INSERT INTO analysis_exports (analysis_id, html_content, file_size_kb, created_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(analysisLogId, htmlContent, fileSizeKb);
+  const exportId = Number(result.lastInsertRowid);
+  db.prepare("UPDATE analysis_log SET html_export_id = ? WHERE id = ?").run(exportId, analysisLogId);
+  return exportId;
 }

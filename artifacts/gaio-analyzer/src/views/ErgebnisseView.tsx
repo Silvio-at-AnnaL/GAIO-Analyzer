@@ -1551,6 +1551,18 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         profileSrc: htmlProfileB64,
         inputParams: htmlInputParams,
       });
+
+      // Save to admin analysis log (fire-and-forget, non-blocking)
+      const reportLogId = (report as Record<string, unknown>).logId as number | null | undefined;
+      if (reportLogId) {
+        const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+        fetch(`${basePrefix}/api/admin/analysis-log/${reportLogId}/export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ htmlContent }),
+        }).catch(() => {});
+      }
+
       const blob = new Blob([htmlContent], { type: "text/html" });
       const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
