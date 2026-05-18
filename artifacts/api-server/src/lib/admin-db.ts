@@ -1,0 +1,69 @@
+import { DatabaseSync } from "node:sqlite";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import bcrypt from "bcryptjs";
+import { logger } from "./logger.js";
+
+const DB_DIR = path.join(process.cwd(), "server");
+const DB_PATH = path.join(DB_DIR, "admin.db");
+
+mkdirSync(DB_DIR, { recursive: true });
+
+export const db = new DatabaseSync(DB_PATH);
+
+db.exec("PRAGMA journal_mode = WAL");
+db.exec("PRAGMA foreign_keys = ON");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    email          TEXT    UNIQUE NOT NULL,
+    username       TEXT    UNIQUE NOT NULL,
+    password_hash  TEXT    NOT NULL,
+    first_name     TEXT    NOT NULL,
+    last_name      TEXT    NOT NULL,
+    role           TEXT    NOT NULL DEFAULT 'user',
+    is_active      INTEGER NOT NULL DEFAULT 0,
+    must_change_pw INTEGER NOT NULL DEFAULT 1,
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by     INTEGER  REFERENCES users(id),
+    last_login     DATETIME
+  );
+
+  CREATE TABLE IF NOT EXISTS verification_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    code       TEXT    NOT NULL,
+    purpose    TEXT    NOT NULL,
+    new_value  TEXT,
+    expires_at DATETIME NOT NULL,
+    used       INTEGER  NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+const count = (db.prepare("SELECT COUNT(*) as c FROM users").get() as unknown as { c: number }).c;
+if (count === 0) {
+  const hash = bcrypt.hashSync("Superadmin007!", 12);
+  db.prepare(`
+    INSERT INTO users (email, username, password_hash, first_name, last_name, role, is_active, must_change_pw)
+    VALUES (?, ?, ?, ?, ?, 'admin', 1, 0)
+  `).run("silvio.haase@industrystock.com", "GAIOanalyzerAdmin1!", hash, "Silvio", "Haase");
+  logger.info("Default admin user seeded");
+}
+
+export function getSetting(key: string): string | null {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as unknown as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
+    .run(key, value);
+}

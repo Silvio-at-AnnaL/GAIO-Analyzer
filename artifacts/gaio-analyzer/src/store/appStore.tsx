@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
-export type ActiveView = 1 | 2 | 3 | 4 | 5 | 6;
+export type ActiveView = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type Theme = "light" | "dark" | "system";
 export type AnalysisStatus = "idle" | "running" | "completed" | "failed";
 
