@@ -1030,7 +1030,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           const anchor = lp.x < CX - 5 ? 'end' : lp.x > CX + 5 ? 'start' : 'middle';
           return `<text x="${lp.x.toFixed(1)}" y="${(lp.y + 4).toFixed(1)}" text-anchor="${anchor}" font-size="11" font-family="DM Sans,sans-serif" font-weight="600" fill="rgba(255,255,255,0.85)">${d.label}</text>`;
         }).join('');
-        const svgStr = `<svg width="260" height="260" viewBox="0 0 320 320" style="flex-shrink:0">${rings}${axisLines}<polygon points="${polyPoints}" fill="rgba(212,170,60,0.3)" stroke="rgba(212,170,60,0.85)" stroke-width="2" stroke-linejoin="round"/>${dots}${squares}${lbls}</svg>`;
+        const svgStr = `<svg width="280" height="280" viewBox="0 0 320 320" style="flex-shrink:0;display:block">${rings}${axisLines}<polygon points="${polyPoints}" fill="rgba(212,170,60,0.3)" stroke="rgba(212,170,60,0.85)" stroke-width="2" stroke-linejoin="round"/>${dots}${squares}${lbls}</svg>`;
         const legendRows = dims.map(d => {
           const fullSeg = Math.floor(d.val / 10);
           const fraction = (d.val % 10) / 10;
@@ -1043,7 +1043,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           }).join('');
           return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:${d.color}">${d.label}</span><span style="font-size:13px;font-weight:800;color:white">${d.val}</span></div><div style="display:flex;gap:2px">${segs}</div></div>`;
         }).join('');
-        return `<div style="display:flex;gap:16px;align-items:center;height:100%">${svgStr}<div style="flex:1;display:flex;flex-direction:column;justify-content:center">${legendRows}</div></div>`;
+        return `<div style="flex-shrink:0;width:280px">${svgStr}</div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-width:0">${legendRows}</div>`;
       };
 
       const buildHeaderIframeHtml = (): string => `<!DOCTYPE html>
@@ -1051,9 +1051,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#fff; width:1200px; padding:24px 32px; color:#1a1d23; }
 .header-meta { font-size:12px; color:#787b86; margin-bottom:20px; }
-.charts-row { display:flex; gap:20px; align-items:stretch; min-height:280px; }
-.gauge-card { width:35%; flex-shrink:0; background:#1e2235; border-radius:12px; display:flex; align-items:center; justify-content:center; padding:20px; }
-.radar-card { flex:1; background:#1e2235; border-radius:12px; padding:20px; }
+.charts-row { display:flex; flex-direction:row; gap:16px; width:1136px; }
+.gauge-card { width:400px; flex-shrink:0; background:#1e2235; border-radius:12px; display:flex; align-items:center; justify-content:center; padding:20px; }
+.radar-card { width:720px; flex-shrink:0; background:#1e2235; border-radius:12px; padding:20px; display:flex; flex-direction:row; align-items:center; gap:16px; }
 </style></head><body>
 <div class="header-meta">${hdrDomain} · ${hdrPageCount} Seiten · ${hdrDate}</div>
 <div class="charts-row">
@@ -1152,22 +1152,45 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         // FIX A — Measure AFTER footer + padding; add +120px buffer.
         const captureHeightPx = panel.scrollHeight + 120;
 
-        // FIX 2/3/4 — Style overrides for the Details panel before capture.
+        // Style overrides for the Details panel before capture — restored in finally.
         const savedCollapsible: Array<{ el: HTMLElement; whiteSpace: string }> = [];
         const savedTds: Array<{ el: HTMLElement; whiteSpace: string; fontSize: string }> = [];
         const savedSpans: Array<{ el: HTMLElement; whiteSpace: string; fontSize: string }> = [];
+        const savedDimHeadings: Array<{ el: HTMLElement; mb: string }> = [];
+        const savedDimRows: Array<{ el: HTMLElement; pb: string; mb: string }> = [];
         if (tabValue === "details") {
-          // FIX 2: "Gecrawlte Seiten" collapsible heading
+          // FIX 2: "Gecrawlte Seiten" collapsible heading — nowrap
           Array.from(panel.querySelectorAll<HTMLElement>('[class*="collapsible"] button, [class*="accordion"] button'))
             .forEach(el => { savedCollapsible.push({ el, whiteSpace: el.style.whiteSpace }); el.style.whiteSpace = 'nowrap'; });
-          // FIX 3: Crawler/robots table cells
-          let tdEls = Array.from(panel.querySelectorAll<HTMLElement>('[class*="crawler"] td, [class*="robots"] td'));
-          if (tdEls.length === 0) tdEls = Array.from(panel.querySelectorAll<HTMLElement>('td'));
-          tdEls.forEach(el => { savedTds.push({ el, whiteSpace: el.style.whiteSpace, fontSize: el.style.fontSize }); el.style.whiteSpace = 'nowrap'; el.style.fontSize = '11px'; });
-          // FIX 4: Inhaltliche Relevanz dimension headings
+          // FIX 3: Crawler status cells — text-content based, nowrap + smaller font
+          panel.querySelectorAll<HTMLElement>('td').forEach(el => {
+            const txt = el.textContent ?? '';
+            if (txt.includes('Nicht') || txt.includes('erwähnt') || txt.includes('Erlaubt') || txt.includes('Blockiert')) {
+              savedTds.push({ el, whiteSpace: el.style.whiteSpace, fontSize: el.style.fontSize });
+              el.style.whiteSpace = 'nowrap';
+              el.style.fontSize = '11px';
+            }
+          });
+          // FIX 4: Inhaltliche Relevanz dimension headings — nowrap + slightly smaller font
           let dimEls = Array.from(panel.querySelectorAll<HTMLElement>('[class*="content-relevance"] h3, [class*="contentRelevance"] h3'));
           if (dimEls.length === 0) dimEls = Array.from(panel.querySelectorAll<HTMLElement>('.text-sm.font-medium'));
           dimEls.forEach(el => { savedSpans.push({ el, whiteSpace: el.style.whiteSpace, fontSize: el.style.fontSize }); el.style.whiteSpace = 'nowrap'; el.style.fontSize = '13px'; });
+          // FIX 5: Inhaltliche Relevanz heading/bullet overlap — add bottom margin to h3s
+          panel.querySelectorAll<HTMLElement>('[class*="space-y"] h3, [class*="contentRelevance"] h3, [class*="content-relevance"] h3')
+            .forEach(el => { savedDimHeadings.push({ el, mb: el.style.marginBottom }); el.style.marginBottom = '8px'; });
+          // FIX 5b: flex rows that wrap h3 + score badge — add padding/margin below
+          panel.querySelectorAll<HTMLElement>('div').forEach(row => {
+            if (
+              row.classList.contains('flex') &&
+              row.classList.contains('items-center') &&
+              row.classList.contains('justify-between') &&
+              row.querySelector('h3')
+            ) {
+              savedDimRows.push({ el: row, pb: row.style.paddingBottom, mb: row.style.marginBottom });
+              row.style.paddingBottom = '6px';
+              row.style.marginBottom = '6px';
+            }
+          });
         }
 
         // Individual try/catch — never abort the whole loop.
@@ -1186,10 +1209,12 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           console.warn("html-to-image failed for panel:", tabValue, imgErr);
           imgData = null;
         } finally {
-          // Restore FIX 2/3/4 overrides.
+          // Restore all pre-capture overrides.
           savedCollapsible.forEach(({ el, whiteSpace }) => { el.style.whiteSpace = whiteSpace; });
           savedTds.forEach(({ el, whiteSpace, fontSize }) => { el.style.whiteSpace = whiteSpace; el.style.fontSize = fontSize; });
           savedSpans.forEach(({ el, whiteSpace, fontSize }) => { el.style.whiteSpace = whiteSpace; el.style.fontSize = fontSize; });
+          savedDimHeadings.forEach(({ el, mb }) => { el.style.marginBottom = mb; });
+          savedDimRows.forEach(({ el, pb, mb }) => { el.style.paddingBottom = pb; el.style.marginBottom = mb; });
           const injected = panel.querySelector("#pdf-footer-injected");
           if (injected) panel.removeChild(injected);
           // FIX B — Restore padding after capture.

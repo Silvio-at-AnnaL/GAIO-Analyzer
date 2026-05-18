@@ -1,0 +1,154 @@
+Fix three PDF export issues. All changes are 
+in the PDF capture logic in ErgebnisseView.tsx.
+
+---
+
+FIX 1 — Radar chart appears oval in PDF
+
+The RadarDimensions SVG has viewBox="0 0 320 320" 
+but renders as an oval because the iframe 
+container or the flex layout squashes the SVG 
+horizontally.
+
+In the buildHeaderIframeHtml function (or 
+wherever the iframe HTML string is built), 
+find the radar SVG element and add explicit 
+CSS to force it to render square:
+
+  The SVG must have:
+    width: 280px
+    height: 280px
+    flex-shrink: 0
+  
+  The container div holding the SVG must have:
+    flex-shrink: 0
+    width: 280px
+
+  The overall right card (flex row of SVG + 
+  legend) must have enough total width. 
+  Set the right card explicitly:
+    width: 720px
+    flex-shrink: 0
+    display: flex
+    flex-direction: row
+    align-items: center
+    gap: 16px
+
+  The left card (gauge) must have:
+    width: 400px
+    flex-shrink: 0
+
+  The outer wrapper of both cards:
+    display: flex
+    flex-direction: row
+    gap: 16px
+    width: 1136px  (1200px - 2×32px padding)
+
+This ensures both cards have fixed pixel 
+widths that sum to exactly the iframe width, 
+preventing any squashing or stretching.
+
+---
+
+FIX 2 — LLM-Crawler Status: "Nicht erwähnt" 
+still wrapping
+
+The previous selector-based fix did not match 
+the actual DOM elements. Use a broader approach.
+
+Before capturing the Details tab panel, apply 
+white-space: nowrap to ALL td elements in the 
+entire panel that contain the text "Nicht":
+
+  const allTds = panel.querySelectorAll('td')
+  const fixedTds: Array<{el: HTMLElement, 
+    ws: string, fs: string}> = []
+  
+  allTds.forEach(td => {
+    const el = td as HTMLElement
+    if (el.textContent?.includes('Nicht') || 
+        el.textContent?.includes('erwähnt') ||
+        el.textContent?.includes('Erlaubt') ||
+        el.textContent?.includes('Blockiert')) {
+      fixedTds.push({ 
+        el, 
+        ws: el.style.whiteSpace,
+        fs: el.style.fontSize
+      })
+      el.style.whiteSpace = 'nowrap'
+      el.style.fontSize = '11px'
+    }
+  })
+
+Restore in finally block:
+  fixedTds.forEach(({ el, ws, fs }) => {
+    el.style.whiteSpace = ws
+    el.style.fontSize = fs
+  })
+
+---
+
+FIX 3 — First bullet in "Inhaltliche Relevanz" 
+overlaps with heading
+
+The first bullet point text visually overlaps 
+with the dimension heading above it. This 
+happens because the heading row uses 
+justify-between with an absolute-positioned 
+or float-based score badge, which pulls the 
+heading text out of normal flow.
+
+Before capturing the Details panel, find all 
+dimension heading containers in the content 
+relevance section and ensure they have 
+enough bottom margin before the bullet list:
+
+  const dimHeadings = panel.querySelectorAll(
+    '[class*="space-y"] h3, 
+     [class*="contentRelevance"] h3,
+     [class*="content-relevance"] h3'
+  )
+  const headingSaved: Array<{
+    el: HTMLElement, mb: string
+  }> = []
+  
+  dimHeadings.forEach(h => {
+    const el = h as HTMLElement
+    headingSaved.push({ 
+      el, mb: el.style.marginBottom 
+    })
+    el.style.marginBottom = '8px'
+  })
+
+Also find the heading wrapper divs (the flex 
+row containing h3 + score badge) and add 
+padding-bottom to create separation:
+
+  const dimRows = panel.querySelectorAll(
+    '[class*="flex"][class*="items-center"]
+    [class*="justify-between"]'
+  )
+  dimRows.forEach(row => {
+    const el = row as HTMLElement
+    if (el.querySelector('h3')) {
+      el.style.paddingBottom = '6px'
+      el.style.marginBottom = '6px'
+    }
+  })
+
+Additionally, find all ul elements inside the 
+content relevance card and ensure the first 
+li has enough top clearance:
+
+  panel.querySelectorAll(
+    '[class*="inhaltliche"] ul, 
+     [class*="content"] ul'
+  ).forEach(ul => {
+    const firstLi = ul.querySelector('li')
+    if (firstLi) {
+      (firstLi as HTMLElement).style.marginTop 
+        = '4px'
+    }
+  })
+
+Restore all in finally block.
