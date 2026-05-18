@@ -490,15 +490,21 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request
   const logId = parseInt(String(req.params.id), 10);
   if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
 
-  const entry = db.prepare("SELECT id, html_export_id FROM analysis_log WHERE id = ?").get(logId) as unknown as { id: number; html_export_id: number | null } | undefined;
+  const entry = db.prepare("SELECT id FROM analysis_log WHERE id = ?").get(logId) as unknown as { id: number } | undefined;
   if (!entry) { res.status(404).json({ error: "Eintrag nicht gefunden" }); return; }
 
-  if (entry.html_export_id) {
-    db.prepare("DELETE FROM analysis_exports WHERE id = ?").run(entry.html_export_id);
+  try {
+    // Remove ALL exports for this analysis by analysis_id (the FK column).
+    // Using html_export_id would leave orphaned rows when both auto-save and
+    // manual export exist for the same entry, causing a FK violation on the
+    // analysis_log delete and crashing the process.
+    db.prepare("DELETE FROM analysis_exports WHERE analysis_id = ?").run(logId);
+    db.prepare("DELETE FROM analysis_log WHERE id = ?").run(logId);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "Failed to delete analysis log entry");
+    res.status(500).json({ error: "Fehler beim Löschen" });
   }
-  db.prepare("DELETE FROM analysis_log WHERE id = ?").run(logId);
-
-  res.json({ ok: true });
 });
 
 export default adminRouter;
