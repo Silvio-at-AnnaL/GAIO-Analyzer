@@ -14,6 +14,7 @@ export function DeliveryView() {
     delivery_bcc: "",
     delivery_require_email: "false",
   });
+  const [mailHost, setMailHost] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
@@ -23,8 +24,15 @@ export function DeliveryView() {
 
   async function load() {
     setLoading(true);
-    const res = await adminFetch("/api/admin/settings/delivery");
-    if (res.ok) setForm(await res.json());
+    const [deliveryRes, mailRes] = await Promise.all([
+      adminFetch("/api/admin/settings/delivery"),
+      adminFetch("/api/admin/settings/mail"),
+    ]);
+    if (deliveryRes.ok) setForm(await deliveryRes.json());
+    if (mailRes.ok) {
+      const m = await mailRes.json() as { mail_host?: string };
+      setMailHost(m.mail_host ?? "");
+    }
     setLoading(false);
   }
 
@@ -138,6 +146,16 @@ export function DeliveryView() {
                 <AlertCircle className="w-3 h-3" /> {bccError}
               </p>
             )}
+          </div>
+        )}
+
+        {/* Mail server status indicator */}
+        {form.delivery_mode === "mail-only" && (
+          <div className={`flex items-center gap-2 text-sm rounded-md px-3 py-2 border ${mailHost ? "border-green-700/40 bg-green-900/20 text-green-400" : "border-amber-700/40 bg-amber-900/20 text-amber-400"}`}>
+            {mailHost
+              ? <><CheckCircle className="w-4 h-4 shrink-0" /> Mailserver konfiguriert ({mailHost})</>
+              : <><AlertCircle className="w-4 h-4 shrink-0" /> Kein Mailserver konfiguriert – E-Mail-Versand nicht möglich. Bitte zuerst den Mailserver einrichten.</>
+            }
           </div>
         )}
 

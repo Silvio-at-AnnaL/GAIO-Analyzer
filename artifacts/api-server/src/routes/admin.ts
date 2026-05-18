@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { db, getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
-import { sendMail } from "../lib/mailer.js";
+import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
@@ -75,6 +75,88 @@ const loginLimiter = rateLimit({
 });
 
 const adminRouter = Router();
+
+// ── Public endpoints (no auth required) ──────────────────────────────────────
+
+// GET /api/admin/public/delivery-mode — returns current delivery mode
+adminRouter.get("/public/delivery-mode", (_req: Request, res: Response) => {
+  const raw = getSetting("delivery_mode") ?? "download";
+  res.json({ mode: raw === "mail-only" ? "mail-only" : "download" });
+});
+
+// POST /api/admin/public/send-report — public send-report for end-user delivery
+adminRouter.post("/public/send-report", async (req: Request, res: Response) => {
+  const {
+    recipientEmail, reportType, htmlContent, pdfBase64, filename,
+    domain, companyName, gaioScore, scoresJson, pagesCrawled,
+  } = req.body as Record<string, unknown>;
+
+  if (!recipientEmail || typeof recipientEmail !== "string") {
+    res.status(400).json({ error: "recipientEmail fehlt" }); return;
+  }
+  const rt = String(reportType ?? "");
+  if (rt !== "html" && rt !== "pdf") {
+    res.status(400).json({ error: "reportType muss 'html' oder 'pdf' sein" }); return;
+  }
+  if (rt === "pdf" && (!pdfBase64 || typeof pdfBase64 !== "string")) {
+    res.status(400).json({ error: "pdfBase64 fehlt für Typ 'pdf'" }); return;
+  }
+
+  const domainStr  = String(domain ?? "unknown");
+  const bcc        = getSetting("delivery_bcc") ?? "";
+  const today      = new Date().toLocaleDateString("de-DE");
+  const safeBase   = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+
+  let logId: number;
+  try {
+    const r = db.prepare(`
+      INSERT INTO analysis_log
+        (domain, company_name, gaio_score, scores_json, pages_crawled,
+         status, triggered_by, started_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, 'completed', 'mail-delivery', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(
+      domainStr,
+      companyName ? String(companyName) : null,
+      typeof gaioScore === "number" ? gaioScore : null,
+      scoresJson ? String(scoresJson) : null,
+      typeof pagesCrawled === "number" ? pagesCrawled : null,
+    );
+    logId = r.lastInsertRowid as number;
+
+    if (htmlContent && typeof htmlContent === "string") {
+      saveAnalysisExport(logId, htmlContent);
+    }
+  } catch (err) {
+    logger.error({ err }, "send-report: failed to create log entry");
+    res.status(500).json({ error: "Fehler beim Erstellen des Eintrags" }); return;
+  }
+
+  const attachments: MailOptions["attachments"] = [];
+
+  if (rt === "pdf" && pdfBase64) {
+    const pdfBuffer  = Buffer.from(String(pdfBase64), "base64");
+    const pdfFile    = filename ? String(filename) : `GAIO-Report-${safeBase}.pdf`;
+    attachments.push({ filename: pdfFile, content: pdfBuffer, contentType: "application/pdf" });
+  }
+
+  if (htmlContent && typeof htmlContent === "string") {
+    const htmlFile = (filename && String(filename).endsWith(".html"))
+      ? String(filename)
+      : `GAIO-Report-${safeBase}.html`;
+    attachments.push({ filename: htmlFile, content: htmlContent, contentType: "text/html" });
+  }
+
+  const result = await sendMail({
+    to:      String(recipientEmail),
+    subject: `GAIO Analyse-Report – ${domainStr}`,
+    html:    `<p>Anbei finden Sie den angeforderten GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
+    text:    `Anbei finden Sie den angeforderten GAIO Analyse-Report für ${domainStr} vom ${today}.`,
+    bcc:     bcc || undefined,
+    attachments,
+  });
+
+  res.json({ ...result, logId });
+});
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 

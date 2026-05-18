@@ -8,7 +8,7 @@ export interface MailOptions {
   text?: string;
   html?: string;
   bcc?: string;
-  attachments?: Array<{ filename: string; content: string; contentType?: string }>;
+  attachments?: Array<{ filename: string; content: string | Buffer; contentType?: string }>;
 }
 
 function getMailSettings() {

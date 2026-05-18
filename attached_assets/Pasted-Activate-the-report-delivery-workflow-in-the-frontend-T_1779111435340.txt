@@ -1,0 +1,178 @@
+Activate the report delivery workflow in the 
+frontend. The backend infrastructure already 
+exists (/api/admin/analysis/:id/send-email, 
+delivery settings in DB). Now wire it up.
+
+---
+
+CHANGE 1 — Read delivery settings on app load
+
+In the auth context or a new settings context, 
+fetch delivery settings when the app loads:
+
+  GET /api/admin/settings/delivery
+    → returns delivery_mode, 
+      delivery_bcc, 
+      delivery_require_email
+
+Store these in a React context or Zustand 
+store accessible to the results view.
+
+This fetch runs unauthenticated — the 
+delivery_mode is a public-facing setting. 
+Create a separate public endpoint for this:
+
+  GET /api/admin/public/delivery-mode
+    No auth required.
+    Returns only: 
+    { mode: 'download' | 'mail-only' }
+
+---
+
+CHANGE 2 — Modify the export buttons
+
+In ErgebnisseView.tsx, find the two export 
+buttons:
+  "Report als PDF exportieren"
+  "Report als HTML exportieren"
+
+Current behavior: immediately triggers 
+download/generation on click.
+
+New behavior depends on delivery_mode:
+
+IF mode = 'download' (default):
+  Keep existing behavior exactly as-is.
+  No changes visible to user.
+
+IF mode = 'mail-only':
+  On click: do NOT start the export.
+  Instead: open an inline modal or 
+  popover asking for an email address.
+
+The modal:
+  Title: "Report per E-Mail senden"
+  Body text: 
+    "Geben Sie die Mailadresse ein, an die 
+    der Report gesendet werden soll."
+  Input: email type, placeholder 
+    "ihre@mailadresse.de"
+  Two buttons: 
+    "Senden" | "Abbrechen"
+  
+  On "Senden" click:
+    1. Validate email format
+    2. Generate the report (PDF or HTML) 
+       exactly as before, but do NOT 
+       trigger browser download
+    3. For HTML: POST the generated string 
+       to /api/admin/analysis/auto-export 
+       (already exists) and get back the 
+       analysis log id
+    4. Call POST /api/admin/analysis/:id/send-email
+       Body: { recipientEmail, reportType: 'html' }
+    5. Show success message inline:
+       "Der Report wurde an [email] gesendet."
+    6. Close modal after 2 seconds
+    
+    For PDF: convert the jsPDF blob to 
+    base64 and include it in the send-email 
+    request. Extend the backend endpoint to 
+    accept either an HTML string or a base64 
+    PDF blob:
+    
+      PATCH /api/admin/analysis/:id/send-email
+      Body: {
+        recipientEmail: string,
+        reportType: 'html' | 'pdf',
+        // for pdf:
+        pdfBase64?: string,
+        filename?: string
+      }
+    
+    Backend: if pdfBase64 is provided, 
+    attach it as a .pdf file in the email.
+    If html_export_id is set on the log 
+    entry, attach the HTML as well.
+
+---
+
+CHANGE 3 — Loading state during email send
+
+While the email is being prepared and sent 
+(which includes report generation + API call), 
+show a loading state on the button:
+  "⏳ Wird gesendet…"
+  Button disabled during this time.
+
+On error:
+  Show inline error below the modal input:
+  "E-Mail konnte nicht gesendet werden. 
+  Bitte prüfen Sie die Mailserver-Einstellungen."
+  Keep modal open so user can retry.
+
+---
+
+CHANGE 4 — Backend: extend send-email endpoint
+
+Update POST /api/admin/analysis/:id/send-email 
+to handle both html (from DB) and pdf 
+(from request body):
+
+  if body.reportType === 'pdf' and 
+     body.pdfBase64 is provided:
+    → decode base64, attach as PDF file
+    → also attach HTML from DB if available
+  
+  if body.reportType === 'html':
+    → fetch html_content from analysis_exports
+    → attach as .html file
+  
+  Always BCC to delivery_bcc setting if set.
+  
+  Email:
+    Subject: "GAIO Analyse-Report – [domain]"
+    Body (HTML email):
+      "Anbei finden Sie den angeforderten 
+      GAIO Analyse-Report für [domain] 
+      vom [date]."
+    Attachment: the report file
+
+---
+
+CHANGE 5 — Versand-Analyse view: 
+show current status
+
+In DeliveryView.tsx, add a status indicator 
+showing the current effective behavior:
+
+  If mode = 'download':
+    ℹ "Nutzer können Reports direkt 
+    herunterladen. Kein E-Mail-Versand."
+  
+  If mode = 'mail-only' and mail configured:
+    ✅ "E-Mail-Versand aktiv. Reports werden 
+    an die vom Nutzer angegebene Adresse 
+    gesendet. BCC an: [bcc address]"
+  
+  If mode = 'mail-only' and mail NOT configured:
+    ⚠ "E-Mail-Versand gewählt, aber kein 
+    Mailserver konfiguriert. Bitte zuerst 
+    den Mailserver einrichten. 
+    Aktuell wird Download-Modus verwendet."
+
+---
+
+SELF-CHECK after implementation:
+
+1. In download mode: do export buttons 
+   still work exactly as before? ✓
+2. In mail-only mode: does the email modal 
+   appear instead of download? ✓
+3. Does the email arrive with the correct 
+   attachment? (test with console fallback 
+   if no SMTP) ✓
+4. Does BCC work correctly? ✓
+5. If no mailserver configured and mode 
+   is mail-only: does the fallback to 
+   console work gracefully? ✓

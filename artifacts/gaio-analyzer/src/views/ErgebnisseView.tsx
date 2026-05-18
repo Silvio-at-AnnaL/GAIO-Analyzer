@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDeliveryMode } from "@/store/deliveryModeStore";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { useAppStore } from "@/store/appStore";
 import { Button } from "@/components/ui/button";
@@ -642,10 +643,16 @@ function buildExportTimestamp(d: Date = new Date()): string {
 
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
+  const { mode: deliveryMode } = useDeliveryMode();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [pdfMode, setPdfMode] = useState(false);
+  const [emailModal, setEmailModal] = useState<"pdf" | "html" | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendFeedback, setSendFeedback] = useState<string | null>(null);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -731,6 +738,64 @@ function ReportView({ analysisId }: { analysisId: string }) {
   }, [report?.status]);
 
   if (!report) return <div className="text-muted-foreground text-sm">Lade Bericht…</div>;
+
+  // ── Send report by email (public endpoint, no auth needed) ───────────────────
+  const sendReportByEmail = async (
+    recipientEmail: string,
+    reportType: "html" | "pdf",
+    opts: { htmlContent?: string; pdfBase64?: string; filename?: string },
+  ) => {
+    const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const scoresJson = JSON.stringify({
+      technicalSeo:       ((report as Record<string, unknown>).technicalSeo       as { score: number } | null)?.score ?? null,
+      schemaOrg:          ((report as Record<string, unknown>).schemaOrg          as { score: number } | null)?.score ?? null,
+      headingStructure:   ((report as Record<string, unknown>).headingStructure   as { score: number } | null)?.score ?? null,
+      contentRelevance:   ((report as Record<string, unknown>).contentRelevance   as { score: number } | null)?.score ?? null,
+      faqQuality:         ((report as Record<string, unknown>).faqQuality         as { score: number } | null)?.score ?? null,
+      llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+    });
+    const res = await fetch(`${basePrefix}/api/admin/public/send-report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientEmail,
+        reportType,
+        htmlContent: opts.htmlContent,
+        pdfBase64:   opts.pdfBase64,
+        filename:    opts.filename,
+        domain:      String(report.url ?? ""),
+        companyName: domainForm.companyName.trim() || "",
+        gaioScore:   report.overallScore ?? null,
+        scoresJson,
+        pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(err.error ?? "Sendefehler");
+    }
+  };
+
+  // ── Modal send handler ────────────────────────────────────────────────────────
+  const handleModalSend = async () => {
+    const email = emailInput.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSendError("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      if (emailModal === "html") await handleHtmlExport(email);
+      else if (emailModal === "pdf") await handlePdfExport(email);
+      setSendFeedback(email);
+      setTimeout(() => { setEmailModal(null); setSendFeedback(null); setEmailInput(""); }, 2500);
+    } catch {
+      setSendError("E-Mail konnte nicht gesendet werden. Bitte prüfen Sie die Mailserver-Einstellungen.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
@@ -826,7 +891,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   };
 
   // ── PDF export via jsPDF + html2canvas ──────────────────────────────────────
-  const handlePdfExport = async () => {
+  const handlePdfExport = async (mailTo?: string) => {
     setExportingPdf(true);
     setExportError(null);
     setPdfMode(true);
@@ -1570,14 +1635,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
       removeOverlay();
 
-      console.log("Triggering download...");
-      pdf.save(`GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`);
+      const pdfFilename = `GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`;
+      if (mailTo) {
+        const pdfBase64 = (pdf.output("datauristring") as string).split(",")[1] ?? "";
+        await sendReportByEmail(mailTo, "pdf", { pdfBase64, filename: pdfFilename });
+      } else {
+        console.log("Triggering download...");
+        pdf.save(pdfFilename);
+      }
     } catch (err) {
       console.error("PDF export failed:", err);
-      setExportError(
-        "PDF-Export fehlgeschlagen: " +
-        (err instanceof Error ? err.message : String(err))
-      );
+      if (!mailTo) {
+        setExportError(
+          "PDF-Export fehlgeschlagen: " +
+          (err instanceof Error ? err.message : String(err))
+        );
+      }
+      if (mailTo) throw err;
     } finally {
       setExportingPdf(false);
       setPdfMode(false);
@@ -1588,7 +1662,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
   };
 
   // ── HTML export ──────────────────────────────────────────────────────────────
-  const handleHtmlExport = async () => {
+  const handleHtmlExport = async (mailTo?: string) => {
     setExportingHtml(true);
     try {
       const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
@@ -1628,13 +1702,17 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         }).catch(() => {});
       }
 
-      const blob = new Blob([htmlContent], { type: "text/html" });
-      const dlUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = dlUrl;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(dlUrl);
+      if (mailTo) {
+        await sendReportByEmail(mailTo, "html", { htmlContent, filename });
+      } else {
+        const blob = new Blob([htmlContent], { type: "text/html" });
+        const dlUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = dlUrl;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(dlUrl);
+      }
     } finally {
       setExportingHtml(false);
     }
@@ -1651,11 +1729,21 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={handlePdfExport} disabled={exportingPdf} data-testid="button-export-pdf">
+          <Button
+            size="sm" variant="outline"
+            onClick={deliveryMode === "mail-only" ? () => setEmailModal("pdf") : () => void handlePdfExport()}
+            disabled={exportingPdf || sending}
+            data-testid="button-export-pdf"
+          >
             {exportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
             {exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}
           </Button>
-          <Button size="sm" onClick={handleHtmlExport} disabled={exportingHtml} data-testid="button-export-html">
+          <Button
+            size="sm"
+            onClick={deliveryMode === "mail-only" ? () => setEmailModal("html") : () => void handleHtmlExport()}
+            disabled={exportingHtml || sending}
+            data-testid="button-export-html"
+          >
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
             {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
           </Button>
@@ -1675,6 +1763,67 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
         Basisdaten ändern oder neue Analyse starten? → Wechseln Sie zu <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.
       </p>
+
+      {/* Email delivery modal */}
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget && !sending) { setEmailModal(null); setEmailInput(""); setSendError(null); } }}>
+          <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
+            <h2 className="text-base font-semibold">Report per E-Mail senden</h2>
+            <p className="text-sm text-muted-foreground">
+              Geben Sie die Empfängeradresse ein.
+              Der {emailModal === "pdf" ? "PDF-" : "HTML-"}Report wird generiert und direkt zugestellt.
+            </p>
+
+            {sendFeedback ? (
+              <div className="flex items-center gap-2 text-sm text-green-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Report wurde an <strong>{sendFeedback}</strong> gesendet.
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => { setEmailInput(e.target.value); setSendError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !sending) void handleModalSend(); }}
+                  placeholder="empfaenger@unternehmen.de"
+                  disabled={sending}
+                  autoFocus
+                  className="w-full px-3 py-2 rounded-md text-sm border outline-none focus:ring-1"
+                  style={{
+                    background: "hsl(var(--input))",
+                    borderColor: sendError ? "#f87171" : "hsl(var(--border))",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                {sendError && (
+                  <p className="text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" /> {sendError}
+                  </p>
+                )}
+                <div className="flex gap-2 justify-end pt-1">
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => { setEmailModal(null); setEmailInput(""); setSendError(null); }}
+                    disabled={sending}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleModalSend()}
+                    disabled={sending || !emailInput.trim()}
+                  >
+                    {sending
+                      ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Wird gesendet…</>
+                      : "Senden"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Score overview + dimension cards — captured as header in PDF */}
       <div id="results-header" className="space-y-4">
