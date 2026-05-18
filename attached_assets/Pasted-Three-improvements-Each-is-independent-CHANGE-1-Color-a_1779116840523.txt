@@ -1,0 +1,212 @@
+Three improvements. Each is independent.
+
+---
+
+CHANGE 1 — Color accessibility: 
+red-green colorblind safe, globally
+
+The current UI uses green (#22c55e / success) 
+and red (#ef4444 / error) as the primary 
+status color pair. These are indistinguishable 
+for users with deuteranopia or protanopia 
+(the most common form of color blindness, 
+affecting ~8% of men).
+
+Replace the semantic color system globally 
+with a colorblind-safe palette. The key 
+principle: never rely on red vs. green 
+alone to convey meaning. Always pair 
+color with an icon or shape difference.
+
+GLOBAL COLOR REPLACEMENTS:
+
+Success / positive / active:
+  OLD: green (#22c55e, #16a34a, #86efac)
+  NEW: blue (#2563eb, #1d4ed8, #93c5fd)
+  Keep the ✓ checkmark icon alongside it.
+
+Error / critical / negative:
+  OLD: red (#ef4444, #dc2626, #fca5a5)
+  NEW: amber/orange (#d97706, #b45309, #fcd34d)
+  Keep the ✗ or ⚠ icon alongside it.
+
+Warning / caution:
+  OLD: amber/yellow (#f59e0b)
+  NEW: keep amber but darken text to 
+       #92400e on light bg for contrast
+
+Info / neutral:
+  OLD: blue (#3b82f6) — keep as-is, 
+       blue is safe for all color vision types
+
+Score colors in the analysis results 
+are the EXCEPTION — these encode a 
+continuous scale (0-100) and users learn 
+them with context. Keep them but add 
+text labels (already present: "Kritisch", 
+"Ausbaufähig", "Stark") so color is not 
+the sole indicator.
+
+SPECIFIC LOCATIONS TO UPDATE:
+
+In DeliveryView.tsx:
+  The green "Mailserver konfiguriert" 
+  status box → change to blue background 
+  with blue border and blue text.
+  The BCC address text inside → use 
+  darker blue for readability on both 
+  light and dark backgrounds.
+
+In UserManagementView.tsx:
+  User status badges (active/inactive) → 
+  active: blue badge, inactive: gray badge.
+
+In AnalysisLogView.tsx:
+  "Abgeschlossen" badge: blue (not green).
+  "Fehlgeschlagen" badge: amber/orange 
+  with ⚠ icon (not red).
+
+In AdminViews generally:
+  Any success toast/notification → blue.
+  Any error toast/notification → amber 
+  with ⚠ prefix.
+
+In ProfileView and ForcePasswordChangeView:
+  Password policy checkmarks → 
+  blue checkmarks for met requirements, 
+  gray × for unmet (not green/red).
+
+In Sidebar.tsx:
+  Active nav item indicator → 
+  already uses primary (blue), keep.
+
+Update Tailwind classes throughout:
+  bg-green-* → bg-blue-*
+  text-green-* → text-blue-*
+  border-green-* → border-blue-*
+  bg-red-* (in admin views) → bg-amber-*
+  text-red-* (in admin views) → text-amber-*
+  
+  Exception: the score color system in 
+  ErgebnisseView and chart components — 
+  leave unchanged.
+
+---
+
+CHANGE 2 — KI-Tool: explicit active 
+provider selection
+
+PROBLEM: Currently ai_provider is set by 
+a radio button group. But when multiple 
+API keys are configured, the UI already 
+shows a radio group — this is correct. 
+The issue is making it clear which provider 
+is actually active and making the selection 
+more prominent.
+
+In AiToolView.tsx:
+
+Redesign SECTION 1 "Aktiver KI-Anbieter":
+
+Show the radio group only when 2 or more 
+providers have API keys configured. 
+(If only 1 has a key, show a simple 
+info line: "Aktiver Anbieter: [name] — 
+nur ein API-Key konfiguriert.")
+
+When multiple keys are configured, 
+the currently selected provider radio 
+should have a visually distinct style:
+  - Blue border (2px)
+  - Blue background tint
+  - Bold label
+  - Badge: "Aktiv" in blue
+
+Each radio option shows:
+  [radio] [Provider name]  [status dot]
+  Model: [model name]      [key status]
+
+Add a prominent "Anbieter wechseln & 
+speichern" button that only appears 
+when the selected radio differs from 
+the currently saved ai_provider value — 
+i.e. the user must explicitly confirm 
+the switch.
+
+When saved, show a confirmation:
+  "ChatGPT / OpenAI ist jetzt der 
+  aktive Analyse-Anbieter."
+
+---
+
+CHANGE 3 — KI-Tool: custom/additional 
+LLM providers
+
+Add a "Weiterer Anbieter" section below 
+the four predefined providers in 
+AiToolView.tsx.
+
+DATABASE: Add these settings rows 
+(INSERT OR IGNORE on startup):
+  ai_custom_providers = '[]'  
+  (JSON array of custom provider objects)
+
+Each custom provider object:
+  {
+    id: string,          // unique slug
+    name: string,        // display name
+    api_key: string,     // stored encrypted
+    base_url: string,    // OpenAI-compatible endpoint
+    model: string,       // model name/id
+    enabled: boolean
+  }
+
+BACKEND:
+  PATCH /api/admin/settings/ai 
+  already handles saving — extend it to 
+  accept ai_custom_providers as a JSON 
+  string containing the array.
+  
+  Mask API keys in the custom providers 
+  the same way as predefined ones.
+
+  In the unified AI client (ai-client.ts), 
+  after checking the four predefined 
+  providers, check if ai_provider matches 
+  a custom provider id. If so, use the 
+  OpenAI SDK with that provider's 
+  base_url and api_key (most LLM APIs 
+  are OpenAI-compatible).
+
+FRONTEND — new sub-section in AiToolView:
+
+  Heading: "Weitere Anbieter"
+  Subtext: "Alle OpenAI-kompatiblen APIs 
+  können hier eingebunden werden 
+  (z. B. Mistral, DeepSeek, Together AI, 
+  Groq, lokale Modelle via Ollama)."
+
+  List of existing custom providers:
+  Each row shows:
+    Name | Base-URL | Model | Status | 
+    Aktionen (Edit / Delete)
+  
+  "Neuen Anbieter hinzufügen" button 
+  → opens an inline form with:
+    Bezeichnung (text, e.g. "Mistral Large")
+    Base-URL (text, e.g. 
+      "https://api.mistral.ai/v1")
+    API-Key (password input)
+    Model-ID (text, e.g. 
+      "mistral-large-latest")
+    [Hinzufügen] [Abbrechen]
+
+  Saved custom providers also appear in 
+  the SECTION 1 radio group (active 
+  provider selection) with a "Custom" 
+  badge next to their name.
+
+  Note below the form:
+    "Die API muss OpenAI-kompatibel sein 
+    (Chat Completions Endpoint: 
+    POST /v1/chat/completions)."

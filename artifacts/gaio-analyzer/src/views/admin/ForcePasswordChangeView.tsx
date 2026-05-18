@@ -85,8 +85,8 @@ export function ForcePasswordChangeView() {
               {POLICY_CHECKS.map(c => (
                 <div key={c.label} className="flex items-center gap-2 text-xs">
                   {c.test(newPw)
-                    ? <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                    : <X    className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                    ? <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    : <X    className="w-3.5 h-3.5 text-gray-500 shrink-0" />}
                   <span style={{ color: c.test(newPw) ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>
                     {c.label}
                   </span>
@@ -100,10 +100,10 @@ export function ForcePasswordChangeView() {
             <input type="password" value={confirmPw} onChange={e => setConfirm(e.target.value)} required
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
-            {confirmPw && newPw !== confirmPw && <p className="text-xs text-red-500">Passwörter stimmen nicht überein</p>}
+            {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">Passwörter stimmen nicht überein</p>}
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-amber-400">{error}</p>}
 
           <button type="submit" disabled={loading || !allPolicyMet || newPw !== confirmPw}
             className="w-full py-2.5 px-4 rounded-lg text-sm font-semibold disabled:opacity-60"

@@ -94,6 +94,7 @@ const DEFAULT_SETTINGS: [string, string][] = [
   ["delivery_mode",            "download"],
   ["delivery_bcc",             ""],
   ["delivery_require_email",   "false"],
+  ["ai_custom_providers",      "[]"],
 ];
 const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);

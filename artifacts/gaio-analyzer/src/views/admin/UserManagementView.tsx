@@ -90,7 +90,7 @@ export function UserManagementView() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-amber-400">{error}</p>}
 
       {/* Create user form */}
       {showCreate && (
@@ -111,7 +111,7 @@ export function UserManagementView() {
                 </div>
               ))}
             </div>
-            {createMsg && <p className="text-xs text-red-500">{createMsg}</p>}
+            {createMsg && <p className="text-xs text-amber-400">{createMsg}</p>}
             <div className="flex gap-2">
               <button type="submit" disabled={creating}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-60"
@@ -161,7 +161,7 @@ export function UserManagementView() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{ background: u.isActive ? "rgba(34,197,94,0.15)" : "rgba(156,163,175,0.15)", color: u.isActive ? "#22c55e" : "#9ca3af" }}>
+                      style={{ background: u.isActive ? "rgba(37,99,235,0.15)" : "rgba(156,163,175,0.15)", color: u.isActive ? "#3b82f6" : "#9ca3af" }}>
                       {u.isActive ? "Aktiv" : "Inaktiv"}
                     </span>
                   </td>
@@ -172,11 +172,11 @@ export function UserManagementView() {
                       deleteConfirm === u.id ? (
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground">Löschen?</span>
-                          <button onClick={() => deleteUser(u.id)} className="text-xs text-red-500 font-medium hover:underline">Ja</button>
+                          <button onClick={() => deleteUser(u.id)} className="text-xs text-amber-400 font-medium hover:underline">Ja</button>
                           <button onClick={() => setDeleteConfirm(null)} className="text-xs text-muted-foreground hover:underline">Nein</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm(u.id)} className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors">
+                        <button onClick={() => setDeleteConfirm(u.id)} className="p-1 rounded hover:bg-amber-500/10 text-muted-foreground hover:text-amber-400 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )

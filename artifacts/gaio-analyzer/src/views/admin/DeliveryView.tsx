@@ -170,7 +170,7 @@ export function DeliveryView() {
 
         {/* Mail server status indicator */}
         {form.delivery_mode === "mail-only" && (
-          <div className={`flex items-start gap-2 text-sm rounded-md px-3 py-2 border ${mailHost ? "border-green-700/40 bg-green-900/20 text-green-400" : "border-amber-700/40 bg-amber-900/20 text-amber-400"}`}>
+          <div className={`flex items-start gap-2 text-sm rounded-md px-3 py-2 border ${mailHost ? "border-blue-700/40 bg-blue-900/20 text-blue-400" : "border-amber-700/40 bg-amber-900/20 text-amber-400"}`}>
             {mailHost ? (
               <div className="flex flex-col gap-0.5">
                 <span className="flex items-center gap-2">

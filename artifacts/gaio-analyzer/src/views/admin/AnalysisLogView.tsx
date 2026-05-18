@@ -176,7 +176,7 @@ export function AnalysisLogView() {
       {/* Table */}
       <div className="rounded-xl overflow-hidden" style={cardStyle}>
         {error && (
-          <div className="p-4 text-sm text-red-500">{error}</div>
+          <div className="p-4 text-sm text-amber-400">{error}</div>
         )}
         {loading && !data && (
           <div className="p-8 text-center text-sm text-muted-foreground">Lädt…</div>
@@ -240,16 +240,16 @@ export function AnalysisLogView() {
                     <td className="px-4 py-3">
                       {item.status === "completed" && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                          style={{ background: "#166534", color: "#86efac" }}>
+                          style={{ background: "#1e3a5f", color: "#93c5fd" }}>
                           Abgeschlossen
                         </span>
                       )}
                       {item.status === "failed" && (
                         <span
                           title={item.errorMessage ?? undefined}
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-help"
-                          style={{ background: "#7f1d1d", color: "#fca5a5" }}>
-                          Fehlgeschlagen
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium cursor-help"
+                          style={{ background: "#78350f", color: "#fcd34d" }}>
+                          ⚠ Fehlgeschlagen
                         </span>
                       )}
                       {item.status === "running" && (
@@ -281,7 +281,7 @@ export function AnalysisLogView() {
                       <button
                         onClick={() => setDeleteTarget(item)}
                         title="Eintrag löschen"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:text-red-500"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:text-amber-400"
                         style={{ border: "1px solid hsl(var(--border))" }}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -343,7 +343,7 @@ export function AnalysisLogView() {
               </button>
               <button onClick={confirmDelete} disabled={deleting}
                 className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
-                style={{ background: "#dc2626", color: "white" }}>
+                style={{ background: "#b45309", color: "white" }}>
                 {deleting ? "Löschen…" : "Löschen"}
               </button>
             </div>

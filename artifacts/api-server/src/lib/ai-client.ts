@@ -59,6 +59,15 @@ export async function callLLM(prompt: string, maxTokens = 4096): Promise<string>
   const provider = getSetting("ai_provider") ?? "claude";
 
   try {
+    // Check custom (OpenAI-compatible) providers first
+    const customJson = getSetting("ai_custom_providers") ?? "[]";
+    let customProviders: Array<{ id: string; api_key: string; base_url: string; model: string; enabled: boolean }> = [];
+    try { customProviders = JSON.parse(customJson) as typeof customProviders; } catch { /* ignore */ }
+    const customProv = customProviders.find(p => p.id === provider && p.enabled);
+    if (customProv && customProv.api_key) {
+      return await callWithOpenAI(customProv.api_key, customProv.model, prompt, maxTokens, customProv.base_url);
+    }
+
     switch (provider) {
       case "openai": {
         const apiKey = getSetting("ai_api_key_openai") ?? "";

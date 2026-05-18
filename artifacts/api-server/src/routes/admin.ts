@@ -76,6 +76,15 @@ const loginLimiter = rateLimit({
 
 const adminRouter = Router();
 
+interface CustomProviderRecord {
+  id: string;
+  name: string;
+  api_key: string;
+  base_url: string;
+  model: string;
+  enabled: boolean;
+}
+
 /** Split a BCC setting string (comma- or newline-separated) into clean addresses. */
 function parseBccList(raw: string): string[] {
   return raw.split(/[,\n]/).map((s) => s.trim()).filter((s) => s.length > 0);
@@ -644,7 +653,7 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
 const SETTINGS_GROUPS: Record<string, string[]> = {
-  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini"],
+  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers"],
   mail:     ["mail_host","mail_port","mail_secure","mail_user","mail_password","mail_from_name","mail_from_address"],
   delivery: ["delivery_mode","delivery_bcc","delivery_require_email"],
 };
@@ -698,7 +707,15 @@ adminRouter.get("/settings/:group", requireAuth, requireAdmin, (req: Request, re
   const result: Record<string, string> = {};
   for (const key of keys) {
     const raw = getSetting(key) ?? "";
-    result[key] = SECRET_KEYS.has(key) ? maskSecret(raw) : raw;
+    if (key === "ai_custom_providers") {
+      // Mask api_key inside each custom provider object
+      try {
+        const providers = JSON.parse(raw || "[]") as CustomProviderRecord[];
+        result[key] = JSON.stringify(providers.map(p => ({ ...p, api_key: maskSecret(p.api_key) })));
+      } catch { result[key] = "[]"; }
+    } else {
+      result[key] = SECRET_KEYS.has(key) ? maskSecret(raw) : raw;
+    }
   }
   res.json(result);
 });
@@ -712,8 +729,25 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, (req: Request, 
   const body = req.body as Record<string, string>;
   for (const [key, value] of Object.entries(body)) {
     if (!keys.includes(key)) continue;
-    if (SECRET_KEYS.has(key) && isPlaceholder(String(value))) continue;
-    setSetting(key, String(value));
+    if (key === "ai_custom_providers") {
+      // Merge incoming array: restore masked api_keys from storage
+      try {
+        const incoming = JSON.parse(String(value)) as CustomProviderRecord[];
+        const stored = JSON.parse(getSetting("ai_custom_providers") || "[]") as CustomProviderRecord[];
+        const merged = incoming.map(p => {
+          if (isPlaceholder(p.api_key)) {
+            const existing = stored.find(s => s.id === p.id);
+            return { ...p, api_key: existing?.api_key ?? "" };
+          }
+          return p;
+        });
+        setSetting(key, JSON.stringify(merged));
+      } catch { /* ignore invalid JSON */ }
+    } else if (SECRET_KEYS.has(key) && isPlaceholder(String(value))) {
+      continue;
+    } else {
+      setSetting(key, String(value));
+    }
   }
   res.json({ success: true });
 });
