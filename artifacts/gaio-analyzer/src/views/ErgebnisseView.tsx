@@ -1691,17 +1691,6 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         inputParams: htmlInputParams,
       });
 
-      // Save to admin analysis log (fire-and-forget, non-blocking)
-      const reportLogId = (report as Record<string, unknown>).logId as number | null | undefined;
-      if (reportLogId) {
-        const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-        fetch(`${basePrefix}/api/admin/analysis-log/${reportLogId}/export`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ htmlContent }),
-        }).catch(() => {});
-      }
-
       if (mailTo) {
         await sendReportByEmail(mailTo, "html", { htmlContent, filename });
       } else {

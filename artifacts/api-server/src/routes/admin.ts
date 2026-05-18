@@ -76,6 +76,11 @@ const loginLimiter = rateLimit({
 
 const adminRouter = Router();
 
+/** Split a BCC setting string (comma- or newline-separated) into clean addresses. */
+function parseBccList(raw: string): string[] {
+  return raw.split(/[,\n]/).map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
 // ── Public endpoints (no auth required) ──────────────────────────────────────
 
 // GET /api/admin/public/delivery-mode — returns current delivery mode
@@ -103,7 +108,7 @@ adminRouter.post("/public/send-report", async (req: Request, res: Response) => {
   }
 
   const domainStr  = String(domain ?? "unknown");
-  const bcc        = getSetting("delivery_bcc") ?? "";
+  const bccList    = parseBccList(getSetting("delivery_bcc") ?? "");
   const today      = new Date().toLocaleDateString("de-DE");
   const safeBase   = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
 
@@ -151,7 +156,7 @@ adminRouter.post("/public/send-report", async (req: Request, res: Response) => {
     subject: `GAIO Analyse-Report – ${domainStr}`,
     html:    `<p>Anbei finden Sie den angeforderten GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
     text:    `Anbei finden Sie den angeforderten GAIO Analyse-Report für ${domainStr} vom ${today}.`,
-    bcc:     bcc || undefined,
+    bcc:     bccList.length > 0 ? bccList.join(", ") : undefined,
     attachments,
   });
 
@@ -431,35 +436,57 @@ adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response
     res.status(400).json({ error: "htmlContent fehlt" }); return;
   }
 
+  const domainStr = String(domain ?? "");
   let exportId: number;
   let targetLogId: number;
+  let isFreshExport = false;
 
   try {
     if (logId && typeof logId === "number") {
+      // Known log entry — look it up by ID
       const existing = db.prepare(
         "SELECT id, html_export_id FROM analysis_log WHERE id = ?"
       ).get(logId) as unknown as { id: number; html_export_id: number | null } | undefined;
 
       if (existing) {
-        // Already has an export — idempotent, skip but still attempt BCC
+        targetLogId = existing.id;
         if (existing.html_export_id) {
-          targetLogId = existing.id;
-          exportId = existing.html_export_id;
-          res.json({ exportId, logId: targetLogId, skipped: true });
-          // Fall through to BCC logic below
-        } else {
-          targetLogId = existing.id;
-          exportId = saveAnalysisExport(targetLogId, htmlContent);
-          res.json({ exportId, logId: targetLogId });
+          // Already exported — idempotent, skip entirely (no duplicate BCC)
+          res.json({ exportId: existing.html_export_id, logId: targetLogId, skipped: true }); return;
         }
+        exportId = saveAnalysisExport(targetLogId, htmlContent);
+        isFreshExport = true;
+        res.json({ exportId, logId: targetLogId });
       } else {
         targetLogId = insertAutoLogEntry();
         exportId = saveAnalysisExport(targetLogId, htmlContent);
+        isFreshExport = true;
         res.json({ exportId, logId: targetLogId });
       }
     } else {
+      // No logId — check for a recent entry for the same domain (within 5 min)
+      // to prevent duplicate log entries when the endpoint is called multiple times.
+      const recent = db.prepare(
+        `SELECT id, html_export_id FROM analysis_log
+         WHERE domain = ? AND status = 'completed'
+         AND completed_at > datetime('now', '-5 minutes')
+         LIMIT 1`
+      ).get(domainStr) as unknown as { id: number; html_export_id: number | null } | undefined;
+
+      if (recent) {
+        targetLogId = recent.id;
+        if (!recent.html_export_id) {
+          exportId = saveAnalysisExport(targetLogId, htmlContent);
+        } else {
+          exportId = recent.html_export_id;
+        }
+        // Duplicate — respond but do NOT send another BCC copy
+        res.json({ exportId, logId: targetLogId, duplicate: true }); return;
+      }
+
       targetLogId = insertAutoLogEntry();
       exportId = saveAnalysisExport(targetLogId, htmlContent);
+      isFreshExport = true;
       res.json({ exportId, logId: targetLogId });
     }
   } catch (err) {
@@ -467,19 +494,20 @@ adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response
     res.status(500).json({ error: "Fehler beim Speichern" }); return;
   }
 
-  // ── BCC copy: send HTML report to configured BCC address (fire-and-forget) ───
-  const bccAddr = getSetting("delivery_bcc") ?? "";
-  if (bccAddr) {
-    const domainStr = String(domain ?? "");
-    const today     = new Date().toLocaleDateString("de-DE");
-    const safeBase  = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
-    sendMail({
-      to:      bccAddr,
-      subject: `[BCC] GAIO Analyse-Report – ${domainStr} (${today})`,
-      html:    `<p>Automatische Kopie: GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
-      text:    `Automatische Kopie: GAIO Analyse-Report für ${domainStr} vom ${today}.`,
-      attachments: [{ filename: `GAIO-Report-${safeBase}.html`, content: htmlContent, contentType: "text/html" }],
-    }).catch((err: unknown) => logger.warn({ err }, "auto-export BCC send failed"));
+  // ── BCC copy: only for fresh (non-duplicate) exports ─────────────────────────
+  if (isFreshExport) {
+    const bccList = parseBccList(getSetting("delivery_bcc") ?? "");
+    if (bccList.length > 0) {
+      const today    = new Date().toLocaleDateString("de-DE");
+      const safeBase = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+      sendMail({
+        to:      bccList.join(", "),
+        subject: `[BCC] GAIO Analyse-Report – ${domainStr} (${today})`,
+        html:    `<p>Automatische Kopie: GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
+        text:    `Automatische Kopie: GAIO Analyse-Report für ${domainStr} vom ${today}.`,
+        attachments: [{ filename: `GAIO-Report-${safeBase}.html`, content: htmlContent, contentType: "text/html" }],
+      }).catch((err: unknown) => logger.warn({ err }, "auto-export BCC send failed"));
+    }
   }
 
   function insertAutoLogEntry(): number {
@@ -705,14 +733,14 @@ adminRouter.post("/analysis/:id/send-email", requireAuth, requireAdmin, async (r
 
   const logRow = db.prepare("SELECT domain FROM analysis_log WHERE id = ?").get(logId) as unknown as { domain: string } | undefined;
   const domain = logRow?.domain ?? "analyse";
-  const bcc = getSetting("delivery_bcc") ?? "";
+  const bccList = parseBccList(getSetting("delivery_bcc") ?? "");
 
   const result = await sendMail({
     to:      recipientEmail,
     subject: `GAIO Analyzer Bericht — ${domain}`,
     html:    `<p>Im Anhang finden Sie den GAIO Analyzer Bericht für <strong>${domain}</strong>.</p>`,
     text:    `GAIO Analyzer Bericht für ${domain}`,
-    bcc:     bcc || undefined,
+    bcc:     bccList.length > 0 ? bccList.join(", ") : undefined,
     attachments: [{
       filename:    `GAIO-${domain.replace(/[^a-z0-9.-]/gi, "_")}.html`,
       content:     exportRow.html_content,

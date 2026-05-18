@@ -8,6 +8,12 @@ interface DeliverySettings {
   delivery_require_email: string;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseBccInput(raw: string): string[] {
+  return raw.split(/[,\n]/).map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
 export function DeliveryView() {
   const [form, setForm] = useState<DeliverySettings>({
     delivery_mode: "download",
@@ -38,9 +44,21 @@ export function DeliveryView() {
 
   async function handleSave() {
     setBccError(null);
-    if (form.delivery_mode === "mail-only" && !form.delivery_bcc.trim()) {
-      setBccError("Eine BCC-Adresse ist erforderlich, wenn der E-Mail-Versand aktiv ist.");
-      return;
+
+    let bccNormalized = form.delivery_bcc;
+
+    if (form.delivery_mode === "mail-only") {
+      const addresses = parseBccInput(form.delivery_bcc);
+      if (addresses.length === 0) {
+        setBccError("Mindestens eine BCC-Adresse ist erforderlich, wenn der E-Mail-Versand aktiv ist.");
+        return;
+      }
+      const invalid = addresses.filter((a) => !EMAIL_RE.test(a));
+      if (invalid.length > 0) {
+        setBccError(`Ungültige Adresse(n): ${invalid.join(", ")}`);
+        return;
+      }
+      bccNormalized = addresses.join(", ");
     }
 
     setSaving(true);
@@ -48,10 +66,11 @@ export function DeliveryView() {
     const res = await adminFetch("/api/admin/settings/delivery", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, delivery_bcc: bccNormalized }),
     });
     setSaving(false);
     if (res.ok) {
+      setForm((f) => ({ ...f, delivery_bcc: bccNormalized }));
       setFeedback({ type: "ok", msg: "Einstellungen gespeichert" });
       setTimeout(() => setFeedback(null), 3500);
     } else {
@@ -66,6 +85,8 @@ export function DeliveryView() {
       </div>
     );
   }
+
+  const bccList = parseBccInput(form.delivery_bcc);
 
   return (
     <div className="space-y-6">
@@ -120,42 +141,50 @@ export function DeliveryView() {
           </label>
         </div>
 
-        {/* BCC field — shown only when mail-only */}
-        {form.delivery_mode === "mail-only" && (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              BCC-Adresse <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="email"
-              value={form.delivery_bcc}
-              onChange={(e) => { setForm((f) => ({ ...f, delivery_bcc: e.target.value })); setBccError(null); }}
-              placeholder="admin@example.com"
-              className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{
-                background: "hsl(var(--input))",
-                borderColor: bccError ? "#f87171" : "hsl(var(--border))",
-                color: "hsl(var(--foreground))",
-              }}
-            />
-            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Jeder versandte Report wird zusätzlich an diese Adresse als BCC-Kopie gesendet.
+        {/* BCC field — shown in both modes (BCC always applies) */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">
+            BCC-Adressen{form.delivery_mode === "mail-only" && <span className="text-red-400"> *</span>}
+          </label>
+          <textarea
+            rows={3}
+            value={form.delivery_bcc}
+            onChange={(e) => { setForm((f) => ({ ...f, delivery_bcc: e.target.value })); setBccError(null); }}
+            placeholder={"bcc1@firma.de\nbcc2@firma.de"}
+            className="w-full px-3 py-2 rounded-md text-sm border resize-none font-mono"
+            style={{
+              background: "hsl(var(--input))",
+              borderColor: bccError ? "#f87171" : "hsl(var(--border))",
+              color: "hsl(var(--foreground))",
+            }}
+          />
+          <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+            Mehrere Adressen mit Komma oder Zeilenumbruch trennen. Jeder versandte Report wird als Kopie an diese Adressen gesendet.
+          </p>
+          {bccError && (
+            <p className="text-xs text-red-400 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3 shrink-0" /> {bccError}
             </p>
-            {bccError && (
-              <p className="text-xs text-red-400 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> {bccError}
-              </p>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Mail server status indicator */}
         {form.delivery_mode === "mail-only" && (
-          <div className={`flex items-center gap-2 text-sm rounded-md px-3 py-2 border ${mailHost ? "border-green-700/40 bg-green-900/20 text-green-400" : "border-amber-700/40 bg-amber-900/20 text-amber-400"}`}>
-            {mailHost
-              ? <><CheckCircle className="w-4 h-4 shrink-0" /> Mailserver konfiguriert ({mailHost})</>
-              : <><AlertCircle className="w-4 h-4 shrink-0" /> Kein Mailserver konfiguriert – E-Mail-Versand nicht möglich. Bitte zuerst den Mailserver einrichten.</>
-            }
+          <div className={`flex items-start gap-2 text-sm rounded-md px-3 py-2 border ${mailHost ? "border-green-700/40 bg-green-900/20 text-green-400" : "border-amber-700/40 bg-amber-900/20 text-amber-400"}`}>
+            {mailHost ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0" /> Mailserver konfiguriert ({mailHost})
+                </span>
+                {bccList.length > 0 && (
+                  <span className="text-xs opacity-80 pl-6">BCC an: {bccList.join(", ")}</span>
+                )}
+              </div>
+            ) : (
+              <span className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" /> Kein Mailserver konfiguriert – E-Mail-Versand nicht möglich. Bitte zuerst den Mailserver einrichten.
+              </span>
+            )}
           </div>
         )}
 
@@ -180,8 +209,8 @@ export function DeliveryView() {
 
       {/* Info box */}
       <div className="rounded-md p-4 text-sm" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-        Die E-Mail-Versandfunktion ist vorbereitet und wird nach Konfiguration des Mailservers aktiviert.
-        Im aktuellen Zustand wird immer der direkte Download verwendet, unabhängig von dieser Einstellung.
+        Im Download-Modus erhalten die konfigurierten BCC-Adressen automatisch eine Kopie nach jeder abgeschlossenen Analyse.
+        Im E-Mail-Modus wird der Report direkt an den Nutzer versendet, BCC-Adressen erhalten ebenfalls eine Kopie.
       </div>
     </div>
   );
