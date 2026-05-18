@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { useAuth } from "@/store/authStore";
+import { adminFetch } from "@/store/authStore";
 
 interface AiSettings {
   ai_provider: string;
@@ -39,7 +39,6 @@ function StatusDot({ has }: { has: boolean }) {
 }
 
 export function AiToolView() {
-  const { adminFetch } = useAuth();
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [activeTab, setActiveTab] = useState<Provider>("claude");

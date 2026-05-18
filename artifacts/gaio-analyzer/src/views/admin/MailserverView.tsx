@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Save, Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { useAuth } from "@/store/authStore";
+import { adminFetch } from "@/store/authStore";
 
 interface MailSettings {
   mail_host: string;
@@ -27,7 +27,6 @@ function encryptionFromSettings(port: string, secure: string): EncryptionMode {
 }
 
 export function MailserverView() {
-  const { adminFetch } = useAuth();
   const [form, setForm] = useState<MailSettings>({
     mail_host: "", mail_port: "587", mail_secure: "false",
     mail_user: "", mail_password: "", mail_from_name: "GAIO Analyzer",

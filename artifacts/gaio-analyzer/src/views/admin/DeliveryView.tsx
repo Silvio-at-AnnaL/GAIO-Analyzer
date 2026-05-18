@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { useAuth } from "@/store/authStore";
+import { adminFetch } from "@/store/authStore";
 
 interface DeliverySettings {
   delivery_mode: string;
@@ -9,7 +9,6 @@ interface DeliverySettings {
 }
 
 export function DeliveryView() {
-  const { adminFetch } = useAuth();
   const [form, setForm] = useState<DeliverySettings>({
     delivery_mode: "download",
     delivery_bcc: "",
