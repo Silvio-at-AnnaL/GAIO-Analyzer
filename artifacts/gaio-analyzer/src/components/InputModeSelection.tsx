@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Globe, FileCode, ChevronLeft, Loader2, Upload } from "lucide-react";
 import { useStartAnalysis } from "@workspace/api-client-react";
+import { normalizeUrl } from "@/lib/utils";
 
 interface Props {
   questionnaireData: Record<string, unknown>;
@@ -39,7 +40,7 @@ export function InputModeSelection({ questionnaireData, onAnalysisStarted, onBac
       {
         data: {
           mode,
-          url: mode === "url" ? url : undefined,
+          url: mode === "url" ? normalizeUrl(url) : undefined,
           html: mode === "html" ? html : undefined,
           questionnaire: questionnaireData as Record<string, string | null>,
         },
@@ -87,13 +88,14 @@ export function InputModeSelection({ questionnaireData, onAnalysisStarted, onBac
             <TabsContent value="url" className="space-y-4 pt-4">
               <div className="space-y-2">
                 <label className="text-sm text-muted-foreground">
-                  Website-URL eingeben (z.B. https://beispiel.de)
+                  Website-URL eingeben (z. B. domain.de oder www.domain.de)
                 </label>
                 <Input
                   type="url"
-                  placeholder="https://"
+                  placeholder="z. B. domain.de"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
+                  onBlur={(e) => setUrl(normalizeUrl(e.target.value))}
                   className="font-mono bg-background"
                   data-testid="input-url"
                 />

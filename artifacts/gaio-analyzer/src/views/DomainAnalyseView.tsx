@@ -7,6 +7,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
+import { normalizeUrl } from "@/lib/utils";
 
 const SOCIAL_PLATFORMS = [
   { key: "linkedin", label: "LinkedIn" },
@@ -244,7 +245,7 @@ export function DomainAnalyseView() {
       {
         data: {
           mode: "url",
-          url: domainForm.url.trim(),
+          url: normalizeUrl(domainForm.url),
           questionnaire: {
             companyName: domainForm.companyName.trim() || null,
             competitors: competitorUrls || null,
@@ -307,7 +308,8 @@ export function DomainAnalyseView() {
             type="url"
             value={domainForm.url}
             onChange={(e) => updateField("url", e.target.value)}
-            placeholder="https://www.beispiel.de"
+            onBlur={(e) => updateField("url", normalizeUrl(e.target.value))}
+            placeholder="z. B. domain.de oder www.domain.de"
             data-testid="input-url"
           />
           {errors.url && (
@@ -607,8 +609,8 @@ export function DomainAnalyseView() {
                       type="url"
                       value={comp}
                       onChange={(e) => updateCompetitor(i, e.target.value)}
-                      onBlur={(e) => updateCompetitor(i, e.target.value)}
-                      placeholder="https://www.wettbewerber.de"
+                      onBlur={(e) => updateCompetitor(i, normalizeUrl(e.target.value))}
+                      placeholder="z. B. wettbewerber.de"
                       data-testid={`input-competitor-${i}`}
                     />
                     {comp in competitorVerified && (

@@ -1,0 +1,100 @@
+Remove the requirement to enter a full URL 
+with https://www. in the domain input fields. 
+Users should be able to type just "domain.de" 
+or "www.domain.de" and the app handles the rest.
+
+---
+
+CHANGE 1 — Create a shared URL normalizer
+
+Add this helper function in a utils file or 
+directly in the form component:
+
+  function normalizeUrl(input: string): string {
+    const trimmed = input.trim()
+    if (!trimmed) return trimmed
+    
+    // Already has a protocol → return as-is
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed
+    }
+    
+    // Has www. but no protocol
+    if (trimmed.startsWith('www.')) {
+      return 'https://' + trimmed
+    }
+    
+    // Bare domain (e.g. "domain.de" or 
+    // "sub.domain.de")
+    return 'https://' + trimmed
+  }
+
+---
+
+CHANGE 2 — Apply normalization on blur
+
+In the domain URL input fields — wherever 
+the website URL is entered — apply 
+normalizeUrl on the onBlur event:
+
+  <input
+    value={url}
+    onChange={e => setUrl(e.target.value)}
+    onBlur={e => setUrl(normalizeUrl(e.target.value))}
+    placeholder="z. B. domain.de oder 
+      www.domain.de"
+  />
+
+Update the placeholder text to reflect the 
+relaxed requirement:
+  Old: "https://www.beispiel.de"
+  New: "z. B. domain.de oder www.domain.de"
+
+Apply this to all URL inputs where the 
+main analysis domain is entered:
+  - DomainAnalyseView (main URL field)
+  - WelcomeView (URL quick-entry bar)
+  - The HTML analysis URL field if applicable
+
+---
+
+CHANGE 3 — Apply normalization before 
+analysis starts
+
+As a safety net, also normalize the URL in 
+the form submit handler — immediately before 
+the analysis API call is triggered:
+
+  const urlToAnalyze = normalizeUrl(
+    formData.url
+  )
+
+Use urlToAnalyze for the API call, not the 
+raw formData.url.
+
+---
+
+CHANGE 4 — Competitor URL inputs
+
+Apply the same onBlur normalization to the 
+competitor URL input fields. The placeholder 
+for competitors can become:
+  "z. B. wettbewerber.de"
+
+The normalizer already handles www. and 
+bare domains, so no changes to existing 
+logic are needed — just wire up the same 
+onBlur handler.
+
+---
+
+Note: The HTTPS check in the technical SEO 
+analysis remains unchanged. If a site only 
+serves HTTP (not HTTPS), the crawler will 
+detect that through the actual server 
+response — prepending https:// in the input 
+is safe because most servers redirect HTTP 
+to HTTPS automatically. If a site genuinely 
+has no HTTPS, the crawler will follow the 
+redirect chain and the analysis will 
+correctly flag it as missing HTTPS.

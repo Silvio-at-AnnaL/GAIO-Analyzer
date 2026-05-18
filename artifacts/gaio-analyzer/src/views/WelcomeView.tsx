@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bot, Radar, ListChecks } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
+import { normalizeUrl } from "@/lib/utils";
 
 interface WelcomeViewProps {
   onDismiss: () => void;
@@ -15,7 +16,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
     setDomainForm({
       ...domainForm,
       ...(companyInput.trim() ? { companyName: companyInput.trim() } : {}),
-      ...(urlInput.trim() ? { url: urlInput.trim() } : {}),
+      ...(urlInput.trim() ? { url: normalizeUrl(urlInput) } : {}),
     });
     onDismiss();
   }
@@ -119,8 +120,9 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
               type="url"
               value={urlInput}
               onChange={e => setUrlInput(e.target.value)}
+              onBlur={e => setUrlInput(normalizeUrl(e.target.value))}
               onKeyDown={e => e.key === "Enter" && handleStart()}
-              placeholder="https://www.ihre-website.de"
+              placeholder="z. B. domain.de oder www.domain.de"
               style={{
                 flex: 1,
                 height: 42,
