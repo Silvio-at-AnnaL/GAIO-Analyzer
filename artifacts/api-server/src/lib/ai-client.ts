@@ -5,7 +5,10 @@ async function callWithClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number
 ): Promise<string> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  const client = new Anthropic({ apiKey });
+  // Use the Replit AI Integrations proxy URL when available so the
+  // stored key (which is the Replit dummy) routes correctly.
+  const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined;
+  const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const resp = await client.messages.create({
     model: model as Parameters<typeof client.messages.create>[0]["model"],
     max_tokens: maxTokens,

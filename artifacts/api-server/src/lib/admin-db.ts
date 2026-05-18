@@ -118,6 +118,24 @@ export function setSetting(key: string, value: string): void {
     .run(key, value);
 }
 
+// ── Auto-seed AI settings from Replit AI Integration env vars ────────────────
+// If the Replit proxy env vars are present and the admin hasn't stored a custom
+// Claude API key yet, write the integration credentials into the settings table
+// so the admin form shows them as configured.
+{
+  const replitKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ?? "";
+  const replitUrl = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL ?? "";
+  if (replitKey && replitUrl) {
+    const current = getSetting("ai_api_key_claude") ?? "";
+    if (!current) {
+      setSetting("ai_api_key_claude", replitKey);
+      const currentModel = getSetting("ai_model_claude") ?? "";
+      if (!currentModel) setSetting("ai_model_claude", "claude-sonnet-4-6");
+      logger.info("Claude API key auto-seeded from Replit AI Integration");
+    }
+  }
+}
+
 // ── Analysis log helpers ──────────────────────────────────────────────────────
 
 export function createAnalysisLog(opts: {
