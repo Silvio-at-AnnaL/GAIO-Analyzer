@@ -340,6 +340,59 @@ interface AnalysisLogRow {
   html_export_id: number | null;
 }
 
+// POST /api/admin/analysis-log/auto-export — NO auth, called automatically on analysis completion
+adminRouter.post("/analysis-log/auto-export", (req: Request, res: Response) => {
+  const { htmlContent, logId, domain, companyName, gaioScore, scoresJson, pagesCrawled } = req.body ?? {};
+
+  if (!htmlContent || typeof htmlContent !== "string") {
+    res.status(400).json({ error: "htmlContent fehlt" }); return;
+  }
+
+  try {
+    let targetLogId: number;
+
+    if (logId && typeof logId === "number") {
+      const existing = db.prepare(
+        "SELECT id, html_export_id FROM analysis_log WHERE id = ?"
+      ).get(logId) as unknown as { id: number; html_export_id: number | null } | undefined;
+
+      if (existing) {
+        // Already has an export — idempotent, skip
+        if (existing.html_export_id) {
+          res.json({ exportId: existing.html_export_id, skipped: true }); return;
+        }
+        targetLogId = existing.id;
+      } else {
+        targetLogId = insertAutoLogEntry();
+      }
+    } else {
+      targetLogId = insertAutoLogEntry();
+    }
+
+    const exportId = saveAnalysisExport(targetLogId, htmlContent);
+    res.json({ exportId });
+  } catch (err) {
+    logger.error({ err }, "Failed to save auto-export");
+    res.status(500).json({ error: "Fehler beim Speichern" });
+  }
+
+  function insertAutoLogEntry(): number {
+    const r = db.prepare(`
+      INSERT INTO analysis_log
+        (domain, company_name, gaio_score, scores_json, pages_crawled,
+         status, triggered_by, started_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, 'completed', 'auto', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(
+      String(domain ?? ""),
+      companyName ? String(companyName) : null,
+      typeof gaioScore === "number" ? gaioScore : null,
+      scoresJson ? String(scoresJson) : null,
+      typeof pagesCrawled === "number" ? pagesCrawled : null,
+    );
+    return r.lastInsertRowid as number;
+  }
+});
+
 // POST /api/admin/analysis-log/:id/export — NO auth (called from frontend during HTML export)
 adminRouter.post("/analysis-log/:id/export", (req: Request, res: Response) => {
   const logId = parseInt(String(req.params.id), 10);

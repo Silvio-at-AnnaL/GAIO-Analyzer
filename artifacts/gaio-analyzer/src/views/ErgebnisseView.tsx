@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { useAppStore } from "@/store/appStore";
 import { Button } from "@/components/ui/button";
@@ -664,6 +664,71 @@ function ReportView({ analysisId }: { analysisId: string }) {
       }
     }
   }, [report?.crawledPages]);
+
+  // Auto-save HTML export silently when analysis completes — fire-and-forget, no user feedback
+  const autoSavedRef = useRef(false);
+  useEffect(() => {
+    if (report?.status !== "completed" || autoSavedRef.current) return;
+    autoSavedRef.current = true;
+
+    (async () => {
+      try {
+        const htmlBase = import.meta.env.BASE_URL;
+        const [htmlLogoB64, htmlProfileB64] = await Promise.all([
+          fetchAsBase64(htmlBase + "brand-logo.png"),
+          fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+        ]);
+
+        const htmlInputParams: InputParams = {
+          domainUrl: String(report.url ?? ""),
+          companyName: domainForm.companyName.trim() || null,
+          targetAudience: domainForm.personas.trim() || null,
+          competitors: domainForm.competitors.filter((c) => c.trim()),
+          socialMedia: Object.fromEntries(
+            Object.entries(domainForm.social).filter(([, v]) => v.trim())
+          ),
+          analysisDate: new Date().toLocaleString("de-DE"),
+          crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
+        };
+
+        const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+          logoSrc: htmlLogoB64,
+          profileSrc: htmlProfileB64,
+          inputParams: htmlInputParams,
+        });
+
+        if (!htmlContent) return;
+
+        const reportLogId = (report as Record<string, unknown>).logId as number | null | undefined;
+        const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+        const scoresJson = JSON.stringify({
+          technicalSeo: ((report as Record<string, unknown>).technicalSeo as { score: number } | null)?.score ?? null,
+          schemaOrg: ((report as Record<string, unknown>).schemaOrg as { score: number } | null)?.score ?? null,
+          headingStructure: ((report as Record<string, unknown>).headingStructure as { score: number } | null)?.score ?? null,
+          contentRelevance: ((report as Record<string, unknown>).contentRelevance as { score: number } | null)?.score ?? null,
+          faqQuality: ((report as Record<string, unknown>).faqQuality as { score: number } | null)?.score ?? null,
+          llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+        });
+
+        await fetch(`${basePrefix}/api/admin/analysis-log/auto-export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            htmlContent,
+            logId: reportLogId ?? null,
+            domain: String(report.url ?? ""),
+            companyName: domainForm.companyName.trim() || "",
+            gaioScore: report.overallScore ?? null,
+            scoresJson,
+            pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+          }),
+        });
+      } catch {
+        // Silent — must never affect user experience
+      }
+    })();
+  }, [report?.status]);
 
   if (!report) return <div className="text-muted-foreground text-sm">Lade Bericht…</div>;
 
