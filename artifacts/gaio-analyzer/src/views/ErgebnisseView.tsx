@@ -991,88 +991,75 @@ function ReportView({ analysisId }: { analysisId: string }) {
           '</svg></div>';
       };
 
-      const buildRadar = (s: typeof hdrScores): string => {
-        const size = 260, cx = 130, cy = 130, maxR = 90;
-        const axes = [
-          { label: "Techn. SEO", val: s.technSeo },
-          { label: "Schema.org", val: s.schema },
-          { label: "Headings",   val: s.headings },
-          { label: "Inhalt",     val: s.inhalt },
-          { label: "FAQ",        val: s.faq },
-          { label: "LLM",        val: s.llm },
+      const buildDarkRadarInner = (s: typeof hdrScores): string => {
+        const CX = 160, CY = 160, MAX_R = 120, RINGS = 5;
+        const dims = [
+          { label: "Techn. SEO", val: s.technSeo, color: "#ef4444" },
+          { label: "Schema.org", val: s.schema,   color: "#a855f7" },
+          { label: "Headings",   val: s.headings, color: "#3b82f6" },
+          { label: "Inhalt",     val: s.inhalt,   color: "#22c55e" },
+          { label: "FAQ",        val: s.faq,      color: "#f59e0b" },
+          { label: "LLM",        val: s.llm,      color: "#06b6d4" },
         ];
-        const n = axes.length;
-        const pt = (i: number, r: number) => {
-          const a = (i / n) * 2 * Math.PI - Math.PI / 2;
-          return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+        const N = dims.length;
+        const ptF = (i: number, r: number) => {
+          const a = (i / N) * 2 * Math.PI - Math.PI / 2;
+          return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
         };
-        const polyPath = (r: number) =>
-          Array.from({ length: n }, (_, i) => pt(i, r))
-            .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-            .join(" ") + " Z";
-        const gridLines = [25, 50, 75, 100]
-          .map((lvl) => `<path d="${polyPath((lvl / 100) * maxR)}" fill="none" stroke="#e2e8f0" stroke-width="1"/>`)
-          .join("");
-        const axisLines = axes
-          .map((_, i) => {
-            const end = pt(i, maxR);
-            return `<line x1="${cx}" y1="${cy}" x2="${end.x.toFixed(1)}" y2="${end.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>`;
-          })
-          .join("");
-        const dataPts = axes.map((ax, i) => pt(i, (ax.val / 100) * maxR));
-        const dataPath = dataPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") + " Z";
-        const labels = axes
-          .map((ax, i) => {
-            const p = pt(i, maxR + 20);
-            const anchor = p.x < cx - 5 ? "end" : p.x > cx + 5 ? "start" : "middle";
-            return `<text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" text-anchor="${anchor}"
-              font-size="11" font-family="-apple-system,sans-serif" fill="#6b7280">${ax.label}</text>`;
-          })
-          .join("");
-        return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-          ${gridLines}${axisLines}
-          <path d="${dataPath}" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2"/>
-          ${labels}
-        </svg>`;
-      };
-
-      const buildScoreTiles = (s: typeof hdrScores): string => {
-        const color = (v: number) => v >= 76 ? "#65a30d" : v >= 61 ? "#ca8a04" : v >= 41 ? "#d97706" : "#dc2626";
-        return ([
-          ["Techn. SEO", s.technSeo],
-          ["Schema.org", s.schema],
-          ["Headings",   s.headings],
-          ["Inhalt",     s.inhalt],
-          ["FAQ",        s.faq],
-          ["LLM",        s.llm],
-        ] as [string, number][])
-          .map(([label, val]) => `<div class="score-tile">
-            <div class="label">${label}</div>
-            <div class="val" style="color:${color(val)}">${val}</div>
-          </div>`)
-          .join("");
+        const rings = Array.from({ length: RINGS }, (_, i) => {
+          const r = (MAX_R / RINGS) * (i + 1);
+          const stroke = i === RINGS - 1 ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.1)';
+          const sw = i === RINGS - 1 ? 2 : 1;
+          return `<circle cx="${CX}" cy="${CY}" r="${r.toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>`;
+        }).join('');
+        const axisLines = dims.map((_, i) => {
+          const end = ptF(i, MAX_R);
+          return `<line x1="${CX}" y1="${CY}" x2="${end.x.toFixed(1)}" y2="${end.y.toFixed(1)}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>`;
+        }).join('');
+        const dataPoints = dims.map((d, i) => ptF(i, (d.val / 100) * MAX_R));
+        const polyPoints = dataPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+        const dots = dataPoints.map((p, i) =>
+          `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${dims[i].color}" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>`
+        ).join('');
+        const squares = dims.map((d, i) => {
+          const end = ptF(i, MAX_R + 12);
+          return `<rect x="${(end.x - 5).toFixed(1)}" y="${(end.y - 5).toFixed(1)}" width="10" height="10" fill="${d.color}" rx="1"/>`;
+        }).join('');
+        const lbls = dims.map((d, i) => {
+          const lp = ptF(i, MAX_R + 30);
+          const anchor = lp.x < CX - 5 ? 'end' : lp.x > CX + 5 ? 'start' : 'middle';
+          return `<text x="${lp.x.toFixed(1)}" y="${(lp.y + 4).toFixed(1)}" text-anchor="${anchor}" font-size="11" font-family="DM Sans,sans-serif" font-weight="600" fill="rgba(255,255,255,0.85)">${d.label}</text>`;
+        }).join('');
+        const svgStr = `<svg width="260" height="260" viewBox="0 0 320 320" style="flex-shrink:0">${rings}${axisLines}<polygon points="${polyPoints}" fill="rgba(212,170,60,0.3)" stroke="rgba(212,170,60,0.85)" stroke-width="2" stroke-linejoin="round"/>${dots}${squares}${lbls}</svg>`;
+        const legendRows = dims.map(d => {
+          const fullSeg = Math.floor(d.val / 10);
+          const fraction = (d.val % 10) / 10;
+          const segs = Array.from({ length: 10 }, (_, i) => {
+            let bg: string;
+            if (i < fullSeg) bg = d.color;
+            else if (i === fullSeg && fraction > 0) bg = `linear-gradient(to right,${d.color} ${(fraction * 100).toFixed(0)}%,rgba(255,255,255,0.1) ${(fraction * 100).toFixed(0)}%)`;
+            else bg = 'rgba(255,255,255,0.1)';
+            return `<div style="flex:1;height:9px;border-radius:2px;background:${bg}"></div>`;
+          }).join('');
+          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:${d.color}">${d.label}</span><span style="font-size:13px;font-weight:800;color:white">${d.val}</span></div><div style="display:flex;gap:2px">${segs}</div></div>`;
+        }).join('');
+        return `<div style="display:flex;gap:16px;align-items:center;height:100%">${svgStr}<div style="flex:1;display:flex;flex-direction:column;justify-content:center">${legendRows}</div></div>`;
       };
 
       const buildHeaderIframeHtml = (): string => `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:1200px; padding:24px 32px; color:#1a1d23; }
+body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#fff; width:1200px; padding:24px 32px; color:#1a1d23; }
 .header-meta { font-size:12px; color:#787b86; margin-bottom:20px; }
-.charts-row { display:flex; gap:24px; margin-bottom:20px; }
-.chart-card { flex:1; border:1px solid #dde0e8; border-radius:12px; padding:20px; background:#fff; }
-.chart-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#787b86; margin-bottom:16px; }
-.chart-center { display:flex; justify-content:center; align-items:center; }
-.scores-row { display:flex; gap:12px; }
-.score-tile { flex:1; border:1px solid #dde0e8; border-radius:10px; padding:12px 8px; text-align:center; background:#fff; }
-.score-tile .label { font-size:11px; color:#787b86; margin-bottom:6px; }
-.score-tile .val { font-size:22px; font-weight:800; }
+.charts-row { display:flex; gap:20px; align-items:stretch; min-height:280px; }
+.gauge-card { width:35%; flex-shrink:0; background:#1e2235; border-radius:12px; display:flex; align-items:center; justify-content:center; padding:20px; }
+.radar-card { flex:1; background:#1e2235; border-radius:12px; padding:20px; }
 </style></head><body>
 <div class="header-meta">${hdrDomain} · ${hdrPageCount} Seiten · ${hdrDate}</div>
 <div class="charts-row">
-  <div class="chart-card"><div class="chart-label">GAIO SCORE</div><div class="chart-center">${buildDonut(hdrScores.gaio)}</div></div>
-  <div class="chart-card"><div class="chart-label">DIMENSIONEN</div><div class="chart-center">${buildRadar(hdrScores)}</div></div>
+  <div class="gauge-card">${buildDonut(hdrScores.gaio)}</div>
+  <div class="radar-card">${buildDarkRadarInner(hdrScores)}</div>
 </div>
-<div class="scores-row">${buildScoreTiles(hdrScores)}</div>
 </body></html>`;
 
       // ── Render header into an off-screen iframe and capture ───────────────────
@@ -1165,6 +1152,24 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
         // FIX A — Measure AFTER footer + padding; add +120px buffer.
         const captureHeightPx = panel.scrollHeight + 120;
 
+        // FIX 2/3/4 — Style overrides for the Details panel before capture.
+        const savedCollapsible: Array<{ el: HTMLElement; whiteSpace: string }> = [];
+        const savedTds: Array<{ el: HTMLElement; whiteSpace: string; fontSize: string }> = [];
+        const savedSpans: Array<{ el: HTMLElement; whiteSpace: string; fontSize: string }> = [];
+        if (tabValue === "details") {
+          // FIX 2: "Gecrawlte Seiten" collapsible heading
+          Array.from(panel.querySelectorAll<HTMLElement>('[class*="collapsible"] button, [class*="accordion"] button'))
+            .forEach(el => { savedCollapsible.push({ el, whiteSpace: el.style.whiteSpace }); el.style.whiteSpace = 'nowrap'; });
+          // FIX 3: Crawler/robots table cells
+          let tdEls = Array.from(panel.querySelectorAll<HTMLElement>('[class*="crawler"] td, [class*="robots"] td'));
+          if (tdEls.length === 0) tdEls = Array.from(panel.querySelectorAll<HTMLElement>('td'));
+          tdEls.forEach(el => { savedTds.push({ el, whiteSpace: el.style.whiteSpace, fontSize: el.style.fontSize }); el.style.whiteSpace = 'nowrap'; el.style.fontSize = '11px'; });
+          // FIX 4: Inhaltliche Relevanz dimension headings
+          let dimEls = Array.from(panel.querySelectorAll<HTMLElement>('[class*="content-relevance"] h3, [class*="contentRelevance"] h3'));
+          if (dimEls.length === 0) dimEls = Array.from(panel.querySelectorAll<HTMLElement>('.text-sm.font-medium'));
+          dimEls.forEach(el => { savedSpans.push({ el, whiteSpace: el.style.whiteSpace, fontSize: el.style.fontSize }); el.style.whiteSpace = 'nowrap'; el.style.fontSize = '13px'; });
+        }
+
         // Individual try/catch — never abort the whole loop.
         let imgData: string | null = null;
         try {
@@ -1181,6 +1186,10 @@ body { font-family: -apple-system,'Segoe UI',sans-serif; background:#fff; width:
           console.warn("html-to-image failed for panel:", tabValue, imgErr);
           imgData = null;
         } finally {
+          // Restore FIX 2/3/4 overrides.
+          savedCollapsible.forEach(({ el, whiteSpace }) => { el.style.whiteSpace = whiteSpace; });
+          savedTds.forEach(({ el, whiteSpace, fontSize }) => { el.style.whiteSpace = whiteSpace; el.style.fontSize = fontSize; });
+          savedSpans.forEach(({ el, whiteSpace, fontSize }) => { el.style.whiteSpace = whiteSpace; el.style.fontSize = fontSize; });
           const injected = panel.querySelector("#pdf-footer-injected");
           if (injected) panel.removeChild(injected);
           // FIX B — Restore padding after capture.

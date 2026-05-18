@@ -1,0 +1,145 @@
+Fix four PDF export issues caused by recent 
+design changes. All fixes are in the PDF 
+export logic in ErgebnisseView.tsx.
+
+---
+
+FIX 1 — Header: use new iframe-based rendering
+
+The PDF header still shows the old Recharts 
+radar chart and the six dimension tiles in a 
+separate row below. The website now uses 
+RadarDimensions (dark card with built-in legend).
+
+The header iframe HTML (buildHeaderIframeHtml 
+or equivalent function) must be rebuilt to 
+match the current live layout exactly:
+
+Left card (gauge): keep as-is — the SVG gauge 
+already works correctly.
+
+Right card: replace with the RadarDimensions 
+SVG + legend layout. Copy the exact SVG 
+structure from RadarDimensions.tsx and inline 
+it into the iframe HTML string, substituting 
+the actual score values passed as parameters.
+
+The iframe HTML must produce:
+- Two side-by-side dark cards (#1e2235 background)
+  in a flex row with gap
+- Left: gauge SVG (existing, keep)
+- Right: radar SVG + legend columns 
+  (same structure as the React component)
+- NO separate dimension tile row below
+
+Remove the dimension tiles row from the 
+iframe header HTML entirely — the legend 
+inside the radar card replaces it.
+
+The iframe width stays 1200px. Adjust the 
+card proportions: left card ~35% width, 
+right card ~65% width.
+
+---
+
+FIX 2 — "Gecrawlte Seiten" heading: 
+prevent line wrap
+
+The heading "Gecrawlte Seiten (15 Seiten)" 
+wraps to two lines in the PDF because the 
+element capturing it constrains the width.
+
+In the PDF capture, before calling toJpeg 
+on the Details panel, find all elements 
+matching this heading pattern (collapsible 
+section header containing "Gecrawlte Seiten") 
+and force white-space: nowrap:
+
+  panel.querySelectorAll('[class*="collapsible"]
+    button, [class*="accordion"] button')
+    .forEach(el => {
+      (el as HTMLElement).style.whiteSpace = 
+        'nowrap'
+    })
+
+Restore after capture:
+  ...forEach(el => {
+    (el as HTMLElement).style.whiteSpace = ''
+  })
+
+---
+
+FIX 3 — LLM-Crawler Status table: 
+prevent cell text wrapping
+
+"Nicht erwähnt" wraps across multiple lines 
+in each table cell. Fix by forcing the status 
+value cells to not wrap during capture.
+
+Before capturing the Details panel, find 
+the crawler status table cells and apply 
+white-space: nowrap:
+
+  panel.querySelectorAll(
+    '[class*="crawler"] td, 
+     [class*="robots"] td'
+  ).forEach(el => {
+    (el as HTMLElement).style.whiteSpace = 
+      'nowrap'
+    ;(el as HTMLElement).style.fontSize = 
+      '11px'
+  })
+
+If the selector doesn't match, use a broader 
+approach: find any td elements inside the 
+robots.txt / technische Dateien card section 
+and apply the same white-space: nowrap.
+
+Restore after capture.
+
+---
+
+FIX 4 — "Inhaltliche Relevanz" subheadings: 
+prevent line wrap
+
+The dimension headings (Anwendungsfälle & 
+Szenarien, Käuferfragen & Entscheidungshilfen, 
+Technische Tiefe, Inhaltslücken & 
+Wettbewerbsrisiken) wrap mid-word in the PDF.
+
+Root cause: the heading and the score badge 
+(e.g. "7/10") sit in a flex row — during 
+capture the container width is insufficient 
+for both elements on one line.
+
+Fix by applying white-space: nowrap to the 
+dimension heading spans before capture, 
+and reducing the font size slightly:
+
+  panel.querySelectorAll(
+    '[class*="content-relevance"] h3,
+     [class*="contentRelevance"] h3,
+     [class*="inhaltliche"] h3'
+  ).forEach(el => {
+    (el as HTMLElement).style.whiteSpace = 
+      'nowrap'
+    ;(el as HTMLElement).style.fontSize = 
+      '13px'
+  })
+
+If that selector doesn't match, find the 
+elements by looking for h3 elements inside 
+the "Inhaltliche Relevanz" card and apply 
+the same styles.
+
+Restore after capture.
+
+---
+
+GENERAL NOTE for all four fixes:
+
+All style overrides applied before capture 
+MUST be restored in a finally block after 
+capture completes, so the live UI is never 
+permanently affected by the PDF export 
+process.
