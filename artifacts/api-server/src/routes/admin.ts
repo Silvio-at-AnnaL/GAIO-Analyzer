@@ -424,39 +424,62 @@ interface AnalysisLogRow {
 }
 
 // POST /api/admin/analysis-log/auto-export — NO auth, called automatically on analysis completion
-adminRouter.post("/analysis-log/auto-export", (req: Request, res: Response) => {
+adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response) => {
   const { htmlContent, logId, domain, companyName, gaioScore, scoresJson, pagesCrawled } = req.body ?? {};
 
   if (!htmlContent || typeof htmlContent !== "string") {
     res.status(400).json({ error: "htmlContent fehlt" }); return;
   }
 
-  try {
-    let targetLogId: number;
+  let exportId: number;
+  let targetLogId: number;
 
+  try {
     if (logId && typeof logId === "number") {
       const existing = db.prepare(
         "SELECT id, html_export_id FROM analysis_log WHERE id = ?"
       ).get(logId) as unknown as { id: number; html_export_id: number | null } | undefined;
 
       if (existing) {
-        // Already has an export — idempotent, skip
+        // Already has an export — idempotent, skip but still attempt BCC
         if (existing.html_export_id) {
-          res.json({ exportId: existing.html_export_id, skipped: true }); return;
+          targetLogId = existing.id;
+          exportId = existing.html_export_id;
+          res.json({ exportId, logId: targetLogId, skipped: true });
+          // Fall through to BCC logic below
+        } else {
+          targetLogId = existing.id;
+          exportId = saveAnalysisExport(targetLogId, htmlContent);
+          res.json({ exportId, logId: targetLogId });
         }
-        targetLogId = existing.id;
       } else {
         targetLogId = insertAutoLogEntry();
+        exportId = saveAnalysisExport(targetLogId, htmlContent);
+        res.json({ exportId, logId: targetLogId });
       }
     } else {
       targetLogId = insertAutoLogEntry();
+      exportId = saveAnalysisExport(targetLogId, htmlContent);
+      res.json({ exportId, logId: targetLogId });
     }
-
-    const exportId = saveAnalysisExport(targetLogId, htmlContent);
-    res.json({ exportId });
   } catch (err) {
     logger.error({ err }, "Failed to save auto-export");
-    res.status(500).json({ error: "Fehler beim Speichern" });
+    res.status(500).json({ error: "Fehler beim Speichern" }); return;
+  }
+
+  // ── BCC copy: send HTML report to configured BCC address (fire-and-forget) ───
+  const bccAddr = getSetting("delivery_bcc") ?? "";
+  if (bccAddr) {
+    const domainStr = String(domain ?? "");
+    const today     = new Date().toLocaleDateString("de-DE");
+    const safeBase  = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+    sendMail({
+      to:      bccAddr,
+      subject: `[BCC] GAIO Analyse-Report – ${domainStr} (${today})`,
+      html:    `<p>Automatische Kopie: GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
+      text:    `Automatische Kopie: GAIO Analyse-Report für ${domainStr} vom ${today}.`,
+      attachments: [{ filename: `GAIO-Report-${safeBase}.html`, content: htmlContent, contentType: "text/html" }],
+    }).catch((err: unknown) => logger.warn({ err }, "auto-export BCC send failed"));
   }
 
   function insertAutoLogEntry(): number {
