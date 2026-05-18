@@ -2,7 +2,8 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
-import { db, saveAnalysisExport } from "../lib/admin-db.js";
+import { db, getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
+import { sendMail } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
@@ -507,4 +508,114 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request
   }
 });
 
+// ── Settings helpers ──────────────────────────────────────────────────────────
+
+const SETTINGS_GROUPS: Record<string, string[]> = {
+  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini"],
+  mail:     ["mail_host","mail_port","mail_secure","mail_user","mail_password","mail_from_name","mail_from_address"],
+  delivery: ["delivery_mode","delivery_bcc","delivery_require_email"],
+};
+
+const SECRET_KEYS = new Set(["ai_api_key_claude","ai_api_key_openai","ai_api_key_perplexity","ai_api_key_gemini","mail_password"]);
+
+function maskSecret(value: string): string {
+  if (!value) return "";
+  return "••••••••" + value.slice(-4);
+}
+
+function isPlaceholder(value: string): boolean {
+  return value.includes("••••••••");
+}
+
+// GET /api/admin/settings/ai-status  ← must be registered BEFORE /:group
+adminRouter.get("/settings/ai-status", requireAuth, requireAdmin, (_req: Request, res: Response) => {
+  const provider = getSetting("ai_provider") ?? "claude";
+  const hasApiKey = {
+    claude:     (getSetting("ai_api_key_claude")     ?? "") !== "",
+    openai:     (getSetting("ai_api_key_openai")     ?? "") !== "",
+    perplexity: (getSetting("ai_api_key_perplexity") ?? "") !== "",
+    gemini:     (getSetting("ai_api_key_gemini")     ?? "") !== "",
+  };
+  const lastRow = db.prepare(
+    "SELECT completed_at FROM analysis_log WHERE status='completed' ORDER BY completed_at DESC LIMIT 1"
+  ).get() as unknown as { completed_at: string } | undefined;
+  res.json({ provider, hasApiKey, lastCompletedAt: lastRow?.completed_at ?? null });
+});
+
+// POST /api/admin/settings/test-mail  ← must be registered BEFORE /:group
+adminRouter.post("/settings/test-mail", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const user = db.prepare("SELECT email FROM users WHERE id = ?").get(req.adminUser!.id) as unknown as { email: string } | undefined;
+  const to = user?.email ?? getSetting("mail_from_address") ?? "";
+  if (!to) { res.status(400).json({ success: false, error: "Keine E-Mail-Adresse gefunden" }); return; }
+
+  const result = await sendMail({
+    to,
+    subject: "GAIO Analyzer — Mailserver-Test",
+    text:    "Der Mailserver ist korrekt konfiguriert.",
+  });
+  res.json(result);
+});
+
+// GET /api/admin/settings/:group
+adminRouter.get("/settings/:group", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const group = req.params.group;
+  const keys = SETTINGS_GROUPS[group];
+  if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
+
+  const result: Record<string, string> = {};
+  for (const key of keys) {
+    const raw = getSetting(key) ?? "";
+    result[key] = SECRET_KEYS.has(key) ? maskSecret(raw) : raw;
+  }
+  res.json(result);
+});
+
+// PATCH /api/admin/settings/:group
+adminRouter.patch("/settings/:group", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const group = req.params.group;
+  const keys = SETTINGS_GROUPS[group];
+  if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
+
+  const body = req.body as Record<string, string>;
+  for (const [key, value] of Object.entries(body)) {
+    if (!keys.includes(key)) continue;
+    if (SECRET_KEYS.has(key) && isPlaceholder(String(value))) continue;
+    setSetting(key, String(value));
+  }
+  res.json({ success: true });
+});
+
+// POST /api/admin/analysis/:id/send-email
+adminRouter.post("/analysis/:id/send-email", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const logId = parseInt(String(req.params.id), 10);
+  if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+
+  const { recipientEmail } = req.body as { recipientEmail?: string };
+  if (!recipientEmail) { res.status(400).json({ error: "recipientEmail fehlt" }); return; }
+
+  const exportRow = db.prepare(
+    "SELECT html_content FROM analysis_exports WHERE analysis_id = ? ORDER BY id DESC LIMIT 1"
+  ).get(logId) as unknown as { html_content: string } | undefined;
+  if (!exportRow) { res.status(404).json({ error: "Kein HTML-Export vorhanden" }); return; }
+
+  const logRow = db.prepare("SELECT domain FROM analysis_log WHERE id = ?").get(logId) as unknown as { domain: string } | undefined;
+  const domain = logRow?.domain ?? "analyse";
+  const bcc = getSetting("delivery_bcc") ?? "";
+
+  const result = await sendMail({
+    to:      recipientEmail,
+    subject: `GAIO Analyzer Bericht — ${domain}`,
+    html:    `<p>Im Anhang finden Sie den GAIO Analyzer Bericht für <strong>${domain}</strong>.</p>`,
+    text:    `GAIO Analyzer Bericht für ${domain}`,
+    bcc:     bcc || undefined,
+    attachments: [{
+      filename:    `GAIO-${domain.replace(/[^a-z0-9.-]/gi, "_")}.html`,
+      content:     exportRow.html_content,
+      contentType: "text/html",
+    }],
+  });
+  res.json(result);
+});
+
 export default adminRouter;
+

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu, LogIn, Users, User, ClipboardList } from "lucide-react";
+import { Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu, LogIn, Users, User, ClipboardList, Cpu, Send } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth } from "@/store/authStore";
 
@@ -85,6 +85,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Analysis log — only admins */}
         {isAuthenticated && user?.role === "admin" && (
           <NavButton id={9} icon={ClipboardList} label="Analyseprotokoll" active={activeView === 9} onClick={() => navigate(9)} />
+        )}
+
+        {/* KI-Tool — only admins */}
+        {isAuthenticated && user?.role === "admin" && (
+          <NavButton id={10} icon={Cpu} label="KI-Tool" active={activeView === 10} onClick={() => navigate(10)} />
+        )}
+
+        {/* Mailserver — only admins */}
+        {isAuthenticated && user?.role === "admin" && (
+          <NavButton id={11} icon={Mail} label="Mailserver" active={activeView === 11} onClick={() => navigate(11)} />
+        )}
+
+        {/* Versand-Analyse — only admins */}
+        {isAuthenticated && user?.role === "admin" && (
+          <NavButton id={12} icon={Send} label="Versand-Analyse" active={activeView === 12} onClick={() => navigate(12)} />
         )}
       </nav>
 

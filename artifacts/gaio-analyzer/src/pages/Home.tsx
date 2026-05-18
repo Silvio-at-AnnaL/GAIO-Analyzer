@@ -14,6 +14,9 @@ import { ForcePasswordChangeView } from "@/views/admin/ForcePasswordChangeView";
 import { ProfileView } from "@/views/admin/ProfileView";
 import { UserManagementView } from "@/views/admin/UserManagementView";
 import { AnalysisLogView } from "@/views/admin/AnalysisLogView";
+import { AiToolView } from "@/views/admin/AiToolView";
+import { MailserverView } from "@/views/admin/MailserverView";
+import { DeliveryView } from "@/views/admin/DeliveryView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -49,6 +52,9 @@ function AppContent() {
                 {activeView === 7                   && (isAuthenticated ? <ProfileView /> : <LoginView />)}
                 {activeView === 8                   && <UserManagementView />}
                 {activeView === 9                   && <AnalysisLogView />}
+                {activeView === 10                  && <AiToolView />}
+                {activeView === 11                  && <MailserverView />}
+                {activeView === 12                  && <DeliveryView />}
               </>
             )}
           </div>

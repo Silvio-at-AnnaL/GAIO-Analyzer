@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLM } from "../ai-client.js";
 import { logger } from "../logger";
 
 export interface FaqResult {
@@ -115,18 +115,10 @@ export async function analyzeFaq(pages: CrawledPage[]): Promise<FaqResult> {
         .slice(0, 3000);
 
       if (faqContent.length > 50) {
-        const message = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          messages: [
-            {
-              role: "user",
-              content: `Evaluate this FAQ content from a B2B industrial website. Are the questions framed as real user questions? Do answers have sufficient depth? Give a 2-3 sentence assessment.\n\n${faqContent}`,
-            },
-          ],
-        });
-        const block = message.content[0];
-        qualityAssessment = block.type === "text" ? block.text : null;
+        qualityAssessment = await callLLM(
+          `Evaluate this FAQ content from a B2B industrial website. Are the questions framed as real user questions? Do answers have sufficient depth? Give a 2-3 sentence assessment.\n\n${faqContent}`,
+          8192,
+        );
       }
     } catch (err) {
       logger.warn({ err }, "FAQ quality assessment failed");

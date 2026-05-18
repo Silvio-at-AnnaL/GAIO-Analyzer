@@ -1,3 +1,4 @@
+import { sendMail } from "./mailer.js";
 import { logger } from "./logger.js";
 
 export interface MailOptions {
@@ -7,8 +8,8 @@ export interface MailOptions {
 }
 
 export async function sendEmail(opts: MailOptions): Promise<void> {
-  logger.info(
-    { to: opts.to, subject: opts.subject },
-    `[EMAIL] ${opts.subject}\n---\n${opts.text}\n---`
-  );
+  const result = await sendMail({ to: opts.to, subject: opts.subject, text: opts.text, html: opts.text });
+  if (result.fallback) {
+    logger.info({ to: opts.to, subject: opts.subject }, `[EMAIL FALLBACK] ${opts.subject}\n${opts.text}`);
+  }
 }

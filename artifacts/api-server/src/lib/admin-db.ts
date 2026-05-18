@@ -73,6 +73,31 @@ db.exec(`
   );
 `);
 
+// ── Default settings seed ─────────────────────────────────────────────────────
+const DEFAULT_SETTINGS: [string, string][] = [
+  ["ai_provider",              "claude"],
+  ["ai_model_claude",          "claude-sonnet-4-20250514"],
+  ["ai_api_key_claude",        ""],
+  ["ai_model_openai",          "gpt-4o"],
+  ["ai_api_key_openai",        ""],
+  ["ai_api_key_perplexity",    ""],
+  ["ai_model_perplexity",      "llama-3.1-sonar-large-128k-online"],
+  ["ai_api_key_gemini",        ""],
+  ["ai_model_gemini",          "gemini-1.5-pro"],
+  ["mail_host",                ""],
+  ["mail_port",                "587"],
+  ["mail_secure",              "false"],
+  ["mail_user",                ""],
+  ["mail_password",            ""],
+  ["mail_from_name",           "GAIO Analyzer"],
+  ["mail_from_address",        "silvio.haase@industrystock.com"],
+  ["delivery_mode",            "download"],
+  ["delivery_bcc",             ""],
+  ["delivery_require_email",   "false"],
+];
+const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);
+
 const count = (db.prepare("SELECT COUNT(*) as c FROM users").get() as unknown as { c: number }).c;
 if (count === 0) {
   const hash = bcrypt.hashSync("Superadmin007!", 12);
