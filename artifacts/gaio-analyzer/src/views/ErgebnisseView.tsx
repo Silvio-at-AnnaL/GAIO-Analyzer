@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { RadarDimensions } from "@/components/charts/RadarDimensions";
-import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams, type ContactData } from "@/lib/report-export";
+import { useBranding } from "@/store/brandingStore";
 import {
   ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -644,6 +645,7 @@ function buildExportTimestamp(d: Date = new Date()): string {
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
   const { mode: deliveryMode } = useDeliveryMode();
+  const { footerText: brandingFooterText, logoSrc: brandingLogoSrc } = useBranding();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -680,11 +682,21 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
     (async () => {
       try {
-        const htmlBase = import.meta.env.BASE_URL;
-        const [htmlLogoB64, htmlProfileB64] = await Promise.all([
-          fetchAsBase64(htmlBase + "brand-logo.png"),
-          fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+        const _asApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+        const [_asBrandR, _asContR] = await Promise.all([
+          fetch(`${_asApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch(`${_asApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
         ]);
+        const asLogoSrc = (_asBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+        const asContactData: ContactData = {
+          name:       (_asContR as Record<string, string>).name       ?? "",
+          title:      (_asContR as Record<string, string>).title      ?? "",
+          company:    (_asContR as Record<string, string>).company    ?? "",
+          email:      (_asContR as Record<string, string>).email      ?? "",
+          photoSrc:   (_asContR as Record<string, string>).photoSrc   ?? "",
+          ctaText:    (_asContR as Record<string, string>).ctaText    ?? "",
+          ctaSubtext: (_asContR as Record<string, string>).ctaSubtext ?? "",
+        };
 
         const htmlInputParams: InputParams = {
           domainUrl: String(report.url ?? ""),
@@ -699,9 +711,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
         };
 
         const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
-          logoSrc: htmlLogoB64,
-          profileSrc: htmlProfileB64,
+          logoSrc:     asLogoSrc,
+          profileSrc:  asContactData.photoSrc,
           inputParams: htmlInputParams,
+          contactData: asContactData,
+          footerText:  (_asBrandR as Record<string, string>).footerText ?? brandingFooterText,
         });
 
         if (!htmlContent) return;
@@ -1272,7 +1286,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           "width:100%;margin-top:32px;padding-top:12px;border-top:1px solid #dde0e8;" +
           "font-size:11px;color:#9ca3af;text-align:left;font-family:-apple-system,sans-serif;";
         footerEl.textContent =
-          "IndustryStock.com/GAIO-Analyzer · Exportiert am " + currentDateString;
+          (brandingFooterText || "IndustryStock.com") + "/GAIO-Analyzer · Exportiert am " + currentDateString;
         panel.appendChild(footerEl);
         // FIX B — Add explicit bottom padding so footer is never clipped.
         panel.style.paddingBottom = "80px";
@@ -1369,12 +1383,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       console.log("All panels captured:", pages.length);
 
-      // ── Pre-fetch Kontakt images as base64 (for FAQ-less pages these are quick) ──
-      const base = import.meta.env.BASE_URL;
-      const [kontaktLogoB64, kontaktProfileB64] = await Promise.all([
-        fetchAsBase64(base + "brand-logo.png"),
-        fetchAsBase64(base + "kontakt-silvio.webp"),
+      // ── Pre-fetch Kontakt branding + contact from API ─────────────────────────
+      const _pdfApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const [_pdfBrandR, _pdfContR] = await Promise.all([
+        fetch(`${_pdfApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_pdfApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
+      const kontaktLogoB64 = (_pdfBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+      const kontaktFooterText = (_pdfBrandR as Record<string, string>).footerText ?? brandingFooterText;
+      const kontaktContactData: ContactData = {
+        name:       (_pdfContR as Record<string, string>).name       ?? "",
+        title:      (_pdfContR as Record<string, string>).title      ?? "",
+        company:    (_pdfContR as Record<string, string>).company    ?? "",
+        email:      (_pdfContR as Record<string, string>).email      ?? "",
+        photoSrc:   (_pdfContR as Record<string, string>).photoSrc   ?? "",
+        ctaText:    (_pdfContR as Record<string, string>).ctaText    ?? "",
+        ctaSubtext: (_pdfContR as Record<string, string>).ctaSubtext ?? "",
+      };
 
       // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
       type FaqCapture = { imgData: string; captureHeightPx: number } | null;
@@ -1508,7 +1533,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
         const kontaktDoc = kontaktIframe.contentDocument!;
         kontaktDoc.open();
-        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktProfileB64));
+        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktContactData.photoSrc, kontaktContactData, kontaktFooterText));
         kontaktDoc.close();
 
         await new Promise((r) => setTimeout(r, 1200));
@@ -1667,11 +1692,21 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
     try {
       const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
 
-      const htmlBase = import.meta.env.BASE_URL;
-      const [htmlLogoB64, htmlProfileB64] = await Promise.all([
-        fetchAsBase64(htmlBase + "brand-logo.png"),
-        fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+      const _htApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const [_htBrandR, _htContR] = await Promise.all([
+        fetch(`${_htApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_htApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
+      const htLogoSrc = (_htBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+      const htContactData: ContactData = {
+        name:       (_htContR as Record<string, string>).name       ?? "",
+        title:      (_htContR as Record<string, string>).title      ?? "",
+        company:    (_htContR as Record<string, string>).company    ?? "",
+        email:      (_htContR as Record<string, string>).email      ?? "",
+        photoSrc:   (_htContR as Record<string, string>).photoSrc   ?? "",
+        ctaText:    (_htContR as Record<string, string>).ctaText    ?? "",
+        ctaSubtext: (_htContR as Record<string, string>).ctaSubtext ?? "",
+      };
 
       const htmlInputParams: InputParams = {
         domainUrl: String(report.url ?? ""),
@@ -1686,9 +1721,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       };
 
       const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
-        logoSrc: htmlLogoB64,
-        profileSrc: htmlProfileB64,
+        logoSrc:     htLogoSrc,
+        profileSrc:  htContactData.photoSrc,
         inputParams: htmlInputParams,
+        contactData: htContactData,
+        footerText:  (_htBrandR as Record<string, string>).footerText ?? brandingFooterText,
       });
 
       if (mailTo) {

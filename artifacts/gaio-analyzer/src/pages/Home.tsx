@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AppProvider, useAppStore } from "@/store/appStore";
 import { AuthProvider, useAuth } from "@/store/authStore";
+import { BrandingProvider } from "@/store/brandingStore";
 import { Sidebar, MobileNav } from "@/components/layout/Sidebar";
 import { DomainAnalyseView } from "@/views/DomainAnalyseView";
 import { HtmlAnalyseView } from "@/views/HtmlAnalyseView";
@@ -17,6 +18,9 @@ import { AnalysisLogView } from "@/views/admin/AnalysisLogView";
 import { AiToolView } from "@/views/admin/AiToolView";
 import { MailserverView } from "@/views/admin/MailserverView";
 import { DeliveryView } from "@/views/admin/DeliveryView";
+import { BrandingView } from "@/views/admin/BrandingView";
+import { ContactEditorView } from "@/views/admin/ContactEditorView";
+import { PermissionsView } from "@/views/admin/PermissionsView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -37,7 +41,6 @@ function AppContent() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="px-8 py-8 min-h-full">
-            {/* Force-password-change intercept: shown until the user sets a real password */}
             {pendingChangeUsername ? (
               <ForcePasswordChangeView />
             ) : (
@@ -55,6 +58,9 @@ function AppContent() {
                 {activeView === 10                  && <AiToolView />}
                 {activeView === 11                  && <MailserverView />}
                 {activeView === 12                  && <DeliveryView />}
+                {activeView === 13                  && <BrandingView />}
+                {activeView === 14                  && <ContactEditorView />}
+                {activeView === 15                  && <PermissionsView />}
               </>
             )}
           </div>
@@ -67,9 +73,11 @@ function AppContent() {
 export default function Home() {
   return (
     <AuthProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <BrandingProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </BrandingProvider>
     </AuthProvider>
   );
 }

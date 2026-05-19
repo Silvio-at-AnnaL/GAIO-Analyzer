@@ -95,6 +95,22 @@ const DEFAULT_SETTINGS: [string, string][] = [
   ["delivery_bcc",             ""],
   ["delivery_require_email",   "false"],
   ["ai_custom_providers",      "[]"],
+  // ── Branding ───────────────────────────────────────────────────────────────
+  ["branding_logo_base64",     ""],
+  ["branding_logo_mimetype",   "image/png"],
+  ["branding_footer_text",     "IndustryStock.com"],
+  ["branding_footer_url",      "https://www.industrystock.com"],
+  // ── Contact ────────────────────────────────────────────────────────────────
+  ["contact_name",             "Silvio Haase"],
+  ["contact_title",            "CMO & Head of Business Development"],
+  ["contact_company",          "Deutscher Medien Verlag GmbH / IndustryStock.com"],
+  ["contact_email",            "Silvio.Haase@IndustryStock.com"],
+  ["contact_photo_base64",     ""],
+  ["contact_photo_mimetype",   "image/jpeg"],
+  ["contact_cta_text",         "Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?"],
+  ["contact_cta_subtext",      "Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert."],
+  // ── Permissions ────────────────────────────────────────────────────────────
+  ["permissions_json",         '{"nutzerverwaltung":["admin"],"analyseprotokoll":["admin"],"erscheinungsbild":["admin"],"kontakt_daten":["admin"],"rechtemanagement":["admin"],"ki_tool":["admin"],"mailserver":["admin"],"versand_analyse":["admin"]}'],
 ];
 const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);

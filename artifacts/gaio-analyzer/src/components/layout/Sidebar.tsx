@@ -1,15 +1,19 @@
 import { useState } from "react";
-import { Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu, LogIn, Users, User, ClipboardList, Cpu, Send } from "lucide-react";
+import {
+  Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
+  LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
+} from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
-import { useAuth } from "@/store/authStore";
+import { useAuth, canAccess } from "@/store/authStore";
+import { useBranding } from "@/store/brandingStore";
 
 const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
-  { id: 1, icon: Globe,     label: "Domainanalyse – Basisdaten" },
-  { id: 2, icon: FileCode,  label: "HTML-Analyse" },
-  { id: 3, icon: BarChart3, label: "Ergebnisse" },
-  { id: 4, icon: HelpCircle,label: "FAQ / So funktioniert's" },
-  { id: 5, icon: Mail,      label: "Kontakt" },
-  { id: 6, icon: Settings,  label: "Einstellungen" },
+  { id: 1, icon: Globe,      label: "Domainanalyse – Basisdaten" },
+  { id: 2, icon: FileCode,   label: "HTML-Analyse" },
+  { id: 3, icon: BarChart3,  label: "Ergebnisse" },
+  { id: 4, icon: HelpCircle, label: "FAQ / So funktioniert's" },
+  { id: 5, icon: Mail,       label: "Kontakt" },
+  { id: 6, icon: Settings,   label: "Einstellungen" },
 ];
 
 function NavButton({
@@ -23,13 +27,13 @@ function NavButton({
       data-testid={`nav-item-${id}`}
       className="w-full flex items-center gap-3 py-2.5 text-left transition-all"
       style={{
-        paddingLeft: "calc(0.75rem - 3px)",
+        paddingLeft:  "calc(0.75rem - 3px)",
         paddingRight: "0.75rem",
-        borderLeft:  active ? "3px solid hsl(var(--sidebar-primary))" : "3px solid transparent",
+        borderLeft:   active ? "3px solid hsl(var(--sidebar-primary))" : "3px solid transparent",
         borderRadius: "0 6px 6px 0",
-        background:  active ? "hsl(var(--sidebar-accent))" : "transparent",
-        color:       active ? "hsl(var(--sidebar-accent-foreground))" : "hsl(var(--sidebar-foreground))",
-        fontWeight:  active ? 600 : 400,
+        background:   active ? "hsl(var(--sidebar-accent))" : "transparent",
+        color:        active ? "hsl(var(--sidebar-accent-foreground))" : "hsl(var(--sidebar-foreground))",
+        fontWeight:   active ? 600 : 400,
       }}
     >
       <span className="shrink-0 flex items-center" style={{ width: 15, height: 15 }}>
@@ -42,24 +46,32 @@ function NavButton({
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { activeView, setActiveView } = useAppStore();
-  const { user, isAuthenticated }     = useAuth();
+  const { user, isAuthenticated, permissions } = useAuth();
+  const branding = useBranding();
 
   function navigate(id: ActiveView) {
     setActiveView(id);
     onNavigate?.();
   }
 
+  const role = user?.role ?? "";
+
   const loginLabel = isAuthenticated
     ? `${user!.firstName} ${user!.lastName}`
     : "Login";
   const LoginIcon = isAuthenticated ? User : LogIn;
+
+  const logoSrc = branding.logoSrc || "/brand-logo.png";
+
+  const footerLine = branding.footerText || "IndustryStock.com";
+  const footerUrl  = branding.footerUrl  || "";
 
   return (
     <>
       {/* Brand logo */}
       <div style={{ paddingTop: 32, paddingBottom: 16, paddingLeft: 16, paddingRight: 16 }}>
         <img
-          src="/brand-logo.png"
+          src={logoSrc}
           alt="GAIO Analyzer"
           style={{ width: "100%", height: "auto", maxHeight: 48, objectFit: "contain", objectPosition: "left center", display: "block" }}
         />
@@ -77,28 +89,43 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Login / Profile */}
         <NavButton id={7} icon={LoginIcon} label={loginLabel} active={activeView === 7} onClick={() => navigate(7)} />
 
-        {/* User management — only admins */}
-        {isAuthenticated && user?.role === "admin" && (
+        {/* Nutzerverwaltung */}
+        {isAuthenticated && canAccess("nutzerverwaltung", role, permissions) && (
           <NavButton id={8} icon={Users} label="Nutzerverwaltung" active={activeView === 8} onClick={() => navigate(8)} />
         )}
 
-        {/* Analysis log — only admins */}
-        {isAuthenticated && user?.role === "admin" && (
+        {/* Analyseprotokoll */}
+        {isAuthenticated && canAccess("analyseprotokoll", role, permissions) && (
           <NavButton id={9} icon={ClipboardList} label="Analyseprotokoll" active={activeView === 9} onClick={() => navigate(9)} />
         )}
 
-        {/* KI-Tool — only admins */}
-        {isAuthenticated && user?.role === "admin" && (
+        {/* Erscheinungsbild */}
+        {isAuthenticated && canAccess("erscheinungsbild", role, permissions) && (
+          <NavButton id={13} icon={Palette} label="Erscheinungsbild" active={activeView === 13} onClick={() => navigate(13)} />
+        )}
+
+        {/* Kontakt-Daten */}
+        {isAuthenticated && canAccess("kontakt_daten", role, permissions) && (
+          <NavButton id={14} icon={ContactRound} label="Kontakt-Daten" active={activeView === 14} onClick={() => navigate(14)} />
+        )}
+
+        {/* Rechtemanagement */}
+        {isAuthenticated && canAccess("rechtemanagement", role, permissions) && (
+          <NavButton id={15} icon={ShieldCheck} label="Rechtemanagement" active={activeView === 15} onClick={() => navigate(15)} />
+        )}
+
+        {/* KI-Tool */}
+        {isAuthenticated && canAccess("ki_tool", role, permissions) && (
           <NavButton id={10} icon={Cpu} label="KI-Tool" active={activeView === 10} onClick={() => navigate(10)} />
         )}
 
-        {/* Mailserver — only admins */}
-        {isAuthenticated && user?.role === "admin" && (
+        {/* Mailserver */}
+        {isAuthenticated && canAccess("mailserver", role, permissions) && (
           <NavButton id={11} icon={Mail} label="Mailserver" active={activeView === 11} onClick={() => navigate(11)} />
         )}
 
-        {/* Versand-Analyse — only admins */}
-        {isAuthenticated && user?.role === "admin" && (
+        {/* Versand-Analyse */}
+        {isAuthenticated && canAccess("versand_analyse", role, permissions) && (
           <NavButton id={12} icon={Send} label="Versand-Analyse" active={activeView === 12} onClick={() => navigate(12)} />
         )}
       </nav>
@@ -106,7 +133,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Footer */}
       <div className="px-4 py-3 border-t" style={{ borderColor: "hsl(var(--sidebar-border))", color: "hsl(var(--sidebar-foreground))", opacity: 0.4 }}>
         <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v2.0</p>
-        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>IndustryStock.com</p>
+        <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>
+          {footerUrl ? (
+            <a href={footerUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
+              {footerLine}
+            </a>
+          ) : (
+            footerLine
+          )}
+        </p>
       </div>
     </>
   );

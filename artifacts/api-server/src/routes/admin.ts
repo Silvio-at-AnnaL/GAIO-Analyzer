@@ -98,6 +98,32 @@ adminRouter.get("/public/delivery-mode", (_req: Request, res: Response) => {
   res.json({ mode: raw === "mail-only" ? "mail-only" : "download" });
 });
 
+// GET /api/public/branding — public, no auth
+adminRouter.get("/public/branding", (_req: Request, res: Response) => {
+  const raw  = getSetting("branding_logo_base64")  ?? "";
+  const mime = getSetting("branding_logo_mimetype") ?? "image/png";
+  res.json({
+    logoSrc:    raw ? `data:${mime};base64,${raw}` : "",
+    footerText: getSetting("branding_footer_text") ?? "IndustryStock.com",
+    footerUrl:  getSetting("branding_footer_url")  ?? "https://www.industrystock.com",
+  });
+});
+
+// GET /api/public/contact — public, no auth
+adminRouter.get("/public/contact", (_req: Request, res: Response) => {
+  const raw  = getSetting("contact_photo_base64")  ?? "";
+  const mime = getSetting("contact_photo_mimetype") ?? "image/jpeg";
+  res.json({
+    name:       getSetting("contact_name")       ?? "Silvio Haase",
+    title:      getSetting("contact_title")      ?? "CMO & Head of Business Development",
+    company:    getSetting("contact_company")    ?? "Deutscher Medien Verlag GmbH / IndustryStock.com",
+    email:      getSetting("contact_email")      ?? "Silvio.Haase@IndustryStock.com",
+    photoSrc:   raw ? `data:${mime};base64,${raw}` : "",
+    ctaText:    getSetting("contact_cta_text")   ?? "",
+    ctaSubtext: getSetting("contact_cta_subtext") ?? "",
+  });
+});
+
 // POST /api/admin/public/send-report — public send-report for end-user delivery
 adminRouter.post("/public/send-report", async (req: Request, res: Response) => {
   const {
@@ -669,6 +695,103 @@ function isPlaceholder(value: string): boolean {
   return value.includes("••••••••");
 }
 
+// ── Branding / Contact / Permissions settings ─────────────────────────────────
+
+function buildDataUrl(raw: string, mime: string): string {
+  return raw ? `data:${mime};base64,${raw}` : "";
+}
+
+function stripDataUrl(value: string): { raw: string; mime: string } {
+  if (value.startsWith("data:")) {
+    const m = /^data:([^;]+);base64,(.+)$/s.exec(value);
+    if (m) return { raw: m[2], mime: m[1] };
+    return { raw: "", mime: "" };
+  }
+  return { raw: value, mime: "" };
+}
+
+const MAX_B64_CHARS = Math.ceil(500 * 1024 * (4 / 3));
+
+// GET /api/admin/settings/branding  ← must be registered BEFORE /:group
+adminRouter.get("/settings/branding", requireAuth, requireAdmin, (_req: Request, res: Response) => {
+  res.json({
+    branding_logo_base64:   buildDataUrl(getSetting("branding_logo_base64") ?? "", getSetting("branding_logo_mimetype") ?? "image/png"),
+    branding_logo_mimetype: getSetting("branding_logo_mimetype") ?? "image/png",
+    branding_footer_text:   getSetting("branding_footer_text")   ?? "IndustryStock.com",
+    branding_footer_url:    getSetting("branding_footer_url")    ?? "https://www.industrystock.com",
+  });
+});
+
+// PATCH /api/admin/settings/branding  ← must be registered BEFORE /:group
+adminRouter.patch("/settings/branding", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const body = req.body as Record<string, string>;
+  if ("branding_logo_base64" in body) {
+    const { raw, mime } = stripDataUrl(String(body.branding_logo_base64 ?? ""));
+    if (raw && raw.length > MAX_B64_CHARS) {
+      res.status(413).json({ error: "Logo zu groß. Maximal 500 KB erlaubt." }); return;
+    }
+    setSetting("branding_logo_base64", raw);
+    if (mime) setSetting("branding_logo_mimetype", mime);
+  }
+  if ("branding_logo_mimetype" in body && body.branding_logo_mimetype) {
+    setSetting("branding_logo_mimetype", String(body.branding_logo_mimetype));
+  }
+  if ("branding_footer_text" in body) setSetting("branding_footer_text", String(body.branding_footer_text ?? ""));
+  if ("branding_footer_url" in body)  setSetting("branding_footer_url",  String(body.branding_footer_url  ?? ""));
+  res.json({ success: true });
+});
+
+// GET /api/admin/settings/contact  ← must be registered BEFORE /:group
+adminRouter.get("/settings/contact", requireAuth, requireAdmin, (_req: Request, res: Response) => {
+  res.json({
+    contact_name:           getSetting("contact_name")           ?? "Silvio Haase",
+    contact_title:          getSetting("contact_title")          ?? "CMO & Head of Business Development",
+    contact_company:        getSetting("contact_company")        ?? "Deutscher Medien Verlag GmbH / IndustryStock.com",
+    contact_email:          getSetting("contact_email")          ?? "Silvio.Haase@IndustryStock.com",
+    contact_photo_base64:   buildDataUrl(getSetting("contact_photo_base64") ?? "", getSetting("contact_photo_mimetype") ?? "image/jpeg"),
+    contact_photo_mimetype: getSetting("contact_photo_mimetype") ?? "image/jpeg",
+    contact_cta_text:       getSetting("contact_cta_text")       ?? "",
+    contact_cta_subtext:    getSetting("contact_cta_subtext")    ?? "",
+  });
+});
+
+// PATCH /api/admin/settings/contact  ← must be registered BEFORE /:group
+adminRouter.patch("/settings/contact", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const body = req.body as Record<string, string>;
+  const textFields = ["contact_name","contact_title","contact_company","contact_email","contact_cta_text","contact_cta_subtext"] as const;
+  for (const f of textFields) {
+    if (f in body) setSetting(f, String(body[f] ?? ""));
+  }
+  if ("contact_photo_base64" in body) {
+    const { raw, mime } = stripDataUrl(String(body.contact_photo_base64 ?? ""));
+    if (raw && raw.length > MAX_B64_CHARS) {
+      res.status(413).json({ error: "Foto zu groß. Maximal 500 KB erlaubt." }); return;
+    }
+    setSetting("contact_photo_base64", raw);
+    if (mime) setSetting("contact_photo_mimetype", mime);
+  }
+  if ("contact_photo_mimetype" in body && body.contact_photo_mimetype) {
+    setSetting("contact_photo_mimetype", String(body.contact_photo_mimetype));
+  }
+  res.json({ success: true });
+});
+
+// GET /api/admin/settings/permissions — auth required (any role)  ← BEFORE /:group
+adminRouter.get("/settings/permissions", requireAuth, (_req: Request, res: Response) => {
+  const raw = getSetting("permissions_json") ?? "{}";
+  try { res.json(JSON.parse(raw)); } catch { res.json({}); }
+});
+
+// PATCH /api/admin/settings/permissions — admin only, never affected by permissions matrix
+adminRouter.patch("/settings/permissions", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  try {
+    setSetting("permissions_json", JSON.stringify(req.body));
+    res.json({ success: true });
+  } catch {
+    res.status(400).json({ error: "Ungültige Berechtigungen" });
+  }
+});
+
 // GET /api/admin/settings/ai-status  ← must be registered BEFORE /:group
 adminRouter.get("/settings/ai-status", requireAuth, requireAdmin, (_req: Request, res: Response) => {
   const provider = getSetting("ai_provider") ?? "claude";
@@ -700,7 +823,7 @@ adminRouter.post("/settings/test-mail", requireAuth, requireAdmin, async (req: R
 
 // GET /api/admin/settings/:group
 adminRouter.get("/settings/:group", requireAuth, requireAdmin, (req: Request, res: Response) => {
-  const group = req.params.group;
+  const group = String(req.params.group);
   const keys = SETTINGS_GROUPS[group];
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
 
@@ -722,7 +845,7 @@ adminRouter.get("/settings/:group", requireAuth, requireAdmin, (req: Request, re
 
 // PATCH /api/admin/settings/:group
 adminRouter.patch("/settings/:group", requireAuth, requireAdmin, (req: Request, res: Response) => {
-  const group = req.params.group;
+  const group = String(req.params.group);
   const keys = SETTINGS_GROUPS[group];
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
 
