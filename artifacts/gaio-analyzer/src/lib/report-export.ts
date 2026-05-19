@@ -62,7 +62,6 @@ export type InputParams = {
   differentiators?: string | null;
   brandKeywords?: string | null;
   competitors?: string[];
-  socialMedia?: Record<string, string>;
   analysisDate: string;
   crawledPagesCount: number;
 };
@@ -647,12 +646,6 @@ function renderAnalyseparameterSection(params: InputParams): string {
     rows.push(["Wettbewerber-Domains", links]);
   }
 
-  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
-  if (socialEntries.length > 0) {
-    const lines = socialEntries.map(([k, v]) => `<span style="display:block;">${esc(k.charAt(0).toUpperCase() + k.slice(1))}: ${esc(v)}</span>`).join("");
-    rows.push(["Social-Media-Profile", lines]);
-  }
-
   rows.push(["Analysedatum", esc(params.analysisDate)]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
 
@@ -690,11 +683,6 @@ export function buildAnalyseparameterDocumentHtml(params: InputParams): string {
 
   const competitorList = (params.competitors ?? []).map((c) => c.trim()).filter(Boolean);
   if (competitorList.length > 0) rows.push(["Wettbewerber-Domains", competitorList.join("\n")]);
-
-  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
-  if (socialEntries.length > 0) {
-    rows.push(["Social-Media-Profile", socialEntries.map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join("\n")]);
-  }
 
   rows.push(["Analysedatum", params.analysisDate]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
@@ -1294,6 +1282,7 @@ export function generateHtmlReport(
   ${bodyContent}
 
 </div>
+<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? 0, schema: scoreDefs[1]?.score ?? 0, headings: scoreDefs[2]?.score ?? 0, content: scoreDefs[3]?.score ?? 0, faq: scoreDefs[4]?.score ?? 0, llm: scoreDefs[5]?.score ?? 0 } })}</script>
 </body>
 </html>`;
 }

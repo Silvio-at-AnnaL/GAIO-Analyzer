@@ -1,0 +1,380 @@
+Three independent features. Implement in order.
+
+---
+
+FEATURE 1 — Remove Social Media fields
+
+This is cleanup only. Remove all social media 
+references from the entire codebase.
+
+FRONTEND — remove from these locations:
+
+DomainAnalyseView.tsx (or wherever the 
+questionnaire form is):
+  Remove the entire "SOCIAL MEDIA & 
+  ONLINE-PROFILE" section including all 
+  fields: LinkedIn, Facebook, Instagram, 
+  YouTube, TikTok, WeChat, Twitter/X, 
+  Kununu, Xing, and the (optional) toggle.
+
+WelcomeView.tsx:
+  Remove any social media field if present.
+
+ErgebnisseView.tsx:
+  Remove social media from the 
+  "Analyseparameter" display section 
+  (shown in exports).
+
+HTML export generation:
+  Remove social media from the 
+  Analyseparameter section.
+
+PDF export:
+  Remove social media from the 
+  Analyseparameter iframe page.
+
+BACKEND:
+  Remove social_media fields from any 
+  analysis request/response processing.
+  Remove from any prompt templates that 
+  include social media context.
+
+DATABASE:
+  If a questionnaire state type has 
+  social media fields, remove them from 
+  the TypeScript interface.
+  Do not drop any DB columns if they 
+  exist — just stop reading/writing them.
+
+---
+
+FEATURE 2 — Analysis comparison (Delta View)
+
+Add a new top-level navigation item 
+"Vergleich" in the main sidebar 
+(not in the admin sub-section).
+Icon: GitCompare or ArrowLeftRight (lucide)
+Position: after "Ergebnisse", 
+before "FAQ / So funktioniert's"
+Visible to all users, no auth required.
+
+CREATE: src/views/VergleichView.tsx
+
+CONCEPT: Compare two analyses side by side, 
+showing score deltas and dimension changes.
+
+--- INPUT MODE A: from analysis protocol ---
+
+Requires login (admin only for now, 
+configurable via Rechtemanagement later).
+
+Two dropdowns, each populated from 
+GET /api/admin/analysis-log:
+  "Analyse A (älter)" 
+  "Analyse B (neuer)"
+  
+Each dropdown item shows:
+  Domain · Datum · Score
+  
+"Vergleich starten" button.
+
+--- INPUT MODE B: HTML file upload ---
+
+No login required. Available to everyone.
+
+Two file upload zones (drag & drop or click):
+  "Analyse A hochladen" 
+  "Analyse B hochladen"
+  
+Each accepts .html files only.
+
+On file drop/select:
+  Read the file content as text.
+  Extract the embedded JSON data block:
+    <script type="application/json" 
+      id="gaio-analysis-data">
+    {...}
+    </script>
+  Parse the JSON to get scores and metadata.
+  Show a preview card: 
+    Domain · Datum · GAIO Score
+
+If the HTML file has no embedded data block 
+(older export without it): show error:
+  "Diese HTML-Datei enthält keine 
+  maschinenlesbaren Analysedaten. 
+  Bitte verwenden Sie einen aktuellen 
+  HTML-Export."
+
+--- EMBED DATA IN HTML EXPORTS (required) ---
+
+In the HTML export generation function, 
+embed a hidden JSON block before </body>:
+
+  <script type="application/json" 
+    id="gaio-analysis-data">
+  {
+    "domain": "[domain]",
+    "companyName": "[name]",
+    "exportDate": "[ISO date]",
+    "gaioScore": [number],
+    "scores": {
+      "technical": [n],
+      "schema": [n],
+      "headings": [n],
+      "content": [n],
+      "faq": [n],
+      "llm": [n]
+    },
+    "recommendations": {
+      "kritisch": [count],
+      "hoherHebel": [count],
+      "nachgeordnet": [count]
+    }
+  }
+  </script>
+
+This block is invisible to users but 
+machine-readable for comparison upload.
+
+--- COMPARISON RESULT VIEW ---
+
+Once both analyses are loaded (from protocol 
+or upload), show the comparison:
+
+HEADER ROW:
+  Two columns: Analyse A | Analyse B
+  Each shows: Domain, Datum, GAIO Score 
+  with color coding
+
+DELTA CARD (prominent, centered):
+  Big delta number: "+8" or "-5" or "±0"
+  Color: blue for positive, amber for 
+  negative, gray for no change
+  Label: "Punkte Verbesserung/Verschlechterung"
+
+DIMENSION TABLE:
+  Row per dimension:
+  | Dimension | Score A | Score B | Delta |
+  Delta cell: colored +/- number with 
+  arrow icon (↑ ↓ →)
+
+INTERPRETATION:
+  Auto-generated summary text:
+  
+  If delta > 0:
+    "Die Website hat sich in [N] von 6 
+    Dimensionen verbessert. Größter 
+    Fortschritt: [dimension mit höchstem 
+    positiven Delta]."
+  
+  If delta < 0:
+    "Die Website hat sich in [N] von 6 
+    Dimensionen verschlechtert. Stärkster 
+    Rückgang: [dimension mit höchstem 
+    negativen Delta]."
+  
+  If delta === 0:
+    "Keine signifikante Veränderung 
+    gegenüber der Vergleichsanalyse."
+
+RECOMMENDATIONS DELTA (if data available):
+  "Kritische Probleme: [A] → [B] ([delta])"
+  "Hoher Hebel: [A] → [B] ([delta])"
+
+Toggle between two display modes:
+  "Nebeneinander" | "Übereinander"
+  (side-by-side on desktop, 
+  stacked on mobile)
+
+---
+
+FEATURE 3 — Analysis sharing via link
+
+--- DATABASE ---
+
+New table in admin.db:
+
+TABLE shared_analyses:
+  id            INTEGER PRIMARY KEY AUTOINCREMENT
+  token         TEXT UNIQUE NOT NULL  
+    (UUID v4, generated on share creation)
+  analysis_id   INTEGER REFERENCES analysis_log(id)
+  created_by    INTEGER REFERENCES users(id)
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+  expires_at    DATETIME NOT NULL
+  is_active     BOOLEAN DEFAULT 1
+  title         TEXT     
+    (optional custom title for the share)
+  view_count    INTEGER DEFAULT 0
+
+TABLE share_access_log:
+  id            INTEGER PRIMARY KEY AUTOINCREMENT
+  share_id      INTEGER NOT NULL 
+    REFERENCES shared_analyses(id)
+  accessed_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  ip_hash       TEXT    
+    (SHA256 of IP, anonymized per DSGVO)
+  user_agent    TEXT
+
+New settings entry:
+  sharing_base_url = ''  
+    (e.g. 'https://gaio-analyzer.replit.app'
+    or 'https://analyse.meinefirma.de')
+  sharing_default_expiry_days = '30'
+  sharing_enabled = 'true'
+
+--- BACKEND ---
+
+  POST /api/admin/shares
+    Admin only.
+    Body: { 
+      analysisId: number,
+      expiryDays?: number,  (default from settings)
+      title?: string 
+    }
+    Generates UUID token.
+    Inserts into shared_analyses.
+    Returns { token, shareUrl, expiresAt }
+    
+    shareUrl = [sharing_base_url]/share/[token]
+    If sharing_base_url is empty, use 
+    the request's own origin as base.
+
+  GET /api/shares/:token  (PUBLIC, no auth)
+    Checks token exists, is_active=true, 
+    not expired.
+    Logs access to share_access_log 
+    (hashed IP, user agent).
+    Increments view_count.
+    Returns the full analysis data needed 
+    to render results (same structure as 
+    the existing analysis result object).
+    Returns 404 if not found.
+    Returns 410 Gone if expired.
+
+  GET /api/admin/shares
+    Admin only.
+    Returns all shares with stats:
+    token, title, domain, createdAt, 
+    expiresAt, isActive, viewCount,
+    lastAccessed (from share_access_log)
+
+  DELETE /api/admin/shares/:id
+    Admin only. Sets is_active=false.
+
+  GET /api/admin/shares/:id/access-log
+    Admin only.
+    Returns paginated access log for 
+    one share: accessed_at, ip_hash 
+    (show as "Besucher [hash[:6]]"), 
+    user_agent (parse to browser/OS name)
+
+--- FRONTEND: Share button in results view ---
+
+In ErgebnisseView.tsx, add a "Teilen" 
+button next to the export buttons:
+  Icon: Share2 (lucide)
+  Label: "Analyse teilen"
+  Only shown when user is authenticated 
+  as admin (check auth context).
+
+On click: call POST /api/admin/shares 
+with current analysis id (read from 
+the auto-export log entry if available, 
+otherwise create one first).
+
+Show result modal:
+  Title: "Analyse-Link erstellt"
+  
+  The shareable URL in a read-only input 
+  with "Kopieren" button (copies to clipboard).
+  
+  Expiry info: "Dieser Link ist bis 
+  [formatted date] gültig ([N] Tage)."
+  
+  Optional title input: 
+  "Bezeichnung für diesen Link (optional)"
+  
+  "Link deaktivieren" button (calls DELETE).
+  
+  "Schließen" button.
+
+--- FRONTEND: Shared analysis view ---
+
+Add a new route: /share/:token
+
+This route renders a read-only version 
+of the analysis results — no sidebar, 
+no navigation, no export buttons.
+
+The layout:
+  Top bar: Brand logo (from branding settings) 
+    + "Analyse-Report" label
+    + "Powered by GAIO Analyzer" link
+  
+  Full analysis results view 
+  (all tabs: Details, LLM, Wettbewerb, 
+  Empfehlungen) — read-only, no editing.
+  
+  Footer: "Dieser Report wurde geteilt 
+  von [contact_company]. 
+  Gültig bis [expiry date]."
+
+Loading state: skeleton while fetching.
+Expired state: 
+  centered message: "Dieser Analyse-Link 
+  ist nicht mehr aktiv."
+  Contact button using contact settings.
+
+The shared view does NOT require login.
+It uses GET /api/shares/:token (public).
+
+--- FRONTEND: Shares management in admin ---
+
+Create: src/views/admin/SharesView.tsx
+Sidebar label: "Geteilte Analysen"
+Icon: Share2 (lucide)
+Position: after Analyseprotokoll
+
+Layout:
+
+HEADER:
+  "Geteilte Analysen"
+  "[N] aktive Links · [N] abgelaufen"
+  
+  Settings row (inline, right-aligned):
+    "Basis-URL:" text input showing 
+    sharing_base_url setting, 
+    "Speichern" button
+    Note: "Leer lassen für automatische 
+    Erkennung der App-URL"
+
+TABLE of shares:
+  Titel / Domain | Erstellt | Läuft ab | 
+  Aufrufe | Letzter Aufruf | Status | Aktionen
+
+  Status badge: 
+    "Aktiv" (blue) | "Abgelaufen" (gray) | 
+    "Deaktiviert" (amber)
+  
+  Aktionen per row:
+    Copy-Link icon (copies share URL)
+    Chart icon → opens access log drawer
+    Trash icon → deactivate with confirm
+
+ACCESS LOG DRAWER (slides in from right):
+  Title: "Zugriffe auf: [domain]"
+  Table: Zeitpunkt | Besucher-ID | Browser
+  
+  Summary at top:
+    "[N] Aufrufe total · 
+    [N] unique Besucher (geschätzt) · 
+    Erstmals aufgerufen: [date] · 
+    Zuletzt: [date]"
+  
+  Note at bottom:
+    "IP-Adressen werden anonymisiert 
+    gespeichert (SHA-256-Hash, DSGVO-konform). 
+    Eine Rückverfolgung auf Personen 
+    ist nicht möglich."

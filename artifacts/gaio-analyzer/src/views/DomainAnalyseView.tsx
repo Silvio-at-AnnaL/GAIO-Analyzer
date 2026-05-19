@@ -9,18 +9,6 @@ import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 import { normalizeUrl } from "@/lib/utils";
 
-const SOCIAL_PLATFORMS = [
-  { key: "linkedin", label: "LinkedIn" },
-  { key: "facebook", label: "Facebook" },
-  { key: "instagram", label: "Instagram" },
-  { key: "youtube", label: "YouTube" },
-  { key: "tiktok", label: "TikTok" },
-  { key: "wechat", label: "WeChat" },
-  { key: "twitter", label: "Twitter / X" },
-  { key: "kununu", label: "Kununu" },
-  { key: "xing", label: "Xing" },
-] as const;
-
 const MAX_VISIBLE_PAGES = 15;
 
 export function DomainAnalyseView() {
@@ -94,9 +82,7 @@ export function DomainAnalyseView() {
     setDomainForm({ ...domainForm, [key]: value });
   };
 
-  const updateSocial = (key: string, value: string) => {
-    setDomainForm({ ...domainForm, social: { ...domainForm.social, [key]: value } });
-  };
+
 
   const updateCompetitor = (index: number, value: string) => {
     const next = [...domainForm.competitors];
@@ -233,10 +219,6 @@ export function DomainAnalyseView() {
     if (!validate()) return;
 
     const competitorUrls = domainForm.competitors.filter((c) => c.trim()).join("\n");
-    const socialLines = Object.entries(domainForm.social)
-      .filter(([, v]) => v.trim())
-      .map(([k, v]) => `${k}: ${v}`)
-      .join("\n");
 
     const hasEditableList = editablePages.length > 0;
     const explicitUrls = hasEditableList && selectedPages.length > 0 ? selectedPages : null;
@@ -250,7 +232,6 @@ export function DomainAnalyseView() {
             companyName: domainForm.companyName.trim() || null,
             competitors: competitorUrls || null,
             buyerPersonas: domainForm.personas.trim() || null,
-            socialMedia: socialLines || null,
           },
           explicitUrls,
         },
@@ -668,32 +649,6 @@ export function DomainAnalyseView() {
               className="min-h-[96px]"
               data-testid="input-personas"
             />
-          </section>
-
-          {/* Section: Social Media */}
-          <section className="space-y-4">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
-              Social Media &amp; Online-Profile
-              <span className="normal-case font-normal ml-1 opacity-60">(optional)</span>
-            </h2>
-
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {SOCIAL_PLATFORMS.map(({ key, label }) => (
-                <div key={key} className="space-y-1">
-                  <Label htmlFor={`social-${key}`} className="text-muted-foreground text-xs">
-                    {label}
-                  </Label>
-                  <Input
-                    id={`social-${key}`}
-                    value={domainForm.social[key as keyof typeof domainForm.social]}
-                    onChange={(e) => updateSocial(key, e.target.value)}
-                    placeholder="https://..."
-                    className="text-xs"
-                    data-testid={`input-social-${key}`}
-                  />
-                </div>
-              ))}
-            </div>
           </section>
 
           {/* CTA */}

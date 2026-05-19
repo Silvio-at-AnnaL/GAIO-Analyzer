@@ -80,7 +80,6 @@ interface QuestionnaireInput {
   competitors?: string | null;
   differentiators?: string | null;
   influencers?: string | null;
-  socialMedia?: string | null;
   microsites?: string | null;
   directories?: string | null;
   reviewPlatforms?: string | null;

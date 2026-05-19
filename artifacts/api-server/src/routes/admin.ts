@@ -7,6 +7,7 @@ import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
+import { randomUUID } from "node:crypto";
 
 declare module "express" {
   interface Request {
@@ -905,6 +906,95 @@ adminRouter.post("/analysis/:id/send-email", requireAuth, requireAdmin, async (r
     }],
   });
   res.json(result);
+});
+
+// ── Shares (admin) ────────────────────────────────────────────────────────────
+
+interface SharedAnalysisRow {
+  id: number;
+  token: string;
+  analysis_id: number | null;
+  created_by: number | null;
+  created_at: string;
+  expires_at: string;
+  is_active: number;
+  title: string | null;
+  view_count: number;
+}
+
+function buildShareUrl(token: string): string {
+  const base = getSetting("sharing_base_url")?.trim() ?? "";
+  return base ? `${base}/share/${token}` : `/share/${token}`;
+}
+
+// POST /api/admin/shares — create a share link
+adminRouter.post("/shares", requireAuth, (req: Request, res: Response) => {
+  const { analysisId, expiryDays, title } = req.body ?? {};
+  if (!analysisId || typeof analysisId !== "number") {
+    res.status(400).json({ error: "analysisId fehlt" }); return;
+  }
+  const days = Math.max(1, Math.min(365, Number(expiryDays) || 30));
+  const token = randomUUID();
+  const expiresAt = new Date(Date.now() + days * 86_400_000).toISOString();
+  const userId = req.adminUser?.id ?? null;
+
+  db.prepare(`
+    INSERT INTO shared_analyses (token, analysis_id, created_by, expires_at, title)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(token, analysisId, userId, expiresAt, title ?? null);
+
+  const shareUrl = buildShareUrl(token);
+  res.json({ token, shareUrl, expiresAt });
+});
+
+// GET /api/admin/shares — list all shares
+adminRouter.get("/shares", requireAuth, (req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT sa.id, sa.token, sa.analysis_id, sa.created_by, sa.created_at,
+           sa.expires_at, sa.is_active, sa.title, sa.view_count,
+           al.domain, al.company_name
+    FROM shared_analyses sa
+    LEFT JOIN analysis_log al ON al.id = sa.analysis_id
+    ORDER BY sa.created_at DESC
+  `).all() as unknown as (SharedAnalysisRow & { domain: string | null; company_name: string | null })[];
+
+  const base = getSetting("sharing_base_url")?.trim() ?? "";
+  const items = rows.map((r) => ({
+    id: r.id,
+    token: r.token,
+    analysisId: r.analysis_id,
+    domain: r.domain ?? null,
+    companyName: r.company_name ?? null,
+    title: r.title,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+    isActive: r.is_active === 1,
+    viewCount: r.view_count,
+    shareUrl: base ? `${base}/share/${r.token}` : `/share/${r.token}`,
+  }));
+  res.json({ items });
+});
+
+// DELETE /api/admin/shares/:id — deactivate a share
+adminRouter.delete("/shares/:id", requireAuth, (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+  db.prepare("UPDATE shared_analyses SET is_active = 0 WHERE id = ?").run(id);
+  res.json({ ok: true });
+});
+
+// GET /api/admin/shares/:id/access-log — get access log for a share
+adminRouter.get("/shares/:id/access-log", requireAuth, (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Ungültige ID" }); return; }
+  const items = db.prepare(`
+    SELECT id, accessed_at, ip_hash, user_agent
+    FROM share_access_log
+    WHERE share_id = ?
+    ORDER BY accessed_at DESC
+    LIMIT 100
+  `).all(id) as { id: number; accessed_at: string; ip_hash: string | null; user_agent: string | null }[];
+  res.json({ items: items.map((r) => ({ id: r.id, accessedAt: r.accessed_at, ipHash: r.ip_hash, userAgent: r.user_agent })) });
 });
 
 export default adminRouter;

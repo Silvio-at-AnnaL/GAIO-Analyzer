@@ -2,18 +2,20 @@ import { useState } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
+  ArrowLeftRight, Share2,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
 
 const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
-  { id: 1, icon: Globe,      label: "Domainanalyse – Basisdaten" },
-  { id: 2, icon: FileCode,   label: "HTML-Analyse" },
-  { id: 3, icon: BarChart3,  label: "Ergebnisse" },
-  { id: 4, icon: HelpCircle, label: "FAQ / So funktioniert's" },
-  { id: 5, icon: Mail,       label: "Kontakt" },
-  { id: 6, icon: Settings,   label: "Einstellungen" },
+  { id: 1,  icon: Globe,           label: "Domainanalyse – Basisdaten" },
+  { id: 2,  icon: FileCode,        label: "HTML-Analyse" },
+  { id: 3,  icon: BarChart3,       label: "Ergebnisse" },
+  { id: 16, icon: ArrowLeftRight,  label: "Vergleich" },
+  { id: 4,  icon: HelpCircle,      label: "FAQ / So funktioniert's" },
+  { id: 5,  icon: Mail,            label: "Kontakt" },
+  { id: 6,  icon: Settings,        label: "Einstellungen" },
 ];
 
 function NavButton({
@@ -97,6 +99,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Analyseprotokoll */}
         {isAuthenticated && canAccess("analyseprotokoll", role, permissions) && (
           <NavButton id={9} icon={ClipboardList} label="Analyseprotokoll" active={activeView === 9} onClick={() => navigate(9)} />
+        )}
+
+        {/* Geteilte Analysen */}
+        {isAuthenticated && role === "admin" && (
+          <NavButton id={17} icon={Share2} label="Geteilte Analysen" active={activeView === 17} onClick={() => navigate(17)} />
         )}
 
         {/* Erscheinungsbild */}

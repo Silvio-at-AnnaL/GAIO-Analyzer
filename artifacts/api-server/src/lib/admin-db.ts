@@ -73,6 +73,28 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shared_analyses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    token       TEXT UNIQUE NOT NULL,
+    analysis_id INTEGER REFERENCES analysis_log(id),
+    created_by  INTEGER REFERENCES users(id),
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at  DATETIME NOT NULL,
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    title       TEXT,
+    view_count  INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS share_access_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    share_id    INTEGER NOT NULL REFERENCES shared_analyses(id),
+    accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ip_hash     TEXT,
+    user_agent  TEXT
+  );
+`);
+
 // ── Default settings seed ─────────────────────────────────────────────────────
 const DEFAULT_SETTINGS: [string, string][] = [
   ["ai_provider",              "claude"],
@@ -111,6 +133,10 @@ const DEFAULT_SETTINGS: [string, string][] = [
   ["contact_cta_subtext",      "Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert."],
   // ── Permissions ────────────────────────────────────────────────────────────
   ["permissions_json",         '{"nutzerverwaltung":["admin"],"analyseprotokoll":["admin"],"erscheinungsbild":["admin"],"kontakt_daten":["admin"],"rechtemanagement":["admin"],"ki_tool":["admin"],"mailserver":["admin"],"versand_analyse":["admin"]}'],
+  // ── Sharing ────────────────────────────────────────────────────────────────
+  ["sharing_base_url",         ""],
+  ["sharing_default_expiry_days", "30"],
+  ["sharing_enabled",          "true"],
 ];
 const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);

@@ -21,6 +21,8 @@ import { DeliveryView } from "@/views/admin/DeliveryView";
 import { BrandingView } from "@/views/admin/BrandingView";
 import { ContactEditorView } from "@/views/admin/ContactEditorView";
 import { PermissionsView } from "@/views/admin/PermissionsView";
+import { VergleichView } from "@/views/VergleichView";
+import { SharesView } from "@/views/admin/SharesView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -61,6 +63,8 @@ function AppContent() {
                 {activeView === 13                  && <BrandingView />}
                 {activeView === 14                  && <ContactEditorView />}
                 {activeView === 15                  && <PermissionsView />}
+                {activeView === 16                  && <VergleichView />}
+                {activeView === 17                  && <SharesView />}
               </>
             )}
           </div>

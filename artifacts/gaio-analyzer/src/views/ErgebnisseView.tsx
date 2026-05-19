@@ -17,8 +17,9 @@ import {
 } from "recharts";
 import {
   Loader2, CheckCircle2, XCircle, FileText, Globe, Star, AlertCircle, AlertTriangle,
-  Info, Clock, ChevronDown, ChevronUp, ExternalLink,
+  Info, Clock, ChevronDown, ChevronUp, ExternalLink, Share2, Copy, Check,
 } from "lucide-react";
+import { useAuth, adminFetch } from "@/store/authStore";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -645,6 +646,7 @@ function buildExportTimestamp(d: Date = new Date()): string {
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
   const { mode: deliveryMode } = useDeliveryMode();
+  const { isAuthenticated } = useAuth();
   const { footerText: brandingFooterText, logoSrc: brandingLogoSrc } = useBranding();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
@@ -655,6 +657,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
+  const [shareModal, setShareModal] = useState(false);
+  const [shareResult, setShareResult] = useState<{ token: string; shareUrl: string; expiresAt: string } | null>(null);
+  const [shareCreating, setShareCreating] = useState(false);
+  const [shareExpiryDays, setShareExpiryDays] = useState(30);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -703,9 +710,6 @@ function ReportView({ analysisId }: { analysisId: string }) {
           companyName: domainForm.companyName.trim() || null,
           targetAudience: domainForm.personas.trim() || null,
           competitors: domainForm.competitors.filter((c) => c.trim()),
-          socialMedia: Object.fromEntries(
-            Object.entries(domainForm.social).filter(([, v]) => v.trim())
-          ),
           analysisDate: new Date().toLocaleString("de-DE"),
           crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
         };
@@ -808,6 +812,26 @@ function ReportView({ analysisId }: { analysisId: string }) {
       setSendError("E-Mail konnte nicht gesendet werden. Bitte prüfen Sie die Mailserver-Einstellungen.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCreateShare = async () => {
+    const logId = (report as Record<string, unknown>).logId as number | null | undefined;
+    if (!logId) return;
+    setShareCreating(true);
+    try {
+      const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+      const res = await adminFetch("/api/admin/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId: logId, expiryDays: shareExpiryDays }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { token: string; shareUrl: string; expiresAt: string };
+      const fullUrl = `${window.location.origin}${basePrefix}/share/${data.token}`;
+      setShareResult({ ...data, shareUrl: fullUrl });
+    } finally {
+      setShareCreating(false);
     }
   };
 
@@ -1461,9 +1485,6 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         companyName: domainForm.companyName.trim() || null,
         targetAudience: domainForm.personas.trim() || null,
         competitors: domainForm.competitors.filter((c) => c.trim()),
-        socialMedia: Object.fromEntries(
-          Object.entries(domainForm.social).filter(([, v]) => v.trim())
-        ),
         analysisDate: new Date().toLocaleString("de-DE"),
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
@@ -1713,9 +1734,6 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         companyName: domainForm.companyName.trim() || null,
         targetAudience: domainForm.personas.trim() || null,
         competitors: domainForm.competitors.filter((c) => c.trim()),
-        socialMedia: Object.fromEntries(
-          Object.entries(domainForm.social).filter(([, v]) => v.trim())
-        ),
         analysisDate: new Date().toLocaleString("de-DE"),
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
@@ -1773,6 +1791,17 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
             {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
           </Button>
+          {isAuthenticated && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setShareModal(true); setShareResult(null); setShareCopied(false); }}
+              data-testid="button-share"
+            >
+              <Share2 className="w-4 h-4 mr-1.5" />
+              Teilen
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1846,6 +1875,73 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   </Button>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {shareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) { setShareModal(false); } }}>
+          <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
+            <div className="flex items-center gap-2">
+              <Share2 className="w-4 h-4" style={{ color: "#3b82f6" }} />
+              <h2 className="text-base font-semibold">Analyse teilen</h2>
+            </div>
+
+            {!(report as Record<string, unknown>).logId ? (
+              <p className="text-sm text-muted-foreground">
+                Diese Analyse wurde noch nicht im Protokoll gespeichert. Bitte exportieren Sie den Report zuerst als HTML.
+              </p>
+            ) : shareResult ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Freigabe-Link wurde erstellt:</p>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted))" }}>
+                  <span className="flex-1 text-xs font-mono truncate">{shareResult.shareUrl}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareResult.shareUrl);
+                      setShareCopied(true);
+                      setTimeout(() => setShareCopied(false), 2000);
+                    }}
+                    className="shrink-0 p-1 rounded hover:bg-muted transition-colors"
+                    title="Kopieren"
+                  >
+                    {shareCopied ? <Check className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gültig bis {new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}.
+                  Verwalten Sie alle Freigaben unter <strong>Geteilte Analysen</strong>.
+                </p>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Schließen</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Erstellt einen öffentlichen Link zu diesem Analyse-Report.
+                </p>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Gültig für (Tage)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    className="w-full rounded border bg-background px-3 py-2 text-sm"
+                    style={{ borderColor: "hsl(var(--border))" }}
+                    value={shareExpiryDays}
+                    onChange={(e) => setShareExpiryDays(Math.max(1, Math.min(365, Number(e.target.value))))}
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Abbrechen</Button>
+                  <Button size="sm" onClick={() => void handleCreateShare()} disabled={shareCreating}>
+                    {shareCreating ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Erstelle…</> : "Link erstellen"}
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </div>

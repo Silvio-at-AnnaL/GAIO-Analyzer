@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
+import { SharedAnalysisView } from "@/views/SharedAnalysisView";
 import { DeliveryModeProvider } from "@/store/deliveryModeStore";
 
 const queryClient = new QueryClient();
@@ -11,6 +12,7 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
+      <Route path="/share/:token" component={SharedAnalysisView} />
       <Route path="/" component={Home} />
       <Route component={NotFound} />
     </Switch>

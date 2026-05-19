@@ -1,26 +1,13 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
-export type ActiveView = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+export type ActiveView = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
 export type Theme = "light" | "dark" | "system";
 export type AnalysisStatus = "idle" | "running" | "completed" | "failed";
-
-export interface SocialMedia {
-  linkedin: string;
-  facebook: string;
-  instagram: string;
-  youtube: string;
-  tiktok: string;
-  wechat: string;
-  twitter: string;
-  kununu: string;
-  xing: string;
-}
 
 export interface DomainForm {
   companyName: string;
   url: string;
   competitors: string[];
-  social: SocialMedia;
   personas: string;
 }
 
@@ -62,17 +49,6 @@ const DEFAULT_DOMAIN_FORM: DomainForm = {
   companyName: "",
   url: "",
   competitors: [""],
-  social: {
-    linkedin: "",
-    facebook: "",
-    instagram: "",
-    youtube: "",
-    tiktok: "",
-    wechat: "",
-    twitter: "",
-    kununu: "",
-    xing: "",
-  },
   personas: "",
 };
 
