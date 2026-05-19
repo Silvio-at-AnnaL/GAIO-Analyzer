@@ -684,8 +684,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
       try {
         const _asApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
         const [_asBrandR, _asContR] = await Promise.all([
-          fetch(`${_asApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-          fetch(`${_asApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch(`${_asApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch(`${_asApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
         ]);
         const asLogoSrc = (_asBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
         const asContactData: ContactData = {
@@ -1386,8 +1386,8 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       // ── Pre-fetch Kontakt branding + contact from API ─────────────────────────
       const _pdfApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
       const [_pdfBrandR, _pdfContR] = await Promise.all([
-        fetch(`${_pdfApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-        fetch(`${_pdfApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_pdfApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_pdfApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
       const kontaktLogoB64 = (_pdfBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
       const kontaktFooterText = (_pdfBrandR as Record<string, string>).footerText ?? brandingFooterText;
@@ -1694,8 +1694,8 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       const _htApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
       const [_htBrandR, _htContR] = await Promise.all([
-        fetch(`${_htApiBase}/api/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-        fetch(`${_htApiBase}/api/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_htApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_htApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
       const htLogoSrc = (_htBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
       const htContactData: ContactData = {

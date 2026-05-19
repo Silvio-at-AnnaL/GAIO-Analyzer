@@ -22,7 +22,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   const [branding, setBranding] = useState<BrandingData>(DEFAULT_BRANDING);
 
   useEffect(() => {
-    fetch(`${BASE}/api/public/branding`)
+    fetch(`${BASE}/api/admin/public/branding`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { logoSrc?: string; footerText?: string; footerUrl?: string } | null) => {
         if (!data) return;

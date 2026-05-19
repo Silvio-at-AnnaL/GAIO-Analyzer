@@ -39,7 +39,7 @@ export function KontaktView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${BASE}/api/public/contact`)
+    fetch(`${BASE}/api/admin/public/contact`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: ContactInfo | null) => { if (d) setContact(d); })
       .catch(() => {})
