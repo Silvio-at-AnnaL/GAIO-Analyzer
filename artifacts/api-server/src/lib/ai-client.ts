@@ -1,6 +1,9 @@
 import { getSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
 
+// Model alias accepted by the Replit AI Integrations proxy.
+const REPLIT_CLAUDE_MODEL = "claude-sonnet-4-6";
+
 async function callWithClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number
 ): Promise<string> {
@@ -8,9 +11,12 @@ async function callWithClaude(
   // Use the Replit AI Integrations proxy URL when available so the
   // stored key (which is the Replit dummy) routes correctly.
   const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined;
+  // The Replit proxy only accepts its own model aliases (e.g. claude-sonnet-4-6),
+  // not the upstream versioned names (e.g. claude-sonnet-4-20250514).
+  const effectiveModel = baseURL ? REPLIT_CLAUDE_MODEL : model;
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const resp = await client.messages.create({
-    model: model as Parameters<typeof client.messages.create>[0]["model"],
+    model: effectiveModel as Parameters<typeof client.messages.create>[0]["model"],
     max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   });
@@ -44,9 +50,10 @@ async function callWithGemini(
 
 async function callFallback(prompt: string, maxTokens: number): Promise<string> {
   const { anthropic } = await import("@workspace/integrations-anthropic-ai");
-  const model = getSetting("ai_model_claude") ?? "claude-sonnet-4-6";
+  // Always use the Replit proxy alias here — do NOT read ai_model_claude,
+  // because that setting may contain an upstream versioned name the proxy rejects.
   const resp = await anthropic.messages.create({
-    model: model as Parameters<typeof anthropic.messages.create>[0]["model"],
+    model: REPLIT_CLAUDE_MODEL as Parameters<typeof anthropic.messages.create>[0]["model"],
     max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   });
