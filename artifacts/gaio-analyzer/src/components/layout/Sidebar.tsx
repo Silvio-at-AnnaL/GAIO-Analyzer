@@ -9,13 +9,12 @@ import { useAuth, canAccess } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
 
 const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
-  { id: 1,  icon: Globe,           label: "Domainanalyse – Basisdaten" },
-  { id: 2,  icon: FileCode,        label: "HTML-Analyse" },
-  { id: 3,  icon: BarChart3,       label: "Ergebnisse" },
-  { id: 16, icon: ArrowLeftRight,  label: "Vergleich" },
-  { id: 4,  icon: HelpCircle,      label: "FAQ / So funktioniert's" },
-  { id: 5,  icon: Mail,            label: "Kontakt" },
-  { id: 6,  icon: Settings,        label: "Einstellungen" },
+  { id: 1,  icon: Globe,      label: "Domainanalyse – Basisdaten" },
+  { id: 2,  icon: FileCode,   label: "HTML-Analyse" },
+  { id: 3,  icon: BarChart3,  label: "Ergebnisse" },
+  { id: 4,  icon: HelpCircle, label: "FAQ / So funktioniert's" },
+  { id: 5,  icon: Mail,       label: "Kontakt" },
+  { id: 6,  icon: Settings,   label: "Einstellungen" },
 ];
 
 function NavButton({
@@ -47,7 +46,7 @@ function NavButton({
 }
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { activeView, setActiveView } = useAppStore();
+  const { activeView, setActiveView, analysisStatus } = useAppStore();
   const { user, isAuthenticated, permissions } = useAuth();
   const branding = useBranding();
 
@@ -81,9 +80,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Main navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {MAIN_NAV.map(({ id, icon, label }) => (
-          <NavButton key={id} id={id} icon={icon} label={label} active={activeView === id} onClick={() => navigate(id)} />
-        ))}
+        {MAIN_NAV.flatMap(({ id, icon, label }) => {
+          const btn = <NavButton key={id} id={id} icon={icon} label={label} active={activeView === id} onClick={() => navigate(id)} />;
+          if (id === 3 && analysisStatus === "completed") {
+            return [
+              btn,
+              <NavButton key={16} id={16} icon={ArrowLeftRight} label="Vergleich" active={activeView === 16} onClick={() => navigate(16)} />,
+            ];
+          }
+          return [btn];
+        })}
 
         {/* Admin separator */}
         <div style={{ height: 1, background: "hsl(var(--sidebar-border))", margin: "10px 12px 6px" }} />
