@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useDeliveryMode } from "@/store/deliveryModeStore";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { useAppStore } from "@/store/appStore";
 import { Button } from "@/components/ui/button";
@@ -8,15 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { RadarDimensions } from "@/components/charts/RadarDimensions";
-import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams, type ContactData } from "@/lib/report-export";
+import { useBranding } from "@/store/brandingStore";
 import {
   ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from "recharts";
 import {
   Loader2, CheckCircle2, XCircle, FileText, Globe, Star, AlertCircle, AlertTriangle,
-  Info, Clock, ChevronDown, ChevronUp, ExternalLink,
+  Info, Clock, ChevronDown, ChevronUp, ExternalLink, Share2, Copy, Check,
 } from "lucide-react";
+import { useAuth, adminFetch } from "@/store/authStore";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -642,10 +645,23 @@ function buildExportTimestamp(d: Date = new Date()): string {
 
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
+  const { mode: deliveryMode } = useDeliveryMode();
+  const { isAuthenticated } = useAuth();
+  const { footerText: brandingFooterText, logoSrc: brandingLogoSrc } = useBranding();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [pdfMode, setPdfMode] = useState(false);
+  const [emailModal, setEmailModal] = useState<"pdf" | "html" | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendFeedback, setSendFeedback] = useState<string | null>(null);
+  const [shareModal, setShareModal] = useState(false);
+  const [shareResult, setShareResult] = useState<{ token: string; shareUrl: string; expiresAt: string } | null>(null);
+  const [shareCreating, setShareCreating] = useState(false);
+  const [shareExpiryDays, setShareExpiryDays] = useState(30);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -665,7 +681,159 @@ function ReportView({ analysisId }: { analysisId: string }) {
     }
   }, [report?.crawledPages]);
 
+  // Auto-save HTML export silently when analysis completes — fire-and-forget, no user feedback
+  const autoSavedRef = useRef(false);
+  useEffect(() => {
+    if (report?.status !== "completed" || autoSavedRef.current) return;
+    autoSavedRef.current = true;
+
+    (async () => {
+      try {
+        const _asApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+        const [_asBrandR, _asContR] = await Promise.all([
+          fetch(`${_asApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch(`${_asApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        ]);
+        const asLogoSrc = (_asBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+        const asContactData: ContactData = {
+          name:       (_asContR as Record<string, string>).name       ?? "",
+          title:      (_asContR as Record<string, string>).title      ?? "",
+          company:    (_asContR as Record<string, string>).company    ?? "",
+          email:      (_asContR as Record<string, string>).email      ?? "",
+          photoSrc:   (_asContR as Record<string, string>).photoSrc   ?? "",
+          ctaText:    (_asContR as Record<string, string>).ctaText    ?? "",
+          ctaSubtext: (_asContR as Record<string, string>).ctaSubtext ?? "",
+        };
+
+        const htmlInputParams: InputParams = {
+          domainUrl: String(report.url ?? ""),
+          companyName: domainForm.companyName.trim() || null,
+          targetAudience: domainForm.personas.trim() || null,
+          competitors: domainForm.competitors.filter((c) => c.trim()),
+          analysisDate: new Date().toLocaleString("de-DE"),
+          crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
+        };
+
+        const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+          logoSrc:     asLogoSrc,
+          profileSrc:  asContactData.photoSrc,
+          inputParams: htmlInputParams,
+          contactData: asContactData,
+          footerText:  (_asBrandR as Record<string, string>).footerText ?? brandingFooterText,
+        });
+
+        if (!htmlContent) return;
+
+        const reportLogId = (report as Record<string, unknown>).logId as number | null | undefined;
+        const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+        const scoresJson = JSON.stringify({
+          technicalSeo: ((report as Record<string, unknown>).technicalSeo as { score: number } | null)?.score ?? null,
+          schemaOrg: ((report as Record<string, unknown>).schemaOrg as { score: number } | null)?.score ?? null,
+          headingStructure: ((report as Record<string, unknown>).headingStructure as { score: number } | null)?.score ?? null,
+          contentRelevance: ((report as Record<string, unknown>).contentRelevance as { score: number } | null)?.score ?? null,
+          faqQuality: ((report as Record<string, unknown>).faqQuality as { score: number } | null)?.score ?? null,
+          llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+        });
+
+        await fetch(`${basePrefix}/api/admin/analysis-log/auto-export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            htmlContent,
+            logId: reportLogId ?? null,
+            domain: String(report.url ?? ""),
+            companyName: domainForm.companyName.trim() || "",
+            gaioScore: report.overallScore ?? null,
+            scoresJson,
+            pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+          }),
+        });
+      } catch {
+        // Silent — must never affect user experience
+      }
+    })();
+  }, [report?.status]);
+
   if (!report) return <div className="text-muted-foreground text-sm">Lade Bericht…</div>;
+
+  // ── Send report by email (public endpoint, no auth needed) ───────────────────
+  const sendReportByEmail = async (
+    recipientEmail: string,
+    reportType: "html" | "pdf",
+    opts: { htmlContent?: string; pdfBase64?: string; filename?: string },
+  ) => {
+    const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const scoresJson = JSON.stringify({
+      technicalSeo:       ((report as Record<string, unknown>).technicalSeo       as { score: number } | null)?.score ?? null,
+      schemaOrg:          ((report as Record<string, unknown>).schemaOrg          as { score: number } | null)?.score ?? null,
+      headingStructure:   ((report as Record<string, unknown>).headingStructure   as { score: number } | null)?.score ?? null,
+      contentRelevance:   ((report as Record<string, unknown>).contentRelevance   as { score: number } | null)?.score ?? null,
+      faqQuality:         ((report as Record<string, unknown>).faqQuality         as { score: number } | null)?.score ?? null,
+      llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+    });
+    const res = await fetch(`${basePrefix}/api/admin/public/send-report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientEmail,
+        reportType,
+        htmlContent: opts.htmlContent,
+        pdfBase64:   opts.pdfBase64,
+        filename:    opts.filename,
+        domain:      String(report.url ?? ""),
+        companyName: domainForm.companyName.trim() || "",
+        gaioScore:   report.overallScore ?? null,
+        scoresJson,
+        pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(err.error ?? "Sendefehler");
+    }
+  };
+
+  // ── Modal send handler ────────────────────────────────────────────────────────
+  const handleModalSend = async () => {
+    const email = emailInput.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSendError("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      if (emailModal === "html") await handleHtmlExport(email);
+      else if (emailModal === "pdf") await handlePdfExport(email);
+      setSendFeedback(email);
+      setTimeout(() => { setEmailModal(null); setSendFeedback(null); setEmailInput(""); }, 2500);
+    } catch {
+      setSendError("E-Mail konnte nicht gesendet werden. Bitte prüfen Sie die Mailserver-Einstellungen.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleCreateShare = async () => {
+    const logId = (report as Record<string, unknown>).logId as number | null | undefined;
+    if (!logId) return;
+    setShareCreating(true);
+    try {
+      const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+      const res = await adminFetch("/api/admin/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId: logId, expiryDays: shareExpiryDays }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { token: string; shareUrl: string; expiresAt: string };
+      const fullUrl = `${window.location.origin}${basePrefix}/share/${data.token}`;
+      setShareResult({ ...data, shareUrl: fullUrl });
+    } finally {
+      setShareCreating(false);
+    }
+  };
 
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
@@ -761,7 +929,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   };
 
   // ── PDF export via jsPDF + html2canvas ──────────────────────────────────────
-  const handlePdfExport = async () => {
+  const handlePdfExport = async (mailTo?: string) => {
     setExportingPdf(true);
     setExportError(null);
     setPdfMode(true);
@@ -1142,7 +1310,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           "width:100%;margin-top:32px;padding-top:12px;border-top:1px solid #dde0e8;" +
           "font-size:11px;color:#9ca3af;text-align:left;font-family:-apple-system,sans-serif;";
         footerEl.textContent =
-          "IndustryStock.com/GAIO-Analyzer · Exportiert am " + currentDateString;
+          (brandingFooterText || "IndustryStock.com") + "/GAIO-Analyzer · Exportiert am " + currentDateString;
         panel.appendChild(footerEl);
         // FIX B — Add explicit bottom padding so footer is never clipped.
         panel.style.paddingBottom = "80px";
@@ -1239,12 +1407,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       console.log("All panels captured:", pages.length);
 
-      // ── Pre-fetch Kontakt images as base64 (for FAQ-less pages these are quick) ──
-      const base = import.meta.env.BASE_URL;
-      const [kontaktLogoB64, kontaktProfileB64] = await Promise.all([
-        fetchAsBase64(base + "brand-logo.png"),
-        fetchAsBase64(base + "kontakt-silvio.webp"),
+      // ── Pre-fetch Kontakt branding + contact from API ─────────────────────────
+      const _pdfApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const [_pdfBrandR, _pdfContR] = await Promise.all([
+        fetch(`${_pdfApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_pdfApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
+      const kontaktLogoB64 = (_pdfBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+      const kontaktFooterText = (_pdfBrandR as Record<string, string>).footerText ?? brandingFooterText;
+      const kontaktContactData: ContactData = {
+        name:       (_pdfContR as Record<string, string>).name       ?? "",
+        title:      (_pdfContR as Record<string, string>).title      ?? "",
+        company:    (_pdfContR as Record<string, string>).company    ?? "",
+        email:      (_pdfContR as Record<string, string>).email      ?? "",
+        photoSrc:   (_pdfContR as Record<string, string>).photoSrc   ?? "",
+        ctaText:    (_pdfContR as Record<string, string>).ctaText    ?? "",
+        ctaSubtext: (_pdfContR as Record<string, string>).ctaSubtext ?? "",
+      };
 
       // ── Capture FAQ page via iframe (full HTML document with stylesheet) ────────
       type FaqCapture = { imgData: string; captureHeightPx: number } | null;
@@ -1306,9 +1485,6 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         companyName: domainForm.companyName.trim() || null,
         targetAudience: domainForm.personas.trim() || null,
         competitors: domainForm.competitors.filter((c) => c.trim()),
-        socialMedia: Object.fromEntries(
-          Object.entries(domainForm.social).filter(([, v]) => v.trim())
-        ),
         analysisDate: new Date().toLocaleString("de-DE"),
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
@@ -1378,7 +1554,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
         const kontaktDoc = kontaktIframe.contentDocument!;
         kontaktDoc.open();
-        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktProfileB64));
+        kontaktDoc.write(buildKontaktDocumentHtml(kontaktLogoB64, kontaktContactData.photoSrc, kontaktContactData, kontaktFooterText));
         kontaktDoc.close();
 
         await new Promise((r) => setTimeout(r, 1200));
@@ -1505,14 +1681,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       // Remove overlay BEFORE triggering download so it doesn't appear in capture.
       removeOverlay();
 
-      console.log("Triggering download...");
-      pdf.save(`GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`);
+      const pdfFilename = `GAIO-Analyzer-${pdfDomain}--${pdfTimestamp}.pdf`;
+      if (mailTo) {
+        const pdfBase64 = (pdf.output("datauristring") as string).split(",")[1] ?? "";
+        await sendReportByEmail(mailTo, "pdf", { pdfBase64, filename: pdfFilename });
+      } else {
+        console.log("Triggering download...");
+        pdf.save(pdfFilename);
+      }
     } catch (err) {
       console.error("PDF export failed:", err);
-      setExportError(
-        "PDF-Export fehlgeschlagen: " +
-        (err instanceof Error ? err.message : String(err))
-      );
+      if (!mailTo) {
+        setExportError(
+          "PDF-Export fehlgeschlagen: " +
+          (err instanceof Error ? err.message : String(err))
+        );
+      }
+      if (mailTo) throw err;
     } finally {
       setExportingPdf(false);
       setPdfMode(false);
@@ -1523,41 +1708,55 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
   };
 
   // ── HTML export ──────────────────────────────────────────────────────────────
-  const handleHtmlExport = async () => {
+  const handleHtmlExport = async (mailTo?: string) => {
     setExportingHtml(true);
     try {
       const filename = `GAIO-Analyzer-${formatDomainForFilename(report.url)}--${buildExportTimestamp()}.html`;
 
-      const htmlBase = import.meta.env.BASE_URL;
-      const [htmlLogoB64, htmlProfileB64] = await Promise.all([
-        fetchAsBase64(htmlBase + "brand-logo.png"),
-        fetchAsBase64(htmlBase + "kontakt-silvio.webp"),
+      const _htApiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const [_htBrandR, _htContR] = await Promise.all([
+        fetch(`${_htApiBase}/api/admin/public/branding`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(`${_htApiBase}/api/admin/public/contact`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       ]);
+      const htLogoSrc = (_htBrandR as Record<string, string>).logoSrc ?? brandingLogoSrc ?? "";
+      const htContactData: ContactData = {
+        name:       (_htContR as Record<string, string>).name       ?? "",
+        title:      (_htContR as Record<string, string>).title      ?? "",
+        company:    (_htContR as Record<string, string>).company    ?? "",
+        email:      (_htContR as Record<string, string>).email      ?? "",
+        photoSrc:   (_htContR as Record<string, string>).photoSrc   ?? "",
+        ctaText:    (_htContR as Record<string, string>).ctaText    ?? "",
+        ctaSubtext: (_htContR as Record<string, string>).ctaSubtext ?? "",
+      };
 
       const htmlInputParams: InputParams = {
         domainUrl: String(report.url ?? ""),
         companyName: domainForm.companyName.trim() || null,
         targetAudience: domainForm.personas.trim() || null,
         competitors: domainForm.competitors.filter((c) => c.trim()),
-        socialMedia: Object.fromEntries(
-          Object.entries(domainForm.social).filter(([, v]) => v.trim())
-        ),
         analysisDate: new Date().toLocaleString("de-DE"),
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
 
       const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
-        logoSrc: htmlLogoB64,
-        profileSrc: htmlProfileB64,
+        logoSrc:     htLogoSrc,
+        profileSrc:  htContactData.photoSrc,
         inputParams: htmlInputParams,
+        contactData: htContactData,
+        footerText:  (_htBrandR as Record<string, string>).footerText ?? brandingFooterText,
       });
-      const blob = new Blob([htmlContent], { type: "text/html" });
-      const dlUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = dlUrl;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(dlUrl);
+
+      if (mailTo) {
+        await sendReportByEmail(mailTo, "html", { htmlContent, filename });
+      } else {
+        const blob = new Blob([htmlContent], { type: "text/html" });
+        const dlUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = dlUrl;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(dlUrl);
+      }
     } finally {
       setExportingHtml(false);
     }
@@ -1574,14 +1773,35 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={handlePdfExport} disabled={exportingPdf} data-testid="button-export-pdf">
+          <Button
+            size="sm" variant="outline"
+            onClick={deliveryMode === "mail-only" ? () => setEmailModal("pdf") : () => void handlePdfExport()}
+            disabled={exportingPdf || sending}
+            data-testid="button-export-pdf"
+          >
             {exportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
             {exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}
           </Button>
-          <Button size="sm" onClick={handleHtmlExport} disabled={exportingHtml} data-testid="button-export-html">
+          <Button
+            size="sm"
+            onClick={deliveryMode === "mail-only" ? () => setEmailModal("html") : () => void handleHtmlExport()}
+            disabled={exportingHtml || sending}
+            data-testid="button-export-html"
+          >
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
             {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
           </Button>
+          {isAuthenticated && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setShareModal(true); setShareResult(null); setShareCopied(false); }}
+              data-testid="button-share"
+            >
+              <Share2 className="w-4 h-4 mr-1.5" />
+              Teilen
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1598,6 +1818,134 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
         Basisdaten ändern oder neue Analyse starten? → Wechseln Sie zu <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.
       </p>
+
+      {/* Email delivery modal */}
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget && !sending) { setEmailModal(null); setEmailInput(""); setSendError(null); } }}>
+          <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
+            <h2 className="text-base font-semibold">Report per E-Mail senden</h2>
+            <p className="text-sm text-muted-foreground">
+              Geben Sie die Empfängeradresse ein.
+              Der {emailModal === "pdf" ? "PDF-" : "HTML-"}Report wird generiert und direkt zugestellt.
+            </p>
+
+            {sendFeedback ? (
+              <div className="flex items-center gap-2 text-sm text-green-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Report wurde an <strong>{sendFeedback}</strong> gesendet.
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => { setEmailInput(e.target.value); setSendError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !sending) void handleModalSend(); }}
+                  placeholder="empfaenger@unternehmen.de"
+                  disabled={sending}
+                  autoFocus
+                  className="w-full px-3 py-2 rounded-md text-sm border outline-none focus:ring-1"
+                  style={{
+                    background: "hsl(var(--input))",
+                    borderColor: sendError ? "#f87171" : "hsl(var(--border))",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                {sendError && (
+                  <p className="text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" /> {sendError}
+                  </p>
+                )}
+                <div className="flex gap-2 justify-end pt-1">
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => { setEmailModal(null); setEmailInput(""); setSendError(null); }}
+                    disabled={sending}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleModalSend()}
+                    disabled={sending || !emailInput.trim()}
+                  >
+                    {sending
+                      ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Wird gesendet…</>
+                      : "Senden"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {shareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) { setShareModal(false); } }}>
+          <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
+            <div className="flex items-center gap-2">
+              <Share2 className="w-4 h-4" style={{ color: "#3b82f6" }} />
+              <h2 className="text-base font-semibold">Analyse teilen</h2>
+            </div>
+
+            {!(report as Record<string, unknown>).logId ? (
+              <p className="text-sm text-muted-foreground">
+                Diese Analyse wurde noch nicht im Protokoll gespeichert. Bitte exportieren Sie den Report zuerst als HTML.
+              </p>
+            ) : shareResult ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Freigabe-Link wurde erstellt:</p>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted))" }}>
+                  <span className="flex-1 text-xs font-mono truncate">{shareResult.shareUrl}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareResult.shareUrl);
+                      setShareCopied(true);
+                      setTimeout(() => setShareCopied(false), 2000);
+                    }}
+                    className="shrink-0 p-1 rounded hover:bg-muted transition-colors"
+                    title="Kopieren"
+                  >
+                    {shareCopied ? <Check className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gültig bis {new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}.
+                  Verwalten Sie alle Freigaben unter <strong>Geteilte Analysen</strong>.
+                </p>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Schließen</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Erstellt einen öffentlichen Link zu diesem Analyse-Report.
+                </p>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Gültig für (Tage)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    className="w-full rounded border bg-background px-3 py-2 text-sm"
+                    style={{ borderColor: "hsl(var(--border))" }}
+                    value={shareExpiryDays}
+                    onChange={(e) => setShareExpiryDays(Math.max(1, Math.min(365, Number(e.target.value))))}
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Abbrechen</Button>
+                  <Button size="sm" onClick={() => void handleCreateShare()} disabled={shareCreating}>
+                    {shareCreating ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Erstelle…</> : "Link erstellen"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Score overview + dimension cards — captured as header in PDF */}
       <div id="results-header" className="space-y-4">

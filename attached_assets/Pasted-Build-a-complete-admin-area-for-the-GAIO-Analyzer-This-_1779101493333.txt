@@ -1,0 +1,359 @@
+Build a complete admin area for the GAIO Analyzer.
+This is a significant new feature — implement it 
+carefully and completely. Backend and frontend.
+
+---
+
+TECH STACK DECISIONS
+
+Database: Use SQLite with better-sqlite3 
+(lightweight, no separate server needed, 
+already likely available in the project).
+If better-sqlite3 is not installed, install it.
+
+Password hashing: bcrypt with cost factor 12 
+(DSGVO-compliant minimum — never MD5, SHA1, 
+or unsalted hashes).
+Install bcryptjs (pure JS, no native deps).
+
+Sessions: JWT stored in an httpOnly cookie 
+(not localStorage). Use jsonwebtoken package.
+Token expiry: 8 hours. Refresh on activity.
+
+Email: nodemailer — configure via settings 
+stored in the database (see Mailserver section).
+For now, log emails to console if no SMTP 
+is configured (graceful fallback).
+
+---
+
+DATABASE SCHEMA
+
+Create a SQLite database file at:
+  server/admin.db
+
+Tables:
+
+TABLE users:
+  id            INTEGER PRIMARY KEY AUTOINCREMENT
+  email         TEXT UNIQUE NOT NULL
+  username      TEXT UNIQUE NOT NULL
+  password_hash TEXT NOT NULL        -- bcrypt
+  first_name    TEXT NOT NULL
+  last_name     TEXT NOT NULL
+  role          TEXT NOT NULL        -- 'admin' | 'user_extended' | 'user'
+  is_active     BOOLEAN DEFAULT 0   -- 0 until first login complete
+  must_change_pw BOOLEAN DEFAULT 1  -- force pw change on first login
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_by    INTEGER REFERENCES users(id)
+  last_login    DATETIME
+
+TABLE verification_codes:
+  id          INTEGER PRIMARY KEY AUTOINCREMENT
+  user_id     INTEGER NOT NULL REFERENCES users(id)
+  code        TEXT NOT NULL          -- 6-digit numeric
+  purpose     TEXT NOT NULL          -- 'email_change' | 'data_change'
+  new_value   TEXT                   -- new email if purpose=email_change
+  expires_at  DATETIME NOT NULL      -- 15 minutes from creation
+  used        BOOLEAN DEFAULT 0
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+
+TABLE settings:
+  key         TEXT PRIMARY KEY
+  value       TEXT NOT NULL
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+
+Seed the database on first run with the 
+default admin user:
+  email:         silvio.haase@industrystock.com
+  username:      GAIOanalyzerAdmin1!
+  password:      bcrypt hash of "Superadmin007!"
+  first_name:    Silvio
+  last_name:     Haase
+  role:          admin
+  is_active:     1
+  must_change_pw: 0
+
+---
+
+BACKEND API ROUTES
+
+Add these routes to the Express/Node backend.
+Prefix all with /api/admin/
+
+AUTH:
+  POST /api/admin/login
+    Body: { username, password }
+    Returns: sets httpOnly JWT cookie
+    Response: { user: { id, email, username, 
+      firstName, lastName, role } }
+
+  POST /api/admin/logout
+    Clears the JWT cookie
+
+  GET /api/admin/me
+    Returns current user from JWT cookie
+    Returns 401 if not authenticated
+
+USER MANAGEMENT (admin only):
+  GET /api/admin/users
+    Returns all users (id, email, username, 
+    firstName, lastName, role, isActive, 
+    createdAt, lastLogin)
+
+  POST /api/admin/users
+    Body: { firstName, lastName, email }
+    Creates new user with:
+      - username = first initial + lastName 
+        (e.g. "sHaase"), made unique by 
+        appending a number if needed
+      - temporary password: random 12-char 
+        string (upper+lower+digit+special)
+      - role: 'user' (always — admin cannot 
+        directly create admin)
+      - must_change_pw: true
+      - is_active: false (activated on 
+        first login)
+    Sends welcome email with temp credentials.
+    Returns the created user (without password).
+
+  PATCH /api/admin/users/:id/role
+    Admin only. Body: { role }
+    Cannot set role to 'admin' if user's 
+    is_active is false.
+    Cannot demote yourself if you are the 
+    only admin.
+    Returns updated user.
+
+  DELETE /api/admin/users/:id
+    Admin only. Cannot delete yourself.
+
+USER PROFILE (all authenticated users):
+  GET /api/admin/profile
+    Returns own user data
+
+  PATCH /api/admin/profile
+    Body: { firstName?, lastName?, 
+            newUsername?, newEmail?, 
+            currentPassword?, newPassword? }
+    
+    For name changes: apply immediately, 
+    send confirmation email (info only).
+    
+    For username/password changes: validate 
+    currentPassword first. Apply if correct.
+    Send confirmation email.
+    
+    For email change: 
+      1. Generate 6-digit code
+      2. Store in verification_codes 
+         (purpose='email_change', 
+          new_value=newEmail)
+      3. Send code to the CURRENT email address
+      4. Return { requiresVerification: true }
+      5. User must call /verify-code with the code
+
+  POST /api/admin/verify-code
+    Body: { code, purpose }
+    Validates the code (not expired, not used,
+    matches user).
+    If purpose='email_change': update email.
+    Marks code as used.
+
+FIRST LOGIN (force password change):
+  POST /api/admin/set-initial-password
+    Body: { username, tempPassword, 
+            newPassword, confirmPassword }
+    Only works when must_change_pw = true.
+    Validates temp password, validates new 
+    password policy (see below), sets 
+    is_active=true, must_change_pw=false.
+
+PASSWORD POLICY (enforce on all password sets):
+  - Minimum 10 characters
+  - At least one uppercase letter (A-Z)
+  - At least one lowercase letter (a-z)
+  - At least one digit (0-9)
+  - At least one special character 
+    (!@#$%^&*()_+-=[]{}|;':",.<>?/~`)
+  Return clear error messages for each 
+  unmet requirement.
+
+---
+
+FRONTEND — SIDEBAR
+
+In Sidebar.tsx, add two new menu items 
+BELOW "Einstellungen":
+
+  1. Add a visual spacer between "Einstellungen" 
+     and the new items. Height: double the 
+     normal gap between nav items.
+     Use a thin separator line 
+     (1px, border-color, opacity 30%) 
+     with extra margin above and below it.
+
+  2. "Login" menu item
+     Icon: LogIn (lucide)
+     Shows for all users (logged in or not)
+     Label: "Login" when not authenticated
+     Label: First name + " (Profil)" when 
+     authenticated
+
+  3. (Placeholder for future items that 
+     will appear after login based on role — 
+     do not implement now)
+
+---
+
+FRONTEND — VIEWS
+
+Create these new view files:
+
+src/views/admin/LoginView.tsx
+  - If already authenticated: redirect to 
+    ProfileView
+  - Form: username field + password field + 
+    "Anmelden" button
+  - Error message on failed login
+  - No registration link (admin creates users)
+
+src/views/admin/ForcePasswordChangeView.tsx
+  - Shown automatically after login if 
+    must_change_pw = true
+  - Fields: current (temp) password, 
+    new password, confirm password
+  - Live password strength indicator showing 
+    which policy requirements are met/unmet 
+    (check marks appearing as user types)
+  - Submit → calls /set-initial-password
+
+src/views/admin/ProfileView.tsx
+  - Shows current user data in editable form
+  - Sections:
+    "Persönliche Daten" (firstName, lastName)
+    "Zugangsdaten" (username, email, password)
+  - Each section has its own Save button
+  - For email changes: after submit, show 
+    a "Bestätigungscode eingeben" input 
+    (6-digit code, numeric only) that appears 
+    inline. User enters the code they received.
+  - Password change requires current password 
+    field above new password field
+  - Live password policy indicator (same as 
+    ForcePasswordChangeView)
+
+src/views/admin/UserManagementView.tsx
+  - Only accessible to role='admin'
+  - Shows a table of all users:
+    Name | E-Mail | Benutzername | Rolle | 
+    Status | Erstellt | Letzter Login | Aktionen
+  - "Neuen User anlegen" button → opens 
+    an inline form or modal:
+    First name, last name, email → Create
+  - For each user row:
+    - Role dropdown (user | user_extended | 
+      admin) — admin option only enabled 
+      if user is_active=true
+    - Delete button (with confirmation)
+  - Cannot delete or demote yourself
+
+---
+
+FRONTEND — ROUTING & AUTH GUARD
+
+In Home.tsx or a new AuthProvider:
+
+Create an auth context that:
+  - On app load: calls GET /api/admin/me 
+    to check if a valid session exists
+  - Stores: { user, isAuthenticated, 
+    isLoading }
+  - Provides: login(), logout() functions
+
+Route guards:
+  - LoginView: accessible to all
+  - ProfileView: requires isAuthenticated
+  - UserManagementView: requires 
+    isAuthenticated + role='admin'
+  - ForcePasswordChangeView: automatically 
+    shown after login if must_change_pw=true 
+    (redirect before any other view)
+
+In the sidebar, show/hide items based on 
+auth state and role:
+  - "Login" always visible
+  - After login: show "Nutzerdaten" sub-item 
+    under Login
+  - After login as admin: show user count 
+    badge or "Nutzerverwaltung" sub-item
+
+---
+
+EMAIL TEMPLATES (console-log for now, 
+real sending after mailserver config):
+
+Welcome email (new user):
+  Subject: "Ihr Zugang zum GAIO Analyzer"
+  Body: 
+    Guten Tag [firstName] [lastName],
+    
+    Ihr Zugang zum GAIO Analyzer wurde 
+    eingerichtet.
+    
+    Benutzername: [username]
+    Temporäres Passwort: [tempPassword]
+    
+    Bitte melden Sie sich unter 
+    [app-url] an und ändern Sie 
+    Ihr Passwort beim ersten Login.
+    
+    Das temporäre Passwort ist 48 Stunden 
+    gültig.
+
+Verification code email:
+  Subject: "Ihr Bestätigungscode – GAIO Analyzer"
+  Body:
+    Ihr Bestätigungscode lautet:
+    
+    [CODE]
+    
+    Dieser Code ist 15 Minuten gültig.
+    Falls Sie diese Änderung nicht 
+    beantragt haben, ignorieren Sie 
+    diese E-Mail.
+
+---
+
+SECURITY REQUIREMENTS
+
+- All /api/admin/* routes (except /login 
+  and /set-initial-password) require a 
+  valid JWT cookie
+- JWT secret: read from environment variable 
+  ADMIN_JWT_SECRET. Generate a random 64-char 
+  hex string as default if not set, but log 
+  a warning to use a real env var in production
+- Rate limit /api/admin/login: 
+  max 5 attempts per 15 minutes per IP
+- Never return password_hash in any API response
+- Verification codes: 6 random digits, 
+  expire after 15 minutes, single-use
+- Log all admin actions (user creation, 
+  role changes, deletion) to console with 
+  timestamp and actor
+
+---
+
+AFTER IMPLEMENTATION
+
+Run a self-check:
+1. Can you log in with the default credentials?
+2. Does the force-password-change flow work?
+3. Can an admin create a user?
+4. Does the verification code flow work 
+   for email changes?
+5. Are all role restrictions enforced 
+   (non-admin cannot access UserManagementView)?
+
+Report any issues found.

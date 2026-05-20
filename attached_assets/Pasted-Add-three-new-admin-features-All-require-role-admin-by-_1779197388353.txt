@@ -1,0 +1,307 @@
+Add three new admin features. All require 
+role='admin' by default (adjustable via 
+Feature 3). Three new admin views, all 
+wired into the sidebar.
+
+---
+
+DATABASE: new settings entries
+
+INSERT OR IGNORE into settings table:
+
+  branding_logo_base64    = ''  
+    (base64-encoded image, empty = use default)
+  branding_logo_mimetype  = 'image/png'
+  branding_footer_text    = 'IndustryStock.com'
+  branding_footer_url     = 'https://www.industrystock.com'
+
+  contact_name            = 'Silvio Haase'
+  contact_title           = 'CMO & Head of Business Development'
+  contact_company         = 'Deutscher Medien Verlag GmbH / IndustryStock.com'
+  contact_email           = 'Silvio.Haase@IndustryStock.com'
+  contact_photo_base64    = ''
+  contact_photo_mimetype  = 'image/jpeg'
+  contact_cta_text        = 'Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?'
+  contact_cta_subtext     = 'Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.'
+
+  permissions_json        = '{}'  
+    (JSON object: featureId → array of 
+    allowed roles, see Feature 3)
+
+---
+
+BACKEND: new settings routes
+
+  GET /api/admin/settings/branding
+    Returns branding settings. 
+    Returns logo/photo as base64 data URL 
+    if set, empty string if not.
+
+  PATCH /api/admin/settings/branding
+    Accepts multipart/form-data OR JSON.
+    For logo and photo uploads: accept 
+    base64 string in JSON body 
+    (frontend converts file to base64 
+    before sending).
+    Max image size: 500KB. Reject larger.
+    Store in settings table as base64.
+
+  GET /api/admin/settings/contact
+    Returns all contact_* settings.
+
+  PATCH /api/admin/settings/contact
+    Updates contact settings.
+    Photo upload same as logo above.
+
+  GET /api/admin/settings/permissions
+    Returns parsed permissions_json.
+
+  PATCH /api/admin/settings/permissions
+    Updates permissions_json.
+    Only callable by role='admin' — 
+    this endpoint is never affected by 
+    permission overrides (otherwise admin 
+    could lock themselves out).
+
+PUBLIC endpoints (no auth, for frontend use):
+
+  GET /api/public/branding
+    Returns: footer_text, footer_url, 
+    and logo as base64 data URL.
+    Called on app load to hydrate branding.
+
+  GET /api/public/contact
+    Returns all contact fields.
+    Called when Kontakt view renders.
+
+---
+
+FEATURE 1: Erscheinungsbild view
+
+Create: src/views/admin/BrandingView.tsx
+Sidebar label: "Erscheinungsbild"
+Icon: Palette (lucide)
+Position: before KI-Tool in admin section
+
+Layout — two cards:
+
+CARD 1: "Logo"
+  Current logo preview (img tag showing 
+  current logo, 120px height, 
+  object-fit contain).
+  Below: file input button 
+    "Logo hochladen" 
+    accepts: image/png, image/jpeg, image/svg+xml
+    max 500KB
+  On file select: read as base64, 
+  show preview immediately.
+  Note: "Empfohlenes Format: PNG mit 
+  transparentem Hintergrund, 
+  min. 300px Breite"
+  "Auf Standard zurücksetzen" button 
+  (clears branding_logo_base64, 
+  reverts to /brand-logo.png).
+
+CARD 2: "Footer"
+  Label: "Footer-Text"
+  Input: text, current value from settings
+  Label: "Footer-URL"  
+  Input: url, current value from settings
+  Note: "Wird im Footer der App sowie 
+  in PDF- und HTML-Exporten angezeigt."
+  "Speichern" button.
+
+WIRING: 
+In Sidebar.tsx, the logo img currently uses 
+src="/brand-logo.png". Change to:
+  - On app load, fetch GET /api/public/branding
+  - If branding_logo_base64 is non-empty: 
+    use it as the img src
+  - Otherwise: fall back to /brand-logo.png
+  
+Store branding in a lightweight React 
+context (BrandingContext) so it's available 
+throughout the app.
+
+In the app footer (bottom of sidebar, 
+"GAIO Analyzer v2.0 / IndustryStock.com"):
+  Replace "IndustryStock.com" with the 
+  branding_footer_text value.
+  If branding_footer_url is set, wrap 
+  it in an <a> tag.
+
+In PDF export (buildHeaderIframeHtml) and 
+HTML export generation:
+  Read branding settings from the API 
+  before generating.
+  Use the stored logo (base64) instead 
+  of the public file path.
+  Use footer_text in the footer line 
+  instead of hardcoded "IndustryStock.com".
+
+---
+
+FEATURE 2: Kontakt-Editor view
+
+Create: src/views/admin/ContactEditorView.tsx
+Sidebar label: "Kontakt-Daten"
+Icon: ContactRound (lucide)
+Position: after Erscheinungsbild
+
+Layout — one card with live preview:
+
+LEFT SIDE (form, ~55% width):
+
+  Section: "Kontaktperson"
+  Fields:
+    Name (text)
+    Funktion / Titel (text)
+    Unternehmen (text)
+    E-Mail (email)
+
+  Section: "Profilbild"
+    Current photo in circle (80px diameter)
+    "Foto hochladen" file input
+    Same base64 approach as logo
+    "Foto entfernen" button
+
+  Section: "Kontakttext"
+    CTA-Text (textarea, 3 rows)
+      "Haupttext über dem Button"
+    CTA-Subtext (textarea, 2 rows)
+      "Kleinerer Text unter dem Haupttext"
+
+  "Speichern" button
+
+RIGHT SIDE (live preview, ~45% width):
+  Label: "Vorschau"
+  Renders the Kontakt card exactly as it 
+  appears in the app, updating in real-time 
+  as the user types. Use the same JSX 
+  structure as KontaktView.tsx but fed 
+  from local form state instead of API.
+
+WIRING:
+In KontaktView.tsx: replace all hardcoded 
+contact data with values from 
+GET /api/public/contact. Show skeleton 
+loader while fetching.
+
+In PDF export Kontakt page and HTML export 
+Kontakt section: fetch from 
+GET /api/public/contact before rendering, 
+use dynamic values instead of hardcoded ones.
+
+---
+
+FEATURE 3: Rechtemanagement view
+
+Create: src/views/admin/PermissionsView.tsx
+Sidebar label: "Rechtemanagement"
+Icon: ShieldCheck (lucide)
+Position: after Kontakt-Daten, 
+before KI-Tool
+
+CONCEPT:
+A matrix of admin features × roles.
+For each feature, the admin can configure 
+which roles are allowed to access it.
+"Admin (a)" is always allowed everywhere 
+and cannot be removed — it is shown as 
+a locked checkmark.
+
+FEATURES TO CONFIGURE (featureId: label):
+  nutzerverwaltung:    "Nutzerverwaltung"
+  analyseprotokoll:    "Analyseprotokoll"
+  erscheinungsbild:    "Erscheinungsbild"
+  kontakt_daten:       "Kontakt-Daten"
+  rechtemanagement:    "Rechtemanagement"
+  ki_tool:             "KI-Tool"
+  mailserver:          "Mailserver"
+  versand_analyse:     "Versand-Analyse"
+
+ROLES:
+  admin (a)            — always locked ✓
+  user_extended (b)    — toggleable
+  user (c)             — toggleable
+
+LAYOUT:
+Table with columns: 
+  Feature | Admin (a) | Erweiterter User (b) | User (c)
+
+Each cell:
+  Admin column: locked checkmark (gray, 
+    not clickable), tooltip: 
+    "Admins haben immer Zugriff"
+  Other columns: toggle switch or checkbox
+    Checked = role has access
+    Unchecked = role cannot see this item
+
+Below the table:
+  "Speichern" button (saves entire matrix)
+  
+  Info box:
+    "Änderungen gelten sofort für alle 
+    angemeldeten User. Admins behalten 
+    immer Zugriff auf alle Bereiche, 
+    unabhängig von dieser Konfiguration."
+
+DEFAULT permissions (applied on first run 
+via INSERT OR IGNORE on permissions_json):
+  {
+    "nutzerverwaltung":  ["admin"],
+    "analyseprotokoll":  ["admin"],
+    "erscheinungsbild":  ["admin"],
+    "kontakt_daten":     ["admin"],
+    "rechtemanagement":  ["admin"],
+    "ki_tool":           ["admin"],
+    "mailserver":        ["admin"],
+    "versand_analyse":   ["admin"]
+  }
+
+ENFORCEMENT:
+In the sidebar and in the route guards, 
+replace hardcoded role checks 
+(e.g. role === 'admin') with a permission 
+check function:
+
+  function canAccess(
+    featureId: string, 
+    userRole: string,
+    permissions: Record<string, string[]>
+  ): boolean {
+    if (userRole === 'admin') return true
+    const allowed = permissions[featureId] ?? ['admin']
+    return allowed.includes(userRole)
+  }
+
+Load permissions on app start via 
+GET /api/admin/settings/permissions 
+(requires auth). Store in auth context.
+
+Apply canAccess() to:
+  - Sidebar item visibility
+  - Route-level guards in each admin view
+  - API endpoints (check role against 
+    permissions before processing)
+
+IMPORTANT: The /api/admin/settings/permissions 
+PATCH endpoint always requires role='admin' 
+regardless of the permissions matrix — 
+an admin cannot configure themselves out 
+of rechtemanagement.
+
+---
+
+SIDEBAR ORDER (updated):
+
+After the separator below "Einstellungen":
+  [User name / Login]
+  [Nutzerverwaltung]      ← if canAccess
+  [Analyseprotokoll]      ← if canAccess
+  [Erscheinungsbild]      ← if canAccess  ← NEW
+  [Kontakt-Daten]         ← if canAccess  ← NEW
+  [Rechtemanagement]      ← if canAccess  ← NEW
+  [KI-Tool]               ← if canAccess
+  [Mailserver]            ← if canAccess
+  [Versand-Analyse]       ← if canAccess

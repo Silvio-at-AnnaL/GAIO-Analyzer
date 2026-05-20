@@ -1,0 +1,118 @@
+After every analysis completes successfully, 
+automatically generate the HTML export and 
+store it in the analysis log — silently, 
+without any user interaction or visible 
+feedback.
+
+---
+
+WHERE TO IMPLEMENT
+
+In ErgebnisseView.tsx (or wherever the 
+analysis result is received and the 
+results view is shown), find the point 
+where the analysis transitions to 
+status "completed" and the report data 
+becomes available.
+
+This is likely in a useEffect or callback 
+that fires when report.status === 'completed' 
+or when the result object is first populated.
+
+---
+
+CHANGE: trigger silent background export
+
+At that point, immediately call the existing 
+HTML export generation function — the same 
+function used when the user clicks 
+"Report als HTML exportieren".
+
+The difference: do NOT trigger a file 
+download. Instead, capture the generated 
+HTML string and POST it to the log endpoint.
+
+Implement as follows:
+
+  useEffect(() => {
+    if (!report || report.status !== 'completed')
+      return
+    
+    // Fire and forget — do not await, 
+    // do not show loading, do not show errors 
+    // to the user
+    autoSaveHtmlExport(report)
+  }, [report?.status])
+
+  async function autoSaveHtmlExport(report) {
+    try {
+      // Call the same HTML generation logic 
+      // already used for the download button,
+      // but return the string instead of 
+      // triggering a download.
+      // If the generator is currently a 
+      // function that directly triggers 
+      // download, refactor it to accept an 
+      // optional parameter:
+      //   generateHtmlReport(report, 
+      //     { download: false }) 
+      //     → returns html string
+      //   generateHtmlReport(report, 
+      //     { download: true }) 
+      //     → triggers file download (existing behavior)
+      
+      const htmlString = generateHtmlReport(
+        report, { download: false }
+      )
+      
+      if (!htmlString) return
+      
+      // POST to backend — use the analysis 
+      // log id if available, otherwise let 
+      // the backend create a new log entry
+      await fetch('/api/admin/analysis-log/auto-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          htmlContent: htmlString,
+          domain: report.url,
+          companyName: report.companyName || '',
+          gaioScore: report.gaioScore,
+          scoresJson: JSON.stringify(report.scores),
+          pagesCrawled: report.crawledPages?.length ?? 0,
+        })
+      })
+      // Silently succeed or fail — no user feedback
+    } catch {
+      // Silently ignore all errors — 
+      // this must never affect the user experience
+    }
+  }
+
+---
+
+BACKEND: new endpoint for auto-export
+
+Add to the admin routes:
+
+  POST /api/admin/analysis-log/auto-export
+  
+  No auth required (called from frontend 
+  without admin session).
+  
+  Body: {
+    htmlContent: string,
+    domain: string,
+    companyName: string,
+    gaioScore: number,
+    scoresJson: string,
+    pagesCrawled: number
+  }
+  
+  Logic:
+    1. Insert a new row into analysis_log:
+         domain, company_name, gaio_score,
+         scores_json, pages_crawled,
+         status = 'completed',
+         triggered_by = 'auto',
+         started_at

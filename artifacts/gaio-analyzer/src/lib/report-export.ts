@@ -62,10 +62,19 @@ export type InputParams = {
   differentiators?: string | null;
   brandKeywords?: string | null;
   competitors?: string[];
-  socialMedia?: Record<string, string>;
   analysisDate: string;
   crawledPagesCount: number;
 };
+
+export interface ContactData {
+  name:       string;
+  title:      string;
+  company:    string;
+  email:      string;
+  photoSrc:   string;
+  ctaText:    string;
+  ctaSubtext: string;
+}
 
 // ─── Light theme palette (hardcoded hex — no CSS vars, works standalone) ─────
 
@@ -637,12 +646,6 @@ function renderAnalyseparameterSection(params: InputParams): string {
     rows.push(["Wettbewerber-Domains", links]);
   }
 
-  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
-  if (socialEntries.length > 0) {
-    const lines = socialEntries.map(([k, v]) => `<span style="display:block;">${esc(k.charAt(0).toUpperCase() + k.slice(1))}: ${esc(v)}</span>`).join("");
-    rows.push(["Social-Media-Profile", lines]);
-  }
-
   rows.push(["Analysedatum", esc(params.analysisDate)]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
 
@@ -680,11 +683,6 @@ export function buildAnalyseparameterDocumentHtml(params: InputParams): string {
 
   const competitorList = (params.competitors ?? []).map((c) => c.trim()).filter(Boolean);
   if (competitorList.length > 0) rows.push(["Wettbewerber-Domains", competitorList.join("\n")]);
-
-  const socialEntries = Object.entries(params.socialMedia ?? {}).filter(([, v]) => v.trim());
-  if (socialEntries.length > 0) {
-    rows.push(["Social-Media-Profile", socialEntries.map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join("\n")]);
-  }
 
   rows.push(["Analysedatum", params.analysisDate]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
@@ -984,13 +982,20 @@ export function buildFaqPanelHtml(): string {
 // ─── Kontakt ──────────────────────────────────────────────────────────────────
 
 /** Inner HTML for the Kontakt section in the HTML one-pager. */
-function renderKontaktSection(logoSrc: string, profileSrc: string): string {
+function renderKontaktSection(logoSrc: string, profileSrc: string, contact?: ContactData): string {
+  const name      = esc(contact?.name      ?? "Silvio Haase");
+  const title     = esc(contact?.title     ?? "CMO & Head of Business Development");
+  const company   = esc(contact?.company   ?? "Deutscher Medien Verlag GmbH / IndustryStock.com");
+  const email     = esc(contact?.email     ?? "Silvio.Haase@IndustryStock.com");
+  const ctaText   = esc(contact?.ctaText   ?? "Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?");
+  const ctaSub    = esc(contact?.ctaSubtext ?? "Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.");
+
   const logoImg = logoSrc
-    ? `<img src="${logoSrc}" alt="Deutscher Medien Verlag / IndustryStock.com" style="max-height:52px;max-width:220px;object-fit:contain;" />`
+    ? `<img src="${logoSrc}" alt="${company}" style="max-height:52px;max-width:220px;object-fit:contain;" />`
     : `<div style="height:52px;display:flex;align-items:center;border:1px dashed #dde0e8;border-radius:6px;padding:0 14px;color:#787b86;font-size:12px;">[Bild: Brand-Logo]</div>`;
   const profileImg = profileSrc
-    ? `<img src="${profileSrc}" alt="Silvio Haase" style="width:100px;height:100px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;flex-shrink:0;" />`
-    : `<div style="width:100px;height:100px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;flex-shrink:0;">[Bild:<br>Silvio Haase]</div>`;
+    ? `<img src="${profileSrc}" alt="${name}" style="width:100px;height:100px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;flex-shrink:0;" />`
+    : `<div style="width:100px;height:100px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;flex-shrink:0;">[Bild:<br>${name}]</div>`;
 
   return `
 ${divider("Kontakt")}
@@ -1000,20 +1005,15 @@ ${divider("Kontakt")}
   <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #dde0e8;">
     <div style="flex-shrink:0;">${profileImg}</div>
     <div>
-      <div style="font-size:16px;font-weight:700;color:#1a1d23;margin-bottom:4px;">Silvio Haase</div>
-      <div style="font-size:13px;color:#4a4d57;margin-bottom:2px;">CMO &amp; Head of Business Development</div>
-      <div style="font-size:13px;color:#4a4d57;margin-bottom:8px;">Deutscher Medien Verlag GmbH / IndustryStock.com</div>
-      <a href="mailto:Silvio.Haase@IndustryStock.com" style="font-size:13px;color:#3b82f6;font-weight:500;text-decoration:none;">&#9993; Silvio.Haase@IndustryStock.com</a>
+      <div style="font-size:16px;font-weight:700;color:#1a1d23;margin-bottom:4px;">${name}</div>
+      <div style="font-size:13px;color:#4a4d57;margin-bottom:2px;">${title}</div>
+      <div style="font-size:13px;color:#4a4d57;margin-bottom:8px;">${company}</div>
+      <a href="mailto:${email}" style="font-size:13px;color:#3b82f6;font-weight:500;text-decoration:none;">&#9993; ${email}</a>
     </div>
   </div>
-  <p style="font-size:13px;color:#1a1d23;line-height:1.7;margin-bottom:10px;">
-    Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen
-    oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?
-  </p>
-  <p style="font-size:13px;color:#4a4d57;line-height:1.7;margin-bottom:20px;">
-    Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.
-  </p>
-  <a href="mailto:Silvio.Haase@IndustryStock.com"
+  <p style="font-size:13px;color:#1a1d23;line-height:1.7;margin-bottom:10px;">${ctaText}</p>
+  <p style="font-size:13px;color:#4a4d57;line-height:1.7;margin-bottom:20px;">${ctaSub}</p>
+  <a href="mailto:${email}"
      style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">
     &#9993; E-Mail schreiben
   </a>
@@ -1023,13 +1023,21 @@ ${divider("Kontakt")}
 /**
  * Full self-contained HTML document for Kontakt PDF capture via iframe.
  */
-export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): string {
+export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string, contact?: ContactData, footerText?: string): string {
+  const name    = esc(contact?.name    ?? "Silvio Haase");
+  const title   = esc(contact?.title   ?? "CMO & Head of Business Development");
+  const company = esc(contact?.company ?? "Deutscher Medien Verlag GmbH / IndustryStock.com");
+  const email   = esc(contact?.email   ?? "Silvio.Haase@IndustryStock.com");
+  const ctaText = esc(contact?.ctaText ?? "Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?");
+  const ctaSub  = esc(contact?.ctaSubtext ?? "Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.");
+  const footer  = esc((footerText ?? "IndustryStock.com") + "/GAIO-Analyzer");
+
   const logoImg = logoSrc
-    ? `<img src="${logoSrc}" alt="Deutscher Medien Verlag / IndustryStock.com" style="max-height:52px;max-width:220px;object-fit:contain;" />`
+    ? `<img src="${logoSrc}" alt="${company}" style="max-height:52px;max-width:220px;object-fit:contain;" />`
     : `<div style="height:52px;display:flex;align-items:center;border:1px dashed #dde0e8;border-radius:6px;padding:0 14px;color:#787b86;font-size:12px;">[Bild: Brand-Logo]</div>`;
   const profileImg = profileSrc
-    ? `<img src="${profileSrc}" alt="Silvio Haase" style="width:110px;height:110px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;" />`
-    : `<div style="width:110px;height:110px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;">[Bild:<br>Silvio Haase]</div>`;
+    ? `<img src="${profileSrc}" alt="${name}" style="width:110px;height:110px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;" />`
+    : `<div style="width:110px;height:110px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;">[Bild:<br>${name}]</div>`;
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -1069,22 +1077,17 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
     <div class="person">
       <div>${profileImg}</div>
       <div>
-        <div class="name">Silvio Haase</div>
-        <div class="role">CMO &amp; Head of Business Development</div>
-        <div class="co">Deutscher Medien Verlag GmbH / IndustryStock.com</div>
-        <div class="email">E-Mail: Silvio.Haase@IndustryStock.com</div>
+        <div class="name">${name}</div>
+        <div class="role">${title}</div>
+        <div class="co">${company}</div>
+        <div class="email">E-Mail: ${email}</div>
       </div>
     </div>
-    <p class="text">
-      Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen
-      oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?
-    </p>
-    <p class="sec">
-      Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.
-    </p>
-    <a class="cta" href="mailto:Silvio.Haase@IndustryStock.com">E-Mail schreiben</a>
+    <p class="text">${ctaText}</p>
+    <p class="sec">${ctaSub}</p>
+    <a class="cta" href="mailto:${email}">E-Mail schreiben</a>
   </div>
-  <div class="note">IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
+  <div class="note">${footer} · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
 </body>
 </html>`;
 }
@@ -1093,7 +1096,7 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string): s
 
 export function generateHtmlReport(
   report: Record<string, unknown>,
-  opts: { logoSrc?: string; profileSrc?: string; inputParams?: InputParams } = {}
+  opts: { logoSrc?: string; profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
 ): string {
   const overallScore = (report.overallScore as number) ?? 0;
   const url          = String(report.url ?? "HTML-Upload");
@@ -1115,7 +1118,7 @@ export function generateHtmlReport(
     renderRecommendationsSection(report),
     renderFaqSection(),
     opts.inputParams ? renderAnalyseparameterSection(opts.inputParams) : null,
-    renderKontaktSection(opts.logoSrc ?? "", opts.profileSrc ?? ""),
+    renderKontaktSection(opts.logoSrc ?? "", opts.profileSrc ?? "", opts.contactData),
   ].filter(Boolean).join("\n");
 
   return `<!DOCTYPE html>
@@ -1279,6 +1282,7 @@ export function generateHtmlReport(
   ${bodyContent}
 
 </div>
+<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? 0, schema: scoreDefs[1]?.score ?? 0, headings: scoreDefs[2]?.score ?? 0, content: scoreDefs[3]?.score ?? 0, faq: scoreDefs[4]?.score ?? 0, llm: scoreDefs[5]?.score ?? 0 } })}</script>
 </body>
 </html>`;
 }

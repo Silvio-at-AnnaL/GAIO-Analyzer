@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLM } from "../ai-client.js";
 import { logger } from "../logger";
 
 export interface ContentDimension {
@@ -43,13 +43,7 @@ export async function analyzeContentRelevance(
   };
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+    const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
 
 Given this B2B industrial website content, evaluate:
 (1) Does it describe specific use cases and application scenarios?
@@ -72,17 +66,11 @@ Return a JSON object (no markdown formatting) with this structure:
   ]
 }
 
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
-        },
-      ],
-    });
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
-    const block = message.content[0];
-    if (block.type !== "text") return defaultResult;
-
-    const jsonMatch = block.text.match(/\{[\s\S]*\}/);
+    const text = await callLLM(prompt, 8192);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return defaultResult;
-
     const parsed = JSON.parse(jsonMatch[0]);
     const dimensions: ContentDimension[] = parsed.dimensions || [];
 

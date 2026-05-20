@@ -1,0 +1,325 @@
+Build Phase 2 of the admin area. Three new 
+sections: KI-Tool, Mailserver, and Versand-
+Analyse. All require role='admin'.
+
+---
+
+DATABASE: extend settings table
+
+The existing settings table (key/value) 
+is used for all configuration. Insert 
+these default rows on first run if they 
+don't exist:
+
+  ai_provider          = 'claude'
+  ai_model_claude      = 'claude-sonnet-4-20250514'
+  ai_api_key_claude    = ''
+  ai_model_openai      = 'gpt-4o'
+  ai_api_key_openai    = ''
+  ai_api_key_perplexity = ''
+  ai_model_perplexity  = 'llama-3.1-sonar-large-128k-online'
+  ai_api_key_gemini    = ''
+  ai_model_gemini      = 'gemini-1.5-pro'
+
+  mail_host            = ''
+  mail_port            = '587'
+  mail_secure          = 'false'
+  mail_user            = ''
+  mail_password        = ''
+  mail_from_name       = 'GAIO Analyzer'
+  mail_from_address    = 'silvio.haase@industrystock.com'
+
+  delivery_mode        = 'download'
+  delivery_bcc         = ''
+  delivery_require_email = 'false'
+
+---
+
+BACKEND: new settings routes
+
+  GET /api/admin/settings/:group
+    Admin only. group = 'ai' | 'mail' | 'delivery'
+    Returns settings for that group 
+    (NEVER return API keys in plain text — 
+    return masked value: "••••••••" + 
+    last 4 chars if key is set, "" if empty)
+
+  PATCH /api/admin/settings/:group
+    Admin only.
+    Body: { key: value, ... }
+    For API keys: only update if the sent 
+    value is NOT the masked placeholder 
+    (i.e. does not contain "••••••••").
+    This prevents accidentally overwriting 
+    a key with the display mask.
+    Returns { success: true }
+
+  POST /api/admin/settings/test-mail
+    Admin only.
+    Sends a test email using current mail 
+    settings to the admin's own email address.
+    Subject: "GAIO Analyzer — Mailserver-Test"
+    Body: "Der Mailserver ist korrekt 
+    konfiguriert."
+    Returns { success: true } or 
+    { success: false, error: string }
+
+  GET /api/admin/settings/ai-status
+    Admin only.
+    Returns which providers have API keys 
+    configured (boolean per provider) and 
+    which provider is currently active.
+    Also returns which provider the app is 
+    currently using for its analyses.
+
+---
+
+BACKEND: wire up AI provider switching
+
+Find where the Anthropic client is 
+initialized in the analysis pipeline 
+(likely in the server code that calls 
+Claude API).
+
+Change it to read ai_provider and the 
+corresponding api key from the settings 
+table at analysis time (not at startup).
+
+Support these providers:
+  'claude'     → use @anthropic-ai/sdk, 
+                 model from ai_model_claude
+  'openai'     → use openai npm package,
+                 model from ai_model_openai
+  'perplexity' → use openai package with 
+                 baseURL 'https://api.perplexity.ai',
+                 model from ai_model_perplexity
+  'gemini'     → use @google/generative-ai 
+                 package,
+                 model from ai_model_gemini
+
+Install missing packages if needed.
+
+For each provider, map the existing 
+Claude-specific API calls to the 
+provider's equivalent. The prompts 
+themselves stay unchanged — only the 
+client/model changes.
+
+If the configured provider's API key is 
+empty, fall back to Claude if a 
+ANTHROPIC_API_KEY env var exists, 
+otherwise return an error.
+
+---
+
+BACKEND: email sending module
+
+Create server/mailer.js (or .ts):
+
+  import nodemailer from 'nodemailer'
+  
+  export async function getTransporter(db) {
+    const settings = getMailSettings(db)
+    if (!settings.host) return null
+    return nodemailer.createTransport({
+      host: settings.host,
+      port: parseInt(settings.port),
+      secure: settings.secure === 'true',
+      auth: {
+        user: settings.user,
+        pass: settings.password
+      }
+    })
+  }
+  
+  export async function sendMail(db, options) {
+    const transporter = await getTransporter(db)
+    const settings = getMailSettings(db)
+    
+    if (!transporter) {
+      // Log to console as fallback
+      console.log('[MAIL FALLBACK]', {
+        to: options.to,
+        subject: options.subject,
+        text: options.text
+      })
+      return { success: true, fallback: true }
+    }
+    
+    await transporter.sendMail({
+      from: `"${settings.fromName}" 
+        <${settings.fromAddress}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html || options.text,
+      bcc: options.bcc || undefined
+    })
+    return { success: true, fallback: false }
+  }
+
+Update all existing email sends (welcome 
+email, verification code) to use this 
+mailer instead of console.log.
+
+---
+
+BACKEND: delivery settings
+
+Add endpoint:
+  POST /api/admin/analysis/:id/send-email
+    Body: { recipientEmail: string }
+    Fetches the HTML export for that 
+    analysis from analysis_exports table.
+    Sends it as an email attachment 
+    (.html file) to recipientEmail.
+    BCC to delivery_bcc if set.
+    Returns { success: true } or error.
+
+This endpoint is used in Phase 3 when 
+the download-via-email flow is activated. 
+For now it just needs to exist and work.
+
+---
+
+FRONTEND: KI-Tool view
+
+Create: src/views/admin/AiToolView.tsx
+Icon in sidebar: Cpu (lucide)
+Position: after Analyseprotokoll
+
+Layout — two sections:
+
+SECTION 1: "Aktiver KI-Anbieter"
+  Radio button group, one per provider:
+    ○ Claude (Anthropic)
+    ○ ChatGPT / OpenAI  
+    ○ Perplexity
+    ○ Google Gemini
+  
+  Currently active provider is selected.
+  Changing selection and saving updates 
+  ai_provider in settings.
+  
+  Status indicator next to each option:
+    Green dot + "API-Key hinterlegt" 
+    if key is configured
+    Gray dot + "Kein API-Key" if not
+
+SECTION 2: "API-Zugangsdaten"
+  Tab switcher: Claude | OpenAI | Perplexity | Gemini
+  
+  For each provider, show:
+    - API Key field (password input type, 
+      shows masked value, clears on focus 
+      to allow new entry)
+    - Model field (text input, 
+      pre-filled with default model name)
+    - Small hint text with link to where 
+      to get an API key for that provider
+  
+  "Zugangsdaten speichern" button per tab.
+  
+  Below the tabs: info box showing which 
+  provider is currently being used for 
+  analyses, and when it was last used 
+  (last completed analysis timestamp).
+
+---
+
+FRONTEND: Mailserver view
+
+Create: src/views/admin/MailserverView.tsx
+Icon: Mail (lucide)
+Position: after KI-Tool
+
+Layout — one card form:
+
+  Fields:
+    SMTP-Host        (text, e.g. smtp.gmail.com)
+    Port             (number, default 587)
+    Verschlüsselung  (select: STARTTLS (587) | 
+                      SSL/TLS (465) | Keine (25))
+    Benutzername     (text)
+    Passwort         (password input)
+    Absendername     (text, e.g. "GAIO Analyzer")
+    Absenderadresse  (email)
+  
+  Two buttons:
+    "Einstellungen speichern" 
+    "Testmail senden" → calls /test-mail,
+      shows success/error inline
+
+  Info box below:
+    "Ohne konfigurierten Mailserver werden 
+    E-Mails als Konsolenausgabe protokolliert. 
+    Funktionen wie Nutzer-Einladungen und 
+    Bestätigungscodes sind dann nur im 
+    Server-Log verfügbar."
+
+---
+
+FRONTEND: Versand-Analyse view
+
+Create: src/views/admin/DeliveryView.tsx
+Icon: Send (lucide)
+Position: after Mailserver
+
+Layout — one card:
+
+  Heading: "Bereitstellung von Analyseberichten"
+  
+  Toggle/radio: "Bereitstellungsmodus"
+    ○ Download (Standard)
+      Nutzer laden PDF/HTML direkt herunter.
+    ○ Nur per E-Mail
+      Nutzer geben eine Mailadresse ein; 
+      der Report wird zugesandt.
+  
+  Below the toggle, shown only when 
+  "Nur per E-Mail" is selected:
+  
+    BCC-Adresse (email input, required):
+      "Jeder versandte Report wird zusätzlich 
+      an diese Adresse als BCC-Kopie gesendet."
+    
+    Validation: if mode = 'mail-only' and 
+    bcc is empty → show error, prevent save.
+  
+  "Einstellungen speichern" button.
+  
+  Info box at bottom:
+    "Die E-Mail-Versandfunktion ist 
+    vorbereitet und wird nach Konfiguration 
+    des Mailservers aktiviert. Im aktuellen 
+    Zustand wird immer der direkte Download 
+    verwendet, unabhängig von dieser 
+    Einstellung."
+
+---
+
+SIDEBAR ADDITIONS
+
+Add to the admin sub-items (admin only):
+  - KI-Tool (after Analyseprotokoll)
+  - Mailserver
+  - Versand-Analyse
+
+All three hidden for non-admin users.
+All three require isAuthenticated + 
+role='admin' as route guard.
+
+---
+
+SELF-CHECK after implementation:
+
+1. Can you switch the AI provider and 
+   does the change persist after page reload?
+2. Does the API key masking work correctly 
+   (shows ••••••••xxxx, does not overwrite 
+   on save unless new value entered)?
+3. Does the test mail endpoint respond 
+   (even with fallback to console)?
+4. Are all three new views accessible 
+   only to admins?
+5. Does the delivery settings save and 
+   persist correctly?

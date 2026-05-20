@@ -1,0 +1,125 @@
+Fix two issues in the admin area.
+
+---
+
+FIX 1 — Analysis log: one entry per analysis,
+not one per download
+
+PROBLEM: The auto-export endpoint 
+(POST /api/admin/analysis-log/auto-export) 
+is called both when the analysis completes 
+AND when the user triggers a download. 
+This creates duplicate log entries.
+
+ROOT CAUSE: The frontend calls the auto-export 
+endpoint in two places:
+  a) Silently after analysis completes 
+     (correct — keep this)
+  b) Again inside the PDF/HTML export 
+     functions when building the report 
+     for download/email (incorrect — remove this)
+
+FIX IN FRONTEND:
+In the HTML and PDF export functions, find 
+where they call the auto-export or 
+analysis-log endpoint and REMOVE that call.
+The export functions must no longer write 
+to the analysis log at all.
+
+The only place that writes to the analysis 
+log is the silent useEffect that fires when 
+report.status === 'completed' — that stays.
+
+FIX IN BACKEND:
+Add a duplicate-prevention check in 
+POST /api/admin/analysis-log/auto-export:
+
+Before inserting, check if a log entry for 
+the same domain already exists within the 
+last 5 minutes with status='completed':
+
+  SELECT id FROM analysis_log 
+  WHERE domain = ? 
+  AND status = 'completed'
+  AND completed_at > datetime('now', '-5 minutes')
+  LIMIT 1
+
+If found: do NOT create a new entry. 
+Instead, update the existing entry's 
+html_export_id if it doesn't have one yet, 
+then return { success: true, duplicate: true }.
+
+If not found: create normally as before.
+
+This double protection (frontend + backend) 
+ensures no duplicate entries regardless of 
+how many times the export is triggered.
+
+---
+
+FIX 2 — Delivery BCC: support multiple 
+email addresses
+
+BACKEND:
+The delivery_bcc setting currently stores 
+a single email address. Change it to support 
+a comma-separated list of addresses.
+
+In the send-email endpoint, split the BCC 
+string by comma, trim each entry, filter 
+out empty strings, and pass the array to 
+nodemailer's bcc field:
+
+  const bccList = (delivery_bcc || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+  
+  if (bccList.length > 0) {
+    mailOptions.bcc = bccList.join(', ')
+  }
+
+Nodemailer accepts a comma-separated string 
+or array for bcc — both work.
+
+FRONTEND (DeliveryView.tsx):
+Replace the single BCC email input with a 
+textarea or a dynamic multi-value input:
+
+Option A (simpler, less code): 
+  Replace the single <input type="email"> 
+  with a <textarea> that accepts one address 
+  per line or comma-separated:
+    rows={3}
+    placeholder={
+      "bcc1@firma.de\nbcc2@firma.de"
+    }
+  
+  Below the textarea, add hint text:
+    "Mehrere Adressen mit Komma oder 
+    Zeilenumbruch trennen."
+
+  On save: normalize the value — split by 
+  comma and newline, trim, join with ", " 
+  before storing.
+
+Option B (more polished):
+  A dynamic tag-style input where each 
+  address becomes a removable chip/badge 
+  after pressing Enter or comma.
+  Each chip shows the email and an × button.
+  
+  Choose whichever is simpler to implement 
+  cleanly — Option A is preferred if Option B 
+  would require significant new code.
+
+Validation on save: 
+  Each address must be a valid email format.
+  If any address is invalid, show an inline 
+  error listing the invalid ones.
+  Do not save if validation fails.
+
+Update the status indicator in DeliveryView 
+to show all BCC addresses when mode is 
+mail-only:
+  "BCC an: bcc1@firma.de, bcc2@firma.de"

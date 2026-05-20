@@ -2,11 +2,15 @@ import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import analyzeRouter from "./analyze";
 import prefillRouter from "./prefill";
+import adminRouter from "./admin";
+import sharesRouter from "./shares";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(analyzeRouter);
 router.use(prefillRouter);
+router.use("/admin", adminRouter);
+router.use("/shares", sharesRouter);
 
 export default router;

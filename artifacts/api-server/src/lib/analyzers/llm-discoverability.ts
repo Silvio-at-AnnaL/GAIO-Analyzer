@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLM } from "../ai-client.js";
 import { logger } from "../logger";
 
 export interface LlmQuestion {
@@ -98,14 +98,8 @@ Return ONLY valid JSON:
 {"questions": ["<q1>", "<q2>", "<q3>", "<q4>", "<q5>", "<q6>"]}`;
 
   try {
-    const resp = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const block = resp.content[0];
-    if (block.type !== "text") return [];
-    const parsed = tryParseJson<{ questions?: string[] }>(block.text);
+    const text = await callLLM(prompt, 8192);
+    const parsed = tryParseJson<{ questions?: string[] }>(text);
     return (parsed?.questions ?? []).slice(0, 6);
   } catch (err) {
     logger.warn({ err }, "LLM Part A generation failed");
@@ -135,14 +129,8 @@ Return ONLY valid JSON:
 {"questions": ["<q1>", "<q2>", "<q3>", "<q4>"]}`;
 
   try {
-    const resp = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const block = resp.content[0];
-    if (block.type !== "text") throw new Error("non-text response");
-    const parsed = tryParseJson<{ questions?: string[] }>(block.text);
+    const text = await callLLM(prompt, 8192);
+    const parsed = tryParseJson<{ questions?: string[] }>(text);
     const qs = (parsed?.questions ?? []).slice(0, 4);
     if (qs.length === 0) throw new Error("empty");
     return qs;
@@ -196,14 +184,8 @@ Return ONLY valid JSON:
 WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
   try {
-    const resp = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const block = resp.content[0];
-    if (block.type !== "text") throw new Error("non-text response");
-    const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(block.text);
+    const text = await callLLM(prompt, 8192);
+    const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(text);
     const ratings = parsed?.ratings ?? [];
     if (ratings.length === 0) throw new Error("empty ratings");
     const validUrls = new Set(urlList);

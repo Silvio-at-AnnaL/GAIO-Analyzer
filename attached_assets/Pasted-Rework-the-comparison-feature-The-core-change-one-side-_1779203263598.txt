@@ -1,0 +1,129 @@
+Rework the comparison feature. The core 
+change: one side of the comparison is 
+always the currently loaded analysis. 
+The user only selects the OTHER (older) 
+analysis to compare against.
+
+---
+
+CHANGE 1 — "Vergleich" menu item: 
+conditional visibility
+
+In Sidebar.tsx, the "Vergleich" nav item 
+must only render when a current analysis 
+result exists in the app state.
+
+Find the report/result store (Zustand or 
+React context). The nav item renders only 
+when report !== null AND 
+report.status === 'completed'.
+
+When no analysis has been run yet 
+(WelcomeView or empty state), the menu 
+item is completely absent — not grayed 
+out, not disabled, not present at all.
+
+---
+
+CHANGE 2 — VergleichView: single source 
+selection, current analysis is always 
+the reference
+
+In VergleichView.tsx, remove the two-sided 
+input. Replace with:
+
+LEFT SIDE of comparison (fixed, automatic):
+  Always the current analysis loaded in 
+  the app state. Read it from the same 
+  store used by ErgebnisseView.
+  
+  Display as a non-interactive summary card:
+    Label: "Aktuelle Analyse"
+    Domain, Datum, GAIO Score
+    Muted text: "Diese Analyse wird als 
+    Referenz verwendet."
+
+RIGHT SIDE of comparison (user selects):
+  Label: "Vergleichsanalyse"
+  
+  Two mutually exclusive options shown 
+  as a segmented control or tab switcher:
+  
+  OPTION A: "Aus Protokoll laden"
+    Only rendered if the user is logged 
+    in AND canAccess('analyseprotokoll', 
+    userRole, permissions) returns true.
+    
+    If not accessible: this option tab 
+    is not shown at all.
+    
+    When visible: dropdown list populated 
+    from GET /api/admin/analysis-log, 
+    showing only entries with 
+    html_export_id set (i.e. have data).
+    Exclude the current analysis from the 
+    list (match by domain + timestamp).
+    Each item: Domain · Datum · Score
+    
+    On selection: fetch analysis data 
+    from the log entry and populate the 
+    right side card.
+
+  OPTION B: "HTML-Datei hochladen"
+    Always visible, no auth required.
+    
+    Single file drop zone: 
+      accepts .html only
+      "HTML-Export hier ablegen oder 
+      klicken zum Auswählen"
+    
+    On file load: extract the 
+    id="gaio-analysis-data" JSON block.
+    Show preview card:
+      Domain, Datum, GAIO Score
+    
+    If file has no data block:
+      "Diese Datei enthält keine 
+      maschinenlesbaren Analysedaten."
+    
+  If the user is NOT authenticated or 
+  lacks protocol access: skip the tab 
+  switcher entirely, show only the 
+  upload zone directly (no tab UI needed).
+
+"Vergleich anzeigen" button:
+  Enabled only when the right side has 
+  a valid analysis loaded.
+  Triggers the delta calculation and 
+  renders the comparison result below.
+
+---
+
+CHANGE 3 — Remove the second file upload 
+zone entirely
+
+The old version had two upload zones 
+(Analyse A + Analyse B). Remove all 
+references to that pattern. There is 
+now exactly one upload zone (for the 
+comparison source) and the current 
+analysis always serves as the baseline.
+
+---
+
+CHANGE 4 — Navigation to VergleichView
+
+When the user clicks "Vergleich" in the 
+sidebar, the view opens with the current 
+analysis already populated on the left 
+side — no additional step needed.
+
+If the user navigates away (e.g. starts 
+a new analysis) and then comes back to 
+"Vergleich", the left side updates to 
+reflect whatever analysis is currently 
+loaded.
+
+The right side resets when the user 
+navigates away — do not persist the 
+comparison source across navigation.

@@ -8,9 +8,11 @@ import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
 import { analyzeCompetitors } from "./analyzers/competitors";
 import { generateRecommendations } from "./analyzers/recommendations";
 import { logger } from "./logger";
+import { createAnalysisLog, updateAnalysisLogComplete, updateAnalysisLogFailed } from "./admin-db.js";
 
 export interface AnalysisState {
   id: string;
+  logId: number | null;
   status: "pending" | "running" | "completed" | "failed";
   url: string | null;
   mode: "url" | "html";
@@ -78,7 +80,6 @@ interface QuestionnaireInput {
   competitors?: string | null;
   differentiators?: string | null;
   influencers?: string | null;
-  socialMedia?: string | null;
   microsites?: string | null;
   directories?: string | null;
   reviewPlatforms?: string | null;
@@ -138,9 +139,21 @@ export async function runAnalysis(
   html: string | null,
   questionnaire?: QuestionnaireInput | null,
   explicitUrls?: string[] | null,
+  userSession?: string | null,
 ): Promise<void> {
+  const domain = url || "html-upload";
+  const companyName = questionnaire?.companyName ?? questionnaire?.brandName ?? null;
+
+  let logId: number | null = null;
+  try {
+    logId = createAnalysisLog({ uuid: id, domain, companyName, mode, userSession });
+  } catch (err) {
+    logger.error({ err }, "Failed to create analysis log entry");
+  }
+
   const state: AnalysisState = {
     id,
+    logId,
     status: "running",
     url,
     mode,
@@ -391,11 +404,35 @@ export async function runAnalysis(
     state.currentModule = null;
     save();
 
+    if (logId !== null) {
+      try {
+        const scoresJson = JSON.stringify({
+          technicalSeo: (state.technicalSeo as { score: number } | null)?.score ?? null,
+          schemaOrg: (state.schemaOrg as { score: number } | null)?.score ?? null,
+          headingStructure: (state.headingStructure as { score: number } | null)?.score ?? null,
+          contentRelevance: (state.contentRelevance as { score: number } | null)?.score ?? null,
+          faqQuality: (state.faqQuality as { score: number } | null)?.score ?? null,
+          llmDiscoverability: (state.llmDiscoverability as { score: number } | null)?.score ?? null,
+        });
+        updateAnalysisLogComplete(logId, state.overallScore ?? 0, scoresJson, state.crawledPages.length);
+      } catch (err) {
+        logger.error({ err }, "Failed to update analysis log on complete");
+      }
+    }
+
     logger.info({ id, overallScore: state.overallScore }, "Analysis completed");
   } catch (err) {
     logger.error({ err, id }, "Analysis failed");
     state.status = "failed";
     state.errors.push("Analysis failed unexpectedly");
     save();
+
+    if (logId !== null) {
+      try {
+        updateAnalysisLogFailed(logId, err instanceof Error ? err.message : String(err));
+      } catch (dbErr) {
+        logger.error({ dbErr }, "Failed to update analysis log on failure");
+      }
+    }
   }
 }

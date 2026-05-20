@@ -1,0 +1,194 @@
+Add an "Analyseprotokoll" section to the admin 
+area. This logs every completed analysis and 
+stores the generated HTML export for later 
+retrieval.
+
+---
+
+DATABASE: two new tables in server/admin.db
+
+TABLE analysis_log:
+  id              INTEGER PRIMARY KEY AUTOINCREMENT
+  domain          TEXT NOT NULL
+  company_name    TEXT
+  triggered_by    TEXT          -- 'domain' | 'html'
+  user_session    TEXT          -- IP or session id (anonymized)
+  gaio_score      INTEGER
+  scores_json     TEXT          -- JSON of all 6 dimension scores
+  pages_crawled   INTEGER
+  status          TEXT NOT NULL -- 'completed' | 'failed'
+  error_message   TEXT          -- if status='failed'
+  started_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+  completed_at    DATETIME
+  html_export_id  INTEGER REFERENCES analysis_exports(id)
+
+TABLE analysis_exports:
+  id              INTEGER PRIMARY KEY AUTOINCREMENT
+  analysis_id     INTEGER NOT NULL REFERENCES analysis_log(id)
+  html_content    TEXT NOT NULL   -- full HTML export string
+  file_size_kb    INTEGER
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+
+---
+
+BACKEND: write to log on every analysis
+
+In the existing analysis endpoint 
+(wherever the analysis pipeline runs 
+and returns results):
+
+On analysis START:
+  Insert a row into analysis_log with 
+  status='running', started_at=now(), 
+  domain and company_name from the request.
+  Store the returned insert id for later update.
+
+On analysis COMPLETE:
+  Update the analysis_log row:
+    status = 'completed'
+    completed_at = now()
+    gaio_score = result.gaio_score
+    scores_json = JSON.stringify(result.scores)
+    pages_crawled = result.crawledPages?.length
+
+On analysis ERROR:
+  Update the row:
+    status = 'failed'
+    completed_at = now()
+    error_message = error.message
+
+---
+
+BACKEND: store HTML export
+
+Extend the existing HTML export generation.
+After the HTML string is generated 
+(whenever the user clicks "Report als 
+HTML exportieren"), also POST it to a 
+new endpoint:
+
+  POST /api/admin/analysis-log/:id/export
+    Body: { htmlContent: string }
+    Admin JWT not required for this endpoint 
+    — it is called internally from the 
+    frontend during export generation.
+    Inserts into analysis_exports.
+    Updates analysis_log.html_export_id.
+    Returns { exportId }
+
+If no analysis_log id is available 
+(e.g. HTML-mode analysis), create a 
+minimal log entry first, then attach 
+the export.
+
+---
+
+BACKEND: API routes for log viewer
+
+  GET /api/admin/analysis-log
+    Admin only.
+    Query params: 
+      page (default 1)
+      limit (default 25)
+      status (optional filter)
+      search (optional: domain or company)
+    Returns: { items, total, page, pages }
+    Each item: id, domain, companyName, 
+      gaoiScore, scoresJson, pagesCrawled,
+      status, startedAt, completedAt,
+      hasHtmlExport (boolean)
+
+  GET /api/admin/analysis-log/:id/export
+    Admin only.
+    Returns the stored HTML as a downloadable 
+    file (Content-Disposition: attachment, 
+    filename = GAIO-[domain]-[date].html)
+    Returns 404 if no export stored.
+
+  DELETE /api/admin/analysis-log/:id
+    Admin only. Deletes log entry AND 
+    associated export.
+
+---
+
+FRONTEND: new view
+
+Create: src/views/admin/AnalysisLogView.tsx
+Accessible to role='admin' only.
+
+LAYOUT:
+
+Header row:
+  Title: "Analyseprotokoll"
+  Right side: total count badge 
+    "N Analysen gesamt"
+
+Search + filter bar:
+  Text input: search by domain or company name
+  Dropdown: Alle | Abgeschlossen | Fehlgeschlagen
+  Results update on input change (debounced 
+  300ms)
+
+Table columns:
+  Datum/Uhrzeit | Unternehmen / Domain | 
+  GAIO Score | Seiten | Status | 
+  HTML-Export | Aktionen
+
+Row details:
+  - Datum: formatted as DD.MM.YYYY HH:MM
+  - Domain: shown as clickable link 
+    (target="_blank") if starts with http
+  - Company name above domain in smaller 
+    muted text if available
+  - GAIO Score: colored number using the 
+    same score color logic as the app 
+    (green/amber/red), or "–" if failed
+  - Seiten: number of crawled pages or "–"
+  - Status: 
+      "Abgeschlossen" in green badge
+      "Fehlgeschlagen" in red badge with 
+      hover tooltip showing error_message
+  - HTML-Export: 
+      If hasHtmlExport=true: 
+        download icon button that triggers 
+        GET /api/admin/analysis-log/:id/export
+      If false: 
+        muted "–"
+  - Aktionen: 
+      Trash icon to delete entry 
+      (with confirmation dialog)
+
+Pagination:
+  Simple prev/next with "Seite X von Y" 
+  and page size selector (10 / 25 / 50)
+
+Empty state:
+  "Noch keine Analysen durchgeführt."
+
+---
+
+SIDEBAR: add log entry
+
+In Sidebar.tsx, add "Analyseprotokoll" 
+as a sub-item visible after login as admin.
+Position it between "Nutzerverwaltung" and 
+"KI-Tool" (or wherever the admin sub-items 
+are grouped).
+Icon: ClipboardList (lucide)
+
+---
+
+STORAGE NOTE
+
+The html_content column stores the full 
+HTML string in SQLite. For typical analysis 
+reports (50–200 KB), this is fine for 
+hundreds of entries. If the database grows 
+large, add a note in the admin UI showing 
+total storage used:
+  
+  SELECT SUM(LENGTH(html_content)) / 1024 
+  as total_kb FROM analysis_exports
+
+Show this in the log view header as:
+  "Gespeicherter Speicherplatz: X MB"

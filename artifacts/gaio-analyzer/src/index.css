@@ -325,3 +325,17 @@ a[class*="bg-primary"]:hover {
   visibility: visible;
   opacity: 1;
 }
+
+/* ===================== COLORBLIND MODE ===================== */
+body.colorblind-mode .status-success {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+body.colorblind-mode .status-error {
+  color: #d97706 !important;
+  background: #fffbeb !important;
+}
+body.colorblind-mode .status-warning {
+  color: #92400e !important;
+  background: #fffbeb !important;
+}
