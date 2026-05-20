@@ -1,28 +1,18 @@
 import { useState, useEffect } from "react";
 import { ShieldCheck, Save, CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { adminFetch, useAuth } from "@/store/authStore";
-
-const FEATURES: { id: string; label: string }[] = [
-  { id: "nutzerverwaltung", label: "Nutzerverwaltung" },
-  { id: "analyseprotokoll", label: "Analyseprotokoll" },
-  { id: "erscheinungsbild", label: "Erscheinungsbild" },
-  { id: "kontakt_daten",    label: "Kontakt-Daten" },
-  { id: "rechtemanagement", label: "Rechtemanagement" },
-  { id: "ki_tool",          label: "KI-Tool" },
-  { id: "mailserver",       label: "Mailserver" },
-  { id: "versand_analyse",  label: "Versand-Analyse" },
-];
+import { ADMIN_FEATURES } from "@/config/adminFeatures";
 
 const ROLES: { id: string; label: string; locked: boolean }[] = [
-  { id: "admin",         label: "Admin (a)",                locked: true },
-  { id: "user_extended", label: "Erweiterter User (b)",     locked: false },
-  { id: "user",          label: "User (c)",                 locked: false },
+  { id: "admin",         label: "Admin (a)",             locked: true  },
+  { id: "user_extended", label: "Erweiterter User (b)",  locked: false },
+  { id: "user",          label: "User (c)",              locked: false },
 ];
 
 type PermissionsMap = Record<string, string[]>;
 
 const DEFAULT_PERMISSIONS: PermissionsMap = Object.fromEntries(
-  FEATURES.map((f) => [f.id, ["admin"]])
+  ADMIN_FEATURES.map((f) => [f.id, [...f.defaultRoles]])
 );
 
 export function PermissionsView() {
@@ -99,7 +89,7 @@ export function PermissionsView() {
             </tr>
           </thead>
           <tbody>
-            {FEATURES.map((feature, idx) => {
+            {ADMIN_FEATURES.map((feature, idx) => {
               const allowed = permissions[feature.id] ?? ["admin"];
               return (
                 <tr

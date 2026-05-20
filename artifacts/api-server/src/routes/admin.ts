@@ -99,6 +99,17 @@ adminRouter.get("/public/delivery-mode", (_req: Request, res: Response) => {
   res.json({ mode: raw === "mail-only" ? "mail-only" : "download" });
 });
 
+// GET /api/admin/public/theme — public, no auth
+adminRouter.get("/public/theme", (_req: Request, res: Response) => {
+  res.json({
+    primary:        getSetting("theme_primary")         ?? "#2563eb",
+    sidebarBg:      getSetting("theme_sidebar_bg")      ?? "#1e2235",
+    sidebarText:    getSetting("theme_sidebar_text")    ?? "#94a3b8",
+    accent:         getSetting("theme_accent")          ?? "#f59e0b",
+    colorblindMode: getSetting("theme_colorblind_mode") === "true",
+  });
+});
+
 // GET /api/public/branding — public, no auth
 adminRouter.get("/public/branding", (_req: Request, res: Response) => {
   const raw  = getSetting("branding_logo_base64")  ?? "";
@@ -713,6 +724,17 @@ function stripDataUrl(value: string): { raw: string; mime: string } {
 
 const MAX_B64_CHARS = Math.ceil(500 * 1024 * (4 / 3));
 
+// GET /api/admin/settings/theme  ← must be registered BEFORE /:group
+adminRouter.get("/settings/theme", requireAuth, requireAdmin, (_req: Request, res: Response) => {
+  res.json({
+    theme_primary:         getSetting("theme_primary")         ?? "#2563eb",
+    theme_sidebar_bg:      getSetting("theme_sidebar_bg")      ?? "#1e2235",
+    theme_sidebar_text:    getSetting("theme_sidebar_text")    ?? "#94a3b8",
+    theme_accent:          getSetting("theme_accent")          ?? "#f59e0b",
+    theme_colorblind_mode: getSetting("theme_colorblind_mode") ?? "false",
+  });
+});
+
 // GET /api/admin/settings/branding  ← must be registered BEFORE /:group
 adminRouter.get("/settings/branding", requireAuth, requireAdmin, (_req: Request, res: Response) => {
   res.json({
@@ -739,6 +761,10 @@ adminRouter.patch("/settings/branding", requireAuth, requireAdmin, (req: Request
   }
   if ("branding_footer_text" in body) setSetting("branding_footer_text", String(body.branding_footer_text ?? ""));
   if ("branding_footer_url" in body)  setSetting("branding_footer_url",  String(body.branding_footer_url  ?? ""));
+  const THEME_KEYS = ["theme_primary", "theme_sidebar_bg", "theme_sidebar_text", "theme_accent", "theme_colorblind_mode"] as const;
+  for (const k of THEME_KEYS) {
+    if (k in body) setSetting(k, String((body as Record<string, string>)[k] ?? ""));
+  }
   res.json({ success: true });
 });
 

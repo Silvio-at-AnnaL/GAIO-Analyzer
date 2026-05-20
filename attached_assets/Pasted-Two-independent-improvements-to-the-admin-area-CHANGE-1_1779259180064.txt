@@ -1,0 +1,265 @@
+Two independent improvements to the admin area.
+
+---
+
+CHANGE 1 — Color theme editor in 
+Erscheinungsbild
+
+Add a new card "Farbschema" to 
+BrandingView.tsx, below the Logo and 
+Footer cards.
+
+--- DATABASE ---
+
+INSERT OR IGNORE into settings:
+
+  theme_primary        = '#2563eb'  (blue)
+  theme_sidebar_bg     = '#1e2235'  (dark navy)
+  theme_sidebar_text   = '#94a3b8'  (muted slate)
+  theme_accent         = '#f59e0b'  (amber)
+  theme_colorblind_mode = 'false'
+
+--- BACKEND ---
+
+  GET /api/public/theme
+    No auth. Returns all theme_* settings.
+    Called on app load alongside branding.
+
+  PATCH /api/admin/settings/branding
+    Already handles branding saves — 
+    extend to also accept theme_* keys 
+    in the same request body.
+
+--- FRONTEND: theme card in BrandingView ---
+
+SECTION: "Farbschema"
+
+Four color pickers, each showing a 
+labeled swatch + hex input:
+
+  Primärfarbe
+    Used for: buttons, active nav item, 
+    links, focus rings
+    Default: #2563eb
+    
+  Akzentfarbe  
+    Used for: score highlights, badges, 
+    active tab underline
+    Default: #f59e0b
+    
+  Sidebar-Hintergrund
+    Default: #1e2235
+    
+  Sidebar-Text
+    Default: #94a3b8
+
+Each picker: a color swatch (click to 
+open native color input) + hex text 
+field that updates on input and validates 
+format. Both stay in sync.
+
+Below the four pickers:
+
+  "Farbenblinden-Modus" toggle switch
+  Label: "Barrierefreie Farbgebung 
+  (Rot-Grün-sicher)"
+  
+  When ON:
+    Forces these overrides regardless of 
+    custom color settings:
+      Success/positive → blue (#2563eb)
+      Error/critical → amber (#d97706)
+      Warning → dark amber (#92400e text)
+    
+    Shows an info box:
+      "Im Farbenblinden-Modus werden 
+      Rot- und Grün-Töne durch Blau und 
+      Amber ersetzt. Alle Status-Anzeigen 
+      bleiben durch Icons zusätzlich 
+      unterscheidbar."
+    
+  When OFF:
+    The standard score/status colors 
+    are used (the existing green/red scheme).
+
+"Vorschau" section below the pickers:
+  A small live preview panel (approx 300px wide) 
+  showing:
+    - A mini sidebar strip with the chosen 
+      sidebar colors
+    - A primary button in the primary color
+    - Two status badges: one "Erfolg" in 
+      success color, one "Fehler" in error color
+    - An accent-colored score number "76"
+  Updates in real-time as the user adjusts 
+  colors — no save needed to see the preview.
+
+"Auf Standard zurücksetzen" link resets 
+all five values to their defaults.
+
+"Farbschema speichern" button.
+
+--- APPLYING THE THEME ---
+
+On app load, fetch GET /api/public/theme 
+(already called alongside branding).
+Store in BrandingContext (extend the 
+existing context).
+
+Apply via CSS custom properties on 
+the document root:
+
+  document.documentElement.style
+    .setProperty('--color-primary', 
+      theme.primary)
+  document.documentElement.style
+    .setProperty('--sidebar-bg', 
+      theme.sidebarBg)
+  // etc.
+
+In index.css, change hardcoded color 
+values to reference these custom 
+properties wherever the theme colors 
+are used. This ensures every new 
+component automatically uses the 
+configured colors.
+
+For colorblind mode, add a class to 
+document.body:
+  body.colorblind-mode
+
+And in index.css, override status 
+colors under that class:
+  body.colorblind-mode .status-success { 
+    color: #2563eb; background: #eff6ff; 
+  }
+  body.colorblind-mode .status-error { 
+    color: #d97706; background: #fffbeb; 
+  }
+  etc.
+
+---
+
+CHANGE 2 — Rechtemanagement: 
+single source of truth, always in sync
+
+PROBLEM: Every time a new admin feature 
+is added, it must be manually added to 
+the permissions matrix. "Geteilte Analysen" 
+was already missed.
+
+FIX: Define the complete feature list in 
+ONE place that both the permissions 
+enforcement AND the PermissionsView read from.
+
+Create a shared constant file:
+  src/config/adminFeatures.ts
+
+  export const ADMIN_FEATURES = [
+    { 
+      id: 'nutzerverwaltung', 
+      label: 'Nutzerverwaltung',
+      icon: 'Users',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'analyseprotokoll', 
+      label: 'Analyseprotokoll',
+      icon: 'ClipboardList',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'geteilte_analysen',   // ← was missing
+      label: 'Geteilte Analysen',
+      icon: 'Share2',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'erscheinungsbild', 
+      label: 'Erscheinungsbild',
+      icon: 'Palette',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'kontakt_daten', 
+      label: 'Kontakt-Daten',
+      icon: 'ContactRound',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'rechtemanagement', 
+      label: 'Rechtemanagement',
+      icon: 'ShieldCheck',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'ki_tool', 
+      label: 'KI-Tool',
+      icon: 'Cpu',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'mailserver', 
+      label: 'Mailserver',
+      icon: 'Mail',
+      defaultRoles: ['admin']
+    },
+    { 
+      id: 'versand_analyse', 
+      label: 'Versand-Analyse',
+      icon: 'Send',
+      defaultRoles: ['admin']
+    },
+  ] as const
+
+  export type FeatureId = 
+    typeof ADMIN_FEATURES[number]['id']
+
+PermissionsView.tsx:
+  Import ADMIN_FEATURES and iterate over 
+  it to render the table rows.
+  Never hardcode feature ids in this view.
+
+canAccess() utility:
+  Import ADMIN_FEATURES to validate 
+  feature ids at call time.
+
+Permissions initialization (backend):
+  On startup, read current permissions_json.
+  For each feature in ADMIN_FEATURES 
+  that is NOT yet in permissions_json, 
+  add it with its defaultRoles.
+  Save back to DB.
+  This means new features are automatically 
+  registered with safe defaults on next 
+  server start — no manual DB seed needed.
+
+  Pseudocode:
+    const current = JSON.parse(
+      getSetting('permissions_json') || '{}'
+    )
+    let changed = false
+    for (const feature of ADMIN_FEATURES) {
+      if (!(feature.id in current)) {
+        current[feature.id] = 
+          feature.defaultRoles
+        changed = true
+      }
+    }
+    if (changed) {
+      setSetting('permissions_json', 
+        JSON.stringify(current))
+    }
+
+This auto-registration runs on every 
+server start, so any future feature 
+added to ADMIN_FEATURES automatically 
+appears in Rechtemanagement with 
+admin-only access as the safe default.
+
+For ADMIN_FEATURES additions in the future:
+  The developer only needs to add one 
+  entry to adminFeatures.ts. The 
+  permissions matrix, sidebar visibility, 
+  and access enforcement all pick it up 
+  automatically.

@@ -137,6 +137,12 @@ const DEFAULT_SETTINGS: [string, string][] = [
   ["sharing_base_url",         ""],
   ["sharing_default_expiry_days", "30"],
   ["sharing_enabled",          "true"],
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  ["theme_primary",            "#2563eb"],
+  ["theme_sidebar_bg",         "#1e2235"],
+  ["theme_sidebar_text",       "#94a3b8"],
+  ["theme_accent",             "#f59e0b"],
+  ["theme_colorblind_mode",    "false"],
 ];
 const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);
@@ -177,6 +183,29 @@ export function setSetting(key: string, value: string): void {
       logger.info("Claude API key auto-seeded from Replit AI Integration");
     }
   }
+}
+
+// ── Auto-register missing permission entries on every server start ────────────
+{
+  const ALL_FEATURE_IDS = [
+    "nutzerverwaltung", "analyseprotokoll", "geteilte_analysen",
+    "erscheinungsbild", "kontakt_daten", "rechtemanagement",
+    "ki_tool", "mailserver", "versand_analyse",
+  ];
+  try {
+    const current = JSON.parse(getSetting("permissions_json") ?? "{}") as Record<string, string[]>;
+    let changed = false;
+    for (const id of ALL_FEATURE_IDS) {
+      if (!(id in current)) {
+        current[id] = ["admin"];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setSetting("permissions_json", JSON.stringify(current));
+      logger.info("Permissions auto-registered for new features");
+    }
+  } catch { /* ignore */ }
 }
 
 // ── Analysis log helpers ──────────────────────────────────────────────────────

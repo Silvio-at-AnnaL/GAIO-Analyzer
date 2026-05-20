@@ -108,7 +108,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         )}
 
         {/* Geteilte Analysen */}
-        {isAuthenticated && role === "admin" && (
+        {isAuthenticated && canAccess("geteilte_analysen", role, permissions) && (
           <NavButton id={17} icon={Share2} label="Geteilte Analysen" active={activeView === 17} onClick={() => navigate(17)} />
         )}
 
