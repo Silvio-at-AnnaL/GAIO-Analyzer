@@ -188,7 +188,7 @@ export function setSetting(key: string, value: string): void {
 // ── Auto-register missing permission entries on every server start ────────────
 {
   const ALL_FEATURE_IDS = [
-    "nutzerverwaltung", "analyseprotokoll", "geteilte_analysen",
+    "nutzerverwaltung", "analyseprotokoll", "geteilte_analysen", "angebots_creator",
     "erscheinungsbild", "kontakt_daten", "rechtemanagement",
     "ki_tool", "mailserver", "versand_analyse",
   ];

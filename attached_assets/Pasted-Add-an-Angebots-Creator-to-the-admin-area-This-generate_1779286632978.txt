@@ -1,0 +1,238 @@
+Add an "Angebots-Creator" to the admin area.
+This generates a structured KI-Optimierung 
+proposal from a stored analysis, displays it 
+in a WYSIWYG editor, and provides a 
+"Copy as HTML" export button.
+
+---
+
+SIDEBAR + ROUTING
+
+Add new admin sidebar item:
+  Label: "Angebots-Creator"
+  Icon: FileText (lucide)
+  Position: after Analyseprotokoll
+  Access: same permissions as Analyseprotokoll
+
+---
+
+BACKEND: new endpoint
+
+POST /api/admin/angebot/generate
+  Admin only.
+  Body: { analysisId: number }
+  
+  1. Fetch the analysis record from 
+     analysis_log by id. 
+     Also fetch its html_export from 
+     analysis_exports if available.
+  
+  2. Parse scores_json from the log entry.
+  
+  3. Also fetch recommendation data. 
+     The recommendations are stored in 
+     the html_export HTML. Extract the 
+     <div class="rec"> elements from the 
+     HTML to get the actual recommendation 
+     texts (finding + fix fields).
+     Parse into three arrays:
+       kritisch[], hoherHebel[], nachgeordnet[]
+     Each item: { finding: string, fix: string }
+  
+  4. Build and send this prompt to the 
+     active AI provider via callLLM():
+
+  "Du bist ein erfahrener SEO- und 
+  KI-Optimierungsberater einer deutschen 
+  Agentur. Erstelle ein professionelles, 
+  deutschsprachiges Angebot zur 
+  KI-Optimierung für folgende Website-Analyse.
+  
+  Unternehmen: [companyName]
+  Domain: [domain]
+  Analysedatum: [completedAt]
+
+  GAIO Gesamtscore: [gaioScore]/100
+  Technisches SEO: [scores.technical]/100
+  Schema.org: [scores.schema]/100
+  Heading-Struktur: [scores.headings]/100
+  Inhaltliche Relevanz: [scores.content]/100
+  FAQ-Qualität: [scores.faq]/100
+  LLM-Auffindbarkeit: [scores.llm]/100
+
+  KRITISCHE MASSNAHMEN:
+  [für jede: '• [finding] → [fix]']
+
+  HOHER HEBEL:
+  [für jede: '• [finding] → [fix]']
+
+  NACHGEORDNET:
+  [für jede: '• [finding] → [fix]']
+
+  Erstelle ein Angebot mit diesen Abschnitten:
+  1. Ausgangslage mit Score-Tabelle und 
+     kurzer Bewertung
+  2. Leistungsübersicht — drei Stufen 
+     (Kritisch / Hoher Hebel / Nachgeordnet) 
+     mit je Kurzbezeichnung und Aufwand in 
+     Stunden je Maßnahme (marktüblich, 
+     realistisch schätzen)
+  3. Drei Pakete S/M/L mit Ankreuzboxen 
+     (☐ Paket S, ☐ Paket M, ☐ Paket L)
+  4. Unser Leistungsumfang (als Bulletliste)
+  5. Nächste Schritte mit Kontakt
+
+  Formatiere die Ausgabe als sauberes HTML 
+  mit ausschließlich diesen Tags:
+  <h1>, <h2>, <h3>, <p>, <strong>, <em>, 
+  <ul>, <li>, <hr>, <br>
+  Keine Tabellen. Keine Divs. Keine Style-
+  Attribute. Keine Klassen.
+  Alle Sonderzeichen als HTML-Entities.
+  Nur den Body-Inhalt, kein <html>/<head>.
+  KRITISCH: Antworte ausschließlich auf 
+  Deutsch. Kein einziges englisches Wort."
+
+  5. Return: { html: string, 
+               companyName: string, 
+               domain: string }
+
+---
+
+FRONTEND: AngebotCreatorView.tsx
+
+Create: src/views/admin/AngebotCreatorView.tsx
+
+LAYOUT (single column, max-width 900px):
+
+--- STEP 1: Analysis selection ---
+
+Heading: "Angebots-Creator"
+Subtitle: "KI-gestützte Angebotserstellung 
+aus einer bestehenden Analyse"
+
+A dropdown labeled "Analyse auswählen":
+  Populated from GET /api/admin/analysis-log
+  (same endpoint as Analyseprotokoll)
+  Only show entries with status='completed'.
+  Each option: "[Domain] · [Datum] · 
+  Score: [gaioScore]"
+  Default: "— Analyse auswählen —"
+
+Button: "Angebot generieren"
+  Disabled until an analysis is selected.
+  Loading state: "⏳ Angebot wird erstellt…"
+  During loading: button disabled, 
+  show a progress text below:
+    "Die KI analysiert die Empfehlungen 
+    und erstellt Ihren Angebotstext. 
+    Das dauert ca. 30–60 Sekunden…"
+
+--- STEP 2: WYSIWYG editor ---
+
+Appears below after generation completes.
+(Use a slide-in animation or simply render.)
+
+Install and use TipTap editor:
+  npm install @tiptap/react @tiptap/starter-kit 
+  @tiptap/extension-underline
+
+Editor configuration:
+  extensions: [StarterKit, Underline]
+  content: the returned HTML string
+  editorProps: {
+    attributes: {
+      class: 'prose prose-sm max-w-none 
+        focus:outline-none min-h-[400px] 
+        p-4 border rounded-lg bg-white'
+    }
+  }
+
+Toolbar above the editor:
+  A simple flex row of icon buttons:
+  
+  [B] Bold 
+      → editor.chain().focus()
+           .toggleBold().run()
+  [I] Italic
+      → .toggleItalic().run()
+  [U] Underline
+      → .toggleUnderline().run()
+  [H1] Heading 1
+      → .toggleHeading({ level: 1 }).run()
+  [H2] Heading 2
+      → .toggleHeading({ level: 2 }).run()
+  [H3] Heading 3
+      → .toggleHeading({ level: 3 }).run()
+  [≡] Bullet list
+      → .toggleBulletList().run()
+  [—] Horizontal rule
+      → .setHorizontalRule().run()
+  
+  Each button: 
+    Pill/icon style, 28px height
+    Active state: blue background 
+    when format is active at cursor
+
+--- STEP 3: Export bar ---
+
+Below the editor, a fixed bar 
+(sticky bottom or inline below editor):
+
+Left side: muted text showing character count
+
+Right side: two buttons:
+
+  Button 1: "Neu generieren"
+    Icon: RefreshCw (lucide)
+    Variant: outline
+    Re-runs the generation for the same 
+    selected analysis, replacing editor 
+    content (with confirmation: "Änderungen 
+    verwerfen und neu generieren?")
+
+  Button 2: "Als HTML kopieren"
+    Icon: Clipboard (lucide)
+    Variant: primary/blue
+    Action:
+      1. Get HTML from editor:
+           const html = editor.getHTML()
+      2. Copy to clipboard:
+           await navigator.clipboard
+             .writeText(html)
+      3. Show success state on button 
+         for 2 seconds:
+           "✓ HTML kopiert!"
+         Then revert to original label.
+
+--- ERROR HANDLING ---
+
+If generation fails:
+  Show inline error below the button:
+  "Angebot konnte nicht erstellt werden. 
+  Bitte prüfen Sie die KI-Tool-Einstellungen."
+  Button resets to original state.
+
+If no analyses exist in the protocol:
+  Show empty state:
+  "Noch keine abgeschlossenen Analysen 
+  im Protokoll. Führen Sie zunächst eine 
+  Analyse durch."
+
+---
+
+TIPTAP DEPENDENCY NOTE
+
+If @tiptap packages are not yet installed,
+install them:
+  npm install @tiptap/react @tiptap/pm 
+  @tiptap/starter-kit 
+  @tiptap/extension-underline
+
+If TipTap installation causes issues 
+(peer dependency conflicts), fall back 
+to a contentEditable div with 
+document.execCommand() for the toolbar 
+buttons and innerHTML for content 
+set/get. This is less elegant but has 
+zero dependencies and works reliably.

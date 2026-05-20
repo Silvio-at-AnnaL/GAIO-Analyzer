@@ -2,11 +2,13 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
+import { load as cheerioLoad } from "cheerio";
 import { db, getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
+import { callLLM } from "../lib/ai-client.js";
 import { randomUUID } from "node:crypto";
 
 declare module "express" {
@@ -685,6 +687,99 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request
   } catch (err) {
     logger.error({ err }, "Failed to delete analysis log entry");
     res.status(500).json({ error: "Fehler beim Löschen" });
+  }
+});
+
+// POST /api/admin/angebot/generate — admin only
+adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const { analysisId } = req.body as { analysisId?: unknown };
+  const id = typeof analysisId === "number" ? analysisId : parseInt(String(analysisId ?? ""), 10);
+  if (!id || isNaN(id)) { res.status(400).json({ error: "analysisId fehlt" }); return; }
+
+  type LogRow = {
+    id: number; domain: string; company_name: string | null;
+    completed_at: string | null; scores_json: string | null; html_export_id: number | null;
+  };
+  const log = db.prepare(
+    "SELECT id, domain, company_name, completed_at, scores_json, html_export_id FROM analysis_log WHERE id = ?"
+  ).get(id) as unknown as LogRow | undefined;
+  if (!log) { res.status(404).json({ error: "Analyse nicht gefunden" }); return; }
+
+  let htmlContent = "";
+  if (log.html_export_id) {
+    const exp = db.prepare("SELECT html_content FROM analysis_exports WHERE id = ?")
+      .get(log.html_export_id) as unknown as { html_content: string } | undefined;
+    if (exp) htmlContent = exp.html_content;
+  }
+
+  let scores: Record<string, number> = {};
+  try { scores = JSON.parse(log.scores_json ?? "{}") as Record<string, number>; } catch { /* ignore */ }
+
+  const kritisch:    { finding: string; fix: string }[] = [];
+  const hoherHebel:  { finding: string; fix: string }[] = [];
+  const nachgeordnet:{ finding: string; fix: string }[] = [];
+
+  if (htmlContent) {
+    const $ = cheerioLoad(htmlContent);
+    $(".rec").each((_i, el) => {
+      const style   = $(el).attr("style") ?? "";
+      const finding = $(el).find(".finding").first().text().trim();
+      const fix     = $(el).find(".fix").first().text().trim();
+      if (!finding && !fix) return;
+      if      (style.includes("#ef4444")) kritisch.push({ finding, fix });
+      else if (style.includes("#f59e0b")) hoherHebel.push({ finding, fix });
+      else                                nachgeordnet.push({ finding, fix });
+    });
+  }
+
+  const fmt = (arr: { finding: string; fix: string }[]) =>
+    arr.length ? arr.map(r => `• ${r.finding} → ${r.fix}`).join("\n") : "– keine –";
+
+  const sc = (k: string) => scores[k] !== undefined ? String(scores[k]) : "–";
+
+  const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein professionelles, deutschsprachiges Angebot zur KI-Optimierung für folgende Website-Analyse.
+
+Unternehmen: ${log.company_name ?? log.domain}
+Domain: ${log.domain}
+Analysedatum: ${log.completed_at?.slice(0, 10) ?? "–"}
+
+GAIO Gesamtscore: ${sc("gaio")}/100
+Technisches SEO: ${sc("technical")}/100
+Schema.org: ${sc("schema")}/100
+Heading-Struktur: ${sc("headings")}/100
+Inhaltliche Relevanz: ${sc("content")}/100
+FAQ-Qualität: ${sc("faq")}/100
+LLM-Auffindbarkeit: ${sc("llm")}/100
+
+KRITISCHE MASSNAHMEN:
+${fmt(kritisch)}
+
+HOHER HEBEL:
+${fmt(hoherHebel)}
+
+NACHGEORDNET:
+${fmt(nachgeordnet)}
+
+Erstelle ein Angebot mit diesen Abschnitten:
+1. Ausgangslage mit Score-Tabelle und kurzer Bewertung
+2. Leistungsübersicht — drei Stufen (Kritisch / Hoher Hebel / Nachgeordnet) mit je Kurzbezeichnung und Aufwand in Stunden je Maßnahme (marktüblich, realistisch schätzen)
+3. Drei Pakete S/M/L mit Ankreuzboxen (☐ Paket S, ☐ Paket M, ☐ Paket L)
+4. Unser Leistungsumfang (als Bulletliste)
+5. Nächste Schritte mit Kontakt
+
+Formatiere die Ausgabe als sauberes HTML mit ausschließlich diesen Tags:
+<h1>, <h2>, <h3>, <p>, <strong>, <em>, <ul>, <li>, <hr>, <br>
+Keine Tabellen. Keine Divs. Keine Style-Attribute. Keine Klassen.
+Alle Sonderzeichen als HTML-Entities.
+Nur den Body-Inhalt, kein <html>/<head>.
+KRITISCH: Antworte ausschließlich auf Deutsch. Kein einziges englisches Wort.`;
+
+  try {
+    const html = await callLLM(prompt, 4096);
+    res.json({ html, companyName: log.company_name ?? log.domain, domain: log.domain });
+  } catch (err) {
+    logger.error({ err }, "Angebot generation failed");
+    res.status(500).json({ error: "KI-Generierung fehlgeschlagen" });
   }
 });
 

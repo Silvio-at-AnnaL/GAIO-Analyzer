@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
-  ArrowLeftRight, Share2,
+  ArrowLeftRight, Share2, FileText,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess } from "@/store/authStore";
@@ -105,6 +105,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Analyseprotokoll */}
         {isAuthenticated && canAccess("analyseprotokoll", role, permissions) && (
           <NavButton id={9} icon={ClipboardList} label="Analyseprotokoll" active={activeView === 9} onClick={() => navigate(9)} />
+        )}
+
+        {/* Angebots-Creator */}
+        {isAuthenticated && canAccess("angebots_creator", role, permissions) && (
+          <NavButton id={18} icon={FileText} label="Angebots-Creator" active={activeView === 18} onClick={() => navigate(18)} />
         )}
 
         {/* Geteilte Analysen */}
