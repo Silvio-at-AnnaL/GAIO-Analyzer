@@ -1,0 +1,160 @@
+Update the AI prompt in POST /api/admin/angebot/generate 
+to enforce consistent structure and prevent 
+truncation. Replace the current prompt with 
+this improved version:
+
+---
+
+NEW PROMPT (replace existing prompt entirely):
+
+  `Du bist ein erfahrener SEO- und KI-Optimierungsberater 
+  einer deutschen Agentur. Erstelle ein vollständiges, 
+  professionelles Angebot zur KI- und SEO-Optimierung.
+
+  KUNDENDATEN:
+  Unternehmen: ${companyName}
+  Domain: ${domain}
+  Analysedatum: ${analysisDate}
+
+  ANALYSEERGEBNISSE:
+  GAIO Gesamtscore: ${gaioScore}/100
+  Technisches SEO: ${scores.technical}/100
+  Schema.org: ${scores.schema}/100
+  Heading-Struktur: ${scores.headings}/100
+  Inhaltliche Relevanz: ${scores.content}/100
+  FAQ-Qualität: ${scores.faq}/100
+  LLM-Auffindbarkeit: ${scores.llm}/100
+
+  IDENTIFIZIERTE MASSNAHMEN:
+
+  KRITISCH:
+  ${kritischItems.map((r, i) => 
+    `K${i+1}: ${r.finding} → ${r.fix}`).join('\n')}
+
+  HOHER HEBEL:
+  ${hoherHebelItems.map((r, i) => 
+    `H${i+1}: ${r.finding} → ${r.fix}`).join('\n')}
+
+  NACHGEORDNET:
+  ${nachgeordnetItems.map((r, i) => 
+    `N${i+1}: ${r.finding} → ${r.fix}`).join('\n')}
+
+  PFLICHTSTRUKTUR — halte dich exakt an diese 
+  Reihenfolge und lass keinen Abschnitt aus:
+
+  ABSCHNITT 1: <h2>1. Ausgangslage und Bewertung</h2>
+  - Einleitungsabsatz (2–3 Sätze) mit Gesamteinschätzung
+  - Score-Liste als <ul> mit allen 7 Werten inkl. 
+    kurzer Einordnung je Score
+  - Abschlussfazit (2–3 Sätze) mit realistischer 
+    Score-Prognose nach Umsetzung
+  - Abschließen mit: <hr><br>
+
+  ABSCHNITT 2: <h2>2. Leistungsübersicht</h2>
+  Einleitungssatz zur Struktur, dann:
+
+  <h3>Stufe 1 — Kritische Maßnahmen</h3>
+  - Einen einleitenden Satz
+  - Jede Maßnahme als <li> mit <strong>Titel</strong>, 
+    Kurzbeschreibung und kursivem Aufwand:
+    Beispiel: <strong>Titel:</strong> Beschreibung. 
+    <em>Aufwand: X Stunden</em>
+  - PFLICHT am Ende der Stufe 1:
+    <p><strong>Gesamtaufwand Stufe 1: 
+    ca. X Stunden</strong></p>
+  
+  <h3>Stufe 2 — Hoher Hebel</h3>
+  - Einen einleitenden Satz
+  - Gleiche Liststruktur wie Stufe 1
+  - PFLICHT am Ende der Stufe 2:
+    <p><strong>Gesamtaufwand Stufe 2: 
+    ca. X Stunden</strong></p>
+  
+  <h3>Stufe 3 — Nachgeordnete Maßnahmen</h3>
+  - Einen einleitenden Satz
+  - Gleiche Liststruktur
+  - PFLICHT am Ende der Stufe 3:
+    <p><strong>Gesamtaufwand Stufe 3: 
+    ca. X Stunden</strong></p>
+  - Dann direkt darunter:
+    <p><strong>Gesamtaufwand aller Stufen: 
+    ca. X Stunden</strong></p>
+  - Abschließen mit: <hr><br>
+
+  ABSCHNITT 3: <h2>3. Leistungspakete</h2>
+  Einen einleitenden Satz, dann drei Pakete:
+
+  <h3>[ ] Paket S — [kurzer Name]</h3>
+  - <strong>Zielgruppe:</strong> 1 Satz
+  - <strong>Gesamtaufwand:</strong> ca. X Stunden
+  - <ul> mit enthaltenen Leistungen (Stufe 1)
+  - <strong>Erwarteter Effekt:</strong> 1–2 Sätze
+  - Abschließen mit: <hr><br>
+
+  <h3>[ ] Paket M — [kurzer Name]</h3>
+  - <strong>Zielgruppe:</strong> 1 Satz
+  - <strong>Gesamtaufwand:</strong> ca. X Stunden 
+    (inklusive Paket S)
+  - <ul> mit enthaltenen Leistungen (Stufen 1+2)
+  - <strong>Erwarteter Effekt:</strong> 2–3 Sätze 
+    inkl. realistischer Score-Prognose
+  - Abschließen mit: <hr><br>
+
+  <h3>[ ] Paket L — [kurzer Name]</h3>
+  - <strong>Zielgruppe:</strong> 1 Satz
+  - <strong>Gesamtaufwand:</strong> ca. X Stunden 
+    (inklusive Pakete S und M)
+  - <ul> mit enthaltenen Leistungen (Stufen 1+2+3) 
+    plus Qualitätssicherung und Abschluss-Audit
+  - <strong>Erwarteter Effekt:</strong> 2–3 Sätze 
+    inkl. maximaler Score-Prognose
+  - Abschließen mit: <hr><br>
+
+  ABSCHNITT 4: <h2>4. Unser Leistungsumfang</h2>
+  - Einleitungssatz
+  - <ul> mit 6–8 Bulletpoints zu Kompetenzen 
+    (CMS-Umsetzung, JSON-LD, redaktionelle Texte, 
+    llms.txt, Qualitätssicherung, GAIO-Folgeaudit etc.)
+  - Abschlussparagraph mit Qualitätssicherungshinweis
+
+  ABSCHNITT 5: <h2>5. Nächste Schritte</h2>
+  - 2–3 Sätze zur Beauftragung
+  - Kontaktzeile:
+    <p><strong>Ansprechpartner:</strong> 
+    Silvio Haase · CMO & Head of Business Development<br>
+    <strong>E-Mail:</strong> 
+    Silvio.Haase@IndustryStock.com<br>
+    <strong>Unternehmen:</strong> 
+    Deutscher Medien Verlag GmbH / IndustryStock.com</p>
+  - Gültigkeitshinweis (30 Tage)
+
+  ---
+
+  ABSOLUTE REGELN — diese gelten ohne Ausnahme:
+
+  1. Schreibe ALLE 5 Abschnitte vollständig zu Ende. 
+     Brich unter keinen Umständen ab.
+  2. Jede Stufe MUSS mit einer Gesamtaufwand-Zeile 
+     enden. Ohne Ausnahme.
+  3. Alle Pakete müssen vollständig ausformuliert sein.
+  4. Verwende NUR diese HTML-Tags: <h1> <h2> <h3> 
+     <p> <strong> <em> <ul> <li> <hr> <br>
+  5. Keine Tabellen, keine Divs, keine Style-Attribute.
+  6. Beginne direkt mit <h1>. Keine Präambel.
+  7. Keine Markdown-Fences (kein \`\`\`html).
+  8. Alle Sonderzeichen als HTML-Entities.
+  9. Nach jedem <hr> ein <br> einfügen.
+  10. Ausschließlich Deutsch. Kein einziges 
+      englisches Wort.
+  11. Das Angebot endet mit Abschnitt 5. 
+      Der letzte Satz muss ein vollständiger 
+      Satz sein.`
+
+---
+
+Also increase max_tokens to 6000 for this 
+endpoint — 4000 is still too low for a 
+complete 5-section offer with detailed 
+package descriptions.
+
+  const result = await callLLM(prompt, 6000)

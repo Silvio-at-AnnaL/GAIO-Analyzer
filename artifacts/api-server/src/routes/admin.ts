@@ -734,16 +734,19 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
     });
   }
 
-  const fmt = (arr: { finding: string; fix: string }[]) =>
-    arr.length ? arr.map(r => `• ${r.finding} → ${r.fix}`).join("\n") : "– keine –";
+  const fmtNamed = (arr: { finding: string; fix: string }[], prefix: string) =>
+    arr.length
+      ? arr.map((r, i) => `${prefix}${i + 1}: ${r.finding} → ${r.fix}`).join("\n")
+      : "– keine –";
 
-  // FIX 3 — prompt instructions to avoid markdown fences
-  const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein professionelles, deutschsprachiges Angebot zur KI-Optimierung für folgende Website-Analyse.
+  const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein vollständiges, professionelles Angebot zur KI- und SEO-Optimierung.
 
+KUNDENDATEN:
 Unternehmen: ${log.company_name ?? log.domain}
 Domain: ${log.domain}
 Analysedatum: ${log.completed_at?.slice(0, 10) ?? "–"}
 
+ANALYSEERGEBNISSE:
 GAIO Gesamtscore: ${log.gaio_score !== null ? log.gaio_score : "–"}/100
 Technisches SEO: ${sc("technicalSeo")}/100
 Schema.org: ${sc("schemaOrg")}/100
@@ -752,34 +755,105 @@ Inhaltliche Relevanz: ${sc("contentRelevance")}/100
 FAQ-Qualität: ${sc("faqQuality")}/100
 LLM-Auffindbarkeit: ${sc("llmDiscoverability")}/100
 
-KRITISCHE MASSNAHMEN:
-${fmt(kritisch)}
+IDENTIFIZIERTE MASSNAHMEN:
+
+KRITISCH:
+${fmtNamed(kritisch, "K")}
 
 HOHER HEBEL:
-${fmt(hoherHebel)}
+${fmtNamed(hoherHebel, "H")}
 
 NACHGEORDNET:
-${fmt(nachgeordnet)}
+${fmtNamed(nachgeordnet, "N")}
 
-Erstelle ein Angebot mit diesen Abschnitten:
-1. Ausgangslage mit Score-Tabelle und kurzer Bewertung
-2. Leistungsübersicht — drei Stufen (Kritisch / Hoher Hebel / Nachgeordnet) mit je Kurzbezeichnung und Aufwand in Stunden je Maßnahme (marktüblich, realistisch schätzen)
-3. Drei Pakete S/M/L mit Ankreuzboxen mit [ ] vor dem Paketnamen ([ ] Paket S, [ ] Paket M, [ ] Paket L)
-4. Unser Leistungsumfang (als Bulletliste)
-5. Nächste Schritte mit Kontakt
+PFLICHTSTRUKTUR — halte dich exakt an diese Reihenfolge und lass keinen Abschnitt aus:
 
-Formatiere die Ausgabe als sauberes HTML mit ausschließlich diesen Tags:
-<h1>, <h2>, <h3>, <p>, <strong>, <em>, <ul>, <li>, <hr>, <br>
-Keine Tabellen. Keine Divs. Keine Style-Attribute. Keine Klassen.
-Alle Sonderzeichen als HTML-Entities.
-Nur den Body-Inhalt, kein <html>/<head>.
-Füge nach jedem <hr>-Tag immer ein <br>-Tag ein.
-Antworte ausschließlich mit dem reinen HTML-Inhalt. Keine Markdown-Code-Fences, kein \`\`\`html, keine Erklärungen davor oder danach. Beginne direkt mit <h1>.
-KRITISCH: Antworte ausschließlich auf Deutsch. Kein einziges englisches Wort.
-Wichtig: Schreibe das Angebot vollständig zu Ende. Brich niemals mitten in einem Satz oder Abschnitt ab. Der letzte Abschnitt muss mit einem vollständigen Schlusssatz enden.`;
+ABSCHNITT 1: <h2>1. Ausgangslage und Bewertung</h2>
+- Einleitungsabsatz (2–3 Sätze) mit Gesamteinschätzung
+- Score-Liste als <ul> mit allen 7 Werten inkl. kurzer Einordnung je Score
+- Abschlussfazit (2–3 Sätze) mit realistischer Score-Prognose nach Umsetzung
+- Abschließen mit: <hr><br>
+
+ABSCHNITT 2: <h2>2. Leistungsübersicht</h2>
+Einleitungssatz zur Struktur, dann:
+
+<h3>Stufe 1 — Kritische Maßnahmen</h3>
+- Einen einleitenden Satz
+- Jede Maßnahme als <li> mit <strong>Titel</strong>, Kurzbeschreibung und kursivem Aufwand
+  Beispiel: <strong>Titel:</strong> Beschreibung. <em>Aufwand: X Stunden</em>
+- PFLICHT am Ende der Stufe 1:
+  <p><strong>Gesamtaufwand Stufe 1: ca. X Stunden</strong></p>
+
+<h3>Stufe 2 — Hoher Hebel</h3>
+- Einen einleitenden Satz
+- Gleiche Liststruktur wie Stufe 1
+- PFLICHT am Ende der Stufe 2:
+  <p><strong>Gesamtaufwand Stufe 2: ca. X Stunden</strong></p>
+
+<h3>Stufe 3 — Nachgeordnete Maßnahmen</h3>
+- Einen einleitenden Satz
+- Gleiche Liststruktur
+- PFLICHT am Ende der Stufe 3:
+  <p><strong>Gesamtaufwand Stufe 3: ca. X Stunden</strong></p>
+- Dann direkt darunter:
+  <p><strong>Gesamtaufwand aller Stufen: ca. X Stunden</strong></p>
+- Abschließen mit: <hr><br>
+
+ABSCHNITT 3: <h2>3. Leistungspakete</h2>
+Einen einleitenden Satz, dann drei Pakete:
+
+<h3>[ ] Paket S — [kurzer Name]</h3>
+- <strong>Zielgruppe:</strong> 1 Satz
+- <strong>Gesamtaufwand:</strong> ca. X Stunden
+- <ul> mit enthaltenen Leistungen (Stufe 1)
+- <strong>Erwarteter Effekt:</strong> 1–2 Sätze
+- Abschließen mit: <hr><br>
+
+<h3>[ ] Paket M — [kurzer Name]</h3>
+- <strong>Zielgruppe:</strong> 1 Satz
+- <strong>Gesamtaufwand:</strong> ca. X Stunden (inklusive Paket S)
+- <ul> mit enthaltenen Leistungen (Stufen 1+2)
+- <strong>Erwarteter Effekt:</strong> 2–3 Sätze inkl. realistischer Score-Prognose
+- Abschließen mit: <hr><br>
+
+<h3>[ ] Paket L — [kurzer Name]</h3>
+- <strong>Zielgruppe:</strong> 1 Satz
+- <strong>Gesamtaufwand:</strong> ca. X Stunden (inklusive Pakete S und M)
+- <ul> mit enthaltenen Leistungen (Stufen 1+2+3) plus Qualitätssicherung und Abschluss-Audit
+- <strong>Erwarteter Effekt:</strong> 2–3 Sätze inkl. maximaler Score-Prognose
+- Abschließen mit: <hr><br>
+
+ABSCHNITT 4: <h2>4. Unser Leistungsumfang</h2>
+- Einleitungssatz
+- <ul> mit 6–8 Bulletpoints zu Kompetenzen (CMS-Umsetzung, JSON-LD, redaktionelle Texte, llms.txt, Qualitätssicherung, GAIO-Folgeaudit etc.)
+- Abschlussparagraph mit Qualitätssicherungshinweis
+
+ABSCHNITT 5: <h2>5. Nächste Schritte</h2>
+- 2–3 Sätze zur Beauftragung
+- Kontaktzeile:
+  <p><strong>Ansprechpartner:</strong> Silvio Haase · CMO &amp; Head of Business Development<br>
+  <strong>E-Mail:</strong> Silvio.Haase@IndustryStock.com<br>
+  <strong>Unternehmen:</strong> Deutscher Medien Verlag GmbH / IndustryStock.com</p>
+- Gültigkeitshinweis (30 Tage)
+
+---
+
+ABSOLUTE REGELN — diese gelten ohne Ausnahme:
+
+1. Schreibe ALLE 5 Abschnitte vollständig zu Ende. Brich unter keinen Umständen ab.
+2. Jede Stufe MUSS mit einer Gesamtaufwand-Zeile enden. Ohne Ausnahme.
+3. Alle Pakete müssen vollständig ausformuliert sein.
+4. Verwende NUR diese HTML-Tags: <h1> <h2> <h3> <p> <strong> <em> <ul> <li> <hr> <br>
+5. Keine Tabellen, keine Divs, keine Style-Attribute.
+6. Beginne direkt mit <h1>. Keine Präambel.
+7. Keine Markdown-Fences.
+8. Alle Sonderzeichen als HTML-Entities.
+9. Nach jedem <hr> ein <br> einfügen.
+10. Ausschließlich Deutsch. Kein einziges englisches Wort.
+11. Das Angebot endet mit Abschnitt 5. Der letzte Satz muss ein vollständiger Satz sein.`;
 
   try {
-    const rawHtml = await callLLM(prompt, 4000);
+    const rawHtml = await callLLM(prompt, 6000);
 
     // FIX 3 — strip markdown code fences if present
     let html = rawHtml.trim();
