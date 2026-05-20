@@ -8,11 +8,21 @@ import {
 } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 
+interface ScoresJson {
+  technicalSeo:       number | null;
+  schemaOrg:          number | null;
+  headingStructure:   number | null;
+  contentRelevance:   number | null;
+  faqQuality:         number | null;
+  llmDiscoverability: number | null;
+}
+
 interface AnalysisItem {
   id: number;
   domain: string;
   companyName: string | null;
   gaioScore: number | null;
+  scoresJson: string | null;
   completedAt: string | null;
   status: string;
 }
@@ -23,9 +33,36 @@ interface GeneratedResult {
   domain: string;
 }
 
-function formatDate(iso: string | null): string {
+function formatDateTime(iso: string | null): string {
   if (!iso) return "–";
-  return iso.slice(0, 10).split("-").reverse().join(".");
+  try {
+    return new Date(iso).toLocaleString("de-DE", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+function scoreColor(score: number | null): string {
+  if (score === null || score === undefined) return "#9ca3af";
+  if (score >= 76) return "#16a34a";
+  if (score >= 61) return "#84cc16";
+  if (score >= 41) return "#f59e0b";
+  return "#ef4444";
+}
+
+function ScoreRow({ label, value }: { label: string; value: number | null }) {
+  const color = scoreColor(value);
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold tabular-nums" style={{ color }}>
+        {value !== null ? `${value}/100` : "–"}
+      </span>
+    </div>
+  );
 }
 
 function ToolBtn({
@@ -85,6 +122,13 @@ export function AngebotCreatorView() {
     return () => { if (copyTimer.current) clearTimeout(copyTimer.current); };
   }, []);
 
+  const selectedAnalysis = analyses.find((a) => a.id === selectedId) ?? null;
+
+  const parsedScores: ScoresJson | null = (() => {
+    if (!selectedAnalysis?.scoresJson) return null;
+    try { return JSON.parse(selectedAnalysis.scoresJson) as ScoresJson; } catch { return null; }
+  })();
+
   async function generate(force = false) {
     if (!selectedId) return;
     if (force && generated) {
@@ -119,9 +163,7 @@ export function AngebotCreatorView() {
       setCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard API may fail in some contexts */
-    }
+    } catch { /* clipboard API may fail in some contexts */ }
   }
 
   const charCount = editor ? editor.getText().length : 0;
@@ -149,11 +191,16 @@ export function AngebotCreatorView() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Dropdown — FIX 5A: show time */}
             <div>
               <label className="block text-sm font-medium mb-1.5">Analyse</label>
               <select
                 value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+                onChange={(e) => {
+                  setSelectedId(e.target.value === "" ? "" : parseInt(e.target.value, 10));
+                  setGenerated(null);
+                  setGenError("");
+                }}
                 disabled={loadingList || generating}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
               >
@@ -162,12 +209,36 @@ export function AngebotCreatorView() {
                   <option key={a.id} value={a.id}>
                     {a.domain}
                     {a.companyName ? ` · ${a.companyName}` : ""}
-                    {" · "}{formatDate(a.completedAt)}
-                    {a.gaioScore !== null ? ` · Score: ${a.gaioScore}` : ""}
+                    {" · "}{formatDateTime(a.completedAt)}
+                    {a.gaioScore !== null ? ` · GAIO: ${a.gaioScore}/100` : ""}
                   </option>
                 ))}
               </select>
             </div>
+
+            {/* FIX 5B: Score preview card */}
+            {selectedAnalysis && (
+              <div
+                className="rounded-lg border border-border px-4 py-3 space-y-2"
+                style={{ background: "hsl(var(--muted)/0.25)" }}
+              >
+                <p className="text-xs text-muted-foreground">
+                  Ausgewählte Analyse · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt)}
+                </p>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
+                  <ScoreRow label="GAIO-Score"  value={selectedAnalysis.gaioScore} />
+                  <ScoreRow label="Techn. SEO"  value={parsedScores?.technicalSeo       ?? null} />
+                  <ScoreRow label="Schema.org"  value={parsedScores?.schemaOrg           ?? null} />
+                  <ScoreRow label="Headings"    value={parsedScores?.headingStructure    ?? null} />
+                  <ScoreRow label="Inhalt"      value={parsedScores?.contentRelevance    ?? null} />
+                  <ScoreRow label="FAQ"         value={parsedScores?.faqQuality          ?? null} />
+                  <ScoreRow label="LLM"         value={parsedScores?.llmDiscoverability  ?? null} />
+                </div>
+                <p className="text-xs text-muted-foreground italic">
+                  Bitte prüfen Sie, ob dies die korrekte Analyse ist.
+                </p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <button
@@ -215,66 +286,28 @@ export function AngebotCreatorView() {
             className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border"
             style={{ background: "hsl(var(--muted)/0.4)" }}
           >
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              active={editor.isActive("bold")}
-              title="Fett"
-            >
+            <ToolBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Fett">
               <Bold className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              active={editor.isActive("italic")}
-              title="Kursiv"
-            >
+            <ToolBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Kursiv">
               <Italic className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              active={editor.isActive("underline")}
-              title="Unterstrichen"
-            >
+            <ToolBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Unterstrichen">
               <UnderlineIcon className="w-3.5 h-3.5" />
             </ToolBtn>
 
             <div style={{ width: 1, height: 20, background: "hsl(var(--border))", margin: "0 2px" }} />
 
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-              active={editor.isActive("heading", { level: 1 })}
-              title="Überschrift 1"
-            >
-              H1
-            </ToolBtn>
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-              active={editor.isActive("heading", { level: 2 })}
-              title="Überschrift 2"
-            >
-              H2
-            </ToolBtn>
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-              active={editor.isActive("heading", { level: 3 })}
-              title="Überschrift 3"
-            >
-              H3
-            </ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title="Überschrift 1">H1</ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title="Überschrift 2">H2</ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title="Überschrift 3">H3</ToolBtn>
 
             <div style={{ width: 1, height: 20, background: "hsl(var(--border))", margin: "0 2px" }} />
 
-            <ToolBtn
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
-              active={editor.isActive("bulletList")}
-              title="Aufzählungsliste"
-            >
+            <ToolBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title="Aufzählungsliste">
               <List className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn
-              onClick={() => editor.chain().focus().setHorizontalRule().run()}
-              active={false}
-              title="Trennlinie"
-            >
+            <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title="Trennlinie">
               <Minus className="w-3.5 h-3.5" />
             </ToolBtn>
           </div>
@@ -291,9 +324,7 @@ export function AngebotCreatorView() {
 
       {/* Step 3: Export bar */}
       {generated && editor && (
-        <div
-          className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
-        >
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
           <span className="text-xs text-muted-foreground">
             {charCount.toLocaleString("de-DE")} Zeichen
           </span>
@@ -312,15 +343,9 @@ export function AngebotCreatorView() {
               style={{ background: copied ? "#16a34a" : "#3b82f6" }}
             >
               {copied ? (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  HTML kopiert!
-                </>
+                <><CheckCircle className="w-3.5 h-3.5" />HTML kopiert!</>
               ) : (
-                <>
-                  <Clipboard className="w-3.5 h-3.5" />
-                  Als HTML kopieren
-                </>
+                <><Clipboard className="w-3.5 h-3.5" />Als HTML kopieren</>
               )}
             </button>
           </div>

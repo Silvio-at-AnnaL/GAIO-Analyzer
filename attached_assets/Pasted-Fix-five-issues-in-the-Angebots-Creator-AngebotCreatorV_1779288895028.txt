@@ -1,0 +1,185 @@
+Fix five issues in the Angebots-Creator 
+(AngebotCreatorView + backend endpoint).
+
+---
+
+FIX 1 — Scores show as "–/100" instead of 
+actual values
+
+The AI prompt receives the scores but they 
+are not being interpolated into the prompt 
+string. The scores_json field from the 
+analysis_log is stored as a JSON string — 
+it must be parsed before use.
+
+In the backend endpoint 
+POST /api/admin/angebot/generate:
+
+  const scoresRaw = analysisRow.scores_json
+  const scores = scoresRaw 
+    ? JSON.parse(scoresRaw) 
+    : {}
+
+Then in the prompt, replace placeholder 
+references with actual values:
+  
+  `GAIO Gesamtscore: ${analysisRow.gaio_score}/100
+  Technisches SEO: ${scores.technical ?? '–'}/100
+  Schema.org: ${scores.schema ?? '–'}/100
+  Heading-Struktur: ${scores.headings ?? '–'}/100
+  Inhaltliche Relevanz: ${scores.content ?? '–'}/100
+  FAQ-Qualität: ${scores.faq ?? '–'}/100
+  LLM-Auffindbarkeit: ${scores.llm ?? '–'}/100`
+
+Check the actual field names in scores_json — 
+they may be camelCase or snake_case depending 
+on how the analysis stores them. Log the 
+parsed scores object to console to verify 
+the exact field names, then use those.
+
+---
+
+FIX 2 — Text gets cut off mid-sentence
+
+The callLLM() function is called with a 
+max_tokens value that is too low for a full 
+proposal (the default of 1000 tokens is 
+far too short for a multi-section offer).
+
+In the angebot generate endpoint, call 
+callLLM with a higher token limit:
+
+  const result = await callLLM(prompt, 4000)
+
+If callLLM does not accept a maxTokens 
+parameter, find where the Anthropic/OpenAI 
+call is made and increase max_tokens to 
+4000 for this specific endpoint.
+
+Also add this instruction at the end of 
+the prompt to prevent truncation:
+
+  "Wichtig: Schreibe das Angebot vollständig 
+  zu Ende. Brich niemals mitten in einem 
+  Satz oder Abschnitt ab. Der letzte 
+  Abschnitt muss mit einem vollständigen 
+  Schlusssatz enden."
+
+---
+
+FIX 3 — Remove ```html wrapper from output
+
+The AI returns the HTML wrapped in a 
+markdown code fence (```html ... ```). 
+Strip this before passing to the editor.
+
+In the backend, after receiving the AI 
+response, clean the output:
+
+  let html = rawResponse.trim()
+  
+  // Remove opening ```html or ``` fence:
+  html = html.replace(/^```html\s*/i, '')
+  html = html.replace(/^```\s*/i, '')
+  
+  // Remove closing ``` fence:
+  html = html.replace(/\s*```\s*$/, '')
+  
+  html = html.trim()
+
+Also add this instruction to the prompt:
+
+  "Antworte ausschließlich mit dem reinen 
+  HTML-Inhalt. Keine Markdown-Code-Fences, 
+  kein ```html, keine Erklärungen davor 
+  oder danach. Beginne direkt mit <h1>."
+
+---
+
+FIX 4 — Add <br> after <hr> tags
+
+The Preisrechner renders content directly 
+after <hr> without spacing. Add a <br> 
+after every <hr> in the generated output.
+
+In the backend cleanup step (after 
+stripping the markdown fence):
+
+  html = html.replace(/<hr\s*\/?>/gi, 
+    '<hr><br>')
+
+Also add this instruction to the prompt:
+
+  "Füge nach jedem <hr>-Tag immer ein 
+  <br>-Tag ein."
+
+---
+
+FIX 5 — Dropdown: add time, show score 
+preview after selection
+
+In AngebotCreatorView.tsx:
+
+CHANGE A — Dropdown options include time:
+Each option label changes from:
+  "[Domain] · [Datum] · Score: [gaioScore]"
+to:
+  "[Domain] · [DD.MM.YYYY HH:MM] · 
+  GAIO: [gaioScore]/100"
+
+Format the time from completed_at using:
+  new Date(item.completed_at)
+    .toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    })
+
+CHANGE B — Score preview card after selection:
+When the user selects an analysis from the 
+dropdown, immediately show a compact 
+preview card below the dropdown (before 
+the generate button). This card appears 
+without any API call — use the data already 
+returned by the analysis log endpoint.
+
+The preview card:
+  Subtle border, rounded, padding 12px 16px
+  Background: slightly off-white or 
+    card background color
+
+  First line (muted, small):
+    "Ausgewählte Analyse · [domain] · 
+    [datetime]"
+
+  Then a 3-column or 2-column grid 
+  showing all 7 scores:
+
+    GAIO Score    [n]/100   (colored)
+    Techn. SEO    [n]/100   (colored)
+    Schema.org    [n]/100   (colored)
+    Headings      [n]/100   (colored)
+    Inhalt        [n]/100   (colored)
+    FAQ           [n]/100   (colored)
+    LLM           [n]/100   (colored)
+
+  Use the same scoreColor() function 
+  already used elsewhere in the app:
+    ≥76 → green, 61-75 → yellow-green, 
+    41-60 → amber, ≤40 → red
+
+  Last line (muted italic):
+    "Bitte prüfen Sie, ob dies die 
+    korrekte Analyse ist."
+
+The preview card disappears when the 
+dropdown is reset to the default option.
+It persists while the user clicks 
+"Angebot generieren" and during loading.
+
+For the preview to work, the GET 
+/api/admin/analysis-log endpoint must 
+return scores_json (or parsed scores) 
+alongside each log entry. Verify this 
+is included in the response — if not, 
+add it.

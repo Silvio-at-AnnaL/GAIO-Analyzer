@@ -697,11 +697,11 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
   if (!id || isNaN(id)) { res.status(400).json({ error: "analysisId fehlt" }); return; }
 
   type LogRow = {
-    id: number; domain: string; company_name: string | null;
+    id: number; domain: string; company_name: string | null; gaio_score: number | null;
     completed_at: string | null; scores_json: string | null; html_export_id: number | null;
   };
   const log = db.prepare(
-    "SELECT id, domain, company_name, completed_at, scores_json, html_export_id FROM analysis_log WHERE id = ?"
+    "SELECT id, domain, company_name, gaio_score, completed_at, scores_json, html_export_id FROM analysis_log WHERE id = ?"
   ).get(id) as unknown as LogRow | undefined;
   if (!log) { res.status(404).json({ error: "Analyse nicht gefunden" }); return; }
 
@@ -712,8 +712,10 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
     if (exp) htmlContent = exp.html_content;
   }
 
-  let scores: Record<string, number> = {};
-  try { scores = JSON.parse(log.scores_json ?? "{}") as Record<string, number>; } catch { /* ignore */ }
+  // FIX 1 — parse scores_json with correct camelCase field names
+  let scores: Record<string, number | null> = {};
+  try { scores = JSON.parse(log.scores_json ?? "{}") as Record<string, number | null>; } catch { /* ignore */ }
+  const sc = (k: string) => { const v = scores[k]; return (v !== undefined && v !== null) ? String(Math.round(v)) : "–"; };
 
   const kritisch:    { finding: string; fix: string }[] = [];
   const hoherHebel:  { finding: string; fix: string }[] = [];
@@ -735,21 +737,20 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
   const fmt = (arr: { finding: string; fix: string }[]) =>
     arr.length ? arr.map(r => `• ${r.finding} → ${r.fix}`).join("\n") : "– keine –";
 
-  const sc = (k: string) => scores[k] !== undefined ? String(scores[k]) : "–";
-
+  // FIX 3 — prompt instructions to avoid markdown fences
   const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein professionelles, deutschsprachiges Angebot zur KI-Optimierung für folgende Website-Analyse.
 
 Unternehmen: ${log.company_name ?? log.domain}
 Domain: ${log.domain}
 Analysedatum: ${log.completed_at?.slice(0, 10) ?? "–"}
 
-GAIO Gesamtscore: ${sc("gaio")}/100
-Technisches SEO: ${sc("technical")}/100
-Schema.org: ${sc("schema")}/100
-Heading-Struktur: ${sc("headings")}/100
-Inhaltliche Relevanz: ${sc("content")}/100
-FAQ-Qualität: ${sc("faq")}/100
-LLM-Auffindbarkeit: ${sc("llm")}/100
+GAIO Gesamtscore: ${log.gaio_score !== null ? log.gaio_score : "–"}/100
+Technisches SEO: ${sc("technicalSeo")}/100
+Schema.org: ${sc("schemaOrg")}/100
+Heading-Struktur: ${sc("headingStructure")}/100
+Inhaltliche Relevanz: ${sc("contentRelevance")}/100
+FAQ-Qualität: ${sc("faqQuality")}/100
+LLM-Auffindbarkeit: ${sc("llmDiscoverability")}/100
 
 KRITISCHE MASSNAHMEN:
 ${fmt(kritisch)}
@@ -772,10 +773,22 @@ Formatiere die Ausgabe als sauberes HTML mit ausschließlich diesen Tags:
 Keine Tabellen. Keine Divs. Keine Style-Attribute. Keine Klassen.
 Alle Sonderzeichen als HTML-Entities.
 Nur den Body-Inhalt, kein <html>/<head>.
-KRITISCH: Antworte ausschließlich auf Deutsch. Kein einziges englisches Wort.`;
+Füge nach jedem <hr>-Tag immer ein <br>-Tag ein.
+Antworte ausschließlich mit dem reinen HTML-Inhalt. Keine Markdown-Code-Fences, kein \`\`\`html, keine Erklärungen davor oder danach. Beginne direkt mit <h1>.
+KRITISCH: Antworte ausschließlich auf Deutsch. Kein einziges englisches Wort.
+Wichtig: Schreibe das Angebot vollständig zu Ende. Brich niemals mitten in einem Satz oder Abschnitt ab. Der letzte Abschnitt muss mit einem vollständigen Schlusssatz enden.`;
 
   try {
-    const html = await callLLM(prompt, 4096);
+    const rawHtml = await callLLM(prompt, 4000);
+
+    // FIX 3 — strip markdown code fences if present
+    let html = rawHtml.trim();
+    html = html.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```\s*$/, "");
+
+    // FIX 4 — ensure <br> after every <hr>
+    html = html.replace(/<hr\s*\/?>/gi, "<hr><br>");
+
+    html = html.trim();
     res.json({ html, companyName: log.company_name ?? log.domain, domain: log.domain });
   } catch (err) {
     logger.error({ err }, "Angebot generation failed");
