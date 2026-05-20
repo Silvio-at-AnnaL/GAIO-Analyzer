@@ -764,7 +764,7 @@ ${fmt(nachgeordnet)}
 Erstelle ein Angebot mit diesen Abschnitten:
 1. Ausgangslage mit Score-Tabelle und kurzer Bewertung
 2. Leistungsübersicht — drei Stufen (Kritisch / Hoher Hebel / Nachgeordnet) mit je Kurzbezeichnung und Aufwand in Stunden je Maßnahme (marktüblich, realistisch schätzen)
-3. Drei Pakete S/M/L mit Ankreuzboxen (☐ Paket S, ☐ Paket M, ☐ Paket L)
+3. Drei Pakete S/M/L mit Ankreuzboxen mit [ ] vor dem Paketnamen ([ ] Paket S, [ ] Paket M, [ ] Paket L)
 4. Unser Leistungsumfang (als Bulletliste)
 5. Nächste Schritte mit Kontakt
 
@@ -787,6 +787,11 @@ Wichtig: Schreibe das Angebot vollständig zu Ende. Brich niemals mitten in eine
 
     // FIX 4 — ensure <br> after every <hr>
     html = html.replace(/<hr\s*\/?>/gi, "<hr><br>");
+
+    // Replace Unicode checkbox characters with ASCII [ ]
+    html = html.replace(/☐/g, "[ ]");
+    html = html.replace(/&#9744;/g, "[ ]");
+    html = html.replace(/\u2610/g, "[ ]");
 
     html = html.trim();
     res.json({ html, companyName: log.company_name ?? log.domain, domain: log.domain });
