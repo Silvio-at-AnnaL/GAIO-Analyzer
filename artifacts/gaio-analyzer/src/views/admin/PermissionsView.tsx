@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { ShieldCheck, Save, CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { adminFetch, useAuth } from "@/store/authStore";
-import { ADMIN_FEATURES } from "@/config/adminFeatures";
+import { ADMIN_FEATURES, ADMIN_NAV_GROUPS } from "@/config/adminFeatures";
 
 const ROLES: { id: string; label: string; locked: boolean }[] = [
   { id: "admin",         label: "Admin (a)",             locked: true  },
@@ -9,11 +9,17 @@ const ROLES: { id: string; label: string; locked: boolean }[] = [
   { id: "user",          label: "User (c)",              locked: false },
 ];
 
+type AnyFeature = { id: string; label: string; defaultRoles: readonly string[]; isGroup?: boolean };
+const allFeatures = ADMIN_FEATURES as ReadonlyArray<AnyFeature>;
+const configurableFeatures = allFeatures.filter((f) => !f.isGroup);
+
 type PermissionsMap = Record<string, string[]>;
 
 const DEFAULT_PERMISSIONS: PermissionsMap = Object.fromEntries(
-  ADMIN_FEATURES.map((f) => [f.id, [...f.defaultRoles]])
+  configurableFeatures.map((f) => [f.id, [...f.defaultRoles]]),
 );
+
+const ALL_GROUP_ITEMS = new Set(ADMIN_NAV_GROUPS.flatMap((g) => g.items as readonly string[]));
 
 export function PermissionsView() {
   const { reloadPermissions } = useAuth();
@@ -66,6 +72,50 @@ export function PermissionsView() {
     }
   }
 
+  function FeatureRow({ feature, idx }: { feature: AnyFeature; idx: number }) {
+    const allowed = permissions[feature.id] ?? ["admin"];
+    return (
+      <tr
+        className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
+        style={idx % 2 !== 0 ? { background: "hsl(var(--muted)/0.15)" } : {}}
+      >
+        <td className="px-5 py-3 font-medium pl-8 text-sm">{feature.label}</td>
+        {ROLES.map((role) => {
+          if (role.locked) {
+            return (
+              <td key={role.id} className="px-4 py-3 text-center">
+                <div className="flex justify-center" title="Admins haben immer Zugriff">
+                  <Lock className="w-4 h-4 text-muted-foreground/50" />
+                </div>
+              </td>
+            );
+          }
+          const checked = allowed.includes(role.id);
+          return (
+            <td key={role.id} className="px-4 py-3 text-center">
+              <div className="flex justify-center">
+                <button
+                  onClick={() => toggle(feature.id, role.id, !checked)}
+                  className="relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none"
+                  style={{ background: checked ? "#3b82f6" : "hsl(var(--muted))" }}
+                  role="switch"
+                  aria-checked={checked}
+                >
+                  <span
+                    className="inline-block w-3.5 h-3.5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: checked ? "translateX(18px)" : "translateX(2px)" }}
+                  />
+                </button>
+              </div>
+            </td>
+          );
+        })}
+      </tr>
+    );
+  }
+
+  const standaloneFeatures = configurableFeatures.filter((f) => !ALL_GROUP_ITEMS.has(f.id));
+
   return (
     <div className="max-w-3xl space-y-6 pb-12">
       <div>
@@ -89,48 +139,40 @@ export function PermissionsView() {
             </tr>
           </thead>
           <tbody>
-            {ADMIN_FEATURES.map((feature, idx) => {
-              const allowed = permissions[feature.id] ?? ["admin"];
+            {ADMIN_NAV_GROUPS.map((group) => {
+              const groupFeatures = (group.items as readonly string[])
+                .map((itemId) => configurableFeatures.find((f) => f.id === itemId))
+                .filter((f): f is AnyFeature => f != null);
+              if (groupFeatures.length === 0) return null;
               return (
-                <tr
-                  key={feature.id}
-                  className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
-                  style={idx % 2 === 0 ? {} : { background: "hsl(var(--muted)/0.15)" }}
-                >
-                  <td className="px-5 py-3 font-medium">{feature.label}</td>
-                  {ROLES.map((role) => {
-                    if (role.locked) {
-                      return (
-                        <td key={role.id} className="px-4 py-3 text-center">
-                          <div className="flex justify-center" title="Admins haben immer Zugriff">
-                            <Lock className="w-4 h-4 text-muted-foreground/50" />
-                          </div>
-                        </td>
-                      );
-                    }
-                    const checked = allowed.includes(role.id);
-                    return (
-                      <td key={role.id} className="px-4 py-3 text-center">
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => toggle(feature.id, role.id, !checked)}
-                            className="relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none"
-                            style={{ background: checked ? "#3b82f6" : "hsl(var(--muted))" }}
-                            role="switch"
-                            aria-checked={checked}
-                          >
-                            <span
-                              className="inline-block w-3.5 h-3.5 rounded-full bg-white shadow transition-transform"
-                              style={{ transform: checked ? "translateX(18px)" : "translateX(2px)" }}
-                            />
-                          </button>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
+                <Fragment key={group.id}>
+                  <tr className="border-b border-border" style={{ background: "hsl(var(--muted)/0.3)" }}>
+                    <td colSpan={ROLES.length + 1} className="px-5 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        {group.label}
+                      </span>
+                    </td>
+                  </tr>
+                  {groupFeatures.map((feature, idx) => (
+                    <FeatureRow key={feature.id} feature={feature} idx={idx} />
+                  ))}
+                </Fragment>
               );
             })}
+            {standaloneFeatures.length > 0 && (
+              <Fragment>
+                <tr className="border-b border-border" style={{ background: "hsl(var(--muted)/0.3)" }}>
+                  <td colSpan={ROLES.length + 1} className="px-5 py-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      System
+                    </span>
+                  </td>
+                </tr>
+                {standaloneFeatures.map((feature, idx) => (
+                  <FeatureRow key={feature.id} feature={feature} idx={idx} />
+                ))}
+              </Fragment>
+            )}
           </tbody>
         </table>
       </div>

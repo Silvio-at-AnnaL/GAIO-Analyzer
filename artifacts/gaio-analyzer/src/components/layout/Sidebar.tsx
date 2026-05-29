@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  MessageSquareCode,
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
-  LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
-  ArrowLeftRight, Share2, FileText, Server,
+  LogIn, User, Users, Server, ArrowLeftRight,
+  BrainCircuit, BarChart2, Palette, ChevronDown,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
-import { useAuth, canAccess } from "@/store/authStore";
+import { useAuth, canAccess, type Permissions } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
+import { ADMIN_NAV_GROUPS, ADMIN_FEATURES } from "@/config/adminFeatures";
 
 const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
   { id: 1,  icon: Globe,      label: "Domainanalyse – Basisdaten" },
@@ -17,6 +17,27 @@ const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
   { id: 5,  icon: Mail,       label: "Kontakt" },
   { id: 6,  icon: Settings,   label: "Einstellungen" },
 ];
+
+const FEATURE_VIEW: Record<string, ActiveView> = {
+  nutzerverwaltung: 8,
+  rechtemanagement: 15,
+  analyseprotokoll: 9,
+  geteilte_analysen: 17,
+  angebots_creator: 18,
+  versand_analyse: 12,
+  erscheinungsbild: 13,
+  kontakt_daten: 14,
+  prompt_verwaltung: 19,
+  ki_tool: 10,
+};
+
+const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
+  (ADMIN_FEATURES as ReadonlyArray<{ id: string; label: string }>).map((f) => [f.id, f.label]),
+);
+
+const GROUP_ICON: Record<string, React.ElementType> = {
+  Users, BarChart2, Palette, BrainCircuit,
+};
 
 function NavButton({
   id, icon: Icon, label, active, onClick,
@@ -46,6 +67,101 @@ function NavButton({
   );
 }
 
+function NavGroup({
+  group, activeView, navigate, role, permissions,
+}: {
+  group: typeof ADMIN_NAV_GROUPS[number];
+  activeView: ActiveView;
+  navigate: (id: ActiveView) => void;
+  role: string;
+  permissions: Permissions;
+}) {
+  const accessibleItems = group.items.filter(
+    (itemId) => canAccess(itemId, role, permissions),
+  );
+
+  const isActiveGroup = group.items.some(
+    (itemId) => FEATURE_VIEW[itemId] === activeView,
+  );
+
+  const [open, setOpen] = useState(isActiveGroup);
+
+  useEffect(() => {
+    if (isActiveGroup) setOpen(true);
+  }, [isActiveGroup]);
+
+  if (accessibleItems.length === 0) return null;
+
+  const GroupIcon = GROUP_ICON[group.icon] ?? Users;
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 py-2 text-left transition-colors rounded-r-md"
+        style={{
+          paddingLeft:  "calc(0.75rem - 3px)",
+          paddingRight: "0.75rem",
+          borderLeft:   "3px solid transparent",
+          color:        "hsl(var(--sidebar-foreground))",
+          cursor:       "pointer",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "hsl(var(--sidebar-accent)/0.4)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      >
+        <span className="shrink-0 flex items-center" style={{ width: 15, height: 15 }}>
+          <GroupIcon style={{ width: 15, height: 15 }} />
+        </span>
+        <span className="flex-1 text-sm font-semibold leading-tight">{group.label}</span>
+        <span
+          className="shrink-0"
+          style={{
+            transition: "transform 150ms ease",
+            transform:  open ? "rotate(0deg)" : "rotate(-90deg)",
+            color:      "hsl(var(--sidebar-foreground)/0.5)",
+          }}
+        >
+          <ChevronDown style={{ width: 14, height: 14 }} />
+        </span>
+      </button>
+
+      <div
+        style={{
+          overflow:   "hidden",
+          maxHeight:  open ? `${accessibleItems.length * 38}px` : "0px",
+          transition: "max-height 200ms ease",
+        }}
+      >
+        {accessibleItems.map((itemId) => {
+          const viewId = FEATURE_VIEW[itemId];
+          if (!viewId) return null;
+          const label = FEATURE_LABEL[itemId] ?? itemId;
+          const active = activeView === viewId;
+          return (
+            <button
+              key={itemId}
+              data-testid={`nav-item-${viewId}`}
+              onClick={() => navigate(viewId)}
+              className="w-full text-left py-2 text-sm transition-all"
+              style={{
+                paddingLeft:  "calc(1.75rem - 3px)",
+                paddingRight: "0.75rem",
+                borderLeft:   active ? "3px solid hsl(var(--sidebar-primary))" : "3px solid transparent",
+                borderRadius: "0 6px 6px 0",
+                background:   active ? "hsl(var(--sidebar-accent))" : "transparent",
+                color:        active ? "hsl(var(--sidebar-accent-foreground))" : "hsl(var(--sidebar-foreground))",
+                fontWeight:   active ? 500 : 400,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { activeView, setActiveView, analysisStatus } = useAppStore();
   const { user, isAuthenticated, permissions } = useAuth();
@@ -64,13 +180,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const LoginIcon = isAuthenticated ? User : LogIn;
 
   const logoSrc = branding.logoSrc || "/brand-logo.png";
-
   const footerLine = branding.footerText || "IndustryStock.com";
   const footerUrl  = branding.footerUrl  || "";
 
   return (
     <>
-      {/* Brand logo */}
       <div style={{ paddingTop: 32, paddingBottom: 16, paddingLeft: 16, paddingRight: 16 }}>
         <img
           src={logoSrc}
@@ -79,7 +193,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         />
       </div>
 
-      {/* Main navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
         {MAIN_NAV.flatMap(({ id, icon, label }) => {
           const btn = <NavButton key={id} id={id} icon={icon} label={label} active={activeView === id} onClick={() => navigate(id)} />;
@@ -92,69 +205,26 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           return [btn];
         })}
 
-        {/* Admin separator */}
         <div style={{ height: 1, background: "hsl(var(--sidebar-border))", margin: "10px 12px 6px" }} />
 
-        {/* Login / Profile */}
         <NavButton id={7} icon={LoginIcon} label={loginLabel} active={activeView === 7} onClick={() => navigate(7)} />
 
-        {/* Nutzerverwaltung */}
-        {isAuthenticated && canAccess("nutzerverwaltung", role, permissions) && (
-          <NavButton id={8} icon={Users} label="Nutzerverwaltung" active={activeView === 8} onClick={() => navigate(8)} />
-        )}
+        {isAuthenticated && ADMIN_NAV_GROUPS.map((group) => (
+          <NavGroup
+            key={group.id}
+            group={group}
+            activeView={activeView}
+            navigate={navigate}
+            role={role}
+            permissions={permissions}
+          />
+        ))}
 
-        {/* Analyseprotokoll */}
-        {isAuthenticated && canAccess("analyseprotokoll", role, permissions) && (
-          <NavButton id={9} icon={ClipboardList} label="Analyseprotokoll" active={activeView === 9} onClick={() => navigate(9)} />
-        )}
-
-        {/* Angebots-Creator */}
-        {isAuthenticated && canAccess("angebots_creator", role, permissions) && (
-          <NavButton id={18} icon={FileText} label="Angebots-Creator" active={activeView === 18} onClick={() => navigate(18)} />
-        )}
-
-        {/* Prompt-Verwaltung */}
-        {isAuthenticated && canAccess("prompt_verwaltung", role, permissions) && (
-          <NavButton id={19} icon={MessageSquareCode} label="Prompt-Verwaltung" active={activeView === 19} onClick={() => navigate(19)} />
-        )}
-
-        {/* Geteilte Analysen */}
-        {isAuthenticated && canAccess("geteilte_analysen", role, permissions) && (
-          <NavButton id={17} icon={Share2} label="Geteilte Analysen" active={activeView === 17} onClick={() => navigate(17)} />
-        )}
-
-        {/* Erscheinungsbild */}
-        {isAuthenticated && canAccess("erscheinungsbild", role, permissions) && (
-          <NavButton id={13} icon={Palette} label="Erscheinungsbild" active={activeView === 13} onClick={() => navigate(13)} />
-        )}
-
-        {/* Kontakt-Daten */}
-        {isAuthenticated && canAccess("kontakt_daten", role, permissions) && (
-          <NavButton id={14} icon={ContactRound} label="Kontakt-Daten" active={activeView === 14} onClick={() => navigate(14)} />
-        )}
-
-        {/* Rechtemanagement */}
-        {isAuthenticated && canAccess("rechtemanagement", role, permissions) && (
-          <NavButton id={15} icon={ShieldCheck} label="Rechtemanagement" active={activeView === 15} onClick={() => navigate(15)} />
-        )}
-
-        {/* KI-Tool */}
-        {isAuthenticated && canAccess("ki_tool", role, permissions) && (
-          <NavButton id={10} icon={Cpu} label="KI-Tool" active={activeView === 10} onClick={() => navigate(10)} />
-        )}
-
-        {/* Server */}
         {isAuthenticated && canAccess("mailserver", role, permissions) && (
           <NavButton id={11} icon={Server} label="Server" active={activeView === 11} onClick={() => navigate(11)} />
         )}
-
-        {/* Versand-Analyse */}
-        {isAuthenticated && canAccess("versand_analyse", role, permissions) && (
-          <NavButton id={12} icon={Send} label="Versand-Analyse" active={activeView === 12} onClick={() => navigate(12)} />
-        )}
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t" style={{ borderColor: "hsl(var(--sidebar-border))", color: "hsl(var(--sidebar-foreground))", opacity: 0.4 }}>
         <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v2.0</p>
         <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>

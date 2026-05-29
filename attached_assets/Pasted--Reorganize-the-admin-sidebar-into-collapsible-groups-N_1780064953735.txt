@@ -1,0 +1,213 @@
+```
+Reorganize the admin sidebar into collapsible 
+groups. No views are changed — only the 
+sidebar navigation structure.
+
+---
+
+GROUPS (in this exact order):
+
+  1. User
+       └─ Nutzerverwaltung
+       └─ Rechtemanagement
+
+  2. Analysen
+       └─ Analyseprotokoll
+       └─ Geteilte Analysen
+       └─ Angebots-Creator
+       └─ Versand-Analyse
+
+  3. Darstellung
+       └─ Erscheinungsbild
+       └─ Kontakt-Daten
+
+  4. LLM-Einstellungen
+       └─ Prompt-Verwaltung
+       └─ KI-Tool
+
+  Standalone items (unchanged, no group):
+       Silvio Haase (Profil/Login)
+       System
+       Mailserver (now "Server")
+
+---
+
+DATA STRUCTURE
+
+In adminFeatures.ts, add a groups 
+definition alongside ADMIN_FEATURES:
+
+  export const ADMIN_NAV_GROUPS = [
+    {
+      id: 'user',
+      label: 'User',
+      icon: 'Users',
+      items: [
+        'nutzerverwaltung',
+        'rechtemanagement'
+      ]
+    },
+    {
+      id: 'analysen',
+      label: 'Analysen',
+      icon: 'BarChart2',
+      items: [
+        'analyseprotokoll',
+        'geteilte_analysen',
+        'angebot_creator',
+        'versand_analyse'
+      ]
+    },
+    {
+      id: 'darstellung',
+      label: 'Darstellung',
+      icon: 'Palette',
+      items: [
+        'erscheinungsbild',
+        'kontakt_daten'
+      ]
+    },
+    {
+      id: 'llm',
+      label: 'LLM-Einstellungen',
+      icon: 'BrainCircuit',
+      items: [
+        'prompt_verwaltung',
+        'ki_tool'
+      ]
+    },
+  ] as const
+
+---
+
+SIDEBAR BEHAVIOR
+
+In Sidebar.tsx, replace the current flat 
+list of admin items with grouped rendering.
+
+For each group in ADMIN_NAV_GROUPS:
+
+  VISIBILITY RULE:
+    A group is rendered if and only if 
+    AT LEAST ONE of its items passes 
+    canAccess(itemId, userRole, permissions).
+    If none of the items in a group are 
+    accessible, the group heading is 
+    not shown at all.
+
+  EXPAND/COLLAPSE STATE:
+    Each group has its own open/closed 
+    state: useState<boolean>
+    
+    Default state on load:
+      Open if any sub-item matches the 
+      currently active view.
+      Closed otherwise.
+    
+    State persists during the session 
+    (in component state, not localStorage).
+
+  GROUP HEADER rendering:
+    A clickable row that toggles open/closed.
+    
+    Layout (flex row):
+      [Icon 15px]  [Label text-sm font-medium]  
+      [ChevronDown / ChevronRight 14px, right-aligned]
+    
+    Styling:
+      Same text color as regular nav items
+      Slightly bolder than sub-items 
+        (font-weight: 600)
+      No active/highlight state on the 
+        group header itself — it is never 
+        "active", only its children are
+      Hover: subtle background tint
+      Cursor: pointer
+      Padding: same horizontal as other 
+        nav items, slightly less vertical
+    
+    The chevron rotates 90° when open 
+    (CSS transition, 150ms).
+
+  SUB-ITEMS rendering (when group is open):
+    Only rendered if canAccess() returns true 
+    for that item.
+    
+    Indented relative to group header:
+      padding-left: 28px (or use pl-7)
+    
+    Slightly smaller text than group header:
+      text-sm (same size) but font-normal
+    
+    No icon — the sub-items are text only.
+    Active state: same blue left-border 
+    highlight as current nav items.
+    
+    Animated: sub-items slide in/out 
+    when group toggles (max-height 
+    transition or Tailwind's group 
+    approach).
+
+  AUTO-EXPAND:
+    When the user navigates to a sub-item 
+    (e.g. by clicking a link elsewhere in 
+    the app that sets activeView), 
+    automatically open the parent group 
+    if it is closed.
+
+---
+
+RECHTEMANAGEMENT UPDATE
+
+In the permissions matrix 
+(PermissionsView.tsx and ADMIN_FEATURES), 
+add entries for the four group-level 
+access controls. These are not separate 
+features but rather display-only — 
+a group shows if any child is accessible.
+
+However, add the four group ids to 
+ADMIN_FEATURES as non-configurable 
+meta-entries so they appear labeled 
+correctly if referenced elsewhere:
+
+  { id: 'user', label: 'User (Gruppe)', 
+    icon: 'Users', defaultRoles: ['admin'],
+    isGroup: true },
+  { id: 'analysen', label: 'Analysen (Gruppe)',
+    icon: 'BarChart2', defaultRoles: ['admin'],
+    isGroup: true },
+  { id: 'darstellung', 
+    label: 'Darstellung (Gruppe)',
+    icon: 'Palette', defaultRoles: ['admin'],
+    isGroup: true },
+  { id: 'llm', 
+    label: 'LLM-Einstellungen (Gruppe)',
+    icon: 'BrainCircuit', 
+    defaultRoles: ['admin'],
+    isGroup: true },
+
+In PermissionsView.tsx: 
+  Do NOT show isGroup entries in the 
+  permissions table — they are derived 
+  automatically from their children.
+  
+  Instead, add a visual group separator 
+  in the permissions table that mirrors 
+  the sidebar groups: show a muted 
+  section header row (non-editable) 
+  above each group of items in the table.
+  This makes the permissions matrix 
+  easier to read.
+
+---
+
+STANDALONE ITEMS
+
+Profile/Login, System, and Server 
+remain as flat items below the 
+grouped section, separated by the 
+existing double-space separator 
+already in the sidebar.
+Their position and behavior are unchanged.
+```
