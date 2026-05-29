@@ -19,7 +19,6 @@ interface QuestionnaireData {
   competitors?: string | null;
   differentiators?: string | null;
   influencers?: string | null;
-  socialMedia?: string | null;
   microsites?: string | null;
   directories?: string | null;
   reviewPlatforms?: string | null;
@@ -77,7 +76,6 @@ const SECTIONS = [
     title: "Digitale Praesenz",
     description: "Ihre Online-Kanaele und Verzeichnisse",
     fields: [
-      { key: "socialMedia", label: "Social-Media-Profile (LinkedIn, X, YouTube, etc.)", type: "textarea" },
       { key: "microsites", label: "Microsites, Support-Portale, Dokumentations-Domains", type: "textarea" },
       { key: "directories", label: "Branchenverzeichnisse (IndustryStock, Kompass, Thomasnet, etc.)", type: "input" },
       { key: "reviewPlatforms", label: "Bewertungsplattformen (G2, Capterra, Trustpilot, kununu, etc.)", type: "input" },

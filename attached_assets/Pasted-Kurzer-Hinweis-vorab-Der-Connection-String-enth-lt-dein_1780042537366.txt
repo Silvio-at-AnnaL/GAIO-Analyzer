@@ -1,0 +1,325 @@
+Kurzer Hinweis vorab: Der Connection String enthält dein Passwort (`npg_Mh5PlR3gkfyz`). Ich baue ihn wie gewünscht in den Prompt ein — aber trag ihn danach auch als `DATABASE_URL` in Replit Secrets ein, damit er nicht nur im Replit-Chat-Verlauf liegt.
+
+```
+Migrate the entire backend database from 
+SQLite to PostgreSQL (Neon). Then add a 
+database configuration UI to the admin area.
+Both changes in one pass.
+
+---
+
+PART 1 — NEON POSTGRESQL MIGRATION
+
+The Neon connection string is:
+  postgresql://neondb_owner:npg_Mh5PlR3gkfyz@ep-steep-night-alx00u4h.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require
+
+Store this as the default in bootstrap.json 
+AND check if it is already set as the 
+DATABASE_URL environment variable in 
+Replit Secrets. If the env var is present, 
+it takes precedence — never override it.
+
+STEP 1 — Install PostgreSQL client:
+  npm install pg @types/pg
+
+STEP 2 — Create server/bootstrap.ts:
+
+  import fs from 'fs'
+  import path from 'path'
+  
+  const BOOTSTRAP_PATH = path.join(
+    __dirname, 'bootstrap.json'
+  )
+  
+  const DEFAULT_DB_URL = 
+    'postgresql://neondb_owner:npg_Mh5PlR3gkfyz' +
+    '@ep-steep-night-alx00u4h.c-3.eu-central-1' +
+    '.aws.neon.tech/neondb?sslmode=require'
+  
+  export function getBootstrapConfig() {
+    try {
+      if (fs.existsSync(BOOTSTRAP_PATH)) {
+        const raw = fs.readFileSync(
+          BOOTSTRAP_PATH, 'utf8')
+        return JSON.parse(raw)
+      }
+    } catch { /* ignore */ }
+    return { database_url: '' }
+  }
+  
+  export function saveBootstrapConfig(
+    config: { database_url: string }
+  ) {
+    fs.writeFileSync(
+      BOOTSTRAP_PATH,
+      JSON.stringify(config, null, 2),
+      'utf8'
+    )
+  }
+  
+  export function getDatabaseUrl(): string {
+    // Priority 1: environment variable
+    if (process.env.DATABASE_URL?.trim()) {
+      return process.env.DATABASE_URL.trim()
+    }
+    // Priority 2: bootstrap.json
+    const cfg = getBootstrapConfig()
+    if (cfg.database_url?.trim()) {
+      return cfg.database_url.trim()
+    }
+    // Priority 3: hardcoded default
+    return DEFAULT_DB_URL
+  }
+
+STEP 3 — Create server/bootstrap.json
+  (and add to .gitignore):
+
+  { "database_url": "" }
+
+  Add to .gitignore:
+    server/bootstrap.json
+    server/*.db
+
+STEP 4 — Replace server/db.ts entirely:
+
+  import { Pool } from 'pg'
+  import { getDatabaseUrl } from './bootstrap'
+  
+  export const pool = new Pool({
+    connectionString: getDatabaseUrl(),
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
+  })
+  
+  export async function query(
+    text: string,
+    params?: any[]
+  ) {
+    const res = await pool.query(text, params)
+    return res
+  }
+  
+  // Initialize all tables on startup
+  export async function initializeDatabase() {
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        is_active BOOLEAN DEFAULT FALSE,
+        must_change_pw BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        created_by INTEGER REFERENCES users(id),
+        last_login TIMESTAMPTZ
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS 
+      verification_codes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL 
+          REFERENCES users(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        new_value TEXT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS analysis_log (
+        id SERIAL PRIMARY KEY,
+        domain TEXT NOT NULL,
+        company_name TEXT,
+        triggered_by TEXT,
+        user_session TEXT,
+        gaio_score INTEGER,
+        scores_json TEXT,
+        pages_crawled INTEGER,
+        status TEXT NOT NULL DEFAULT 'running',
+        error_message TEXT,
+        started_at TIMESTAMPTZ DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        html_export_id INTEGER
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS 
+      analysis_exports (
+        id SERIAL PRIMARY KEY,
+        analysis_id INTEGER NOT NULL 
+          REFERENCES analysis_log(id) 
+          ON DELETE CASCADE,
+        html_content TEXT NOT NULL,
+        file_size_kb INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS 
+      shared_analyses (
+        id SERIAL PRIMARY KEY,
+        token TEXT UNIQUE NOT NULL,
+        analysis_id INTEGER 
+          REFERENCES analysis_log(id),
+        created_by INTEGER 
+          REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        title TEXT,
+        view_count INTEGER DEFAULT 0
+      )
+    `)
+    
+    await query(`
+      CREATE TABLE IF NOT EXISTS 
+      share_access_log (
+        id SERIAL PRIMARY KEY,
+        share_id INTEGER NOT NULL
+          REFERENCES shared_analyses(id) 
+          ON DELETE CASCADE,
+        accessed_at TIMESTAMPTZ DEFAULT NOW(),
+        ip_hash TEXT,
+        user_agent TEXT
+      )
+    `)
+    
+    await seedDefaultAdmin()
+    await seedDefaultSettings()
+    console.log('PostgreSQL database initialized')
+  }
+
+STEP 5 — Replace all SQLite query syntax:
+
+  Find every db.prepare(...).run(...)
+  Find every db.prepare(...).get(...)  
+  Find every db.prepare(...).all()
+  
+  Replace with async pool.query() calls:
+
+  Pattern translations:
+    ? placeholders → $1, $2, $3
+    .get(params) → (await query(sql, params)).rows[0]
+    .all(params) → (await query(sql, params)).rows
+    .run(params) → await query(sql, params)
+    lastInsertRowid → use RETURNING id:
+      INSERT INTO ... RETURNING id
+      → result.rows[0].id
+
+  All route handlers must be async and 
+  await every db call.
+
+STEP 6 — Remove SQLite packages:
+  npm uninstall better-sqlite3
+  (remove any sqlite-related imports)
+
+---
+
+PART 2 — DATABASE ADMIN UI
+
+BACKEND: two new endpoints
+
+  GET /api/admin/settings/database
+    Admin only. Returns:
+    {
+      source: 'env' | 'bootstrap' | 'default',
+      isConfigured: true,
+      maskedUrl: string,
+      envVarPresent: boolean
+    }
+    maskedUrl: hide credentials portion:
+      postgresql://***@host/db
+
+  POST /api/admin/settings/database
+    Admin only.
+    Body: { database_url: string }
+    1. Validate: must start with 
+       postgresql:// or postgres://
+    2. Test connection with 5s timeout
+    3. If success: save to bootstrap.json
+    4. Return { success: boolean, 
+               error?: string,
+               requiresRestart: true }
+
+  POST /api/admin/settings/database/test
+    Admin only.
+    Body: { database_url: string }
+    Tests without saving.
+    Returns { success: boolean, 
+              latencyMs?: number,
+              error?: string }
+
+FRONTEND: new "System" admin view
+
+Add to ADMIN_FEATURES in adminFeatures.ts:
+  {
+    id: 'system',
+    label: 'System',
+    icon: 'Server',
+    defaultRoles: ['admin']
+  }
+
+Create: src/views/admin/SystemView.tsx
+Sidebar icon: Server (lucide)
+Position: before Mailserver
+
+One card: "Datenbankverbindung"
+
+  Status display:
+    If source === 'env':
+      Blue box: "Verbindung über 
+      Umgebungsvariable DATABASE_URL 
+      konfiguriert. [maskedUrl]"
+      Note: "Umgebungsvariablen haben 
+      Vorrang. Formular nicht verfügbar."
+    
+    If source === 'bootstrap' or 'default':
+      Show masked URL with green checkmark
+      Show edit form (collapsible)
+
+  Edit form:
+    Label: "PostgreSQL Connection String"
+    Input type="password" with show/hide toggle
+    Placeholder: "postgresql://user:pass@host/db"
+    Help text: "Format: postgresql://[user]:
+      [password]@[host]/[database]?sslmode=require
+      Kostenlose Datenbank: neon.tech"
+    
+    Button: "Verbindung testen" (outline)
+      Shows: "✓ Verbindung OK (12 ms)" 
+      or error inline
+    
+    Button: "Speichern" (primary)
+      Shows on success:
+      "✓ Gespeichert. Änderung wird beim 
+      nächsten Server-Neustart aktiv."
+
+  Platform hint (muted, small, always visible):
+    "Auf Replit: DATABASE_URL in den 
+    Replit Secrets eintragen — Vorrang 
+    vor allen anderen Einstellungen und 
+    persistent nach jedem Neustart.
+    Auf eigenem Server: Dieses Formular 
+    oder Umgebungsvariable DATABASE_URL."
+```
