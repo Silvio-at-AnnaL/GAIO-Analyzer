@@ -73,7 +73,7 @@ async function generateFindings(
     compositeScore: number;
   },
 ): Promise<CompetitorFindings> {
-  const prompt = fillTemplate(getPrompt("competitor-analysis"), {
+  const prompt = fillTemplate(await getPrompt("competitor-analysis"), {
     MAIN_DOMAIN: mainDomain,
     MAIN_TECH: String(mainScores.technicalScore),
     MAIN_SCHEMA: String(mainScores.schemaScore),

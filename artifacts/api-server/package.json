@@ -16,7 +16,6 @@
     "@workspace/db": "workspace:*",
     "@workspace/integrations-anthropic-ai": "workspace:*",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.10.0",
     "cheerio": "^1.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
@@ -33,7 +32,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

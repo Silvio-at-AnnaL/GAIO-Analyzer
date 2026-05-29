@@ -63,11 +63,11 @@ async function callFallback(prompt: string, maxTokens: number): Promise<string> 
 }
 
 export async function callLLM(prompt: string, maxTokens = 4096): Promise<string> {
-  const provider = getSetting("ai_provider") ?? "claude";
+  const provider = await getSetting("ai_provider") ?? "claude";
 
   try {
     // Check custom (OpenAI-compatible) providers first
-    const customJson = getSetting("ai_custom_providers") ?? "[]";
+    const customJson = await getSetting("ai_custom_providers") ?? "[]";
     let customProviders: Array<{ id: string; api_key: string; base_url: string; model: string; enabled: boolean }> = [];
     try { customProviders = JSON.parse(customJson) as typeof customProviders; } catch { /* ignore */ }
     const customProv = customProviders.find(p => p.id === provider && p.enabled);
@@ -77,27 +77,27 @@ export async function callLLM(prompt: string, maxTokens = 4096): Promise<string>
 
     switch (provider) {
       case "openai": {
-        const apiKey = getSetting("ai_api_key_openai") ?? "";
-        const model  = getSetting("ai_model_openai") ?? "gpt-4o";
+        const apiKey = await getSetting("ai_api_key_openai") ?? "";
+        const model  = await getSetting("ai_model_openai") ?? "gpt-4o";
         if (apiKey) return await callWithOpenAI(apiKey, model, prompt, maxTokens);
         break;
       }
       case "perplexity": {
-        const apiKey = getSetting("ai_api_key_perplexity") ?? "";
-        const model  = getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
+        const apiKey = await getSetting("ai_api_key_perplexity") ?? "";
+        const model  = await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
         if (apiKey) return await callWithOpenAI(apiKey, model, prompt, maxTokens, "https://api.perplexity.ai");
         break;
       }
       case "gemini": {
-        const apiKey = getSetting("ai_api_key_gemini") ?? "";
-        const model  = getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
+        const apiKey = await getSetting("ai_api_key_gemini") ?? "";
+        const model  = await getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
         if (apiKey) return await callWithGemini(apiKey, model, prompt);
         break;
       }
       case "claude":
       default: {
-        const apiKey = getSetting("ai_api_key_claude") ?? "";
-        const model  = getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
+        const apiKey = await getSetting("ai_api_key_claude") ?? "";
+        const model  = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
         if (apiKey) return await callWithClaude(apiKey, model, prompt, maxTokens);
         break;
       }

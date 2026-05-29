@@ -47,7 +47,7 @@ export async function analyzeContentRelevance(
     const contextBlock = questionnaireContext
       ? `Context about the company:\n${questionnaireContext}\n\n`
       : "";
-    const prompt = fillTemplate(getPrompt("content-relevance"), {
+    const prompt = fillTemplate(await getPrompt("content-relevance"), {
       QUESTIONNAIRE_CONTEXT: contextBlock,
       CRAWLED_CONTENT: truncatedContent,
     });

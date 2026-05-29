@@ -1,0 +1,126 @@
+Klares Ergebnis — **Szenario B**. Das `pg`-Paket ist nicht installiert, die Migration wurde nie ausgeführt. Die App läuft noch komplett auf SQLite.
+
+Schick diesen Prompt an Replit:
+
+```
+The database migration to PostgreSQL has not 
+been executed yet. The app is still running 
+entirely on SQLite. Execute the full migration 
+now in this exact order:
+
+---
+
+STEP 1 — Install pg package
+
+In the server/backend directory 
+(wherever package.json lives for the 
+Node.js backend), run:
+  npm install pg @types/pg
+
+Verify installation:
+  node -e "require('pg'); console.log('pg OK')"
+
+---
+
+STEP 2 — Create bootstrap.ts and db.ts
+
+Create server/bootstrap.ts with the 
+getDatabaseUrl() function that reads from:
+  1. process.env.DATABASE_URL (priority)
+  2. server/bootstrap.json
+  3. Hardcoded fallback:
+     'postgresql://neondb_owner:npg_Mh5PlR3gkfyz
+     @ep-steep-night-alx00u4h.c-3.eu-central-1
+     .aws.neon.tech/neondb?sslmode=require'
+
+Create server/db.ts using pg Pool with 
+getDatabaseUrl() and the initializeDatabase() 
+function that runs CREATE TABLE IF NOT EXISTS 
+for all tables (users, verification_codes, 
+settings, analysis_log, analysis_exports, 
+shared_analyses, share_access_log, prompts).
+
+---
+
+STEP 3 — Replace ALL SQLite calls
+
+Search the entire server/ directory for 
+every file that imports or uses:
+  - better-sqlite3
+  - node:sqlite  
+  - Database (sqlite)
+  - db.prepare(
+  - .run(
+  - .get(
+  - .all(
+
+Replace every single SQLite call with 
+async pg pool.query() equivalents:
+  ? placeholders → $1, $2, $3...
+  .get() → (await query(sql, params)).rows[0]
+  .all() → (await query(sql, params)).rows
+  .run() → await query(sql, params)
+  lastInsertRowid → RETURNING id
+
+Make all affected route handlers async.
+
+---
+
+STEP 4 — Call initializeDatabase on startup
+
+In the main server entry file 
+(server/index.ts or app.ts), ensure 
+initializeDatabase() is called before 
+the HTTP server starts listening:
+
+  await initializeDatabase()
+  app.listen(port, () => { ... })
+
+---
+
+STEP 5 — Verify the migration
+
+After making all changes and restarting 
+the server, run this verification:
+
+  import { query } from './db'
+  
+  const tables = await query(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public'
+    ORDER BY table_name
+  `)
+  console.log('Tables:', 
+    tables.rows.map(r => r.table_name))
+  
+  const userCount = await query(
+    'SELECT COUNT(*) FROM users'
+  )
+  console.log('Users:', 
+    userCount.rows[0].count)
+
+Expected output:
+  Tables: ['analysis_exports', 
+    'analysis_log', 'prompts', 
+    'settings', 'share_access_log',
+    'shared_analyses', 'users', 
+    'verification_codes']
+  Users: 1  (default admin seeded)
+
+Report the actual output. If any table 
+is missing or the query fails, fix it 
+before proceeding.
+
+---
+
+STEP 6 — Remove SQLite dependency
+
+Once verification passes:
+  npm uninstall better-sqlite3
+  (remove any other sqlite packages)
+
+Add to .gitignore:
+  server/*.db
+  server/bootstrap.json
+```

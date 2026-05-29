@@ -11,20 +11,20 @@ export interface MailOptions {
   attachments?: Array<{ filename: string; content: string | Buffer; contentType?: string }>;
 }
 
-function getMailSettings() {
+async function getMailSettings() {
   return {
-    host:        getSetting("mail_host")         ?? "",
-    port:        parseInt(getSetting("mail_port") ?? "587", 10),
-    secure:      getSetting("mail_secure")        === "true",
-    user:        getSetting("mail_user")          ?? "",
-    password:    getSetting("mail_password")      ?? "",
-    fromName:    getSetting("mail_from_name")     ?? "GAIO Analyzer",
-    fromAddress: getSetting("mail_from_address")  ?? "",
+    host:        await getSetting("mail_host")         ?? "",
+    port:        parseInt(await getSetting("mail_port") ?? "587", 10),
+    secure:      (await getSetting("mail_secure"))     === "true",
+    user:        await getSetting("mail_user")         ?? "",
+    password:    await getSetting("mail_password")     ?? "",
+    fromName:    await getSetting("mail_from_name")    ?? "GAIO Analyzer",
+    fromAddress: await getSetting("mail_from_address") ?? "",
   };
 }
 
 export async function sendMail(opts: MailOptions): Promise<{ success: boolean; fallback?: boolean; error?: string }> {
-  const s = getMailSettings();
+  const s = await getMailSettings();
 
   if (!s.host) {
     logger.info({ to: opts.to, subject: opts.subject }, "[MAIL FALLBACK] No SMTP configured");
@@ -37,7 +37,7 @@ export async function sendMail(opts: MailOptions): Promise<{ success: boolean; f
       port: s.port,
       secure: s.secure,
       auth: { user: s.user, pass: s.password },
-    });
+    } as Parameters<typeof nodemailer.createTransport>[0]);
 
     await transport.sendMail({
       from:        `"${s.fromName}" <${s.fromAddress}>`,
@@ -49,14 +49,12 @@ export async function sendMail(opts: MailOptions): Promise<{ success: boolean; f
       attachments: opts.attachments?.map((a) => ({
         filename:    a.filename,
         content:     a.content,
-        contentType: a.contentType ?? "text/html",
+        contentType: a.contentType,
       })),
     });
-
-    return { success: true, fallback: false };
+    return { success: true };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.error({ err }, "sendMail failed");
-    return { success: false, error };
+    logger.error({ err }, "sendMail error");
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

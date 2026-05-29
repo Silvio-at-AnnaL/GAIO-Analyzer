@@ -117,7 +117,7 @@ export async function analyzeFaq(pages: CrawledPage[]): Promise<FaqResult> {
 
       if (faqContent.length > 50) {
         qualityAssessment = await callLLM(
-          fillTemplate(getPrompt("faq-quality"), { FAQ_CONTENT: faqContent }),
+          fillTemplate(await getPrompt("faq-quality"), { FAQ_CONTENT: faqContent }),
           8192,
         );
       }

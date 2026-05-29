@@ -389,12 +389,12 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-function buildPrompt(
+async function buildPrompt(
   company_name: string,
   url: string,
   crawledContent: string,
   crawlFailed: boolean,
-): string {
+): Promise<string> {
   if (crawlFailed) {
     return `You are a B2B market research assistant. Analyze the following company and provide structured information.
 
@@ -421,7 +421,7 @@ Return ONLY valid JSON, no other text:
 All text must be in German. The personas field must be plain prose — no bullet points, no markdown.`;
   }
 
-  return fillTemplate(getPrompt("prefill-analysis"), {
+  return fillTemplate(await getPrompt("prefill-analysis"), {
     CRAWLED_CONTENT: crawledContent,
     COMPANY_NAME: company_name,
     WEBSITE_URL: url,
@@ -458,7 +458,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
   const crawledContent = buildContentSummary(pages, 8000);
 
   // STEP 3 — Call Claude for initial analysis
-  const prompt = buildPrompt(company_name, url, crawledContent, crawlFailed);
+  const prompt = await buildPrompt(company_name, url, crawledContent, crawlFailed);
 
   let personas = "";
   let rawCompetitors: { name: string; url: string }[] = [];

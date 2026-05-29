@@ -222,8 +222,8 @@ function parseRecommendations(text: string): Recommendation[] | null {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""): string {
-  return fillTemplate(getPrompt("recommendations"), {
+async function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""): Promise<string> {
+  return fillTemplate(await getPrompt("recommendations"), {
     RESULTS_JSON: resultsStr,
     RETRY_PREFIX: retryPrefix,
   });
@@ -248,14 +248,14 @@ export async function generateRecommendations(
       return block.type === "text" ? block.text : "";
     };
 
-    const firstText = await callApi(buildRecommendationsPrompt(resultsStr));
+    const firstText = await callApi(await buildRecommendationsPrompt(resultsStr));
     const firstParsed = parseRecommendations(firstText);
 
     if (firstParsed && firstParsed.length > 0) {
       if (hasEnglishContent(firstParsed)) {
         logger.warn("English detected in recommendations — retrying");
         const retryText = await callApi(
-          buildRecommendationsPrompt(
+          await buildRecommendationsPrompt(
             resultsStr,
             "FEHLER: Deine letzte Antwort enthielt englische Texte. " +
             "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",

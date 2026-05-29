@@ -1,14 +1,16 @@
-import { db } from "./admin-db.js";
+import { query } from "./db.js";
 import { PROMPT_DEFAULTS_MAP } from "./prompt-defaults.js";
 
 const cache = new Map<string, string>();
 
-export function getPrompt(slug: string): string {
+export async function getPrompt(slug: string): Promise<string> {
   if (cache.has(slug)) return cache.get(slug)!;
 
-  const row = db.prepare("SELECT template FROM prompts WHERE slug = ?").get(slug) as
-    | { template: string }
-    | undefined;
+  const result = await query<{ template: string }>(
+    "SELECT template FROM prompts WHERE slug = $1",
+    [slug],
+  );
+  const row = result.rows[0];
 
   const template = row?.template ?? PROMPT_DEFAULTS_MAP.get(slug)?.template ?? "";
   if (!template) throw new Error(`Prompt nicht gefunden: ${slug}`);

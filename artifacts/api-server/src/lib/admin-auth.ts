@@ -1,16 +1,12 @@
 import jwt from "jsonwebtoken";
 import { randomBytes } from "node:crypto";
-import { getSetting, setSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
 
 function resolveJwtSecret(): string {
-  const env = process.env.ADMIN_JWT_SECRET;
+  const env = process.env.ADMIN_JWT_SECRET ?? process.env.SESSION_SECRET;
   if (env) return env;
-  const stored = getSetting("jwt_secret");
-  if (stored) return stored;
   const generated = randomBytes(64).toString("hex");
-  setSetting("jwt_secret", generated);
-  logger.warn("ADMIN_JWT_SECRET not set — generated one stored in DB. Use env var in production!");
+  logger.warn("Neither ADMIN_JWT_SECRET nor SESSION_SECRET is set — using ephemeral JWT secret. Sessions will not survive restarts.");
   return generated;
 }
 

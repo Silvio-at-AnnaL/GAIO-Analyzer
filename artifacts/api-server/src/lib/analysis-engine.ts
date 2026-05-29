@@ -146,7 +146,7 @@ export async function runAnalysis(
 
   let logId: number | null = null;
   try {
-    logId = createAnalysisLog({ uuid: id, domain, companyName, mode, userSession });
+    logId = await createAnalysisLog({ uuid: id, domain, companyName, mode, userSession });
   } catch (err) {
     logger.error({ err }, "Failed to create analysis log entry");
   }
@@ -414,7 +414,7 @@ export async function runAnalysis(
           faqQuality: (state.faqQuality as { score: number } | null)?.score ?? null,
           llmDiscoverability: (state.llmDiscoverability as { score: number } | null)?.score ?? null,
         });
-        updateAnalysisLogComplete(logId, state.overallScore ?? 0, scoresJson, state.crawledPages.length);
+        await updateAnalysisLogComplete(logId, state.overallScore ?? 0, scoresJson, state.crawledPages.length);
       } catch (err) {
         logger.error({ err }, "Failed to update analysis log on complete");
       }
@@ -429,7 +429,7 @@ export async function runAnalysis(
 
     if (logId !== null) {
       try {
-        updateAnalysisLogFailed(logId, err instanceof Error ? err.message : String(err));
+        await updateAnalysisLogFailed(logId, err instanceof Error ? err.message : String(err));
       } catch (dbErr) {
         logger.error({ dbErr }, "Failed to update analysis log on failure");
       }

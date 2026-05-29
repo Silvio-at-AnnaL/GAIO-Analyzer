@@ -81,7 +81,7 @@ async function generateProblemQuestions(
   combinedContent: string,
   context: string,
 ): Promise<string[]> {
-  const prompt = fillTemplate(getPrompt("llm-discoverability-a"), {
+  const prompt = fillTemplate(await getPrompt("llm-discoverability-a"), {
     QUESTIONNAIRE_CONTEXT: context ? `Context:\n${context}\n\n` : "",
     COMBINED_CONTENT: combinedContent.slice(0, 4000),
   });
@@ -101,7 +101,7 @@ async function generateBrandQuestions(
   company: string,
   domain: string,
 ): Promise<string[]> {
-  const prompt = fillTemplate(getPrompt("llm-discoverability-b"), {
+  const prompt = fillTemplate(await getPrompt("llm-discoverability-b"), {
     COMPANY_NAME: company,
     DOMAIN: domain,
     COMBINED_CONTENT: combinedContent.slice(0, 4000),
@@ -137,7 +137,7 @@ async function rateQuestionsWithSources(
 
   const urlList = pageBlocks.map((p) => p.url);
 
-  const prompt = fillTemplate(getPrompt("llm-discoverability-rating"), {
+  const prompt = fillTemplate(await getPrompt("llm-discoverability-rating"), {
     PAGES_DOC: pagesDoc,
     URL_LIST: JSON.stringify(urlList),
     QUESTIONS: JSON.stringify(questions),
