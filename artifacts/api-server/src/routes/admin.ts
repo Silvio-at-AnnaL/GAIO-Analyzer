@@ -693,47 +693,95 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, (req: Request
 
 // POST /api/admin/angebot/generate — admin only
 adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const { analysisId } = req.body as { analysisId?: unknown };
-  const id = typeof analysisId === "number" ? analysisId : parseInt(String(analysisId ?? ""), 10);
-  if (!id || isNaN(id)) { res.status(400).json({ error: "analysisId fehlt" }); return; }
+  interface UploadRec { finding: string; fix: string; }
+  interface UploadBody {
+    fromUpload: true;
+    domain: string;
+    companyName?: string;
+    exportDate?: string;
+    gaioScore: number;
+    scores: Record<string, number | null>;
+    recommendations: {
+      kritisch:    UploadRec[];
+      hoherHebel:  UploadRec[];
+      nachgeordnet: UploadRec[];
+    };
+  }
+  interface ProtocolBody { analysisId?: unknown; fromUpload?: false; }
+  const body = req.body as UploadBody | ProtocolBody;
 
-  type LogRow = {
-    id: number; domain: string; company_name: string | null; gaio_score: number | null;
-    completed_at: string | null; scores_json: string | null; html_export_id: number | null;
-  };
-  const log = db.prepare(
-    "SELECT id, domain, company_name, gaio_score, completed_at, scores_json, html_export_id FROM analysis_log WHERE id = ?"
-  ).get(id) as unknown as LogRow | undefined;
-  if (!log) { res.status(404).json({ error: "Analyse nicht gefunden" }); return; }
+  let domain: string;
+  let companyName: string | null;
+  let exportDate: string | null;
+  let gaioScore: number | null;
+  let scores: Record<string, number | null>;
+  let kritisch:    { finding: string; fix: string }[];
+  let hoherHebel:  { finding: string; fix: string }[];
+  let nachgeordnet:{ finding: string; fix: string }[];
 
-  let htmlContent = "";
-  if (log.html_export_id) {
-    const exp = db.prepare("SELECT html_content FROM analysis_exports WHERE id = ?")
-      .get(log.html_export_id) as unknown as { html_content: string } | undefined;
-    if (exp) htmlContent = exp.html_content;
+  if (body.fromUpload === true) {
+    // ── Upload path — use provided data directly ───────────────────────────
+    const ub = body as UploadBody;
+    if (!ub.domain || ub.gaioScore === undefined || !ub.scores) {
+      res.status(400).json({ error: "Unvollständige Upload-Daten" }); return;
+    }
+    domain      = ub.domain;
+    companyName = ub.companyName ?? null;
+    exportDate  = ub.exportDate ?? null;
+    gaioScore   = ub.gaioScore;
+    scores      = ub.scores;
+    kritisch    = ub.recommendations?.kritisch    ?? [];
+    hoherHebel  = ub.recommendations?.hoherHebel  ?? [];
+    nachgeordnet = ub.recommendations?.nachgeordnet ?? [];
+  } else {
+    // ── Protocol path — load from DB ──────────────────────────────────────
+    const pb = body as ProtocolBody;
+    const id = typeof pb.analysisId === "number" ? pb.analysisId : parseInt(String(pb.analysisId ?? ""), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: "analysisId fehlt" }); return; }
+
+    type LogRow = {
+      id: number; domain: string; company_name: string | null; gaio_score: number | null;
+      completed_at: string | null; scores_json: string | null; html_export_id: number | null;
+    };
+    const log = db.prepare(
+      "SELECT id, domain, company_name, gaio_score, completed_at, scores_json, html_export_id FROM analysis_log WHERE id = ?"
+    ).get(id) as unknown as LogRow | undefined;
+    if (!log) { res.status(404).json({ error: "Analyse nicht gefunden" }); return; }
+
+    let htmlContent = "";
+    if (log.html_export_id) {
+      const exp = db.prepare("SELECT html_content FROM analysis_exports WHERE id = ?")
+        .get(log.html_export_id) as unknown as { html_content: string } | undefined;
+      if (exp) htmlContent = exp.html_content;
+    }
+
+    domain      = log.domain;
+    companyName = log.company_name;
+    exportDate  = log.completed_at;
+    gaioScore   = log.gaio_score;
+    scores      = {};
+    try { scores = JSON.parse(log.scores_json ?? "{}") as Record<string, number | null>; } catch { /* ignore */ }
+
+    kritisch    = [];
+    hoherHebel  = [];
+    nachgeordnet = [];
+
+    if (htmlContent) {
+      const $ = cheerioLoad(htmlContent);
+      $(".rec").each((_i, el) => {
+        const style   = $(el).attr("style") ?? "";
+        const finding = $(el).find(".finding").first().text().trim();
+        const fix     = $(el).find(".fix").first().text().trim();
+        if (!finding && !fix) return;
+        if      (style.includes("#ef4444")) kritisch.push({ finding, fix });
+        else if (style.includes("#f59e0b")) hoherHebel.push({ finding, fix });
+        else                                nachgeordnet.push({ finding, fix });
+      });
+    }
   }
 
-  // FIX 1 — parse scores_json with correct camelCase field names
-  let scores: Record<string, number | null> = {};
-  try { scores = JSON.parse(log.scores_json ?? "{}") as Record<string, number | null>; } catch { /* ignore */ }
+  // ── Shared prompt building ─────────────────────────────────────────────────
   const sc = (k: string) => { const v = scores[k]; return (v !== undefined && v !== null) ? String(Math.round(v)) : "–"; };
-
-  const kritisch:    { finding: string; fix: string }[] = [];
-  const hoherHebel:  { finding: string; fix: string }[] = [];
-  const nachgeordnet:{ finding: string; fix: string }[] = [];
-
-  if (htmlContent) {
-    const $ = cheerioLoad(htmlContent);
-    $(".rec").each((_i, el) => {
-      const style   = $(el).attr("style") ?? "";
-      const finding = $(el).find(".finding").first().text().trim();
-      const fix     = $(el).find(".fix").first().text().trim();
-      if (!finding && !fix) return;
-      if      (style.includes("#ef4444")) kritisch.push({ finding, fix });
-      else if (style.includes("#f59e0b")) hoherHebel.push({ finding, fix });
-      else                                nachgeordnet.push({ finding, fix });
-    });
-  }
 
   const fmtNamed = (arr: { finding: string; fix: string }[], prefix: string) =>
     arr.length
@@ -743,12 +791,12 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
   const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein vollständiges, professionelles Angebot zur KI- und SEO-Optimierung.
 
 KUNDENDATEN:
-Unternehmen: ${log.company_name ?? log.domain}
-Domain: ${log.domain}
-Analysedatum: ${log.completed_at?.slice(0, 10) ?? "–"}
+Unternehmen: ${companyName ?? domain}
+Domain: ${domain}
+Analysedatum: ${exportDate?.slice(0, 10) ?? "–"}
 
 ANALYSEERGEBNISSE:
-GAIO Gesamtscore: ${log.gaio_score !== null ? log.gaio_score : "–"}/100
+GAIO Gesamtscore: ${gaioScore !== null ? gaioScore : "–"}/100
 Technisches SEO: ${sc("technicalSeo")}/100
 Schema.org: ${sc("schemaOrg")}/100
 Heading-Struktur: ${sc("headingStructure")}/100
@@ -869,7 +917,7 @@ ABSOLUTE REGELN — diese gelten ohne Ausnahme:
     html = html.replace(/\u2610/g, "[ ]");
 
     html = html.trim();
-    res.json({ html, companyName: log.company_name ?? log.domain, domain: log.domain });
+    res.json({ html, companyName: companyName ?? domain, domain });
   } catch (err) {
     logger.error({ err }, "Angebot generation failed");
     res.status(500).json({ error: "KI-Generierung fehlgeschlagen" });

@@ -1,0 +1,185 @@
+```
+Add an HTML file upload option to the 
+Angebots-Creator as a second input mode 
+alongside the existing protocol dropdown.
+
+---
+
+FRONTEND: AngebotCreatorView.tsx
+
+Replace the current single dropdown input 
+with a two-mode selector. The modes are 
+mutually exclusive — selecting one clears 
+the other.
+
+MODE SWITCHER:
+A segmented control or two tabs at the 
+top of the input section:
+
+  [📋 Aus Protokoll]  [📄 HTML hochladen]
+
+Show "Aus Protokoll" only if the user 
+is authenticated AND has analyseprotokoll 
+permission. If not: skip the switcher 
+entirely and show only the upload zone.
+
+---
+
+MODE A: "Aus Protokoll" (existing behavior)
+
+Keep exactly as currently implemented:
+  - Dropdown with analyses from the log
+  - Score preview card after selection
+  - Unchanged
+
+---
+
+MODE B: "HTML hochladen"
+
+A file drop zone replacing the dropdown:
+
+  <div> with dashed border, rounded corners,
+  centered content, ~180px height:
+  
+    Upload icon (UploadCloud from lucide)
+    "GAIO-Analyse-HTML hier ablegen"
+    "oder klicken zum Auswählen"
+    Muted below: "Nur HTML-Exporte des 
+    GAIO Analyzers werden unterstützt."
+  
+  File input: accept=".html" only
+  
+  On file selected or dropped:
+  
+    STEP 1 — Read file content:
+      const text = await file.text()
+    
+    STEP 2 — Extract embedded JSON:
+      const match = text.match(
+        /<script[^>]*id=["']gaio-analysis-data["'][^>]*>([\s\S]*?)<\/script>/i
+      )
+      if (!match) {
+        showError("Diese HTML-Datei enthält 
+          keine maschinenlesbaren 
+          Analysedaten. Bitte verwenden Sie 
+          einen aktuellen HTML-Export des 
+          GAIO Analyzers.")
+        return
+      }
+      const data = JSON.parse(match[1])
+    
+    STEP 3 — Validate required fields:
+      Required: data.domain, data.gaioScore,
+      data.scores (object with at least 
+      one key)
+      
+      If missing:
+        showError("Die Analysedaten in dieser 
+          Datei sind unvollständig.")
+        return
+    
+    STEP 4 — Show score preview card 
+    (same component as Mode A):
+      Display domain, exportDate, 
+      gaioScore and all dimension scores
+      with color coding.
+      
+      Label above card: 
+        "Analyse aus Datei: [filename]"
+    
+    STEP 5 — Extract recommendations 
+    from the HTML (for the AI prompt):
+    
+      Parse the uploaded HTML to extract 
+      recommendation items. The format 
+      in GAIO HTML exports is:
+      
+      <div class="rec" style="border-color:...">
+        <div class="tier">KRITISCH</div>
+        <div class="finding">...</div>
+        <div class="fix">...</div>
+      </div>
+      
+      Use a DOMParser to parse the HTML 
+      string client-side:
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(
+          text, 'text/html')
+        const recs = doc.querySelectorAll(
+          '.rec')
+      
+      For each .rec element, extract:
+        tier: .tier textContent (trim)
+        finding: .finding textContent (trim)
+        fix: .fix textContent (trim)
+      
+      Classify into arrays:
+        kritisch: tier includes 'KRITISCH'
+        hoherHebel: tier includes 'HOHER HEBEL'
+        nachgeordnet: tier includes 'NACHGEORDNET' 
+          or 'SEKUNDÄR'
+      
+      Store these alongside the scores 
+      for the generate request.
+
+---
+
+BACKEND: extend generate endpoint
+
+POST /api/admin/angebot/generate
+
+Currently accepts: { analysisId: number }
+
+Extend to also accept uploaded data:
+  Body option A (existing):
+    { analysisId: number }
+  
+  Body option B (new):
+    {
+      fromUpload: true,
+      domain: string,
+      companyName: string,
+      exportDate: string,
+      gaioScore: number,
+      scores: object,
+      recommendations: {
+        kritisch: Array<{finding, fix}>,
+        hoherHebel: Array<{finding, fix}>,
+        nachgeordnet: Array<{finding, fix}>
+      }
+    }
+
+When fromUpload === true:
+  Skip the database lookup entirely.
+  Use the provided data directly in 
+  the AI prompt.
+  Same prompt template as for protocol 
+  analyses — no other changes needed.
+
+---
+
+STATE MANAGEMENT in the view
+
+Track which mode is active:
+  type InputMode = 'protocol' | 'upload'
+  
+  const [inputMode, setInputMode] = 
+    useState<InputMode>(
+      canAccessProtocol ? 'protocol' : 'upload'
+    )
+
+When switching modes, clear the other 
+mode's selection:
+  - Switching to 'upload': clear selected 
+    analysis from dropdown, hide score card
+  - Switching to 'protocol': clear uploaded 
+    file data, hide score card, reset 
+    drop zone to empty state
+
+The "Angebot generieren" button is enabled 
+when either:
+  - Mode A: an analysis is selected 
+    from the dropdown
+  - Mode B: a valid HTML file has been 
+    parsed successfully (score card visible)
+```

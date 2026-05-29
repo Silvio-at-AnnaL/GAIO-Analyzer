@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import {
   FileText, RefreshCw, Clipboard, CheckCircle, AlertCircle,
-  Bold, Italic, UnderlineIcon, List, Minus,
+  Bold, Italic, UnderlineIcon, List, Minus, UploadCloud, X,
 } from "lucide-react";
-import { adminFetch } from "@/store/authStore";
+import { adminFetch, canAccess, useAuth } from "@/store/authStore";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ScoresJson {
   technicalSeo:       number | null;
@@ -32,6 +34,24 @@ interface GeneratedResult {
   companyName: string;
   domain: string;
 }
+
+interface ParsedRec { finding: string; fix: string; }
+
+interface ParsedUpload {
+  fileName:    string;
+  domain:      string;
+  companyName: string;
+  exportDate:  string;
+  gaioScore:   number;
+  scores:      ScoresJson;
+  kritisch:    ParsedRec[];
+  hoherHebel:  ParsedRec[];
+  nachgeordnet:ParsedRec[];
+}
+
+type InputMode = "protocol" | "upload";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "–";
@@ -88,15 +108,32 @@ function ToolBtn({
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function AngebotCreatorView() {
+  const { user, permissions } = useAuth();
+  const canProtocol = canAccess("analyseprotokoll", user?.role ?? "", permissions);
+
+  // ── Mode ──────────────────────────────────────────────────────────────────
+  const [inputMode, setInputMode] = useState<InputMode>(canProtocol ? "protocol" : "upload");
+
+  // ── Protocol mode state ───────────────────────────────────────────────────
   const [analyses, setAnalyses]       = useState<AnalysisItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [selectedId, setSelectedId]   = useState<number | "">("");
-  const [generating, setGenerating]   = useState(false);
-  const [genError, setGenError]       = useState("");
-  const [generated, setGenerated]     = useState<GeneratedResult | null>(null);
-  const [copied, setCopied]           = useState(false);
-  const copyTimer                     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Upload mode state ─────────────────────────────────────────────────────
+  const [uploadData, setUploadData]   = useState<ParsedUpload | null>(null);
+  const [uploadError, setUploadError] = useState("");
+  const [isDragging, setIsDragging]   = useState(false);
+  const fileInputRef                  = useRef<HTMLInputElement>(null);
+
+  // ── Shared generation state ───────────────────────────────────────────────
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError]     = useState("");
+  const [generated, setGenerated]   = useState<GeneratedResult | null>(null);
+  const [copied, setCopied]         = useState(false);
+  const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
     extensions: [StarterKit, Underline],
@@ -109,6 +146,7 @@ export function AngebotCreatorView() {
   });
 
   useEffect(() => {
+    if (!canProtocol) return;
     adminFetch("/api/admin/analysis-log?status=completed&limit=100")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { items?: AnalysisItem[] } | null) => {
@@ -116,11 +154,27 @@ export function AngebotCreatorView() {
       })
       .catch(() => {})
       .finally(() => setLoadingList(false));
-  }, []);
+  }, [canProtocol]);
 
   useEffect(() => {
     return () => { if (copyTimer.current) clearTimeout(copyTimer.current); };
   }, []);
+
+  // ── Mode switching ────────────────────────────────────────────────────────
+
+  function switchMode(mode: InputMode) {
+    setInputMode(mode);
+    setGenerated(null);
+    setGenError("");
+    if (mode === "upload") {
+      setSelectedId("");
+    } else {
+      setUploadData(null);
+      setUploadError("");
+    }
+  }
+
+  // ── Protocol helpers ──────────────────────────────────────────────────────
 
   const selectedAnalysis = analyses.find((a) => a.id === selectedId) ?? null;
 
@@ -129,17 +183,134 @@ export function AngebotCreatorView() {
     try { return JSON.parse(selectedAnalysis.scoresJson) as ScoresJson; } catch { return null; }
   })();
 
+  // ── Upload / file parsing ─────────────────────────────────────────────────
+
+  const parseFile = useCallback(async (file: File) => {
+    setUploadError("");
+    setUploadData(null);
+    setGenerated(null);
+    setGenError("");
+
+    if (!file.name.toLowerCase().endsWith(".html")) {
+      setUploadError("Nur HTML-Dateien werden akzeptiert.");
+      return;
+    }
+
+    const text = await file.text();
+
+    // Extract embedded JSON
+    const match = text.match(/<script[^>]*id=["']gaio-analysis-data["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (!match) {
+      setUploadError(
+        "Diese HTML-Datei enthält keine maschinenlesbaren Analysedaten. Bitte verwenden Sie einen aktuellen HTML-Export des GAIO Analyzers."
+      );
+      return;
+    }
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(match[1]) as Record<string, unknown>;
+    } catch {
+      setUploadError("Die Analysedaten in dieser Datei konnten nicht gelesen werden.");
+      return;
+    }
+
+    // Validate required fields
+    if (!data.domain || data.gaioScore === undefined || !data.scores || typeof data.scores !== "object") {
+      setUploadError("Die Analysedaten in dieser Datei sind unvollständig.");
+      return;
+    }
+
+    // Parse recommendations via DOMParser
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+    const recs = doc.querySelectorAll(".rec");
+
+    const kritisch:    ParsedRec[] = [];
+    const hoherHebel:  ParsedRec[] = [];
+    const nachgeordnet:ParsedRec[] = [];
+
+    recs.forEach((el) => {
+      const tier    = (el.querySelector(".tier")?.textContent ?? "").trim().toUpperCase();
+      const finding = (el.querySelector(".finding")?.textContent ?? "").trim();
+      const fix     = (el.querySelector(".fix")?.textContent ?? "").trim();
+      if (!finding && !fix) return;
+      if (tier.includes("KRITISCH"))                                    kritisch.push({ finding, fix });
+      else if (tier.includes("HOHER HEBEL"))                            hoherHebel.push({ finding, fix });
+      else if (tier.includes("NACHGEORDNET") || tier.includes("SEKUNDÄR")) nachgeordnet.push({ finding, fix });
+    });
+
+    const scores = data.scores as Record<string, unknown>;
+
+    setUploadData({
+      fileName:    file.name,
+      domain:      String(data.domain),
+      companyName: String(data.companyName ?? data.domain),
+      exportDate:  String(data.exportDate ?? data.completedAt ?? ""),
+      gaioScore:   Number(data.gaioScore),
+      scores: {
+        technicalSeo:       scores.technicalSeo       != null ? Number(scores.technicalSeo)       : null,
+        schemaOrg:          scores.schemaOrg           != null ? Number(scores.schemaOrg)           : null,
+        headingStructure:   scores.headingStructure    != null ? Number(scores.headingStructure)    : null,
+        contentRelevance:   scores.contentRelevance    != null ? Number(scores.contentRelevance)    : null,
+        faqQuality:         scores.faqQuality          != null ? Number(scores.faqQuality)          : null,
+        llmDiscoverability: scores.llmDiscoverability  != null ? Number(scores.llmDiscoverability)  : null,
+      },
+      kritisch,
+      hoherHebel,
+      nachgeordnet,
+    });
+  }, []);
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void parseFile(file);
+    e.target.value = "";
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) void parseFile(file);
+  }
+
+  // ── Generation ────────────────────────────────────────────────────────────
+
+  const canGenerate = inputMode === "protocol"
+    ? !!selectedId
+    : !!uploadData;
+
   async function generate(force = false) {
-    if (!selectedId) return;
+    if (!canGenerate) return;
     if (force && generated) {
       if (!window.confirm("Änderungen verwerfen und neu generieren?")) return;
     }
     setGenerating(true);
     setGenError("");
     try {
+      let body: Record<string, unknown>;
+      if (inputMode === "upload" && uploadData) {
+        body = {
+          fromUpload:      true,
+          domain:          uploadData.domain,
+          companyName:     uploadData.companyName,
+          exportDate:      uploadData.exportDate,
+          gaioScore:       uploadData.gaioScore,
+          scores:          uploadData.scores,
+          recommendations: {
+            kritisch:    uploadData.kritisch,
+            hoherHebel:  uploadData.hoherHebel,
+            nachgeordnet: uploadData.nachgeordnet,
+          },
+        };
+      } else {
+        body = { analysisId: selectedId };
+      }
+
       const res = await adminFetch("/api/admin/angebot/generate", {
         method: "POST",
-        body: JSON.stringify({ analysisId: selectedId }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const d = (await res.json()) as GeneratedResult;
@@ -157,9 +328,8 @@ export function AngebotCreatorView() {
 
   async function copyAsHtml() {
     if (!editor) return;
-    const html = editor.getHTML();
     try {
-      await navigator.clipboard.writeText(html);
+      await navigator.clipboard.writeText(editor.getHTML());
       setCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 2000);
@@ -167,6 +337,8 @@ export function AngebotCreatorView() {
   }
 
   const charCount = editor ? editor.getText().length : 0;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-[900px] space-y-6 pb-12">
@@ -181,107 +353,225 @@ export function AngebotCreatorView() {
         </p>
       </div>
 
-      {/* Step 1: Selection */}
+      {/* Step 1: Input selection */}
       <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-        <h2 className="text-base font-semibold">Analyse auswählen</h2>
 
-        {!loadingList && analyses.length === 0 ? (
-          <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground text-center" style={{ background: "hsl(var(--muted)/0.3)" }}>
-            Noch keine abgeschlossenen Analysen im Protokoll. Führen Sie zunächst eine Analyse durch.
+        {/* Mode switcher — only shown when user can access both */}
+        {canProtocol && (
+          <div className="flex rounded-lg overflow-hidden border border-border w-fit text-sm font-medium">
+            <button
+              onClick={() => switchMode("protocol")}
+              className="flex items-center gap-2 px-4 py-2 transition-colors"
+              style={{
+                background: inputMode === "protocol" ? "#3b82f6" : "hsl(var(--muted)/0.4)",
+                color:      inputMode === "protocol" ? "#fff"    : "hsl(var(--foreground))",
+              }}
+            >
+              📋 Aus Protokoll
+            </button>
+            <button
+              onClick={() => switchMode("upload")}
+              className="flex items-center gap-2 px-4 py-2 transition-colors border-l border-border"
+              style={{
+                background: inputMode === "upload" ? "#3b82f6" : "hsl(var(--muted)/0.4)",
+                color:      inputMode === "upload" ? "#fff"    : "hsl(var(--foreground))",
+              }}
+            >
+              📄 HTML hochladen
+            </button>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Dropdown — FIX 5A: show time */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Analyse</label>
-              <select
-                value={selectedId}
-                onChange={(e) => {
-                  setSelectedId(e.target.value === "" ? "" : parseInt(e.target.value, 10));
-                  setGenerated(null);
-                  setGenError("");
-                }}
-                disabled={loadingList || generating}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
-              >
-                <option value="">— Analyse auswählen —</option>
-                {analyses.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.domain}
-                    {a.companyName ? ` · ${a.companyName}` : ""}
-                    {" · "}{formatDateTime(a.completedAt)}
-                    {a.gaioScore !== null ? ` · GAIO: ${a.gaioScore}/100` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+        )}
 
-            {/* FIX 5B: Score preview card */}
-            {selectedAnalysis && (
-              <div
-                className="rounded-lg border border-border px-4 py-3 space-y-2"
-                style={{ background: "hsl(var(--muted)/0.25)" }}
-              >
-                <p className="text-xs text-muted-foreground">
-                  Ausgewählte Analyse · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt)}
-                </p>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
-                  <ScoreRow label="GAIO-Score"  value={selectedAnalysis.gaioScore} />
-                  <ScoreRow label="Techn. SEO"  value={parsedScores?.technicalSeo       ?? null} />
-                  <ScoreRow label="Schema.org"  value={parsedScores?.schemaOrg           ?? null} />
-                  <ScoreRow label="Headings"    value={parsedScores?.headingStructure    ?? null} />
-                  <ScoreRow label="Inhalt"      value={parsedScores?.contentRelevance    ?? null} />
-                  <ScoreRow label="FAQ"         value={parsedScores?.faqQuality          ?? null} />
-                  <ScoreRow label="LLM"         value={parsedScores?.llmDiscoverability  ?? null} />
+        {/* ── MODE A: Aus Protokoll ─────────────────────────────────────────── */}
+        {inputMode === "protocol" && (
+          <div className="space-y-4">
+            <h2 className="text-base font-semibold">Analyse auswählen</h2>
+
+            {!loadingList && analyses.length === 0 ? (
+              <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground text-center" style={{ background: "hsl(var(--muted)/0.3)" }}>
+                Noch keine abgeschlossenen Analysen im Protokoll. Führen Sie zunächst eine Analyse durch.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Analyse</label>
+                  <select
+                    value={selectedId}
+                    onChange={(e) => {
+                      setSelectedId(e.target.value === "" ? "" : parseInt(e.target.value, 10));
+                      setGenerated(null);
+                      setGenError("");
+                    }}
+                    disabled={loadingList || generating}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
+                  >
+                    <option value="">— Analyse auswählen —</option>
+                    {analyses.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.domain}
+                        {a.companyName ? ` · ${a.companyName}` : ""}
+                        {" · "}{formatDateTime(a.completedAt)}
+                        {a.gaioScore !== null ? ` · GAIO: ${a.gaioScore}/100` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <p className="text-xs text-muted-foreground italic">
-                  Bitte prüfen Sie, ob dies die korrekte Analyse ist.
-                </p>
+
+                {selectedAnalysis && (
+                  <div
+                    className="rounded-lg border border-border px-4 py-3 space-y-2"
+                    style={{ background: "hsl(var(--muted)/0.25)" }}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      Ausgewählte Analyse · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt)}
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
+                      <ScoreRow label="GAIO-Score"  value={selectedAnalysis.gaioScore} />
+                      <ScoreRow label="Techn. SEO"  value={parsedScores?.technicalSeo       ?? null} />
+                      <ScoreRow label="Schema.org"  value={parsedScores?.schemaOrg           ?? null} />
+                      <ScoreRow label="Headings"    value={parsedScores?.headingStructure    ?? null} />
+                      <ScoreRow label="Inhalt"      value={parsedScores?.contentRelevance    ?? null} />
+                      <ScoreRow label="FAQ"         value={parsedScores?.faqQuality          ?? null} />
+                      <ScoreRow label="LLM"         value={parsedScores?.llmDiscoverability  ?? null} />
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">
+                      Bitte prüfen Sie, ob dies die korrekte Analyse ist.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── MODE B: HTML hochladen ───────────────────────────────────────── */}
+        {inputMode === "upload" && (
+          <div className="space-y-4">
+            <h2 className="text-base font-semibold">HTML-Export hochladen</h2>
+
+            {/* Drop zone */}
+            {!uploadData && (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-colors select-none"
+                style={{
+                  height: 180,
+                  borderColor: isDragging ? "#3b82f6" : "hsl(var(--border))",
+                  background: isDragging ? "hsl(var(--muted)/0.5)" : "hsl(var(--muted)/0.2)",
+                }}
+              >
+                <UploadCloud className="w-8 h-8" style={{ color: isDragging ? "#3b82f6" : "hsl(var(--muted-foreground))" }} />
+                <span className="text-sm font-medium">GAIO-Analyse-HTML hier ablegen</span>
+                <span className="text-xs text-muted-foreground">oder klicken zum Auswählen</span>
+                <span className="text-xs text-muted-foreground">Nur HTML-Exporte des GAIO Analyzers werden unterstützt.</span>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".html"
+              className="hidden"
+              onChange={handleFileInput}
+            />
+
+            {/* Upload error */}
+            {uploadError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{uploadError}</span>
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => generate(false)}
-                disabled={!selectedId || generating}
-                className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 w-fit"
-                style={{ background: "#3b82f6" }}
-              >
-                {generating ? (
-                  <>
-                    <span className="inline-block animate-spin text-base leading-none">⏳</span>
-                    Angebot wird erstellt…
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-4 h-4" />
-                    Angebot generieren
-                  </>
-                )}
-              </button>
-
-              {generating && (
-                <p className="text-sm text-muted-foreground">
-                  Die KI analysiert die Empfehlungen und erstellt Ihren Angebotstext.
-                  Das dauert ca. 30–60 Sekunden…
-                </p>
-              )}
-
-              {genError && (
-                <div className="flex items-center gap-2 text-sm" style={{ color: "#d97706" }}>
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  {genError}
+            {/* Score preview after successful parse */}
+            {uploadData && (
+              <div className="space-y-3">
+                <div
+                  className="rounded-lg border border-border px-4 py-3 space-y-2"
+                  style={{ background: "hsl(var(--muted)/0.25)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Analyse aus Datei: <strong>{uploadData.fileName}</strong>
+                      {uploadData.exportDate ? ` · ${uploadData.exportDate.slice(0, 10)}` : ""}
+                    </p>
+                    <button
+                      onClick={() => { setUploadData(null); setUploadError(""); setGenerated(null); }}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      title="Datei entfernen"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs font-medium">{uploadData.domain}{uploadData.companyName !== uploadData.domain ? ` · ${uploadData.companyName}` : ""}</p>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
+                    <ScoreRow label="GAIO-Score"  value={uploadData.gaioScore} />
+                    <ScoreRow label="Techn. SEO"  value={uploadData.scores.technicalSeo} />
+                    <ScoreRow label="Schema.org"  value={uploadData.scores.schemaOrg} />
+                    <ScoreRow label="Headings"    value={uploadData.scores.headingStructure} />
+                    <ScoreRow label="Inhalt"      value={uploadData.scores.contentRelevance} />
+                    <ScoreRow label="FAQ"         value={uploadData.scores.faqQuality} />
+                    <ScoreRow label="LLM"         value={uploadData.scores.llmDiscoverability} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {uploadData.kritisch.length} kritisch · {uploadData.hoherHebel.length} hoher Hebel · {uploadData.nachgeordnet.length} nachgeordnet
+                  </p>
                 </div>
-              )}
-            </div>
+
+                {/* Re-upload option */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  Andere Datei auswählen
+                </button>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Generate button — shared */}
+        <div className="flex flex-col gap-2 pt-1">
+          <button
+            onClick={() => generate(false)}
+            disabled={!canGenerate || generating}
+            className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 w-fit"
+            style={{ background: "#3b82f6" }}
+          >
+            {generating ? (
+              <>
+                <span className="inline-block animate-spin text-base leading-none">⏳</span>
+                Angebot wird erstellt…
+              </>
+            ) : (
+              <>
+                <FileText className="w-4 h-4" />
+                Angebot generieren
+              </>
+            )}
+          </button>
+
+          {generating && (
+            <p className="text-sm text-muted-foreground">
+              Die KI analysiert die Empfehlungen und erstellt Ihren Angebotstext.
+              Das dauert ca. 30–60 Sekunden…
+            </p>
+          )}
+
+          {genError && (
+            <div className="flex items-center gap-2 text-sm" style={{ color: "#d97706" }}>
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {genError}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Step 2: Editor */}
       {generated && editor && (
         <div className="rounded-xl border border-border overflow-hidden">
-          {/* Toolbar */}
           <div
             className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border"
             style={{ background: "hsl(var(--muted)/0.4)" }}
@@ -312,7 +602,6 @@ export function AngebotCreatorView() {
             </ToolBtn>
           </div>
 
-          {/* Editor content — white bg for document feel */}
           <div className="bg-white">
             <EditorContent
               editor={editor}
