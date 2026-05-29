@@ -4,6 +4,7 @@ import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg } from "./schema-org";
 import { analyzeHeadings } from "./headings";
 import { analyzeFaq } from "./faq";
+import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 export interface CompetitorFindings {
@@ -72,22 +73,21 @@ async function generateFindings(
     compositeScore: number;
   },
 ): Promise<CompetitorFindings> {
-  const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
-
-You are an SEO and LLM-discoverability expert. Compare two B2B industrial websites based on their analysis scores.
-
-Main site: ${mainDomain}
-Scores: Technical SEO=${mainScores.technicalScore}, Schema.org=${mainScores.schemaScore}, Content=${mainScores.contentScore}, Headings=${mainScores.headingScore}, FAQ=${mainScores.faqScore}
-
-Competitor: ${competitorDomain}
-Scores: Technical SEO=${competitorScores.technicalScore}, Schema.org=${competitorScores.schemaScore}, Content=${competitorScores.contentScore}, Headings=${competitorScores.headingScore}, FAQ=${competitorScores.faqScore}, Composite=${competitorScores.compositeScore}
-
-Respond with a JSON object (no markdown) with exactly these three fields:
-- "betterThanYou": One concrete thing this competitor does better (auf Deutsch, 1-2 Sätze)
-- "yourAdvantage": One area where the main site clearly outperforms this competitor (auf Deutsch, 1-2 Sätze)
-- "recommendation": One specific, actionable improvement the main site should make based on this comparison (auf Deutsch, 1-2 Sätze)
-
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle drei Felder müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
+  const prompt = fillTemplate(getPrompt("competitor-analysis"), {
+    MAIN_DOMAIN: mainDomain,
+    MAIN_TECH: String(mainScores.technicalScore),
+    MAIN_SCHEMA: String(mainScores.schemaScore),
+    MAIN_CONTENT: String(mainScores.contentScore),
+    MAIN_HEADINGS: String(mainScores.headingScore),
+    MAIN_FAQ: String(mainScores.faqScore),
+    COMP_DOMAIN: competitorDomain,
+    COMP_TECH: String(competitorScores.technicalScore),
+    COMP_SCHEMA: String(competitorScores.schemaScore),
+    COMP_CONTENT: String(competitorScores.contentScore),
+    COMP_HEADINGS: String(competitorScores.headingScore),
+    COMP_FAQ: String(competitorScores.faqScore),
+    COMP_COMPOSITE: String(competitorScores.compositeScore),
+  });
 
   try {
     const response = await anthropic.messages.create({

@@ -1,0 +1,3 @@
+- [Prompt-Verwaltung feature](prompt-verwaltung.md) — all 9 AI prompts are in SQLite (prompts table), loaded at runtime via prompt-manager.ts; admin UI at view 19.
+- [Express 5 params typing](express5-params.md) — req.params values are typed as `string | string[]`; always cast with `as string` before using as SQLite param or Map key.
+- [Admin auth pattern](admin-auth-pattern.md) — admin views use `adminFetch()` from authStore.tsx (cookie-based); no Bearer token needed; do NOT use a token from useAuth().

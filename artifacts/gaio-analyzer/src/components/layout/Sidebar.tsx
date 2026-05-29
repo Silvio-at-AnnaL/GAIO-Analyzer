@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  MessageSquareCode,
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
   ArrowLeftRight, Share2, FileText, Server,
@@ -110,6 +111,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Angebots-Creator */}
         {isAuthenticated && canAccess("angebots_creator", role, permissions) && (
           <NavButton id={18} icon={FileText} label="Angebots-Creator" active={activeView === 18} onClick={() => navigate(18)} />
+        )}
+
+        {/* Prompt-Verwaltung */}
+        {isAuthenticated && canAccess("prompt_verwaltung", role, permissions) && (
+          <NavButton id={19} icon={MessageSquareCode} label="Prompt-Verwaltung" active={activeView === 19} onClick={() => navigate(19)} />
         )}
 
         {/* Geteilte Analysen */}

@@ -10,6 +10,8 @@ import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } 
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
+import { getPrompt, fillTemplate, clearPromptCache } from "../lib/prompt-manager.js";
+import { PROMPT_DEFAULTS_MAP } from "../lib/prompt-defaults.js";
 import { randomUUID } from "node:crypto";
 
 declare module "express" {
@@ -788,118 +790,22 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
       ? arr.map((r, i) => `${prefix}${i + 1}: ${r.finding} → ${r.fix}`).join("\n")
       : "– keine –";
 
-  const prompt = `Du bist ein erfahrener SEO- und KI-Optimierungsberater einer deutschen Agentur. Erstelle ein vollständiges, professionelles Angebot zur KI- und SEO-Optimierung.
-
-KUNDENDATEN:
-Unternehmen: ${companyName ?? domain}
-Domain: ${domain}
-Analysedatum: ${exportDate?.slice(0, 10) ?? "–"}
-
-ANALYSEERGEBNISSE:
-GAIO Gesamtscore: ${gaioScore !== null ? gaioScore : "–"}/100
-Technisches SEO: ${sc("technicalSeo")}/100
-Schema.org: ${sc("schemaOrg")}/100
-Heading-Struktur: ${sc("headingStructure")}/100
-Inhaltliche Relevanz: ${sc("contentRelevance")}/100
-FAQ-Qualität: ${sc("faqQuality")}/100
-LLM-Auffindbarkeit: ${sc("llmDiscoverability")}/100
-
-IDENTIFIZIERTE MASSNAHMEN:
-
-KRITISCH:
-${fmtNamed(kritisch, "K")}
-
-HOHER HEBEL:
-${fmtNamed(hoherHebel, "H")}
-
-NACHGEORDNET:
-${fmtNamed(nachgeordnet, "N")}
-
-PFLICHTSTRUKTUR — halte dich exakt an diese Reihenfolge und lass keinen Abschnitt aus:
-
-ABSCHNITT 1: <h2>1. Ausgangslage und Bewertung</h2>
-- Einleitungsabsatz (2–3 Sätze) mit Gesamteinschätzung
-- Score-Liste als <ul> mit allen 7 Werten inkl. kurzer Einordnung je Score
-- Abschlussfazit (2–3 Sätze) mit realistischer Score-Prognose nach Umsetzung
-- Abschließen mit: <hr><br>
-
-ABSCHNITT 2: <h2>2. Leistungsübersicht</h2>
-Einleitungssatz zur Struktur, dann:
-
-<h3>Stufe 1 — Kritische Maßnahmen</h3>
-- Einen einleitenden Satz
-- Jede Maßnahme als <li> mit <strong>Titel</strong>, Kurzbeschreibung und kursivem Aufwand
-  Beispiel: <strong>Titel:</strong> Beschreibung. <em>Aufwand: X Stunden</em>
-- PFLICHT am Ende der Stufe 1:
-  <p><strong>Gesamtaufwand Stufe 1: ca. X Stunden</strong></p>
-
-<h3>Stufe 2 — Hoher Hebel</h3>
-- Einen einleitenden Satz
-- Gleiche Liststruktur wie Stufe 1
-- PFLICHT am Ende der Stufe 2:
-  <p><strong>Gesamtaufwand Stufe 2: ca. X Stunden</strong></p>
-
-<h3>Stufe 3 — Nachgeordnete Maßnahmen</h3>
-- Einen einleitenden Satz
-- Gleiche Liststruktur
-- PFLICHT am Ende der Stufe 3:
-  <p><strong>Gesamtaufwand Stufe 3: ca. X Stunden</strong></p>
-- Dann direkt darunter:
-  <p><strong>Gesamtaufwand aller Stufen: ca. X Stunden</strong></p>
-- Abschließen mit: <hr><br>
-
-ABSCHNITT 3: <h2>3. Leistungspakete</h2>
-Einen einleitenden Satz, dann drei Pakete:
-
-<h3>[ ] Paket S — [kurzer Name]</h3>
-- <strong>Zielgruppe:</strong> 1 Satz
-- <strong>Gesamtaufwand:</strong> ca. X Stunden
-- <ul> mit enthaltenen Leistungen (Stufe 1)
-- <strong>Erwarteter Effekt:</strong> 1–2 Sätze
-- Abschließen mit: <hr><br>
-
-<h3>[ ] Paket M — [kurzer Name]</h3>
-- <strong>Zielgruppe:</strong> 1 Satz
-- <strong>Gesamtaufwand:</strong> ca. X Stunden (inklusive Paket S)
-- <ul> mit enthaltenen Leistungen (Stufen 1+2)
-- <strong>Erwarteter Effekt:</strong> 2–3 Sätze inkl. realistischer Score-Prognose
-- Abschließen mit: <hr><br>
-
-<h3>[ ] Paket L — [kurzer Name]</h3>
-- <strong>Zielgruppe:</strong> 1 Satz
-- <strong>Gesamtaufwand:</strong> ca. X Stunden (inklusive Pakete S und M)
-- <ul> mit enthaltenen Leistungen (Stufen 1+2+3) plus Qualitätssicherung und Abschluss-Audit
-- <strong>Erwarteter Effekt:</strong> 2–3 Sätze inkl. maximaler Score-Prognose
-- Abschließen mit: <hr><br>
-
-ABSCHNITT 4: <h2>4. Unser Leistungsumfang</h2>
-- Einleitungssatz
-- <ul> mit 6–8 Bulletpoints zu Kompetenzen (CMS-Umsetzung, JSON-LD, redaktionelle Texte, llms.txt, Qualitätssicherung, GAIO-Folgeaudit etc.)
-- Abschlussparagraph mit Qualitätssicherungshinweis
-
-ABSCHNITT 5: <h2>5. Nächste Schritte</h2>
-- 2–3 Sätze zur Beauftragung
-- Kontaktzeile:
-  <p><strong>Ansprechpartner:</strong> Silvio Haase · CMO &amp; Head of Business Development<br>
-  <strong>E-Mail:</strong> Silvio.Haase@IndustryStock.com<br>
-  <strong>Unternehmen:</strong> Deutscher Medien Verlag GmbH / IndustryStock.com</p>
-- Gültigkeitshinweis (30 Tage)
-
----
-
-ABSOLUTE REGELN — diese gelten ohne Ausnahme:
-
-1. Schreibe ALLE 5 Abschnitte vollständig zu Ende. Brich unter keinen Umständen ab.
-2. Jede Stufe MUSS mit einer Gesamtaufwand-Zeile enden. Ohne Ausnahme.
-3. Alle Pakete müssen vollständig ausformuliert sein.
-4. Verwende NUR diese HTML-Tags: <h1> <h2> <h3> <p> <strong> <em> <ul> <li> <hr> <br>
-5. Keine Tabellen, keine Divs, keine Style-Attribute.
-6. Beginne direkt mit <h1>. Keine Präambel.
-7. Keine Markdown-Fences.
-8. Alle Sonderzeichen als HTML-Entities.
-9. Nach jedem <hr> ein <br> einfügen.
-10. Ausschließlich Deutsch. Kein einziges englisches Wort.
-11. Das Angebot endet mit Abschnitt 5. Der letzte Satz muss ein vollständiger Satz sein.`;
+  const angebotTemplate = getPrompt("angebot-creator");
+  const prompt = fillTemplate(angebotTemplate, {
+    COMPANY_NAME: companyName ?? domain,
+    DOMAIN: domain,
+    EXPORT_DATE: exportDate?.slice(0, 10) ?? "–",
+    GAIO_SCORE: gaioScore !== null ? String(gaioScore) : "–",
+    TECH_SEO: sc("technicalSeo"),
+    SCHEMA_ORG: sc("schemaOrg"),
+    HEADINGS: sc("headingStructure"),
+    CONTENT: sc("contentRelevance"),
+    FAQ_SCORE: sc("faqQuality"),
+    LLM: sc("llmDiscoverability"),
+    MASSNAHMEN_KRITISCH: fmtNamed(kritisch, "K"),
+    MASSNAHMEN_HOHER_HEBEL: fmtNamed(hoherHebel, "H"),
+    MASSNAHMEN_NACHGEORDNET: fmtNamed(nachgeordnet, "N"),
+  });
 
   try {
     const rawHtml = await callLLM(prompt, 6000);
@@ -1333,6 +1239,100 @@ adminRouter.get("/shares/:id/access-log", requireAuth, (req: Request, res: Respo
     LIMIT 100
   `).all(id) as { id: number; accessed_at: string; ip_hash: string | null; user_agent: string | null }[];
   res.json({ items: items.map((r) => ({ id: r.id, accessedAt: r.accessed_at, ipHash: r.ip_hash, userAgent: r.user_agent })) });
+});
+
+// ── Prompt-Verwaltung ─────────────────────────────────────────────────────────
+
+adminRouter.get("/prompts", requireAdmin, (_req, res) => {
+  type DbPromptRow = {
+    id: number; slug: string; name: string; description: string;
+    module: string; is_modified: number; updated_at: string;
+  };
+  const rows = db.prepare(
+    "SELECT id, slug, name, description, module, is_modified, updated_at FROM prompts ORDER BY module, name",
+  ).all() as DbPromptRow[];
+  res.json({
+    prompts: rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      description: r.description,
+      module: r.module,
+      isModified: r.is_modified === 1,
+      updatedAt: r.updated_at,
+    })),
+  });
+});
+
+adminRouter.get("/prompts/:slug", requireAdmin, (req, res) => {
+  const slug = req.params.slug as string;
+  type DbPromptFull = {
+    id: number; slug: string; name: string; description: string;
+    module: string; template: string; placeholders: string;
+    is_modified: number; updated_at: string;
+  };
+  const row = db.prepare(
+    "SELECT id, slug, name, description, module, template, placeholders, is_modified, updated_at FROM prompts WHERE slug = ?",
+  ).get(slug) as DbPromptFull | undefined;
+  if (!row) { res.status(404).json({ error: "Prompt nicht gefunden" }); return; }
+  const def = PROMPT_DEFAULTS_MAP.get(slug);
+  res.json({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    module: row.module,
+    template: row.template,
+    placeholders: JSON.parse(row.placeholders || "[]") as unknown[],
+    isModified: row.is_modified === 1,
+    updatedAt: row.updated_at,
+    defaultTemplate: def?.template ?? row.template,
+  });
+});
+
+adminRouter.patch("/prompts/:slug", requireAdmin, (req, res) => {
+  const slug = req.params.slug as string;
+  const { template } = req.body as { template?: string };
+  if (typeof template !== "string" || template.trim().length === 0) {
+    res.status(400).json({ error: "template ist erforderlich" }); return;
+  }
+  const exists = db.prepare("SELECT id FROM prompts WHERE slug = ?").get(slug);
+  if (!exists) { res.status(404).json({ error: "Prompt nicht gefunden" }); return; }
+  db.prepare(
+    "UPDATE prompts SET template = ?, is_modified = 1, updated_at = CURRENT_TIMESTAMP WHERE slug = ?",
+  ).run(template.trim(), slug);
+  clearPromptCache(slug);
+  res.json({ ok: true });
+});
+
+adminRouter.post("/prompts/:slug/reset", requireAdmin, (req, res) => {
+  const slug = req.params.slug as string;
+  const def = PROMPT_DEFAULTS_MAP.get(slug);
+  if (!def) { res.status(404).json({ error: "Kein Standard für diesen Prompt verfügbar" }); return; }
+  db.prepare(
+    "UPDATE prompts SET template = ?, is_modified = 0, updated_at = CURRENT_TIMESTAMP WHERE slug = ?",
+  ).run(def.template, slug);
+  clearPromptCache(slug);
+  type DbPromptFull = {
+    id: number; slug: string; name: string; description: string;
+    module: string; template: string; placeholders: string;
+    is_modified: number; updated_at: string;
+  };
+  const row = db.prepare(
+    "SELECT id, slug, name, description, module, template, placeholders, is_modified, updated_at FROM prompts WHERE slug = ?",
+  ).get(slug) as DbPromptFull;
+  res.json({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    module: row.module,
+    template: row.template,
+    placeholders: JSON.parse(row.placeholders || "[]") as unknown[],
+    isModified: false,
+    updatedAt: row.updated_at,
+    defaultTemplate: def.template,
+  });
 });
 
 export default adminRouter;

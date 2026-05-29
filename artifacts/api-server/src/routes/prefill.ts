@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -420,45 +421,11 @@ Return ONLY valid JSON, no other text:
 All text must be in German. The personas field must be plain prose — no bullet points, no markdown.`;
   }
 
-  return `You are a B2B market analyst.
-
-A company has submitted its website for analysis. I have crawled the following pages from their website and extracted the text content:
-
-${crawledContent}
-
-Company name: ${company_name}
-Website: ${url}
-
-Based EXCLUSIVELY on the actual website content above (not on general assumptions), perform the following analysis:
-
-TASK 1 — TARGET AUDIENCES
-Identify the primary B2B buyer personas for this company based on the products, services and use cases described on the website. Include:
-- Which industries are explicitly or implicitly addressed?
-- Which job titles or roles are likely decision makers or users?
-- What buying criteria or problems does the company solve?
-Write 3-5 concise sentences in German. Be specific to what you actually read on the website — no generic B2B personas.
-
-TASK 2 — COMPETITORS
-Based on the specific products and services you found on this website, identify 5-8 direct competitors — companies that sell similar or identical products to the same target industries.
-
-Rules for competitor selection:
-- Must be direct product competitors, not adjacent or complementary companies
-- Must be real companies with real websites you are confident exist
-- Prefer companies of similar size and market focus where possible
-- Do NOT list distributors, partners or customers of the analyzed company
-- If you are uncertain about a URL, omit that competitor rather than guessing
-
-Return ONLY valid JSON, no other text:
-{
-  "content_summary": "<2-3 sentences in German summarizing what products/services the company actually offers, based on the crawled pages>",
-  "personas": "<German prose text, 3-5 sentences>",
-  "competitors": [
-    { "name": "<company>", "url": "https://..." }
-  ]
-}
-
-CRITICAL: Base your analysis ONLY on the website content provided above. Do not use general knowledge about the company name. If the crawled content is insufficient to identify reliable competitors, return fewer than 5 rather than guessing.
-All text fields must be in German. The personas field must be plain prose — no bullet points, no numbering, no markdown.`;
+  return fillTemplate(getPrompt("prefill-analysis"), {
+    CRAWLED_CONTENT: crawledContent,
+    COMPANY_NAME: company_name,
+    WEBSITE_URL: url,
+  });
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import path from "node:path";
 import { mkdirSync } from "node:fs";
 import bcrypt from "bcryptjs";
 import { logger } from "./logger.js";
+import { PROMPT_DEFAULTS } from "./prompt-defaults.js";
 
 const DB_DIR = path.join(process.cwd(), "server");
 const DB_PATH = path.join(DB_DIR, "admin.db");
@@ -95,6 +96,21 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS prompts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL,
+    module      TEXT NOT NULL,
+    template    TEXT NOT NULL,
+    placeholders TEXT NOT NULL DEFAULT '[]',
+    is_modified INTEGER NOT NULL DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // ── Default settings seed ─────────────────────────────────────────────────────
 const DEFAULT_SETTINGS: [string, string][] = [
   ["ai_provider",              "claude"],
@@ -146,6 +162,16 @@ const DEFAULT_SETTINGS: [string, string][] = [
 ];
 const _seedStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 for (const [k, v] of DEFAULT_SETTINGS) _seedStmt.run(k, v);
+
+// ── Default prompts seed ───────────────────────────────────────────────────────
+{
+  const _promptSeed = db.prepare(
+    "INSERT OR IGNORE INTO prompts (slug, name, description, module, template, placeholders) VALUES (?, ?, ?, ?, ?, ?)",
+  );
+  for (const p of PROMPT_DEFAULTS) {
+    _promptSeed.run(p.slug, p.name, p.description, p.module, p.template, JSON.stringify(p.placeholders));
+  }
+}
 
 const count = (db.prepare("SELECT COUNT(*) as c FROM users").get() as unknown as { c: number }).c;
 if (count === 0) {

@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
 import { callLLM } from "../ai-client.js";
+import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 export interface FaqResult {
@@ -116,7 +117,7 @@ export async function analyzeFaq(pages: CrawledPage[]): Promise<FaqResult> {
 
       if (faqContent.length > 50) {
         qualityAssessment = await callLLM(
-          `Evaluate this FAQ content from a B2B industrial website. Are the questions framed as real user questions? Do answers have sufficient depth? Give a 2-3 sentence assessment.\n\n${faqContent}`,
+          fillTemplate(getPrompt("faq-quality"), { FAQ_CONTENT: faqContent }),
           8192,
         );
       }

@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
 import { callLLM } from "../ai-client.js";
+import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 export interface ContentDimension {
@@ -43,30 +44,13 @@ export async function analyzeContentRelevance(
   };
 
   try {
-    const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
-
-Given this B2B industrial website content, evaluate:
-(1) Does it describe specific use cases and application scenarios?
-(2) Does it answer likely buyer questions (ROI, specs, integrations, certifications, support)?
-(3) Is technical depth sufficient for expert-level users?
-(4) Are there content gaps a competitor could exploit?
-
-${questionnaireContext ? `Context about the company:\n${questionnaireContext}\n\n` : ""}
-
-Website content:
-${truncatedContent}
-
-Return a JSON object (no markdown formatting) with this structure:
-{
-  "dimensions": [
-    {"name": "Use Cases & Applications", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Buyer Questions", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Technical Depth", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Content Gaps", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]}
-  ]
-}
-
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
+    const contextBlock = questionnaireContext
+      ? `Context about the company:\n${questionnaireContext}\n\n`
+      : "";
+    const prompt = fillTemplate(getPrompt("content-relevance"), {
+      QUESTIONNAIRE_CONTEXT: contextBlock,
+      CRAWLED_CONTENT: truncatedContent,
+    });
 
     const text = await callLLM(prompt, 8192);
     const jsonMatch = text.match(/\{[\s\S]*\}/);

@@ -1,0 +1,324 @@
+```
+Add a Prompt-Verwaltung to the admin area.
+All AI prompts currently hardcoded in the 
+backend are extracted to the database, 
+made editable via admin UI, and loaded 
+dynamically at runtime.
+
+---
+
+DATABASE: new table
+
+  CREATE TABLE IF NOT EXISTS prompts (
+    id SERIAL PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    module TEXT NOT NULL,
+    template TEXT NOT NULL,
+    placeholders TEXT NOT NULL,
+    -- JSON array of {key, description}
+    is_modified BOOLEAN DEFAULT FALSE,
+    -- false = still using default
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+
+---
+
+SEED: extract all hardcoded prompts
+
+On server startup, INSERT OR IGNORE each 
+prompt with its current hardcoded text 
+as the default template.
+
+Identify and seed ALL prompts currently 
+in the codebase. Search for every 
+callLLM(), callWithClaude(), or similar 
+AI call and extract its prompt string.
+
+At minimum these prompts must be seeded:
+
+  slug: 'content-relevance'
+  name: 'Inhaltliche Relevanz'
+  module: 'Analyse'
+  description: 'Analysiert Use Cases, 
+    Käuferfragen, technische Tiefe und 
+    inhaltliche Lücken der gecrawlten 
+    Seiten.'
+  placeholders: [
+    { key: '{{CRAWLED_CONTENT}}', 
+      description: 'Gecrawlter Seitentext' },
+    { key: '{{COMPANY_NAME}}', 
+      description: 'Unternehmensname' },
+    { key: '{{PERSONAS}}', 
+      description: 'Zielgruppen' }
+  ]
+
+  slug: 'faq-quality'
+  name: 'FAQ-Qualität'
+  module: 'Analyse'
+  description: 'Bewertet Anzahl, Qualität 
+    und Struktur der FAQ-Inhalte.'
+
+  slug: 'llm-discoverability-a'
+  name: 'LLM-Auffindbarkeit Teil A'
+  module: 'Analyse'
+  description: 'Problem-/Kategoriefragen 
+    ohne Markennamen (70% Gewichtung).'
+
+  slug: 'llm-discoverability-b'
+  name: 'LLM-Auffindbarkeit Teil B'
+  module: 'Analyse'
+  description: 'Marken-Verifikationsfragen 
+    mit Firmennamen (30% Gewichtung).'
+
+  slug: 'recommendations'
+  name: 'Empfehlungen generieren'
+  module: 'Analyse'
+  description: 'Erstellt priorisierte 
+    Handlungsempfehlungen in drei Stufen: 
+    Kritisch, Hoher Hebel, Nachgeordnet.'
+
+  slug: 'competitor-analysis'
+  name: 'Wettbewerbsanalyse'
+  module: 'Analyse'
+  description: 'Analysiert Stärken und 
+    Schwächen der Wettbewerber-Websites 
+    im Vergleich.'
+
+  slug: 'prefill-analysis'
+  name: 'KI-Vorausfüllung (Basisdaten)'
+  module: 'Basisdaten'
+  description: 'Ermittelt automatisch 
+    Zielgruppen, Wettbewerber und 
+    Produkt-Summary aus der Website.'
+
+  slug: 'angebot-creator'
+  name: 'Angebots-Creator'
+  module: 'Angebot'
+  description: 'Generiert ein strukturiertes 
+    KI-Optimierungsangebot auf Basis der 
+    Analyseergebnisse.'
+
+---
+
+BACKEND: load prompts at runtime
+
+Create server/prompt-manager.ts:
+
+  import { query } from './db'
+  
+  // Cache prompts in memory after first load
+  const cache = new Map<string, string>()
+  
+  export async function getPrompt(
+    slug: string
+  ): Promise<string> {
+    // Check cache first
+    if (cache.has(slug)) {
+      return cache.get(slug)!
+    }
+    
+    const result = await query(
+      'SELECT template FROM prompts 
+       WHERE slug = $1',
+      [slug]
+    )
+    
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Prompt nicht gefunden: ${slug}`
+      )
+    }
+    
+    const template = result.rows[0].template
+    cache.set(slug, template)
+    return template
+  }
+  
+  export function clearPromptCache(
+    slug?: string
+  ) {
+    if (slug) {
+      cache.delete(slug)
+    } else {
+      cache.clear()
+    }
+  }
+  
+  export function fillTemplate(
+    template: string,
+    vars: Record<string, string>
+  ): string {
+    return Object.entries(vars).reduce(
+      (t, [key, val]) => 
+        t.replaceAll(`{{${key}}}`, val),
+      template
+    )
+  }
+
+In every analysis module that currently 
+has a hardcoded prompt string:
+  1. Replace the inline string with:
+       const template = await getPrompt('slug')
+       const prompt = fillTemplate(template, {
+         CRAWLED_CONTENT: content,
+         COMPANY_NAME: name,
+         // etc.
+       })
+  2. Convert the prompt variable names 
+     to {{PLACEHOLDER}} format in the 
+     seeded template.
+
+When an admin saves an edited prompt, 
+call clearPromptCache(slug) so the next 
+analysis loads the updated version.
+
+---
+
+BACKEND: API routes
+
+  GET /api/admin/prompts
+    Admin only.
+    Returns all prompts: id, slug, name, 
+    description, module, is_modified, 
+    updated_at.
+    Does NOT return template text 
+    (keep response small for the list view).
+    Grouped by module in the response.
+
+  GET /api/admin/prompts/:slug
+    Admin only.
+    Returns full prompt including template 
+    and placeholders JSON.
+
+  PATCH /api/admin/prompts/:slug
+    Admin only.
+    Body: { template: string }
+    Validates template is not empty.
+    Updates template, sets is_modified=true,
+    updates updated_at.
+    Calls clearPromptCache(slug).
+    Returns updated prompt.
+
+  POST /api/admin/prompts/:slug/reset
+    Admin only.
+    Resets template to the hardcoded 
+    default value for that slug.
+    Sets is_modified=false.
+    Calls clearPromptCache(slug).
+    
+    The hardcoded defaults must be stored 
+    as a constant in the backend 
+    (server/prompt-defaults.ts) so reset 
+    always has access to the original text.
+
+---
+
+FRONTEND: PromptVerwaltungView.tsx
+
+Sidebar:
+  Label: "Prompt-Verwaltung"
+  Icon: MessageSquareCode (lucide)
+  Position: after Angebots-Creator
+  Access: admin only
+
+Add to ADMIN_FEATURES:
+  {
+    id: 'prompt_verwaltung',
+    label: 'Prompt-Verwaltung',
+    icon: 'MessageSquareCode',
+    defaultRoles: ['admin']
+  }
+
+LAYOUT:
+
+Left panel (~35% width, scrollable):
+  List of all prompts grouped by module.
+  
+  Each group: module name as section header.
+  
+  Each prompt item (clickable card):
+    Name (bold)
+    Description (muted, 1 line truncated)
+    Status badge:
+      "Standard" (gray) if is_modified=false
+      "Bearbeitet" (blue) if is_modified=true
+    updated_at if modified
+  
+  Selected item: blue left border highlight.
+
+Right panel (~65% width):
+  Shows the full editor for the 
+  selected prompt.
+  
+  Empty state when nothing selected:
+    "Wählen Sie links einen Prompt aus."
+
+  When a prompt is selected:
+
+    HEADER:
+      Prompt name as h2
+      Description text (muted)
+      Module badge
+
+    PLACEHOLDERS reference (collapsible, 
+    collapsed by default):
+      "Verfügbare Platzhalter"
+      Table: {{KEY}} | Beschreibung
+      Each placeholder on a row.
+      Click on a placeholder copies it 
+      to clipboard.
+
+    EDITOR:
+      A <textarea> with:
+        font-family: monospace
+        font-size: 13px
+        min-height: 400px
+        resize: vertical
+        full width
+        border: 1.5px solid var(--border)
+        padding: 12px
+        line-height: 1.6
+      
+      Pre-filled with current template text.
+      
+      Character count shown below 
+      (bottom right, muted):
+        "1.247 Zeichen"
+
+    DIFF VIEW (toggle button):
+      A "Änderungen anzeigen" toggle 
+      that compares current editor content 
+      against the original default.
+      When toggled: show a simple before/
+      after split or highlight changed lines 
+      in the textarea background.
+      Simple approach: just show the 
+      original in a read-only panel below.
+
+    ACTION BAR (sticky bottom of right panel):
+      Left: 
+        If is_modified:
+          "Auf Standard zurücksetzen" 
+          (outline, destructive color)
+          Confirmation: "Standard-Prompt 
+          wiederherstellen? Ihre Änderungen 
+          gehen verloren."
+      
+      Right:
+        "Speichern" (primary)
+        Disabled if content unchanged.
+        On save: 
+          PATCH /api/admin/prompts/:slug
+          Updates left panel badge 
+          to "Bearbeitet"
+          Shows toast: "Prompt gespeichert. 
+          Wirksam ab der nächsten Analyse."
+
+    USAGE INFO (below editor, muted):
+      "Dieser Prompt wird verwendet bei: 
+      [module/step name]"
+      "Letzte Änderung: [date] by Admin"
+```

@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { CrawledPage } from "../crawler";
 import { callLLM } from "../ai-client.js";
+import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 export interface LlmQuestion {
@@ -80,22 +81,10 @@ async function generateProblemQuestions(
   combinedContent: string,
   context: string,
 ): Promise<string[]> {
-  const prompt = `You are simulating a B2B buyer in early research mode who does NOT yet know any specific vendor.
-Based on the website content below, infer the product category, industry, and key use cases.
-
-${context ? `Context:\n${context}\n\n` : ""}
-
-Website content sample:
-${combinedContent.slice(0, 4000)}
-
-Generate exactly 6 realistic German-language questions a buyer would ask an AI assistant when researching this category.
-Hard rules:
-- Do NOT mention any specific company name, brand, or domain.
-- Frame the questions around the problem, use case, comparison criteria, or selection guidance.
-- Mix question types: capability ("Welche Anbieter bieten ...?"), comparison ("Wie unterscheiden sich ...?"), use-case ("Wie kann ich ... lösen?"), selection ("Worauf sollte ich bei ... achten?").
-
-Return ONLY valid JSON:
-{"questions": ["<q1>", "<q2>", "<q3>", "<q4>", "<q5>", "<q6>"]}`;
+  const prompt = fillTemplate(getPrompt("llm-discoverability-a"), {
+    QUESTIONNAIRE_CONTEXT: context ? `Context:\n${context}\n\n` : "",
+    COMBINED_CONTENT: combinedContent.slice(0, 4000),
+  });
 
   try {
     const text = await callLLM(prompt, 8192);
@@ -112,21 +101,11 @@ async function generateBrandQuestions(
   company: string,
   domain: string,
 ): Promise<string[]> {
-  const prompt = `You are simulating a B2B buyer who already knows the company "${company}" (domain: ${domain})
-and wants to verify specific information before contacting them.
-
-Website content sample:
-${combinedContent.slice(0, 4000)}
-
-Generate exactly 4 realistic German-language questions that explicitly mention "${company}".
-Mix categories like: certifications, product specs, delivery times, support, comparisons, use-case fit.
-
-Examples of the right framing:
-- "Welche Zertifizierungen hat ${company} für [specific industry]?"
-- "Welche Lieferzeiten bietet ${company} für [product]?"
-
-Return ONLY valid JSON:
-{"questions": ["<q1>", "<q2>", "<q3>", "<q4>"]}`;
+  const prompt = fillTemplate(getPrompt("llm-discoverability-b"), {
+    COMPANY_NAME: company,
+    DOMAIN: domain,
+    COMBINED_CONTENT: combinedContent.slice(0, 4000),
+  });
 
   try {
     const text = await callLLM(prompt, 8192);
@@ -158,30 +137,11 @@ async function rateQuestionsWithSources(
 
   const urlList = pageBlocks.map((p) => p.url);
 
-  const prompt = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
-
-Using ONLY the crawled website pages below as your knowledge source,
-rate how completely you could answer each question (1=cannot answer at all, 5=fully and specifically answerable).
-
-For each question, also identify the SINGLE best-matching page URL that supports the answer.
-If no page covers the question adequately (rating 1 or 2), set "sourceUrl" to null.
-The sourceUrl MUST be one of the exact URLs listed in the pages, or null.
-
-Crawled pages:
-${pagesDoc}
-
-Available URLs (must pick exactly one of these or null):
-${JSON.stringify(urlList)}
-
-Questions to rate:
-${JSON.stringify(questions)}
-
-Return ONLY valid JSON:
-{"ratings": [
-  {"question": "<q>", "rating": <1-5>, "gap": "<kurze deutsche Erklärung was fehlt oder warum die Bewertung so ist>", "sourceUrl": <"url" or null>}
-]}
-
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
+  const prompt = fillTemplate(getPrompt("llm-discoverability-rating"), {
+    PAGES_DOC: pagesDoc,
+    URL_LIST: JSON.stringify(urlList),
+    QUESTIONS: JSON.stringify(questions),
+  });
 
   try {
     const text = await callLLM(prompt, 8192);

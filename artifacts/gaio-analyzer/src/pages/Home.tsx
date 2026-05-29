@@ -24,6 +24,7 @@ import { PermissionsView } from "@/views/admin/PermissionsView";
 import { VergleichView } from "@/views/VergleichView";
 import { SharesView } from "@/views/admin/SharesView";
 import { AngebotCreatorView } from "@/views/admin/AngebotCreatorView";
+import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -67,6 +68,7 @@ function AppContent() {
                 {activeView === 16                  && <VergleichView />}
                 {activeView === 17                  && <SharesView />}
                 {activeView === 18                  && <AngebotCreatorView />}
+                {activeView === 19                  && <PromptVerwaltungView />}
               </>
             )}
           </div>

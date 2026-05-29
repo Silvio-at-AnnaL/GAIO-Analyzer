@@ -1,4 +1,5 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 export interface Recommendation {
@@ -221,39 +222,11 @@ function parseRecommendations(text: string): Recommendation[] | null {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-const GERMAN_PROMPT_PREFIX =
-  "KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. " +
-  "Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.\n\n";
-
-const GERMAN_PROMPT_SUFFIX =
-  "\n\nWIEDERHOLUNG: Antworte ausschließlich auf Deutsch. " +
-  "Alle Felder — title, finding, why_it_matters, fix — müssen vollständig auf Deutsch sein. " +
-  "Englische Ausgaben sind nicht akzeptabel.";
-
 function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""): string {
-  return (
-    GERMAN_PROMPT_PREFIX +
-    retryPrefix +
-    `Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
-
-- "critical": must be fixed immediately (broken fundamentals: missing canonical, no HTTPS, 0 structured data, H1 absent)
-- "high_leverage": changes likely to produce major visibility gains (missing FAQPage schema, thin content, no use-case descriptions, hreflang errors, missing Organization schema)
-- "secondary": improvements for after critical + high-leverage are resolved (meta description length, image alt gaps, heading hierarchy inconsistencies)
-
-Each recommendation must include:
-- What exactly is wrong (specific page/element if possible)
-- Why it matters for LLM discoverability and/or classic SEO
-- Concrete fix instruction (code snippet or content guidance)
-
-Note: robots.txt, sitemap.xml, and llms.txt recommendations are already handled separately — focus on content quality, structured data, and on-page SEO issues.
-
-Analysis findings:
-${resultsStr}
-
-Return a JSON array (no markdown) of objects:
-[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]` +
-    GERMAN_PROMPT_SUFFIX
-  );
+  return fillTemplate(getPrompt("recommendations"), {
+    RESULTS_JSON: resultsStr,
+    RETRY_PREFIX: retryPrefix,
+  });
 }
 
 export async function generateRecommendations(
