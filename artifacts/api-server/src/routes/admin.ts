@@ -1243,7 +1243,7 @@ adminRouter.get("/shares/:id/access-log", requireAuth, (req: Request, res: Respo
 
 // ── Prompt-Verwaltung ─────────────────────────────────────────────────────────
 
-adminRouter.get("/prompts", requireAdmin, (_req, res) => {
+adminRouter.get("/prompts", requireAuth, requireAdmin, (_req, res) => {
   type DbPromptRow = {
     id: number; slug: string; name: string; description: string;
     module: string; is_modified: number; updated_at: string;
@@ -1264,7 +1264,7 @@ adminRouter.get("/prompts", requireAdmin, (_req, res) => {
   });
 });
 
-adminRouter.get("/prompts/:slug", requireAdmin, (req, res) => {
+adminRouter.get("/prompts/:slug", requireAuth, requireAdmin, (req, res) => {
   const slug = req.params.slug as string;
   type DbPromptFull = {
     id: number; slug: string; name: string; description: string;
@@ -1290,7 +1290,7 @@ adminRouter.get("/prompts/:slug", requireAdmin, (req, res) => {
   });
 });
 
-adminRouter.patch("/prompts/:slug", requireAdmin, (req, res) => {
+adminRouter.patch("/prompts/:slug", requireAuth, requireAdmin, (req, res) => {
   const slug = req.params.slug as string;
   const { template } = req.body as { template?: string };
   if (typeof template !== "string" || template.trim().length === 0) {
@@ -1305,7 +1305,7 @@ adminRouter.patch("/prompts/:slug", requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-adminRouter.post("/prompts/:slug/reset", requireAdmin, (req, res) => {
+adminRouter.post("/prompts/:slug/reset", requireAuth, requireAdmin, (req, res) => {
   const slug = req.params.slug as string;
   const def = PROMPT_DEFAULTS_MAP.get(slug);
   if (!def) { res.status(404).json({ error: "Kein Standard für diesen Prompt verfügbar" }); return; }

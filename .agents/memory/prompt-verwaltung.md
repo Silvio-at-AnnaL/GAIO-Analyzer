@@ -15,3 +15,5 @@ All 9 AI prompts are extracted from hardcoded strings and stored in the SQLite `
 **Placeholder syntax:** `{{KEY}}` in templates, filled via `fillTemplate(template, { KEY: value })`.
 
 **Why:** Allows non-developer admins to tune AI prompt language and structure without code deploys. The DB stores the active template; the PROMPT_DEFAULTS_MAP holds the immutable default for reset and diff display.
+
+**Critical pattern:** Admin routes must use BOTH `requireAuth, requireAdmin` as middleware — not just `requireAdmin`. `requireAuth` decodes the JWT and sets `req.adminUser`; `requireAdmin` then checks the role. Omitting `requireAuth` causes 403 on every request even for logged-in admin users.
