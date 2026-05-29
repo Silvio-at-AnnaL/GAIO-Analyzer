@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
+import { Client as PgClient } from "pg";
 import { db, getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
@@ -1032,6 +1033,82 @@ adminRouter.post("/settings/test-mail", requireAuth, requireAdmin, async (req: R
     subject: "GAIO Analyzer — Mailserver-Test",
     text:    "Der Mailserver ist korrekt konfiguriert.",
   });
+  res.json(result);
+});
+
+// ── Database settings ─────────────────────────────────────────────────────────
+
+function maskDbUrl(raw: string): string {
+  return raw.replace(/:([^@/]+)@/, ":••••••••@");
+}
+
+async function testDbConnection(connectionString: string): Promise<{ ok: boolean; ms?: number; error?: string }> {
+  const start = Date.now();
+  const client = new PgClient({ connectionString, connectionTimeoutMillis: 8000 });
+  try {
+    await client.connect();
+    await client.query("SELECT 1");
+    await client.end();
+    return { ok: true, ms: Date.now() - start };
+  } catch (err) {
+    try { await client.end(); } catch { /* ignore */ }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// GET /api/admin/settings/database  ← must be registered BEFORE /:group
+adminRouter.get("/settings/database", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  const envUrl = process.env.DATABASE_URL ?? "";
+  let source: "env" | "bootstrap" | "default";
+  let rawUrl: string;
+
+  if (envUrl) {
+    source = "env";
+    rawUrl = envUrl;
+  } else {
+    const stored = getSetting("database_url") ?? "";
+    if (stored) {
+      source = "bootstrap";
+      rawUrl = stored;
+    } else {
+      source = "default";
+      rawUrl = "";
+    }
+  }
+
+  const maskedUrl = rawUrl ? maskDbUrl(rawUrl) : "";
+  let connected = false;
+  if (rawUrl) {
+    const result = await testDbConnection(rawUrl);
+    connected = result.ok;
+  }
+
+  res.json({ source, maskedUrl, connected });
+});
+
+// POST /api/admin/settings/database  ← must be registered BEFORE /:group
+adminRouter.post("/settings/database", requireAuth, requireAdmin, (req: Request, res: Response) => {
+  const { connectionString } = req.body as { connectionString?: string };
+  if (!connectionString || typeof connectionString !== "string" || !connectionString.trim()) {
+    res.status(400).json({ error: "connectionString fehlt" }); return;
+  }
+  setSetting("database_url", connectionString.trim());
+  res.json({ success: true });
+});
+
+// POST /api/admin/settings/database/test  ← must be registered BEFORE /:group
+adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const { connectionString } = req.body as { connectionString?: string };
+  const rawUrl = connectionString?.trim()
+    || process.env.DATABASE_URL
+    || getSetting("database_url")
+    || "";
+
+  if (!rawUrl) {
+    res.json({ ok: false, error: "Kein Connection String angegeben" }); return;
+  }
+
+  const result = await testDbConnection(rawUrl);
   res.json(result);
 });
 

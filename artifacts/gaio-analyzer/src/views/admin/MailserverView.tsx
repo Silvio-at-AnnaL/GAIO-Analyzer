@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Save, Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Save, Send, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Database, Info } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+
+// ── Mail settings ─────────────────────────────────────────────────────────────
 
 interface MailSettings {
   mail_host: string;
@@ -26,25 +28,50 @@ function encryptionFromSettings(port: string, secure: string): EncryptionMode {
   return "starttls";
 }
 
+// ── Database status ───────────────────────────────────────────────────────────
+
+interface DbStatus {
+  source:     "env" | "bootstrap" | "default";
+  maskedUrl:  string;
+  connected:  boolean;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function MailserverView() {
+  // ── Mail state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState<MailSettings>({
     mail_host: "", mail_port: "587", mail_secure: "false",
     mail_user: "", mail_password: "", mail_from_name: "GAIO Analyzer",
     mail_from_address: "",
   });
   const [editedPassword, setEditedPassword] = useState<string | undefined>(undefined);
-  const [encryption, setEncryption] = useState<EncryptionMode>("starttls");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
-  const [testResult, setTestResult] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [encryption, setEncryption]         = useState<EncryptionMode>("starttls");
+  const [loading,    setLoading]            = useState(true);
+  const [saving,     setSaving]             = useState(false);
+  const [testing,    setTesting]            = useState(false);
+  const [feedback,   setFeedback]           = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [testResult, setTestResult]         = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+
+  // ── DB state ────────────────────────────────────────────────────────────────
+  const [dbStatus,     setDbStatus]     = useState<DbStatus | null>(null);
+  const [dbLoading,    setDbLoading]    = useState(true);
+  const [dbConnStr,    setDbConnStr]    = useState("");
+  const [dbEdited,     setDbEdited]     = useState(false);
+  const [dbShowPw,     setDbShowPw]     = useState(false);
+  const [dbFormOpen,   setDbFormOpen]   = useState(false);
+  const [dbTesting,    setDbTesting]    = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
+  const [dbSaving,     setDbSaving]     = useState(false);
+  const [dbSaved,      setDbSaved]      = useState(false);
 
   useEffect(() => {
-    void load();
+    void Promise.all([loadMail(), loadDb()]);
   }, []);
 
-  async function load() {
+  // ── Mail handlers ────────────────────────────────────────────────────────────
+
+  async function loadMail() {
     setLoading(true);
     const res = await adminFetch("/api/admin/settings/mail");
     if (res.ok) {
@@ -99,7 +126,57 @@ export function MailserverView() {
     setTimeout(() => setTestResult(null), 5000);
   }
 
-  if (loading) {
+  // ── DB handlers ──────────────────────────────────────────────────────────────
+
+  async function loadDb() {
+    setDbLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/settings/database");
+      if (res.ok) {
+        const data: DbStatus = await res.json();
+        setDbStatus(data);
+        if (data.source === "default") setDbFormOpen(true);
+      }
+    } finally {
+      setDbLoading(false);
+    }
+  }
+
+  async function handleDbTest() {
+    setDbTesting(true);
+    setDbTestResult(null);
+    const body = dbEdited ? { connectionString: dbConnStr } : {};
+    const res = await adminFetch("/api/admin/settings/database/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json() as { ok: boolean; ms?: number; error?: string };
+    setDbTesting(false);
+    setDbTestResult(data);
+  }
+
+  async function handleDbSave() {
+    if (!dbConnStr.trim()) return;
+    setDbSaving(true);
+    setDbSaved(false);
+    const res = await adminFetch("/api/admin/settings/database", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionString: dbConnStr.trim() }),
+    });
+    setDbSaving(false);
+    if (res.ok) {
+      setDbSaved(true);
+      setDbEdited(false);
+      setTimeout(() => setDbSaved(false), 3500);
+      void loadDb();
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
+  if (loading && dbLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(var(--muted-foreground))" }} />
@@ -107,18 +184,29 @@ export function MailserverView() {
     );
   }
 
+  const inputStyle = {
+    background: "hsl(var(--input))",
+    borderColor: "hsl(var(--border))",
+    color: "hsl(var(--foreground))",
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Mailserver</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Server</h1>
         <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          SMTP-Konfiguration für ausgehende E-Mails
+          SMTP-Konfiguration und Datenbankverbindung
         </p>
       </div>
 
+      {/* ── Mail card ─────────────────────────────────────────────────────────── */}
       <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <Send className="w-4 h-4" style={{ color: "hsl(var(--muted-foreground))" }} />
+          <span className="text-sm font-semibold">Mailserver (SMTP)</span>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* SMTP Host */}
           <div className="sm:col-span-2 space-y-1.5">
             <label className="text-sm font-medium">SMTP-Host</label>
             <input
@@ -127,18 +215,17 @@ export function MailserverView() {
               placeholder="smtp.gmail.com"
               onChange={(e) => setForm((f) => ({ ...f, mail_host: e.target.value }))}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
 
-          {/* Encryption */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Verschlüsselung</label>
             <select
               value={encryption}
               onChange={(e) => handleEncryptionChange(e.target.value as EncryptionMode)}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             >
               {encryptionOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -146,7 +233,6 @@ export function MailserverView() {
             </select>
           </div>
 
-          {/* Port (read-only display, driven by encryption select) */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Port</label>
             <input
@@ -154,11 +240,10 @@ export function MailserverView() {
               value={form.mail_port}
               onChange={(e) => setForm((f) => ({ ...f, mail_port: e.target.value }))}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
 
-          {/* Username */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Benutzername</label>
             <input
@@ -166,11 +251,10 @@ export function MailserverView() {
               value={form.mail_user}
               onChange={(e) => setForm((f) => ({ ...f, mail_user: e.target.value }))}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
 
-          {/* Password */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Passwort</label>
             <input
@@ -180,11 +264,10 @@ export function MailserverView() {
               onFocus={(e) => { if (editedPassword === undefined) { e.target.value = ""; setEditedPassword(""); } }}
               onChange={(e) => setEditedPassword(e.target.value)}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
 
-          {/* From Name */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Absendername</label>
             <input
@@ -192,11 +275,10 @@ export function MailserverView() {
               value={form.mail_from_name}
               onChange={(e) => setForm((f) => ({ ...f, mail_from_name: e.target.value }))}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
 
-          {/* From Address */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Absenderadresse</label>
             <input
@@ -204,12 +286,11 @@ export function MailserverView() {
               value={form.mail_from_address}
               onChange={(e) => setForm((f) => ({ ...f, mail_from_address: e.target.value }))}
               className="w-full px-3 py-2 rounded-md text-sm border"
-              style={{ background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+              style={inputStyle}
             />
           </div>
         </div>
 
-        {/* Buttons */}
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <button
             onClick={() => void handleSave()}
@@ -246,10 +327,163 @@ export function MailserverView() {
         )}
       </div>
 
-      {/* Info box */}
       <div className="rounded-md p-4 text-sm" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
         Ohne konfigurierten Mailserver werden E-Mails als Konsolenausgabe protokolliert.
         Funktionen wie Nutzer-Einladungen und Bestätigungscodes sind dann nur im Server-Log verfügbar.
+      </div>
+
+      {/* ── Database card ──────────────────────────────────────────────────────── */}
+      <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <Database className="w-4 h-4" style={{ color: "hsl(var(--muted-foreground))" }} />
+          <span className="text-sm font-semibold">Datenbankverbindung</span>
+        </div>
+
+        {dbLoading ? (
+          <div className="flex items-center gap-2 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            <Loader2 className="w-4 h-4 animate-spin" /> Lade Status…
+          </div>
+        ) : dbStatus ? (
+          <>
+            {/* ENV source — read-only info */}
+            {dbStatus.source === "env" && (
+              <div className="rounded-md p-4 space-y-2" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "#1d4ed8" }}>
+                  <Info className="w-4 h-4 shrink-0" />
+                  Verbindung über Umgebungsvariable DATABASE_URL konfiguriert.
+                </div>
+                {dbStatus.maskedUrl && (
+                  <div className="font-mono text-xs break-all" style={{ color: "#4b5563" }}>
+                    {dbStatus.maskedUrl}
+                  </div>
+                )}
+                <div className="text-xs" style={{ color: "#6b7280" }}>
+                  Umgebungsvariablen haben Vorrang. Auf Replit: Replit Secrets verwenden.
+                </div>
+              </div>
+            )}
+
+            {/* BOOTSTRAP or DEFAULT source — editable */}
+            {(dbStatus.source === "bootstrap" || dbStatus.source === "default") && (
+              <div className="space-y-3">
+                {/* Current connection status */}
+                <div className="space-y-1">
+                  <div className="text-xs font-medium uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    Aktuelle Verbindung
+                  </div>
+                  {dbStatus.maskedUrl ? (
+                    <div className="font-mono text-xs break-all" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {dbStatus.maskedUrl}
+                    </div>
+                  ) : (
+                    <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>—</div>
+                  )}
+                  <div className={`flex items-center gap-1.5 text-xs ${dbStatus.connected ? "text-green-500" : "text-amber-500"}`}>
+                    {dbStatus.connected
+                      ? <><CheckCircle className="w-3.5 h-3.5" /> Verbunden</>
+                      : <><AlertCircle className="w-3.5 h-3.5" />
+                          {dbStatus.source === "default"
+                            ? "Standardverbindung aktiv — bitte eigene Zugangsdaten hinterlegen."
+                            : "Keine aktive Verbindung"}
+                        </>
+                    }
+                  </div>
+                </div>
+
+                {/* Toggle form when not default */}
+                {dbStatus.source === "bootstrap" && !dbFormOpen && (
+                  <button
+                    onClick={() => setDbFormOpen(true)}
+                    className="text-xs underline"
+                    style={{ color: "hsl(var(--muted-foreground))" }}
+                  >
+                    Connection String ändern
+                  </button>
+                )}
+
+                {/* Edit form */}
+                {dbFormOpen && (
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">PostgreSQL Connection String</label>
+                      <div className="relative">
+                        <input
+                          type={dbShowPw ? "text" : "password"}
+                          value={dbEdited ? dbConnStr : dbStatus.maskedUrl}
+                          placeholder="postgresql://user:pass@host/db?sslmode=require"
+                          onFocus={() => { if (!dbEdited) { setDbConnStr(""); setDbEdited(true); } }}
+                          onChange={(e) => { setDbConnStr(e.target.value); setDbEdited(true); }}
+                          className="w-full px-3 py-2 pr-10 rounded-md text-sm border font-mono"
+                          style={inputStyle}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDbShowPw((v) => !v)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2"
+                          style={{ color: "hsl(var(--muted-foreground))" }}
+                          tabIndex={-1}
+                        >
+                          {dbShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        Format: postgresql://[user]:[passwort]@[host]/[datenbank]?sslmode=require
+                        {" · "}Kostenlose Datenbank: <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "hsl(var(--primary))" }}>neon.tech</a>
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => void handleDbTest()}
+                        disabled={dbTesting}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border disabled:opacity-50"
+                        style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "transparent" }}
+                      >
+                        {dbTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                        Verbindung testen
+                      </button>
+
+                      <button
+                        onClick={() => void handleDbSave()}
+                        disabled={dbSaving || !dbEdited || !dbConnStr.trim()}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-50 ml-auto"
+                        style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+                      >
+                        {dbSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        Speichern
+                      </button>
+                    </div>
+
+                    {dbTestResult && (
+                      <div className={`flex items-center gap-2 text-sm ${dbTestResult.ok ? "text-green-500" : "text-red-400"}`}>
+                        {dbTestResult.ok
+                          ? <><CheckCircle className="w-4 h-4 shrink-0" /> Verbindung OK ({dbTestResult.ms} ms)</>
+                          : <><AlertCircle className="w-4 h-4 shrink-0" /> Verbindungsfehler: {dbTestResult.error}</>
+                        }
+                      </div>
+                    )}
+
+                    {dbSaved && (
+                      <div className="flex items-center gap-2 text-sm text-green-500">
+                        <CheckCircle className="w-4 h-4 shrink-0" /> Gespeichert.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            Status konnte nicht geladen werden.
+          </div>
+        )}
+
+        {/* Platform hint */}
+        <div className="pt-2 text-xs border-t" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+          Auf Replit: DATABASE_URL in den Replit Secrets eintragen — hat automatisch Vorrang und bleibt nach Neustarts erhalten.
+          Auf eigenem Server: dieses Formular oder Umgebungsvariable DATABASE_URL.
+        </div>
       </div>
     </div>
   );

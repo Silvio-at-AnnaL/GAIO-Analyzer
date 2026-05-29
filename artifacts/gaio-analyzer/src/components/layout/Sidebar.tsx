@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, Users, User, ClipboardList, Cpu, Send, Palette, ContactRound, ShieldCheck,
-  ArrowLeftRight, Share2, FileText,
+  ArrowLeftRight, Share2, FileText, Server,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess } from "@/store/authStore";
@@ -137,9 +137,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <NavButton id={10} icon={Cpu} label="KI-Tool" active={activeView === 10} onClick={() => navigate(10)} />
         )}
 
-        {/* Mailserver */}
+        {/* Server */}
         {isAuthenticated && canAccess("mailserver", role, permissions) && (
-          <NavButton id={11} icon={Mail} label="Mailserver" active={activeView === 11} onClick={() => navigate(11)} />
+          <NavButton id={11} icon={Server} label="Server" active={activeView === 11} onClick={() => navigate(11)} />
         )}
 
         {/* Versand-Analyse */}

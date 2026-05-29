@@ -7,7 +7,7 @@ export const ADMIN_FEATURES = [
   { id: "kontakt_daten",     label: "Kontakt-Daten",      icon: "ContactRound", defaultRoles: ["admin"] },
   { id: "rechtemanagement",  label: "Rechtemanagement",   icon: "ShieldCheck",  defaultRoles: ["admin"] },
   { id: "ki_tool",           label: "KI-Tool",            icon: "Cpu",          defaultRoles: ["admin"] },
-  { id: "mailserver",        label: "Mailserver",         icon: "Mail",         defaultRoles: ["admin"] },
+  { id: "mailserver",        label: "Server",             icon: "Server",       defaultRoles: ["admin"] },
   { id: "versand_analyse",   label: "Versand-Analyse",    icon: "Send",         defaultRoles: ["admin"] },
 ] as const;
 

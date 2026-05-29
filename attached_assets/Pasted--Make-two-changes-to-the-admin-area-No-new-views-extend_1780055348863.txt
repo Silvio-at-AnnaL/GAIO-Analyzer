@@ -1,0 +1,130 @@
+```
+Make two changes to the admin area.
+No new views — extend the existing one.
+
+---
+
+CHANGE 1 — Rename "Mailserver" to "Server"
+
+In Sidebar.tsx, find the nav item with 
+label "Mailserver" and change it to "Server".
+
+In ADMIN_FEATURES (adminFeatures.ts), 
+find the entry with id 'mailserver' and 
+update its label:
+  label: 'Server'
+
+Keep the id as 'mailserver' — do not 
+change the id or any permission references.
+
+Update the sidebar icon from Mail to 
+Server (lucide) to reflect the broader 
+scope of the section.
+
+---
+
+CHANGE 2 — Add database config to the 
+existing Mailserver/Server view
+
+In src/views/admin/MailserverView.tsx 
+(or wherever the mail configuration form 
+is rendered), add a second card BELOW 
+the existing mail server card.
+
+Do not touch or restructure the existing 
+mail server card — append only.
+
+Add a visual section divider between the 
+two cards (a heading or just spacing).
+
+NEW CARD: "Datenbankverbindung"
+
+  Read current status from 
+  GET /api/admin/settings/database 
+  on component mount (parallel to the 
+  existing mail settings fetch).
+
+  STATUS DISPLAY:
+
+  If source === 'env':
+    Blue info box:
+    "Verbindung über Umgebungsvariable 
+    DATABASE_URL konfiguriert."
+    Show maskedUrl below in monospace, 
+    muted color.
+    Note below: "Umgebungsvariablen haben 
+    Vorrang. Auf Replit: Replit Secrets 
+    verwenden."
+    No edit form shown.
+
+  If source === 'bootstrap' or 'default':
+    Show: label "Aktuelle Verbindung" 
+    with the maskedUrl in monospace.
+    Green checkmark if connected, 
+    amber warning if source === 'default' 
+    (using hardcoded fallback):
+      "Standardverbindung aktiv — 
+      bitte eigene Zugangsdaten hinterlegen."
+    
+    Edit form below (always expanded 
+    when source is 'default', collapsible 
+    when source is 'bootstrap'):
+
+      Label: "PostgreSQL Connection String"
+      
+      Input: type="password" with an 
+      eye-icon toggle button to show/hide.
+      Current masked value pre-filled.
+      Clears on focus to allow new input 
+      (same pattern as API keys in KI-Tool).
+      
+      Placeholder when empty:
+        "postgresql://user:pass@host/db
+        ?sslmode=require"
+      
+      Help text (muted, small):
+        "Format: postgresql://[user]:
+        [passwort]@[host]/[datenbank]
+        ?sslmode=require
+        Kostenlose Datenbank: neon.tech"
+
+      Two buttons in a row:
+        "Verbindung testen" (outline, 
+          left-aligned)
+          → POST /api/admin/settings/
+            database/test
+          → shows inline below buttons:
+            "✓ Verbindung OK (14 ms)"
+            or "✗ Verbindungsfehler: 
+            [error message]"
+        
+        "Speichern" (primary, right-aligned)
+          → POST /api/admin/settings/database
+          → on success: green inline message:
+            "✓ Gespeichert."
+
+  PLATFORM HINT (always shown, 
+  bottom of card, muted small text):
+    "Auf Replit: DATABASE_URL in den 
+    Replit Secrets eintragen — hat 
+    automatisch Vorrang und bleibt nach 
+    Neustarts erhalten.
+    Auf eigenem Server: dieses Formular 
+    oder Umgebungsvariable DATABASE_URL."
+
+---
+
+BACKEND: verify both endpoints exist
+
+Check that these two endpoints are 
+implemented (from the previous prompt). 
+If they are missing, implement them now:
+
+  GET /api/admin/settings/database
+  POST /api/admin/settings/database
+  POST /api/admin/settings/database/test
+
+If they already exist from the previous 
+prompt, no changes needed — just confirm 
+the frontend can reach them.
+```
