@@ -33,7 +33,7 @@ export function analyzeHeadings(pages: CrawledPage[], brandTerms: string[] = [])
     totalPages++;
 
     $("h1, h2, h3, h4, h5, h6").each((_, el) => {
-      const tag = (el as cheerio.Element).tagName?.toLowerCase() || "";
+      const tag = (el as { tagName?: string }).tagName?.toLowerCase() || "";
       const text = $(el).text().trim();
       if (text) {
         headings.push({ level: tag, text });

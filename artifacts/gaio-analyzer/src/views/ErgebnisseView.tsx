@@ -714,7 +714,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
         };
 
-        const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+        const htmlContent = generateHtmlReport(report as unknown as Record<string, unknown>, {
           logoSrc:     asLogoSrc,
           profileSrc:  asContactData.photoSrc,
           inputParams: htmlInputParams,
@@ -724,16 +724,16 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
         if (!htmlContent) return;
 
-        const reportLogId = (report as Record<string, unknown>).logId as number | null | undefined;
+        const reportLogId = (report as unknown as Record<string, unknown>).logId as number | null | undefined;
         const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
         const scoresJson = JSON.stringify({
-          technicalSeo: ((report as Record<string, unknown>).technicalSeo as { score: number } | null)?.score ?? null,
-          schemaOrg: ((report as Record<string, unknown>).schemaOrg as { score: number } | null)?.score ?? null,
-          headingStructure: ((report as Record<string, unknown>).headingStructure as { score: number } | null)?.score ?? null,
-          contentRelevance: ((report as Record<string, unknown>).contentRelevance as { score: number } | null)?.score ?? null,
-          faqQuality: ((report as Record<string, unknown>).faqQuality as { score: number } | null)?.score ?? null,
-          llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+          technicalSeo: ((report as unknown as Record<string, unknown>).technicalSeo as { score: number } | null)?.score ?? null,
+          schemaOrg: ((report as unknown as Record<string, unknown>).schemaOrg as { score: number } | null)?.score ?? null,
+          headingStructure: ((report as unknown as Record<string, unknown>).headingStructure as { score: number } | null)?.score ?? null,
+          contentRelevance: ((report as unknown as Record<string, unknown>).contentRelevance as { score: number } | null)?.score ?? null,
+          faqQuality: ((report as unknown as Record<string, unknown>).faqQuality as { score: number } | null)?.score ?? null,
+          llmDiscoverability: ((report as unknown as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
         });
 
         await fetch(`${basePrefix}/api/admin/analysis-log/auto-export`, {
@@ -765,12 +765,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
   ) => {
     const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
     const scoresJson = JSON.stringify({
-      technicalSeo:       ((report as Record<string, unknown>).technicalSeo       as { score: number } | null)?.score ?? null,
-      schemaOrg:          ((report as Record<string, unknown>).schemaOrg          as { score: number } | null)?.score ?? null,
-      headingStructure:   ((report as Record<string, unknown>).headingStructure   as { score: number } | null)?.score ?? null,
-      contentRelevance:   ((report as Record<string, unknown>).contentRelevance   as { score: number } | null)?.score ?? null,
-      faqQuality:         ((report as Record<string, unknown>).faqQuality         as { score: number } | null)?.score ?? null,
-      llmDiscoverability: ((report as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
+      technicalSeo:       ((report as unknown as Record<string, unknown>).technicalSeo       as { score: number } | null)?.score ?? null,
+      schemaOrg:          ((report as unknown as Record<string, unknown>).schemaOrg          as { score: number } | null)?.score ?? null,
+      headingStructure:   ((report as unknown as Record<string, unknown>).headingStructure   as { score: number } | null)?.score ?? null,
+      contentRelevance:   ((report as unknown as Record<string, unknown>).contentRelevance   as { score: number } | null)?.score ?? null,
+      faqQuality:         ((report as unknown as Record<string, unknown>).faqQuality         as { score: number } | null)?.score ?? null,
+      llmDiscoverability: ((report as unknown as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
     });
     const res = await fetch(`${basePrefix}/api/admin/public/send-report`, {
       method: "POST",
@@ -816,7 +816,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   };
 
   const handleCreateShare = async () => {
-    const logId = (report as Record<string, unknown>).logId as number | null | undefined;
+    const logId = (report as unknown as Record<string, unknown>).logId as number | null | undefined;
     if (!logId) return;
     setShareCreating(true);
     try {
@@ -1642,7 +1642,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
         // Small label line — sits inside the top margin.
         const tabLabel  = TAB_LABELS[page.tabValue] ?? page.tabValue;
-        const labelText = `${report.companyName ?? report.url ?? ""} · ${tabLabel} · ${today}`;
+        const labelText = `${domainForm.companyName?.trim() || report?.url || ""} · ${tabLabel} · ${today}`;
         pdf.setFontSize(7);
         pdf.setTextColor(136, 136, 136);
         pdf.text(labelText, MARGIN_MM, MARGIN_MM - 3);
@@ -1738,7 +1738,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
 
-      const htmlContent = generateHtmlReport(report as Record<string, unknown>, {
+      const htmlContent = generateHtmlReport(report as unknown as Record<string, unknown>, {
         logoSrc:     htLogoSrc,
         profileSrc:  htContactData.photoSrc,
         inputParams: htmlInputParams,
@@ -1889,7 +1889,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               <h2 className="text-base font-semibold">Analyse teilen</h2>
             </div>
 
-            {!(report as Record<string, unknown>).logId ? (
+            {!(report as unknown as Record<string, unknown>).logId ? (
               <p className="text-sm text-muted-foreground">
                 Diese Analyse wurde noch nicht im Protokoll gespeichert. Bitte exportieren Sie den Report zuerst als HTML.
               </p>

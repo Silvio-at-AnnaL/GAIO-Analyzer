@@ -1028,30 +1028,11 @@ async function testDbConnection(connectionString: string): Promise<{ ok: boolean
 
 // GET /api/admin/settings/database
 adminRouter.get("/settings/database", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
-<<<<<<< HEAD
-  const envUrl = process.env.DATABASE_URL ?? "";
-  let source: "env" | "bootstrap" | "default";
-  let rawUrl: string;
-
-  if (envUrl) {
-    source = "env";
-    rawUrl = envUrl;
-  } else {
-    const stored = await getSetting("database_url") ?? "";
-    if (stored) {
-      source = "bootstrap";
-      rawUrl = stored;
-    } else {
-      source = "default";
-      rawUrl = "";
-    }
-  }
-=======
   const rawUrl = getDatabaseUrl();
+  const storedDbUrl = await getSetting("database_url");
   const source: "env" | "bootstrap" | "default" =
-    process.env.DATABASE_URL?.trim()   ? "env"       :
-    getSetting("database_url")?.trim() ? "bootstrap" : "default";
->>>>>>> main
+    process.env.DATABASE_URL?.trim() ? "env"       :
+    storedDbUrl?.trim()              ? "bootstrap" : "default";
 
   const maskedUrl = rawUrl ? maskDbUrl(rawUrl) : "";
   let connected = false;
@@ -1076,14 +1057,7 @@ adminRouter.post("/settings/database", requireAuth, requireAdmin, async (req: Re
 // POST /api/admin/settings/database/test
 adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (req: Request, res: Response) => {
   const { connectionString } = req.body as { connectionString?: string };
-<<<<<<< HEAD
-  const rawUrl = connectionString?.trim()
-    || process.env.DATABASE_URL
-    || await getSetting("database_url")
-    || "";
-=======
   const rawUrl = connectionString?.trim() || getDatabaseUrl();
->>>>>>> main
 
   if (!rawUrl) {
     res.json({ ok: false, error: "Kein Connection String angegeben" }); return;

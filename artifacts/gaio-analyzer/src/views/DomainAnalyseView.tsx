@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { InfoTooltip as Tooltip } from "@/components/ui/InfoTooltip";
 import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
