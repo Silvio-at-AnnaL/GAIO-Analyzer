@@ -4,8 +4,9 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
 import { Client as PgClient } from "pg";
-import { getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
-import { query } from "../lib/db.js";
+        import { getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
+        import { query } from "../lib/db.js";
+        import { getDatabaseUrl } from "../lib/bootstrap.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
@@ -1027,6 +1028,7 @@ async function testDbConnection(connectionString: string): Promise<{ ok: boolean
 
 // GET /api/admin/settings/database
 adminRouter.get("/settings/database", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+<<<<<<< HEAD
   const envUrl = process.env.DATABASE_URL ?? "";
   let source: "env" | "bootstrap" | "default";
   let rawUrl: string;
@@ -1044,6 +1046,12 @@ adminRouter.get("/settings/database", requireAuth, requireAdmin, async (_req: Re
       rawUrl = "";
     }
   }
+=======
+  const rawUrl = getDatabaseUrl();
+  const source: "env" | "bootstrap" | "default" =
+    process.env.DATABASE_URL?.trim()   ? "env"       :
+    getSetting("database_url")?.trim() ? "bootstrap" : "default";
+>>>>>>> main
 
   const maskedUrl = rawUrl ? maskDbUrl(rawUrl) : "";
   let connected = false;
@@ -1068,10 +1076,14 @@ adminRouter.post("/settings/database", requireAuth, requireAdmin, async (req: Re
 // POST /api/admin/settings/database/test
 adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (req: Request, res: Response) => {
   const { connectionString } = req.body as { connectionString?: string };
+<<<<<<< HEAD
   const rawUrl = connectionString?.trim()
     || process.env.DATABASE_URL
     || await getSetting("database_url")
     || "";
+=======
+  const rawUrl = connectionString?.trim() || getDatabaseUrl();
+>>>>>>> main
 
   if (!rawUrl) {
     res.json({ ok: false, error: "Kein Connection String angegeben" }); return;

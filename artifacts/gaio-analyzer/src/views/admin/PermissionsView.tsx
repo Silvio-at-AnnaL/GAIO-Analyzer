@@ -4,9 +4,9 @@ import { adminFetch, useAuth } from "@/store/authStore";
 import { ADMIN_FEATURES, ADMIN_NAV_GROUPS } from "@/config/adminFeatures";
 
 const ROLES: { id: string; label: string; locked: boolean }[] = [
-  { id: "admin",         label: "Admin (a)",             locked: true  },
-  { id: "user_extended", label: "Erweiterter User (b)",  locked: false },
-  { id: "user",          label: "User (c)",              locked: false },
+  { id: "admin",         label: "Admin",           locked: true  },
+  { id: "user_extended", label: "User, erweitert", locked: false },
+  { id: "user",          label: "User, basic",     locked: false },
 ];
 
 type AnyFeature = { id: string; label: string; defaultRoles: readonly string[]; isGroup?: boolean };
