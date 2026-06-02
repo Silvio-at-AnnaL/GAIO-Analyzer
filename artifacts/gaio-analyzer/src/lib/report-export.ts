@@ -982,7 +982,7 @@ export function buildFaqPanelHtml(): string {
 // ─── Kontakt ──────────────────────────────────────────────────────────────────
 
 /** Inner HTML for the Kontakt section in the HTML one-pager. */
-function renderKontaktSection(logoSrc: string, profileSrc: string, contact?: ContactData): string {
+function renderKontaktSection(logoHtml: string, profileSrc: string, contact?: ContactData): string {
   const name      = esc(contact?.name      ?? "Silvio Haase");
   const title     = esc(contact?.title     ?? "CMO & Head of Business Development");
   const company   = esc(contact?.company   ?? "Deutscher Medien Verlag GmbH / IndustryStock.com");
@@ -990,9 +990,6 @@ function renderKontaktSection(logoSrc: string, profileSrc: string, contact?: Con
   const ctaText   = esc(contact?.ctaText   ?? "Sie haben Fragen zum GAIO Analyzer, möchten eine Analyse für Ihr Unternehmen durchführen lassen oder interessieren sich für eine individuelle Beratung zur LLM-Sichtbarkeit Ihrer Website?");
   const ctaSub    = esc(contact?.ctaSubtext ?? "Sprechen Sie uns einfach an — wir antworten schnell und unkompliziert.");
 
-  const logoImg = logoSrc
-    ? `<img src="${logoSrc}" alt="${company}" style="max-height:52px;max-width:220px;object-fit:contain;" />`
-    : `<div style="height:52px;display:flex;align-items:center;border:1px dashed #dde0e8;border-radius:6px;padding:0 14px;color:#787b86;font-size:12px;">[Bild: Brand-Logo]</div>`;
   const profileImg = profileSrc
     ? `<img src="${profileSrc}" alt="${name}" style="width:100px;height:100px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #dde0e8;flex-shrink:0;" />`
     : `<div style="width:100px;height:100px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f4f5f7;border:1px dashed #dde0e8;color:#787b86;font-size:11px;text-align:center;flex-shrink:0;">[Bild:<br>${name}]</div>`;
@@ -1001,7 +998,7 @@ function renderKontaktSection(logoSrc: string, profileSrc: string, contact?: Con
 ${divider("Kontakt")}
 <h2>Kontakt</h2>
 <div style="background:#ffffff;border:1px solid #dde0e8;border-radius:10px;padding:28px 24px;max-width:600px;">
-  <div style="margin-bottom:20px;">${logoImg}</div>
+  ${logoHtml ? `<div style="margin-bottom:20px;">${logoHtml}</div>` : ""}
   <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #dde0e8;">
     <div style="flex-shrink:0;">${profileImg}</div>
     <div>
@@ -1094,10 +1091,24 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string, co
 
 // ─── Main export function ─────────────────────────────────────────────────────
 
-export function generateHtmlReport(
+export async function generateHtmlReport(
   report: Record<string, unknown>,
-  opts: { logoSrc?: string; profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
-): string {
+  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
+): Promise<string> {
+  const baseUrl = (import.meta.env.BASE_URL as string ?? "/").replace(/\/$/, "");
+  let logoHtml = "";
+  try {
+    const res = await fetch(`${baseUrl}/api/admin/public/branding`);
+    if (res.ok) {
+      const b = await res.json() as { logoBase64?: string; logoMimetype?: string };
+      const base64 = (b.logoBase64 ?? "").trim();
+      const mime = b.logoMimetype ?? "image/png";
+      if (base64) {
+        logoHtml = `<img src="data:${mime};base64,${base64}" style="max-height:52px;width:auto;object-fit:contain;" alt="Logo">`;
+      }
+    }
+  } catch { /* ignore */ }
+
   const overallScore = (report.overallScore as number) ?? 0;
   const url          = String(report.url ?? "HTML-Upload");
   const crawledCount = ((report.crawledPages as string[]) ?? []).length;
@@ -1118,7 +1129,7 @@ export function generateHtmlReport(
     renderRecommendationsSection(report),
     renderFaqSection(),
     opts.inputParams ? renderAnalyseparameterSection(opts.inputParams) : null,
-    renderKontaktSection(opts.logoSrc ?? "", opts.profileSrc ?? "", opts.contactData),
+    renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData),
   ].filter(Boolean).join("\n");
 
   return `<!DOCTYPE html>

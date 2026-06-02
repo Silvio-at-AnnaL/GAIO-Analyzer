@@ -61,8 +61,8 @@ export function ReportDashboard({ analysisId }: Props) {
       ]
     : [];
 
-  const handleExport = () => {
-    const htmlContent = generateHtmlReport(report as unknown as Record<string, unknown>);
+  const handleExport = async () => {
+    const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>);
     const blob = new Blob([htmlContent], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

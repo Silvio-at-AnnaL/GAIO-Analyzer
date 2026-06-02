@@ -714,8 +714,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
         };
 
-        const htmlContent = generateHtmlReport(report as unknown as Record<string, unknown>, {
-          logoSrc:     asLogoSrc,
+        const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
           profileSrc:  asContactData.photoSrc,
           inputParams: htmlInputParams,
           contactData: asContactData,
@@ -1738,8 +1737,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
 
-      const htmlContent = generateHtmlReport(report as unknown as Record<string, unknown>, {
-        logoSrc:     htLogoSrc,
+      const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
         profileSrc:  htContactData.photoSrc,
         inputParams: htmlInputParams,
         contactData: htContactData,

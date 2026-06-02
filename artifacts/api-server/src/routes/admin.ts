@@ -122,7 +122,9 @@ adminRouter.get("/public/branding", async (_req: Request, res: Response) => {
   const raw  = await getSetting("branding_logo_base64")  ?? "";
   const mime = await getSetting("branding_logo_mimetype") ?? "image/png";
   res.json({
-    logoSrc:    raw ? `data:${mime};base64,${raw}` : "",
+    logoSrc:      raw ? `data:${mime};base64,${raw}` : "",
+    logoBase64:   raw,
+    logoMimetype: mime,
     footerText: await getSetting("branding_footer_text") ?? "IndustryStock.com",
     footerUrl:  await getSetting("branding_footer_url")  ?? "https://www.industrystock.com",
   });
