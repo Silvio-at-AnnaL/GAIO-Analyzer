@@ -34,8 +34,10 @@ function scoreColor(score: number | null): string {
   return "#ef4444";
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+function formatTimestamp(value: string | Date | null | undefined): string {
+  if (!value) return "–";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "–";
   return d.toLocaleString("de-DE", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
@@ -201,7 +203,7 @@ export function AnalysisLogView() {
                   <tr key={item.id} style={{ borderBottom: i < data.items.length - 1 ? "1px solid hsl(var(--border) / 0.5)" : undefined }}>
                     {/* Datum */}
                     <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      {formatDate(item.startedAt)}
+                      {formatTimestamp(item.startedAt)}
                     </td>
 
                     {/* Unternehmen / Domain */}
@@ -332,7 +334,7 @@ export function AnalysisLogView() {
           <div className="rounded-xl p-6 max-w-sm w-full mx-4 space-y-4" style={cardStyle}>
             <h3 className="font-semibold text-base">Eintrag löschen?</h3>
             <p className="text-sm text-muted-foreground">
-              Der Eintrag für <strong>{deleteTarget.companyName || deleteTarget.domain}</strong> vom {formatDate(deleteTarget.startedAt)} wird dauerhaft gelöscht.
+              Der Eintrag für <strong>{deleteTarget.companyName || deleteTarget.domain}</strong> vom {formatTimestamp(deleteTarget.startedAt)} wird dauerhaft gelöscht.
               {deleteTarget.hasHtmlExport && " Der gespeicherte HTML-Export wird ebenfalls entfernt."}
             </p>
             <div className="flex gap-3 justify-end">

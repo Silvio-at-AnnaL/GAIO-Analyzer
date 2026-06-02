@@ -645,8 +645,12 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
   const total = parseInt(String(totalResult.rows[0].c), 10);
 
   const rows = (await query<AnalysisLogRow & { has_html_export: number }>(`
-    SELECT al.*,
-       CASE WHEN ae.id IS NOT NULL THEN 1 ELSE 0 END as has_html_export
+    SELECT al.id, al.domain, al.company_name, al.gaio_score, al.scores_json,
+           al.pages_crawled, al.status, al.triggered_by, al.error_message,
+           al.html_export_id,
+           TO_CHAR(al.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
+           TO_CHAR(al.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS completed_at,
+           CASE WHEN ae.id IS NOT NULL THEN 1 ELSE 0 END as has_html_export
      FROM analysis_log al
      LEFT JOIN analysis_exports ae ON ae.id = al.html_export_id
      WHERE ($1::text IS NULL OR al.status = $1)
