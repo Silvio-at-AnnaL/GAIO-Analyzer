@@ -32,10 +32,10 @@ export function getDatabaseUrl(): string {
     return cfg.database_url.trim();
   }
 
-  // Priority 3: Hardcoded Neon fallback
-  // (never use Replit's PGHOST etc.)
-  return "postgresql://neondb_owner:" +
-    "npg_Mh5PlR3gkfyz@ep-steep-night-" +
-    "alx00u4h.c-3.eu-central-1.aws." +
-    "neon.tech/neondb?sslmode=require";
+  // No database configured → fail loudly.
+  // Never fall back to a hardcoded DB or to PGHOST/PGUSER/etc.
+  throw new Error(
+    "DATABASE_URL is not set (and no bootstrap.json database_url). " +
+    "Refusing to start without an explicit connection string."
+  );
 }
