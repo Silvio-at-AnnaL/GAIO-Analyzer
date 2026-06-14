@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Save, RotateCcw } from "lucide-react";
+import { Save, RotateCcw, ChevronRight } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { labelDefaults, SUPPORTED_LOCALES, type Locale } from "@/lib/labelDefaults";
 
@@ -17,6 +17,7 @@ export function TextverwaltungView() {
   const [resetting, setResetting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   useEffect(() => {
     adminFetch(`/api/admin/labels?locale=${locale}`)
@@ -83,11 +84,13 @@ export function TextverwaltungView() {
   }
 
   const searchLower = search.toLowerCase();
+  const isSearching = searchLower.length > 0;
+
   const filteredGrouped = Object.entries(GROUPED).reduce<Record<string, string[]>>(
     (acc, [grp, keys]) => {
       const filtered = keys.filter(
         (k) =>
-          !searchLower ||
+          !isSearching ||
           k.toLowerCase().includes(searchLower) ||
           (labelDefaults[k]?.de ?? "").toLowerCase().includes(searchLower),
       );
@@ -96,6 +99,19 @@ export function TextverwaltungView() {
     },
     {},
   );
+
+  const selectedKeyGroup = selectedKey ? (labelDefaults[selectedKey]?.group ?? null) : null;
+
+  function isGroupExpanded(grp: string): boolean {
+    if (isSearching) return true;
+    if (grp === selectedKeyGroup) return true;
+    return openGroup === grp;
+  }
+
+  function toggleGroup(grp: string) {
+    if (isSearching) return;
+    setOpenGroup((prev) => (prev === grp ? null : grp));
+  }
 
   const deSource = selectedKey ? (labelDefaults[selectedKey]?.de ?? "") : "";
   const hasOverride = selectedKey !== null && selectedKey in overrides;
@@ -146,7 +162,9 @@ export function TextverwaltungView() {
               type="text"
               placeholder="Suchen…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+              }}
               style={{
                 width: "100%",
                 padding: "5px 8px",
@@ -160,44 +178,102 @@ export function TextverwaltungView() {
               }}
             />
           </div>
-          <div className="py-2">
-            {Object.entries(filteredGrouped).map(([grp, keys]) => (
-              <div key={grp}>
-                <div
-                  className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: "hsl(var(--muted-foreground))" }}
-                >
-                  {grp}
-                </div>
-                {keys.map((k) => (
+
+          <div className="py-1">
+            {Object.entries(filteredGrouped).map(([grp, keys]) => {
+              const expanded = isGroupExpanded(grp);
+              return (
+                <div key={grp}>
+                  {/* Accordion heading */}
                   <button
-                    key={k}
-                    onClick={() => setSelectedKey(k)}
-                    className="w-full text-left px-4 py-2.5 transition-colors"
+                    onClick={() => toggleGroup(grp)}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors"
                     style={{
-                      background: selectedKey === k ? "hsl(var(--accent))" : "transparent",
-                      color:
-                        selectedKey === k
-                          ? "hsl(var(--accent-foreground))"
-                          : "hsl(var(--foreground))",
-                      borderLeft:
-                        selectedKey === k
-                          ? "3px solid hsl(var(--primary))"
-                          : "3px solid transparent",
+                      cursor: isSearching ? "default" : "pointer",
+                      background: "transparent",
+                      border: "none",
+                      color: "hsl(var(--muted-foreground))",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSearching)
+                        (e.currentTarget as HTMLElement).style.background = "hsl(var(--accent) / 0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
                     }}
                   >
-                    <div className="text-sm font-medium leading-tight">
-                      {k.split(".").slice(1).join(".")}
-                    </div>
-                    {k in overrides && (
-                      <div className="text-xs mt-0.5" style={{ color: "hsl(var(--chart-4))" }}>
-                        Angepasst
-                      </div>
-                    )}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        flexShrink: 0,
+                        transition: "transform 150ms ease",
+                        transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+                        color: "hsl(var(--muted-foreground))",
+                        opacity: isSearching ? 0.3 : 1,
+                      }}
+                    >
+                      <ChevronRight size={13} />
+                    </span>
+                    <span
+                      className="text-xs font-semibold uppercase tracking-wide"
+                      style={{ color: "hsl(var(--muted-foreground))" }}
+                    >
+                      {grp}
+                    </span>
+                    {/* badge: count of overridden keys in this group */}
+                    {(() => {
+                      const n = keys.filter((k) => k in overrides).length;
+                      return n > 0 ? (
+                        <span
+                          className="ml-auto text-xs"
+                          style={{ color: "hsl(var(--chart-4))", fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {n}
+                        </span>
+                      ) : null;
+                    })()}
                   </button>
-                ))}
-              </div>
-            ))}
+
+                  {/* Keys — visible only when expanded */}
+                  <div
+                    style={{
+                      overflow: "hidden",
+                      maxHeight: expanded ? `${keys.length * 56}px` : "0px",
+                      transition: isSearching ? "none" : "max-height 200ms ease",
+                    }}
+                  >
+                    {keys.map((k) => (
+                      <button
+                        key={k}
+                        onClick={() => setSelectedKey(k)}
+                        className="w-full text-left px-4 py-2.5 transition-colors"
+                        style={{
+                          paddingLeft: "1.75rem",
+                          background: selectedKey === k ? "hsl(var(--accent))" : "transparent",
+                          color:
+                            selectedKey === k
+                              ? "hsl(var(--accent-foreground))"
+                              : "hsl(var(--foreground))",
+                          borderLeft:
+                            selectedKey === k
+                              ? "3px solid hsl(var(--primary))"
+                              : "3px solid transparent",
+                        }}
+                      >
+                        <div className="text-sm font-medium leading-tight">
+                          {k.split(".").slice(1).join(".")}
+                        </div>
+                        {k in overrides && (
+                          <div className="text-xs mt-0.5" style={{ color: "hsl(var(--chart-4))" }}>
+                            Angepasst
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
