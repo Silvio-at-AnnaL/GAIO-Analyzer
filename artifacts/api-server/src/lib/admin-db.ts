@@ -95,6 +95,14 @@ const CREATE_TABLES = `
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     updated_at   TIMESTAMPTZ DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS labels (
+    key        TEXT        NOT NULL,
+    locale     TEXT        NOT NULL,
+    value      TEXT        NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (key, locale)
+  );
 `;
 
 // ── Default settings ──────────────────────────────────────────────────────────

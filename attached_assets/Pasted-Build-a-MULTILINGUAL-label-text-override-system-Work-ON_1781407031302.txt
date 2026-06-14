@@ -1,0 +1,42 @@
+Build a MULTILINGUAL label/text-override system. Work ONLY within the scope below; do not touch any other view's texts.
+
+1. DB (artifacts/api-server/src/lib/admin-db.ts), add next to settings/prompts:
+   CREATE TABLE IF NOT EXISTS labels (
+     key        TEXT        NOT NULL,
+     locale     TEXT        NOT NULL,
+     value      TEXT        NOT NULL,
+     updated_at TIMESTAMPTZ DEFAULT NOW(),
+     PRIMARY KEY (key, locale)
+   );
+   Stores OVERRIDES/TRANSLATIONS only — one row per (key, locale).
+
+2. Locales: define a supported-locales list, starting with ["de","en"]; "de" is the base language.
+
+3. Manifest: create artifacts/gaio-analyzer/src/lib/labelDefaults.ts exporting
+   key -> { group: string; de: string }. `de` holds the current hardcoded German text (the source language).
+   Other languages are NOT in code — they live in the labels table, entered via admin.
+
+4. Resolution / fallback chain for an active locale L:
+   DB override (key,L) -> DB override (key,"de") -> manifest de default -> key.
+   The UI must never render a blank or a raw key when a German default exists.
+
+5. API (mirror existing patterns in routes/admin.ts):
+   - GET  /public/labels?locale=L  → public, flat resolved map {key:value} for L (chain above, minus the manifest step the frontend applies)
+   - GET  /locales                 → public, the supported-locales list
+   - GET  /labels?locale=L          → admin, per-locale overrides for editing
+   - PATCH /labels/:key              → admin, body {locale, value}, upsert one (key,locale) override
+   - POST  /labels/:key/reset        → admin, body {locale}, delete that (key,locale) override
+
+6. Frontend: a LabelProvider (React context) with an active locale (default "de", also honor a ?lang= query param for testing).
+   It fetches /public/labels?locale=<active> once and exposes t(key) applying the fallback chain against labelDefaults. Wrap the app in it.
+
+7. Pilot migration — ONLY artifacts/gaio-analyzer/src/views/WelcomeView.tsx:
+   replace hardcoded German strings with t("welcome.<name>"), and add each to labelDefaults.ts as { group:"welcome", de:"<original German text>" }.
+
+8. Admin: add a new admin view "Textverwaltung" with a LOCALE SELECTOR. For the selected locale it lists all labelDefaults keys
+   (grouped by `group`, searchable), shows the German source as reference, and lets the admin edit/reset the override for that locale
+   via the /labels endpoints. Reuse the Prompt-Verwaltung view's style.
+
+Do NOT migrate any other view. Do NOT touch report-export.ts. Do NOT change unrelated modules. Do NOT publish.
+After the change: confirm TS compiles, the dev server starts, WelcomeView renders identically in "de", ?lang=en falls back to the
+German text (no blanks), adding an "en" override for a welcome key in the admin view makes it appear under ?lang=en, and Reset removes it.

@@ -6,6 +6,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import { SharedAnalysisView } from "@/views/SharedAnalysisView";
 import { DeliveryModeProvider } from "@/store/deliveryModeStore";
+import { LabelProvider } from "@/lib/LabelProvider";
 
 const queryClient = new QueryClient();
 
@@ -23,12 +24,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <DeliveryModeProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </DeliveryModeProvider>
+        <LabelProvider>
+          <DeliveryModeProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </DeliveryModeProvider>
+        </LabelProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

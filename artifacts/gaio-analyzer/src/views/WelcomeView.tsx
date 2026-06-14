@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bot, Radar, ListChecks } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { normalizeUrl } from "@/lib/utils";
+import { useT } from "@/lib/LabelProvider";
 
 interface WelcomeViewProps {
   onDismiss: () => void;
@@ -11,6 +12,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
   const { domainForm, setDomainForm } = useAppStore();
   const [companyInput, setCompanyInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
+  const t = useT();
 
   function applyAndDismiss() {
     setDomainForm({
@@ -30,10 +32,10 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
   }
 
   const DEMO_BARS = [
-    { label: "Techn. SEO", value: 86, color: "#ef4444" },
-    { label: "Schema.org", value: 8,  color: "#a855f7" },
-    { label: "Inhalt",     value: 33, color: "#22c55e" },
-    { label: "LLM",        value: 27, color: "#06b6d4" },
+    { labelKey: "welcome.demo_seo",     value: 86, color: "#ef4444" },
+    { labelKey: "welcome.demo_schema",  value: 8,  color: "#a855f7" },
+    { labelKey: "welcome.demo_content", value: 33, color: "#22c55e" },
+    { labelKey: "welcome.demo_llm",     value: 27, color: "#06b6d4" },
   ];
 
   return (
@@ -50,7 +52,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
             textTransform: "uppercase",
             color: "hsl(var(--primary))",
           }}>
-            KI-Sichtbarkeit &amp; SEO-Analyse
+            {t("welcome.eyebrow")}
           </span>
         </div>
 
@@ -61,9 +63,9 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           lineHeight: 1.2,
           margin: 0,
         }}>
-          Wie gut findet{" "}
+          {t("welcome.headline_pre")}{" "}
           <span style={{ color: "hsl(var(--primary))" }}>ChatGPT</span>
-          {" "}Ihre Website?
+          {" "}{t("welcome.headline_post")}
         </h1>
 
         <p style={{
@@ -73,9 +75,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           maxWidth: 520,
           margin: 0,
         }}>
-          Der GAIO Analyzer untersucht Ihre B2B-Website auf LLM-Auffindbarkeit
-          und klassische SEO-Grundlagen — und zeigt, was geändert werden muss,
-          damit KI-Systeme Ihr Unternehmen empfehlen.
+          {t("welcome.subline")}
         </p>
       </div>
 
@@ -92,13 +92,13 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
               color: "hsl(var(--muted-foreground))",
               marginBottom: 5,
             }}>
-              Unternehmensname
+              {t("welcome.label_company")}
             </label>
             <input
               type="text"
               value={companyInput}
               onChange={e => setCompanyInput(e.target.value)}
-              placeholder="Muster GmbH"
+              placeholder={t("welcome.placeholder_company")}
               style={{
                 width: "100%",
                 height: 42,
@@ -122,7 +122,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
               onChange={e => setUrlInput(e.target.value)}
               onBlur={e => setUrlInput(normalizeUrl(e.target.value))}
               onKeyDown={e => e.key === "Enter" && handleStart()}
-              placeholder="z. B. domain.de oder www.domain.de"
+              placeholder={t("welcome.placeholder_url")}
               style={{
                 flex: 1,
                 height: 42,
@@ -153,7 +153,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
                 flexShrink: 0,
               }}
             >
-              Analyse starten →
+              {t("welcome.btn_start")}
             </button>
           </div>
         </div>
@@ -163,7 +163,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           fontSize: "0.775rem",
           color: "hsl(var(--muted-foreground))",
         }}>
-          Oder{" "}
+          {t("welcome.prefill_prefix")}{" "}
           <button
             onClick={handleKiPrefill}
             style={{
@@ -177,9 +177,9 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
               textUnderlineOffset: "2px",
             }}
           >
-            mit KI vorausfüllen
+            {t("welcome.prefill_link")}
           </button>
-          {" "}— Zielgruppen &amp; Wettbewerber werden automatisch ermittelt.
+          {" "}{t("welcome.prefill_suffix")}
         </p>
       </div>
 
@@ -204,10 +204,10 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
             <Bot size={18} color="hsl(217 91% 40%)" />
           </div>
           <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>
-            LLM-Sichtbarkeit messen
+            {t("welcome.tile1_title")}
           </div>
           <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", lineHeight: 1.55 }}>
-            Wir simulieren, wie ChatGPT, Gemini und Claude Ihre Website wahrnehmen — und wo Informationen fehlen.
+            {t("welcome.tile1_desc")}
           </div>
         </div>
 
@@ -227,10 +227,10 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
             <Radar size={18} color="hsl(43 96% 25%)" />
           </div>
           <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>
-            Wettbewerb vergleichen
+            {t("welcome.tile2_title")}
           </div>
           <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", lineHeight: 1.55 }}>
-            Sehen Sie sofort, ob Konkurrenten in denselben KI-Antworten auftauchen — und warum.
+            {t("welcome.tile2_desc")}
           </div>
         </div>
 
@@ -250,10 +250,10 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
             <ListChecks size={18} color="hsl(142 71% 25%)" />
           </div>
           <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>
-            Priorisierte Maßnahmen
+            {t("welcome.tile3_title")}
           </div>
           <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", lineHeight: 1.55 }}>
-            Kritisch, hoher Hebel, nachgeordnet — klare Empfehlungen direkt aus der Analyse.
+            {t("welcome.tile3_desc")}
           </div>
         </div>
       </div>
@@ -265,13 +265,13 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           {/* Score number */}
           <div className="shrink-0" style={{ textAlign: "center", minWidth: 80 }}>
             <div style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.4)", marginBottom: 4, letterSpacing: "0.05em" }}>
-              Beispiel-Ergebnis
+              {t("welcome.preview_label")}
             </div>
             <div style={{ fontSize: 52, fontWeight: 700, lineHeight: 1, color: "#f59e0b" }}>
               43
             </div>
             <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, fontWeight: 500 }}>
-              Ausbaufähig
+              {t("welcome.preview_grade")}
             </div>
           </div>
 
@@ -281,9 +281,9 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           {/* Bar chart */}
           <div className="flex-1 w-full space-y-2">
             {DEMO_BARS.map(bar => (
-              <div key={bar.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div key={bar.labelKey} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", width: 80, flexShrink: 0 }}>
-                  {bar.label}
+                  {t(bar.labelKey)}
                 </div>
                 <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
                   <div style={{ width: `${bar.value}%`, height: "100%", background: bar.color, borderRadius: 9999 }} />
@@ -300,7 +300,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
 
           {/* Description text */}
           <div className="flex-1" style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
-            So sieht ein typisches Ergebnis aus. Technische Grundlagen stimmen oft — aber für KI-Systeme fehlen verwertbare Inhalte, strukturierte Daten und FAQ-Strukturen.
+            {t("welcome.preview_desc")}
           </div>
 
         </div>

@@ -29,6 +29,7 @@ const FEATURE_VIEW: Record<string, ActiveView> = {
   kontakt_daten: 14,
   prompt_verwaltung: 19,
   ki_tool: 10,
+  textverwaltung: 20,
 };
 
 const FEATURE_LABEL: Record<string, string> = Object.fromEntries(

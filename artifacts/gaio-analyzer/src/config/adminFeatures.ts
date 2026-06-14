@@ -9,6 +9,7 @@ export const ADMIN_FEATURES = [
   { id: "rechtemanagement",  label: "Rechtemanagement",   icon: "ShieldCheck",       defaultRoles: ["admin"] },
   { id: "prompt_verwaltung", label: "Prompt-Verwaltung",  icon: "MessageSquareCode", defaultRoles: ["admin"] },
   { id: "ki_tool",           label: "KI-Tool",            icon: "Cpu",               defaultRoles: ["admin"] },
+  { id: "textverwaltung",    label: "Textverwaltung",     icon: "Languages",         defaultRoles: ["admin"] },
   { id: "mailserver",        label: "Server",             icon: "Server",            defaultRoles: ["admin"] },
   { id: "user",        label: "User (Gruppe)",              icon: "Users",        defaultRoles: ["admin"], isGroup: true },
   { id: "analysen",    label: "Analysen (Gruppe)",          icon: "BarChart2",    defaultRoles: ["admin"], isGroup: true },
@@ -33,7 +34,7 @@ export const ADMIN_NAV_GROUPS = [
     id: "darstellung",
     label: "Darstellung",
     icon: "Palette",
-    items: ["erscheinungsbild", "kontakt_daten"] as const,
+    items: ["erscheinungsbild", "kontakt_daten", "textverwaltung"] as const,
   },
   {
     id: "llm",

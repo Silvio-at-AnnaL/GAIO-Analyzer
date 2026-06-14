@@ -1345,4 +1345,88 @@ adminRouter.post("/prompts/:slug/reset", requireAuth, requireAdmin, async (req, 
   });
 });
 
+// ── Labels (multilingual text overrides) ─────────────────────────────────────
+
+const SUPPORTED_LOCALES = ["de", "en"] as const;
+type SupportedLocale = typeof SUPPORTED_LOCALES[number];
+
+function isSupportedLocale(v: unknown): v is SupportedLocale {
+  return (SUPPORTED_LOCALES as readonly string[]).includes(String(v));
+}
+
+// GET /api/admin/locales — public, list of supported locales
+adminRouter.get("/locales", (_req, res) => {
+  res.json({ locales: SUPPORTED_LOCALES });
+});
+
+// GET /api/admin/public/labels?locale=L — public, resolved flat map for locale L
+adminRouter.get("/public/labels", async (req, res) => {
+  const locale = String(req.query.locale ?? "de");
+  if (!isSupportedLocale(locale)) {
+    res.status(400).json({ error: "Unsupported locale" }); return;
+  }
+  let rows: { key: string; value: string }[];
+  if (locale === "de") {
+    rows = (await query<{ key: string; value: string }>(
+      "SELECT key, value FROM labels WHERE locale = 'de' ORDER BY key",
+    )).rows;
+  } else {
+    rows = (await query<{ key: string; value: string }>(
+      `SELECT DISTINCT ON (key) key, value
+       FROM labels
+       WHERE locale = $1 OR locale = 'de'
+       ORDER BY key, (CASE WHEN locale = $1 THEN 0 ELSE 1 END)`,
+      [locale],
+    )).rows;
+  }
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.key] = r.value;
+  res.json(map);
+});
+
+// GET /api/admin/labels?locale=L — admin, raw per-locale overrides for editing
+adminRouter.get("/labels", requireAuth, requireAdmin, async (req, res) => {
+  const locale = String(req.query.locale ?? "de");
+  if (!isSupportedLocale(locale)) {
+    res.status(400).json({ error: "Unsupported locale" }); return;
+  }
+  const rows = (await query<{ key: string; value: string }>(
+    "SELECT key, value FROM labels WHERE locale = $1 ORDER BY key",
+    [locale],
+  )).rows;
+  const overrides: Record<string, string> = {};
+  for (const r of rows) overrides[r.key] = r.value;
+  res.json({ locale, overrides });
+});
+
+// PATCH /api/admin/labels/:key — admin, upsert one (key, locale) override
+adminRouter.patch("/labels/:key", requireAuth, requireAdmin, async (req, res) => {
+  const key = req.params.key as string;
+  const { locale, value } = req.body as { locale?: unknown; value?: unknown };
+  if (!isSupportedLocale(locale)) {
+    res.status(400).json({ error: "Ungültige oder fehlende locale" }); return;
+  }
+  if (typeof value !== "string") {
+    res.status(400).json({ error: "value ist erforderlich" }); return;
+  }
+  await query(
+    `INSERT INTO labels (key, locale, value, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (key, locale) DO UPDATE SET value = $3, updated_at = NOW()`,
+    [key, locale, value],
+  );
+  res.json({ ok: true });
+});
+
+// POST /api/admin/labels/:key/reset — admin, delete (key, locale) override
+adminRouter.post("/labels/:key/reset", requireAuth, requireAdmin, async (req, res) => {
+  const key = req.params.key as string;
+  const { locale } = req.body as { locale?: unknown };
+  if (!isSupportedLocale(locale)) {
+    res.status(400).json({ error: "Ungültige oder fehlende locale" }); return;
+  }
+  await query("DELETE FROM labels WHERE key = $1 AND locale = $2", [key, locale]);
+  res.json({ ok: true });
+});
+
 export default adminRouter;
