@@ -8,6 +8,7 @@ import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess, type Permissions } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
 import { ADMIN_NAV_GROUPS, ADMIN_FEATURES } from "@/config/adminFeatures";
+import { useLabelContext } from "@/lib/LabelProvider";
 
 const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
   { id: 1,  icon: Globe,      label: "Domainanalyse – Basisdaten" },
@@ -163,6 +164,46 @@ function NavGroup({
   );
 }
 
+function LocaleSwitcher() {
+  const { locale, locales, setLocale } = useLabelContext();
+  if (locales.length < 2) return null;
+  return (
+    <div
+      className="px-4 py-2.5 flex items-center gap-1.5"
+      style={{ borderTop: "1px solid hsl(var(--sidebar-border))" }}
+    >
+      {locales.map((l) => {
+        const active = l === locale;
+        return (
+          <button
+            key={l}
+            onClick={() => setLocale(l)}
+            style={{
+              padding: "3px 10px",
+              borderRadius: 5,
+              border: `1.5px solid ${active ? "hsl(var(--sidebar-primary))" : "hsl(var(--sidebar-border))"}`,
+              background: active ? "hsl(var(--sidebar-primary))" : "transparent",
+              color: active
+                ? "hsl(var(--sidebar-primary-foreground, var(--sidebar-accent-foreground)))"
+                : "hsl(var(--sidebar-foreground))",
+              fontWeight: active ? 700 : 400,
+              fontSize: "0.7rem",
+              cursor: "pointer",
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              lineHeight: 1.4,
+              opacity: active ? 1 : 0.65,
+              transition: "all 150ms ease",
+            }}
+          >
+            {l}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { activeView, setActiveView, analysisStatus } = useAppStore();
   const { user, isAuthenticated, permissions } = useAuth();
@@ -225,6 +266,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <NavButton id={11} icon={Server} label="Server" active={activeView === 11} onClick={() => navigate(11)} />
         )}
       </nav>
+
+      <LocaleSwitcher />
 
       <div className="px-4 py-3 border-t" style={{ borderColor: "hsl(var(--sidebar-border))", color: "hsl(var(--sidebar-foreground))", opacity: 0.4 }}>
         <p style={{ fontSize: 10, lineHeight: 1.5, margin: 0 }}>GAIO Analyzer v2.0</p>
