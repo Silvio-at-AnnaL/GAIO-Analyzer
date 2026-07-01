@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
+import { useT } from "@/lib/LabelProvider";
 
 interface ShareData {
   domain: string;
@@ -15,6 +16,7 @@ interface ShareData {
 type State = "loading" | "ok" | "expired" | "not-found" | "disabled" | "error";
 
 export function SharedAnalysisView() {
+  const t = useT();
   const params = useParams<{ token: string }>();
   const token = params.token ?? "";
   const [state, setState] = useState<State>("loading");
@@ -40,9 +42,9 @@ export function SharedAnalysisView() {
   if (state === "loading") {
     return (
       <div style={pageStyle}>
-        <TopBar title="Analyse wird geladen…" />
+        <TopBar title={t("shared.loading_title")} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
-          <div style={{ color: "#9ca3af", fontSize: 14 }}>Bitte warten…</div>
+          <div style={{ color: "#9ca3af", fontSize: 14 }}>{t("shared.loading_wait")}</div>
         </div>
       </div>
     );
@@ -51,8 +53,8 @@ export function SharedAnalysisView() {
   if (state === "not-found") {
     return (
       <div style={pageStyle}>
-        <TopBar title="Nicht gefunden" />
-        <ErrorBox icon="🔍" title="Freigabe nicht gefunden" text="Dieser Link existiert nicht oder wurde noch nie erstellt." />
+        <TopBar title={t("shared.not_found_title")} />
+        <ErrorBox icon="🔍" title={t("shared.not_found_box_title")} text={t("shared.not_found_box_text")} />
       </div>
     );
   }
@@ -60,8 +62,8 @@ export function SharedAnalysisView() {
   if (state === "expired") {
     return (
       <div style={pageStyle}>
-        <TopBar title="Freigabe abgelaufen" />
-        <ErrorBox icon="⏰" title="Freigabe abgelaufen" text="Dieser Link ist nicht mehr gültig. Bitte wende dich an den Absender für einen neuen Link." />
+        <TopBar title={t("shared.expired_title")} />
+        <ErrorBox icon="⏰" title={t("shared.expired_title")} text={t("shared.expired_box_text")} />
       </div>
     );
   }
@@ -69,8 +71,8 @@ export function SharedAnalysisView() {
   if (state === "disabled") {
     return (
       <div style={pageStyle}>
-        <TopBar title="Analyse-Sharing deaktiviert" />
-        <ErrorBox icon="🔒" title="Sharing deaktiviert" text="Das Teilen von Analysen ist auf diesem System deaktiviert." />
+        <TopBar title={t("shared.disabled_title")} />
+        <ErrorBox icon="🔒" title={t("shared.disabled_box_title")} text={t("shared.disabled_box_text")} />
       </div>
     );
   }
@@ -78,21 +80,24 @@ export function SharedAnalysisView() {
   if (state === "error" || !data) {
     return (
       <div style={pageStyle}>
-        <TopBar title="Fehler" />
-        <ErrorBox icon="⚠️" title="Fehler beim Laden" text="Der Analyse-Report konnte nicht geladen werden. Bitte versuche es später erneut." />
+        <TopBar title={t("shared.error_title")} />
+        <ErrorBox icon="⚠️" title={t("shared.error_box_title")} text={t("shared.error_box_text")} />
       </div>
     );
   }
 
   return (
     <div style={pageStyle}>
-      <TopBar title={data.title ?? `Analyse: ${data.domain}`} domain={data.domain} />
+      <TopBar
+        title={data.title ?? t("shared.analyse_prefix").replace("{domain}", data.domain)}
+        domain={data.domain}
+      />
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <iframe
           srcDoc={data.htmlContent}
           sandbox="allow-same-origin allow-popups"
           style={{ flex: 1, border: "none", width: "100%", height: "100%" }}
-          title={`GAIO Analyse — ${data.domain}`}
+          title={t("shared.iframe_title").replace("{domain}", data.domain)}
         />
       </div>
       <Footer
@@ -103,7 +108,7 @@ export function SharedAnalysisView() {
   );
 }
 
-function TopBar({ title, domain }: { title: string; domain?: string }) {
+function TopBar({ title, domain: _domain }: { title: string; domain?: string }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -128,6 +133,8 @@ function TopBar({ title, domain }: { title: string; domain?: string }) {
 }
 
 function Footer({ contactCompany, expiresAt }: { contactCompany: string | null; expiresAt: string }) {
+  const t = useT();
+  const dateStr = new Date(expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   return (
     <div style={{
       padding: "8px 20px", borderTop: "1px solid #1f2937",
@@ -135,9 +142,9 @@ function Footer({ contactCompany, expiresAt }: { contactCompany: string | null; 
       fontSize: 11, color: "#6b7280",
     }}>
       {contactCompany
-        ? `Dieser Report wurde geteilt von ${contactCompany}. `
+        ? t("shared.footer_shared_by").replace("{company}", contactCompany) + " "
         : ""}
-      Gültig bis {new Date(expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}.
+      {t("shared.footer_valid_until").replace("{date}", dateStr)}
     </div>
   );
 }

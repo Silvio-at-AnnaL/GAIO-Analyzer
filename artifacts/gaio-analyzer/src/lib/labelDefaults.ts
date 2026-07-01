@@ -179,4 +179,22 @@ export const labelDefaults: Record<string, LabelDef> = {
 
   "contact.subtitle":  { group: "contact", de: "Ihr Ansprechpartner für GAIO Analyzer und LLM-Sichtbarkeit." },
   "contact.btn_email": { group: "contact", de: "E-Mail schreiben" },
+
+  "shared.loading_title":      { group: "shared", de: "Analyse wird geladen…" },
+  "shared.loading_wait":       { group: "shared", de: "Bitte warten…" },
+  "shared.not_found_title":    { group: "shared", de: "Nicht gefunden" },
+  "shared.not_found_box_title":{ group: "shared", de: "Freigabe nicht gefunden" },
+  "shared.not_found_box_text": { group: "shared", de: "Dieser Link existiert nicht oder wurde noch nie erstellt." },
+  "shared.expired_title":      { group: "shared", de: "Freigabe abgelaufen" },
+  "shared.expired_box_text":   { group: "shared", de: "Dieser Link ist nicht mehr gültig. Bitte wende dich an den Absender für einen neuen Link." },
+  "shared.disabled_title":     { group: "shared", de: "Analyse-Sharing deaktiviert" },
+  "shared.disabled_box_title": { group: "shared", de: "Sharing deaktiviert" },
+  "shared.disabled_box_text":  { group: "shared", de: "Das Teilen von Analysen ist auf diesem System deaktiviert." },
+  "shared.error_title":        { group: "shared", de: "Fehler" },
+  "shared.error_box_title":    { group: "shared", de: "Fehler beim Laden" },
+  "shared.error_box_text":     { group: "shared", de: "Der Analyse-Report konnte nicht geladen werden. Bitte versuche es später erneut." },
+  "shared.analyse_prefix":     { group: "shared", de: "Analyse: {domain}" },
+  "shared.iframe_title":       { group: "shared", de: "GAIO Analyse — {domain}" },
+  "shared.footer_shared_by":   { group: "shared", de: "Dieser Report wurde geteilt von {company}." },
+  "shared.footer_valid_until": { group: "shared", de: "Gültig bis {date}." },
 };
