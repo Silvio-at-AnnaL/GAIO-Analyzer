@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Mail } from "lucide-react";
 import { useBranding } from "@/store/brandingStore";
+import { useT } from "@/lib/LabelProvider";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -34,6 +35,7 @@ function SkeletonLine({ w }: { w?: string }) {
 }
 
 export function KontaktView() {
+  const t = useT();
   const branding = useBranding();
   const [contact, setContact] = useState<ContactInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,9 +54,9 @@ export function KontaktView() {
   return (
     <div className="max-w-2xl space-y-6 pb-12">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Kontakt</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.kontakt")}</h1>
         <p className="text-muted-foreground mt-1">
-          Ihr Ansprechpartner für GAIO Analyzer und LLM-Sichtbarkeit.
+          {t("contact.subtitle")}
         </p>
       </div>
 
@@ -166,7 +168,7 @@ export function KontaktView() {
             style={{ background: "hsl(var(--primary))" }}
           >
             <Mail className="w-4 h-4 shrink-0" />
-            E-Mail schreiben
+            {t("contact.btn_email")}
           </a>
         </div>
       </div>

@@ -176,4 +176,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "faq.priority_low_desc":           { group: "faq", de: "Optimierungen für nach der Erstbereinigung (z. B. Meta-Description-Länge, Alt-Text-Lücken)." },
   "faq.section_accuracy":            { group: "faq", de: "Hinweise zur Genauigkeit" },
   "faq.accuracy_desc":               { group: "faq", de: "Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe (Startseite + max. 3 Unterseiten). Die LLM-Sichtbarkeitssimulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden." },
+
+  "contact.subtitle":  { group: "contact", de: "Ihr Ansprechpartner für GAIO Analyzer und LLM-Sichtbarkeit." },
+  "contact.btn_email": { group: "contact", de: "E-Mail schreiben" },
 };
