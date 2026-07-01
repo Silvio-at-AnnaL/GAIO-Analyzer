@@ -8,6 +8,7 @@ import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Glob
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 import { normalizeUrl } from "@/lib/utils";
+import { useT } from "@/lib/LabelProvider";
 
 const MAX_VISIBLE_PAGES = 15;
 
@@ -20,15 +21,14 @@ export function DomainAnalyseView() {
 
   const startAnalysis = useStartAnalysis();
   const prefillMutation = usePrefillQuestionnaire();
+  const t = useT();
 
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
   const [showAllPages, setShowAllPages] = useState(false);
-  // Whether Phase 2 fields (competitors + personas) are visible
   const [phase2Visible, setPhase2Visible] = useState(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
   const [competitorVerified, setCompetitorVerified] = useState<Record<string, boolean>>({});
 
-  // Local editable URL list — initialized from crawledPages, can be modified
   const [editablePages, setEditablePages] = useState<string[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -38,7 +38,6 @@ export function DomainAnalyseView() {
   const newUrlInputRef = useRef<HTMLInputElement>(null);
   const phase2Ref = useRef<HTMLDivElement>(null);
 
-  // Show phase 2 if there's already data in the form (e.g. returning user)
   useEffect(() => {
     const hasData =
       domainForm.competitors.some((c) => c.trim() !== "") ||
@@ -46,7 +45,6 @@ export function DomainAnalyseView() {
     if (hasData) setPhase2Visible(true);
   }, []);
 
-  // Sync editablePages + selectedPages when a new crawl result arrives
   useEffect(() => {
     if (crawledPages.length > 0) {
       setEditablePages([...crawledPages]);
@@ -54,7 +52,6 @@ export function DomainAnalyseView() {
     }
   }, [crawledPages]);
 
-  // Focus the edit input when entering edit mode
   useEffect(() => {
     if (editingIndex !== null) {
       editInputRef.current?.focus();
@@ -62,14 +59,12 @@ export function DomainAnalyseView() {
     }
   }, [editingIndex]);
 
-  // Focus the new URL input when adding
   useEffect(() => {
     if (addingNew) {
       newUrlInputRef.current?.focus();
     }
   }, [addingNew]);
 
-  // Scroll phase2 into view after it becomes visible
   useEffect(() => {
     if (phase2Visible) {
       setTimeout(() => {
@@ -81,8 +76,6 @@ export function DomainAnalyseView() {
   const updateField = <K extends keyof typeof domainForm>(key: K, value: typeof domainForm[K]) => {
     setDomainForm({ ...domainForm, [key]: value });
   };
-
-
 
   const updateCompetitor = (index: number, value: string) => {
     const next = [...domainForm.competitors];
@@ -100,18 +93,18 @@ export function DomainAnalyseView() {
 
   const validate = () => {
     const errs: { companyName?: string; url?: string } = {};
-    if (!domainForm.companyName.trim()) errs.companyName = "Bitte Unternehmensname eingeben";
-    if (!domainForm.url.trim()) errs.url = "Bitte Website-URL eingeben";
-    else if (!domainForm.url.startsWith("http")) errs.url = "Bitte eine gültige URL eingeben (https://...)";
+    if (!domainForm.companyName.trim()) errs.companyName = t("domain.error_company_required");
+    if (!domainForm.url.trim()) errs.url = t("domain.error_url_required");
+    else if (!domainForm.url.startsWith("http")) errs.url = t("domain.error_url_invalid");
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
   const validatePhase1 = () => {
     const errs: { companyName?: string; url?: string } = {};
-    if (!domainForm.companyName.trim()) errs.companyName = "Bitte Unternehmensname eingeben";
-    if (!domainForm.url.trim()) errs.url = "Bitte Website-URL eingeben";
-    else if (!domainForm.url.startsWith("http")) errs.url = "Bitte eine gültige URL eingeben (https://...)";
+    if (!domainForm.companyName.trim()) errs.companyName = t("domain.error_company_required");
+    if (!domainForm.url.trim()) errs.url = t("domain.error_url_required");
+    else if (!domainForm.url.startsWith("http")) errs.url = t("domain.error_url_invalid");
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -144,7 +137,7 @@ export function DomainAnalyseView() {
           setPhase2Visible(true);
         },
         onError: () => {
-          setPrefillError("KI-Vorausfüllung fehlgeschlagen. Bitte füllen Sie die Felder manuell aus.");
+          setPrefillError(t("domain.error_prefill_failed"));
           setPhase2Visible(true);
         },
       }
@@ -155,8 +148,6 @@ export function DomainAnalyseView() {
     setPrefillError(null);
     setPhase2Visible(true);
   };
-
-  // ── URL list helpers ──────────────────────────────────────────────────────
 
   const togglePage = (url: string) => {
     const next = selectedPages.includes(url)
@@ -213,8 +204,6 @@ export function DomainAnalyseView() {
 
   const visiblePages = showAllPages ? editablePages : editablePages.slice(0, MAX_VISIBLE_PAGES);
 
-  // ── Submit ────────────────────────────────────────────────────────────────
-
   const handleStart = () => {
     if (!validate()) return;
 
@@ -252,26 +241,26 @@ export function DomainAnalyseView() {
   return (
     <div className="max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Domainanalyse – Basisdaten</h1>
-        <p className="text-sm text-muted-foreground mt-1">Website crawlen und alle 7 Analysemodule ausführen.</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.domain_analyse")}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t("domain.subtitle")}</p>
       </div>
 
       {/* Section: Unternehmen & Website */}
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">
-          Unternehmen &amp; Website
+          {t("domain.section_company")}
         </h2>
 
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="companyName">Unternehmensname</Label>
-            <Tooltip text="Bitte geben Sie die korrekte Unternehmensbezeichnung ein" />
+            <Label htmlFor="companyName">{t("domain.label_company")}</Label>
+            <Tooltip text={t("domain.tooltip_company")} />
           </div>
           <Input
             id="companyName"
             value={domainForm.companyName}
             onChange={(e) => updateField("companyName", e.target.value)}
-            placeholder="Muster GmbH"
+            placeholder={t("welcome.placeholder_company")}
             data-testid="input-company-name"
           />
           {errors.companyName && (
@@ -281,8 +270,8 @@ export function DomainAnalyseView() {
 
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="websiteUrl">Website-URL</Label>
-            <Tooltip text="Bitte Ihre hier zu analysierende Website eintragen" />
+            <Label htmlFor="websiteUrl">{t("domain.label_url")}</Label>
+            <Tooltip text={t("domain.tooltip_url")} />
           </div>
           <Input
             id="websiteUrl"
@@ -290,7 +279,7 @@ export function DomainAnalyseView() {
             value={domainForm.url}
             onChange={(e) => updateField("url", e.target.value)}
             onBlur={(e) => updateField("url", normalizeUrl(e.target.value))}
-            placeholder="z. B. domain.de oder www.domain.de"
+            placeholder={t("welcome.placeholder_url")}
             data-testid="input-url"
           />
           {errors.url && (
@@ -311,24 +300,24 @@ export function DomainAnalyseView() {
               {prefillMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  KI analysiert Unternehmen…
+                  {t("domain.prefill_pending")}
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Mit KI vorausfüllen
+                  {t("domain.btn_prefill")}
                 </>
               )}
             </Button>
             <p className="text-xs text-center text-muted-foreground">
-              KI schlägt Zielgruppen und Wettbewerber automatisch vor —{" "}
+              {t("domain.prefill_hint")}{" "}
               <button
                 type="button"
                 onClick={handleRevealManually}
                 className="underline hover:text-foreground transition-colors"
                 data-testid="button-manual-fill"
               >
-                manuell ausfüllen
+                {t("domain.prefill_manual")}
               </button>
             </p>
           </div>
@@ -343,32 +332,36 @@ export function DomainAnalyseView() {
               className="underline hover:text-foreground transition-colors"
               data-testid="button-switch-to-ai"
             >
-              ← Mit KI vorausfüllen
+              {t("domain.btn_switch_to_ai")}
             </button>
           </p>
         )}
 
-        {/* Crawled pages selection — only shown after at least one analysis */}
+        {/* Crawled pages selection */}
         {editablePages.length > 0 && (
           <div
             className="rounded-lg border border-border p-4 space-y-3"
             style={{ background: "hsl(var(--muted) / 0.3)" }}
           >
             <div>
-              <p className="text-sm font-semibold">Zu analysierende Unterseiten</p>
+              <p className="text-sm font-semibold">{t("domain.pages_title")}</p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                Automatisch beim letzten Crawl erkannt. Sie können URLs bearbeiten, neue hinzufügen und die Auswahl anpassen.
+                {t("domain.pages_desc")}
               </p>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{selectedPages.length} von {editablePages.length} ausgewählt</span>
+              <span className="text-xs text-muted-foreground">
+                {t("domain.pages_count")
+                  .replace("{selected}", String(selectedPages.length))
+                  .replace("{total}", String(editablePages.length))}
+              </span>
               <button
                 type="button"
                 onClick={toggleAll}
                 className="text-xs text-primary hover:underline font-medium"
               >
-                {allSelected ? "Alle abwählen" : "Alle auswählen"}
+                {allSelected ? t("domain.pages_deselect_all") : t("domain.pages_select_all")}
               </button>
             </div>
 
@@ -405,7 +398,7 @@ export function DomainAnalyseView() {
                           type="button"
                           onClick={confirmEdit}
                           className="shrink-0 p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
-                          aria-label="Bestätigen"
+                          aria-label={t("domain.aria_confirm")}
                         >
                           <Check className="w-3.5 h-3.5" />
                         </button>
@@ -413,7 +406,7 @@ export function DomainAnalyseView() {
                           type="button"
                           onClick={cancelEdit}
                           className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                          aria-label="Abbrechen"
+                          aria-label={t("domain.aria_cancel")}
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -430,7 +423,7 @@ export function DomainAnalyseView() {
                           type="button"
                           onClick={() => startEdit(idx)}
                           className="shrink-0 mt-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-                          aria-label="URL bearbeiten"
+                          aria-label={t("domain.aria_edit_url")}
                           style={{ opacity: 0.5 }}
                           onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
                           onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.5")}
@@ -468,7 +461,7 @@ export function DomainAnalyseView() {
                       type="button"
                       onClick={confirmAddNew}
                       className="shrink-0 p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
-                      aria-label="URL hinzufügen"
+                      aria-label={t("domain.pages_add_url")}
                     >
                       <Check className="w-3.5 h-3.5" />
                     </button>
@@ -476,7 +469,7 @@ export function DomainAnalyseView() {
                       type="button"
                       onClick={cancelAddNew}
                       className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      aria-label="Abbrechen"
+                      aria-label={t("domain.aria_cancel")}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -494,12 +487,12 @@ export function DomainAnalyseView() {
                 {showAllPages ? (
                   <>
                     <ChevronUp className="w-3 h-3" />
-                    Weniger anzeigen
+                    {t("domain.pages_show_less")}
                   </>
                 ) : (
                   <>
                     <ChevronDown className="w-3 h-3" />
-                    {editablePages.length - MAX_VISIBLE_PAGES} weitere anzeigen
+                    {t("domain.pages_show_more").replace("{n}", String(editablePages.length - MAX_VISIBLE_PAGES))}
                   </>
                 )}
               </button>
@@ -512,44 +505,42 @@ export function DomainAnalyseView() {
                 className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
               >
                 <Plus className="w-3.5 h-3.5" />
-                URL hinzufügen
+                {t("domain.pages_add_url")}
               </button>
             )}
           </div>
         )}
       </section>
 
-      {/* Phase 2: Competitors + Personas — revealed after prefill or manual toggle */}
+      {/* Phase 2: Competitors + Personas */}
       {phase2Visible && (
         <div ref={phase2Ref} className="space-y-8">
 
-          {/* Prefill error notice */}
           {prefillError && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
               {prefillError}
             </div>
           )}
 
-          {/* Prefill success notice */}
           {prefillMutation.isSuccess && !prefillError && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-3">
               <div className="flex items-start gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
                 <p className="text-xs text-primary/90 leading-relaxed">
-                  KI-Vorschläge wurden eingefügt. Bitte überprüfen und bei Bedarf anpassen.
+                  {t("domain.prefill_success")}
                 </p>
               </div>
 
               {prefillMutation.data?.crawl_failed && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed pl-5">
-                  ⚠ Website konnte nicht gecrawlt werden — Vorschläge basieren nur auf dem Unternehmensnamen.
+                  {t("domain.prefill_crawl_failed")}
                 </p>
               )}
 
               {prefillMutation.data?.content_summary && (
                 <div className="border-t border-primary/20 pt-3 pl-5 space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Erkannte Produkte / Leistungen:
+                    {t("domain.prefill_products_label")}
                   </p>
                   <p className="text-xs text-foreground/70 leading-relaxed">
                     {prefillMutation.data.content_summary}
@@ -562,8 +553,8 @@ export function DomainAnalyseView() {
           {/* Section: Wettbewerber */}
           <section className="space-y-4">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
-              Wettbewerber-Domains
-              <Tooltip text="Die Website-Adresse/n Ihrer wichtigsten Wettbewerber" />
+              {t("domain.section_competitors")}
+              <Tooltip text={t("domain.tooltip_competitors")} />
             </h2>
 
             <div className="space-y-2">
@@ -575,7 +566,7 @@ export function DomainAnalyseView() {
                       href={isValidUrl ? comp : undefined}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label="Website öffnen"
+                      aria-label={t("domain.aria_open_website")}
                       tabIndex={isValidUrl ? 0 : -1}
                       className="shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                       style={{
@@ -591,21 +582,21 @@ export function DomainAnalyseView() {
                       value={comp}
                       onChange={(e) => updateCompetitor(i, e.target.value)}
                       onBlur={(e) => updateCompetitor(i, normalizeUrl(e.target.value))}
-                      placeholder="z. B. wettbewerber.de"
+                      placeholder={t("domain.placeholder_competitor")}
                       data-testid={`input-competitor-${i}`}
                     />
                     {comp in competitorVerified && (
                       competitorVerified[comp] ? (
                         <CheckCircle2
                           className="shrink-0 w-4 h-4 text-green-500"
-                          aria-label="URL verifiziert"
+                          aria-label={t("domain.aria_url_verified")}
                         />
                       ) : (
                         <span
-                          title="URL konnte nicht automatisch verifiziert werden — bitte prüfen"
+                          title={t("domain.tooltip_url_unverified")}
                           className="shrink-0 flex items-center"
                         >
-                          <AlertTriangle className="w-4 h-4 text-amber-500" aria-label="URL nicht verifiziert" />
+                          <AlertTriangle className="w-4 h-4 text-amber-500" aria-label={t("domain.aria_url_unverified")} />
                         </span>
                       )
                     )}
@@ -613,7 +604,7 @@ export function DomainAnalyseView() {
                       <button
                         onClick={() => removeCompetitor(i)}
                         className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        aria-label="Entfernen"
+                        aria-label={t("domain.aria_remove")}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -629,7 +620,7 @@ export function DomainAnalyseView() {
                   className="text-muted-foreground text-xs"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" />
-                  Weiteren Wettbewerber hinzufügen
+                  {t("domain.btn_add_competitor")}
                 </Button>
               )}
             </div>
@@ -638,14 +629,14 @@ export function DomainAnalyseView() {
           {/* Section: Zielgruppen */}
           <section className="space-y-4">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 flex items-center gap-1.5">
-              Zielgruppen / Käuferpersonas
-              <Tooltip text="Hier Ihre Zielbranchen und Zielpersonen (Einkäufer, Projektingenieure, R+D…) eintragen" />
+              {t("domain.section_personas")}
+              <Tooltip text={t("domain.tooltip_personas")} />
             </h2>
 
             <Textarea
               value={domainForm.personas}
               onChange={(e) => updateField("personas", e.target.value)}
-              placeholder="z. B. Einkaufsleiter in der Automobilindustrie, Projektingenieure im Maschinenbau, F&E-Verantwortliche..."
+              placeholder={t("domain.placeholder_personas")}
               className="min-h-[96px]"
               data-testid="input-personas"
             />
@@ -662,7 +653,7 @@ export function DomainAnalyseView() {
             {startAnalysis.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : null}
-            Analyse starten
+            {t("html.btn_start")}
           </Button>
         </div>
       )}
