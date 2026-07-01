@@ -8,15 +8,15 @@ import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess, type Permissions } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
 import { ADMIN_NAV_GROUPS, ADMIN_FEATURES } from "@/config/adminFeatures";
-import { useLabelContext } from "@/lib/LabelProvider";
+import { useLabelContext, useT } from "@/lib/LabelProvider";
 
-const MAIN_NAV: { id: ActiveView; icon: React.ElementType; label: string }[] = [
-  { id: 1,  icon: Globe,      label: "Domainanalyse – Basisdaten" },
-  { id: 2,  icon: FileCode,   label: "HTML-Analyse" },
-  { id: 3,  icon: BarChart3,  label: "Ergebnisse" },
-  { id: 4,  icon: HelpCircle, label: "FAQ / So funktioniert's" },
-  { id: 5,  icon: Mail,       label: "Kontakt" },
-  { id: 6,  icon: Settings,   label: "Einstellungen" },
+const MAIN_NAV: { id: ActiveView; icon: React.ElementType; labelKey: string }[] = [
+  { id: 1,  icon: Globe,      labelKey: "nav.domain_analyse" },
+  { id: 2,  icon: FileCode,   labelKey: "nav.html_analyse" },
+  { id: 3,  icon: BarChart3,  labelKey: "nav.ergebnisse" },
+  { id: 4,  icon: HelpCircle, labelKey: "nav.faq" },
+  { id: 5,  icon: Mail,       labelKey: "nav.kontakt" },
+  { id: 6,  icon: Settings,   labelKey: "nav.einstellungen" },
 ];
 
 const FEATURE_VIEW: Record<string, ActiveView> = {
@@ -208,6 +208,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { activeView, setActiveView, analysisStatus } = useAppStore();
   const { user, isAuthenticated, permissions } = useAuth();
   const branding = useBranding();
+  const t = useT();
 
   function navigate(id: ActiveView) {
     setActiveView(id);
@@ -218,7 +219,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   const loginLabel = isAuthenticated
     ? `${user!.firstName} ${user!.lastName}`
-    : "Login";
+    : t("nav.login");
   const LoginIcon = isAuthenticated ? User : LogIn;
 
   const logoSrc = branding.logoSrc || "/brand-logo.png";
@@ -236,12 +237,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {MAIN_NAV.flatMap(({ id, icon, label }) => {
+        {MAIN_NAV.flatMap(({ id, icon, labelKey }) => {
+          const label = t(labelKey);
           const btn = <NavButton key={id} id={id} icon={icon} label={label} active={activeView === id} onClick={() => navigate(id)} />;
           if (id === 3 && analysisStatus === "completed") {
             return [
               btn,
-              <NavButton key={16} id={16} icon={ArrowLeftRight} label="Vergleich" active={activeView === 16} onClick={() => navigate(16)} />,
+              <NavButton key={16} id={16} icon={ArrowLeftRight} label={t("nav.vergleich")} active={activeView === 16} onClick={() => navigate(16)} />,
             ];
           }
           return [btn];
@@ -263,7 +265,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         ))}
 
         {isAuthenticated && canAccess("mailserver", role, permissions) && (
-          <NavButton id={11} icon={Server} label="Server" active={activeView === 11} onClick={() => navigate(11)} />
+          <NavButton id={11} icon={Server} label={t("nav.server")} active={activeView === 11} onClick={() => navigate(11)} />
         )}
       </nav>
 
@@ -298,6 +300,7 @@ export function Sidebar() {
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <>
@@ -308,7 +311,7 @@ export function MobileNav() {
       >
         <SidebarContent onNavigate={() => setOpen(false)} />
       </div>
-      <button onClick={() => setOpen(true)} className="p-1 rounded-md hover:bg-muted transition-colors" aria-label="Menü öffnen">
+      <button onClick={() => setOpen(true)} className="p-1 rounded-md hover:bg-muted transition-colors" aria-label={t("nav.menu_open")}>
         <Menu className="w-5 h-5" />
       </button>
     </>

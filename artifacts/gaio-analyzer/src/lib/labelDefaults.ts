@@ -45,4 +45,15 @@ export const labelDefaults: Record<string, LabelDef> = {
   "html.error_file_type":     { group: "html", de: "Nur .html und .htm Dateien werden akzeptiert." },
   "html.error_empty":         { group: "html", de: "Bitte HTML-Code einfügen oder eine Datei hochladen." },
   "html.error_start_failed":  { group: "html", de: "Analyse konnte nicht gestartet werden. Bitte erneut versuchen." },
+
+  "nav.domain_analyse": { group: "nav", de: "Domainanalyse – Basisdaten" },
+  "nav.html_analyse":   { group: "nav", de: "HTML-Analyse" },
+  "nav.ergebnisse":     { group: "nav", de: "Ergebnisse" },
+  "nav.faq":            { group: "nav", de: "FAQ / So funktioniert's" },
+  "nav.kontakt":        { group: "nav", de: "Kontakt" },
+  "nav.einstellungen":  { group: "nav", de: "Einstellungen" },
+  "nav.vergleich":      { group: "nav", de: "Vergleich" },
+  "nav.login":          { group: "nav", de: "Login" },
+  "nav.server":         { group: "nav", de: "Server" },
+  "nav.menu_open":      { group: "nav", de: "Menü öffnen" },
 };
