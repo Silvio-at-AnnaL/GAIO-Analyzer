@@ -1,79 +1,95 @@
+import { useT } from "@/lib/LabelProvider";
+
 export function FaqView() {
+  const t = useT();
+
   const modules = [
-    {
-      modul: "Technische SEO-Basis",
-      pruefung: "HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport",
-      wichtig: "Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler",
-    },
-    {
-      modul: "Strukturierte Daten (Schema.org)",
-      pruefung: "JSON-LD, Microdata, RDFa — Typen: Organization, Product, FAQPage, BreadcrumbList u.a.",
-      wichtig: "Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren",
-    },
-    {
-      modul: "Heading-Struktur",
-      pruefung: "H1/H2/H3-Hierarchie, Keyword-Präsenz in Überschriften",
-      wichtig: "Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet",
-    },
-    {
-      modul: "Inhaltliche Relevanz (KI-gestützt)",
-      pruefung: "Vorhandensein von Anwendungsszenarien, technischer Tiefe, Käufer-Fragetypen",
-      wichtig: "LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten",
-    },
-    {
-      modul: "FAQ-Qualität",
-      pruefung: "Erkannte FAQ-Strukturen, Frageformulierung, Antworttiefe",
-      wichtig: "FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit",
-    },
-    {
-      modul: "LLM-Sichtbarkeitssimulation",
-      pruefung: "Generierte Käuferfragen + prognostizierte Antwortqualität auf Basis des vorhandenen Contents",
-      wichtig: "Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu Ihrem Unternehmen haben",
-    },
+    { modul: t("faq.mod1_name"), pruefung: t("faq.mod1_check"), wichtig: t("faq.mod1_why") },
+    { modul: t("faq.mod2_name"), pruefung: t("faq.mod2_check"), wichtig: t("faq.mod2_why") },
+    { modul: t("faq.mod3_name"), pruefung: t("faq.mod3_check"), wichtig: t("faq.mod3_why") },
+    { modul: t("faq.mod4_name"), pruefung: t("faq.mod4_check"), wichtig: t("faq.mod4_why") },
+    { modul: t("faq.mod5_name"), pruefung: t("faq.mod5_check"), wichtig: t("faq.mod5_why") },
+    { modul: t("faq.mod6_name"), pruefung: t("faq.mod6_check"), wichtig: t("faq.mod6_why") },
   ];
 
   const weights = [
-    { label: "Strukturierte Daten", pct: 20, color: "hsl(var(--chart-4))" },
-    { label: "Inhaltliche Relevanz", pct: 20, color: "hsl(var(--chart-1))" },
-    { label: "LLM-Sichtbarkeit", pct: 20, color: "hsl(var(--chart-2))" },
-    { label: "Technische SEO-Basis", pct: 15, color: "hsl(var(--chart-3))" },
-    { label: "FAQ-Qualität", pct: 15, color: "hsl(var(--chart-5))" },
-    { label: "Heading-Struktur", pct: 10, color: "hsl(var(--muted-foreground))" },
+    { label: t("faq.weight_schema"),  pct: 20, color: "hsl(var(--chart-4))" },
+    { label: t("faq.weight_content"), pct: 20, color: "hsl(var(--chart-1))" },
+    { label: t("faq.weight_llm"),     pct: 20, color: "hsl(var(--chart-2))" },
+    { label: t("faq.weight_tech"),    pct: 15, color: "hsl(var(--chart-3))" },
+    { label: t("faq.weight_faq"),     pct: 15, color: "hsl(var(--chart-5))" },
+    { label: t("faq.weight_heading"), pct: 10, color: "hsl(var(--muted-foreground))" },
   ];
 
   const scoreRanges = [
-    { range: "0–40", bewertung: "Kritisch", bedeutung: "Grundlegende Defizite — LLMs können diese Website kaum als Quelle nutzen", color: "hsl(0 84% 60%)" },
-    { range: "41–60", bewertung: "Ausbaufähig", bedeutung: "Technische Basis vorhanden, aber inhaltliche Lücken limitieren die LLM-Sichtbarkeit erheblich", color: "hsl(35 92% 55%)" },
-    { range: "61–75", bewertung: "Solide", bedeutung: "Gute Ausgangsbasis — gezielte Maßnahmen können die Sichtbarkeit spürbar steigern", color: "hsl(43 96% 56%)" },
-    { range: "76–90", bewertung: "Stark", bedeutung: "Überdurchschnittlich gut aufgestellt; Feinoptimierung empfohlen", color: "hsl(142 71% 45%)" },
-    { range: "91–100", bewertung: "Exzellent", bedeutung: "Best-in-class LLM-Readiness", color: "hsl(142 71% 38%)" },
+    { range: "0–40",   bewertung: t("faq.score_critical_label"),  bedeutung: t("faq.score_critical_desc"),  color: "hsl(0 84% 60%)" },
+    { range: "41–60",  bewertung: t("faq.score_improving_label"), bedeutung: t("faq.score_improving_desc"), color: "hsl(35 92% 55%)" },
+    { range: "61–75",  bewertung: t("faq.score_solid_label"),     bedeutung: t("faq.score_solid_desc"),     color: "hsl(43 96% 56%)" },
+    { range: "76–90",  bewertung: t("faq.score_strong_label"),    bedeutung: t("faq.score_strong_desc"),    color: "hsl(142 71% 45%)" },
+    { range: "91–100", bewertung: t("faq.score_excellent_label"), bedeutung: t("faq.score_excellent_desc"), color: "hsl(142 71% 38%)" },
+  ];
+
+  const sitemapRows: [string, string, string][] = [
+    [t("faq.sitemap_row_purpose_label"),   t("faq.sitemap_row_purpose_xml"),    t("faq.sitemap_row_purpose_html")],
+    [t("faq.sitemap_row_google_label"),    t("faq.sitemap_row_google_xml"),     t("faq.sitemap_row_google_html")],
+    [t("faq.sitemap_row_links_label"),     t("faq.sitemap_row_links_xml"),      t("faq.sitemap_row_links_html")],
+    [t("faq.sitemap_row_llm_train_label"), t("faq.sitemap_row_llm_train_xml"),  t("faq.sitemap_row_llm_train_html")],
+    [t("faq.sitemap_row_rag_label"),       t("faq.sitemap_row_rag_xml"),        t("faq.sitemap_row_rag_html")],
+    [t("faq.sitemap_row_scale_label"),     t("faq.sitemap_row_scale_xml"),      t("faq.sitemap_row_scale_html")],
+  ];
+
+  const priorityTiers = [
+    {
+      dot: "🔴",
+      label: t("faq.score_critical_label"),
+      color: "hsl(0 84% 60%)",
+      bg: "hsl(0 84% 60% / 0.08)",
+      border: "hsl(0 84% 60% / 0.3)",
+      desc: t("faq.priority_critical_desc"),
+    },
+    {
+      dot: "🟠",
+      label: t("faq.priority_high_label"),
+      color: "hsl(35 92% 55%)",
+      bg: "hsl(35 92% 55% / 0.08)",
+      border: "hsl(35 92% 55% / 0.3)",
+      desc: t("faq.priority_high_desc"),
+    },
+    {
+      dot: "🟡",
+      label: t("faq.priority_low_label"),
+      color: "hsl(43 96% 50%)",
+      bg: "hsl(43 96% 50% / 0.08)",
+      border: "hsl(43 96% 50% / 0.3)",
+      desc: t("faq.priority_low_desc"),
+    },
   ];
 
   return (
     <div className="max-w-3xl space-y-10 pb-12">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">FAQ / So funktioniert's</h1>
-        <p className="text-muted-foreground mt-1">Alles über die Analyse-Methodik und Score-Interpretation.</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.faq")}</h1>
+        <p className="text-muted-foreground mt-1">{t("faq.subtitle")}</p>
       </div>
 
       {/* Was analysiert dieses Tool? */}
       <section className="space-y-3">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Was analysiert dieses Tool?</h2>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_what")}</h2>
         <p className="text-base leading-relaxed text-foreground/90">
-          GAIO Analyzer untersucht B2B-Industriewebsites auf ihre Auffindbarkeit durch KI-Sprachmodelle (LLMs) sowie auf klassische SEO-Grundlagen. Ziel ist es, konkrete Handlungsempfehlungen zu liefern, die sowohl die Suchmaschinen-Indexierung als auch die Zitierwahrscheinlichkeit durch KI-Assistenten wie ChatGPT, Gemini oder Perplexity erhöhen.
+          {t("faq.what_desc")}
         </p>
       </section>
 
       {/* Analyse-Module */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Die Analyse-Module im Überblick</h2>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_modules")}</h2>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-48">Modul</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Was wird geprüft</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Warum es wichtig ist</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-48">{t("faq.col_module")}</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">{t("faq.col_checked")}</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">{t("faq.col_why")}</th>
               </tr>
             </thead>
             <tbody>
@@ -89,29 +105,22 @@ export function FaqView() {
         </div>
         <div style={{ background: "#f8f9fa", borderLeft: "3px solid #dde0e8", borderRadius: "6px", padding: "14px 16px", marginTop: "8px" }}>
           <p className="text-xs font-semibold text-muted-foreground mb-2">
-            <sup>*</sup> sitemap.xml vs. /sitemap — was wird geprüft und warum beides relevant ist
+            <sup>*</sup> {t("faq.sitemap_title")}
           </p>
           <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-            Der GAIO Analyzer sucht zuerst nach einer maschinenlesbaren sitemap.xml (inkl. sitemap_index.xml sowie in robots.txt deklarierten Sitemap-Pfaden). Falls keine XML-Sitemap gefunden wird, sucht er nach einer HTML-Sitemap unter gängigen Pfaden wie /sitemap, /sitemap.html oder /seitenübersicht.
+            {t("faq.sitemap_desc")}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border border-border">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">Kriterium</th>
+                  <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground whitespace-nowrap">{t("faq.sitemap_col_criterion")}</th>
                   <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground">sitemap.xml</th>
                   <th className="text-left px-2 py-1.5 font-semibold text-muted-foreground">/sitemap (HTML)</th>
                 </tr>
               </thead>
               <tbody>
-                {([
-                  ["Zweck", "Maschinenlesbare Übergabe an Crawler; enthält lastmod, priority, changefreq", "HTML-Seite mit internen Links zu allen wichtigen Seiten; für Menschen und Crawler lesbar"],
-                  ["Google / Search Console", "✅ Direkt einreichbar; Indexierungsstatus in Search Console sichtbar", "❌ Nicht einreichbar; kann aber selbst indexiert werden"],
-                  ["Interne Verlinkung", "❌ Wird nicht als Linkquelle gewertet", "✅ Interne Links zählen als Linkgraph und stärken PageRank-Verteilung"],
-                  ["LLM-Training-Crawler", "⚠️ Wird von manchen Crawlern (z.B. Common Crawl) gelesen, aber nicht als Content aufgenommen", "✅ HTML-Links werden direkt als Crawl-Einstiegspunkte verwertet — für Link-Following-Crawler direkter verwertbar"],
-                  ["LLM-Live-Retrieval (RAG)", "✅ Bessere XML-Indexierung = mehr Seiten im Suchindex = mehr Zitierchancen", "✅ Kann selbst gecrawlt und als Linking-Hub genutzt werden"],
-                  ["Skalierung", "✅ Bis 50.000 URLs; erweiterbar via Sitemap-Index; Spezialformate für Bilder, Videos, News", "⚠️ Bei großen Sites schwer wartbar; kein Ersatz für sitemap.xml"],
-                ] as [string, string, string][]).map(([k, v1, v2], i) => (
+                {sitemapRows.map(([k, v1, v2], i) => (
                   <tr key={i} className="border-b border-border last:border-0" style={{ background: i % 2 === 1 ? "hsl(var(--muted) / 0.3)" : "transparent" }}>
                     <td className="px-2 py-1.5 font-medium align-top whitespace-nowrap">{k}</td>
                     <td className="px-2 py-1.5 text-muted-foreground align-top leading-relaxed">{v1}</td>
@@ -122,14 +131,14 @@ export function FaqView() {
             </table>
           </div>
           <p className="text-xs text-muted-foreground italic mt-3 leading-relaxed">
-            Empfehlung: sitemap.xml und HTML-Sitemap schließen sich nicht aus — sie erfüllen unterschiedliche Funktionen. sitemap.xml ist für die Google-Indexierung unverzichtbar. Eine gepflegte HTML-Sitemap (/sitemap) hat zusätzlichen Wert als internes Verlinkungshub und als Crawl-Einstiegspunkt für LLM-Trainingscrawler — aber nur als Ergänzung, nicht als Ersatz.
+            {t("faq.sitemap_recommendation")}
           </p>
         </div>
       </section>
 
       {/* Score-Gewichtung */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Score-Gewichtung (Gesamt-GAIO-Score)</h2>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_weights")}</h2>
         <div className="space-y-3">
           {weights.map((w) => (
             <div key={w.label} className="flex items-center gap-4">
@@ -148,14 +157,14 @@ export function FaqView() {
 
       {/* Score-Interpretation */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Score-Interpretation</h2>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_scores")}</h2>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-24">Score</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-32">Bewertung</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Bedeutung</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-24">{t("faq.score_col_score")}</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground w-32">{t("faq.score_col_rating")}</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">{t("faq.score_col_meaning")}</th>
               </tr>
             </thead>
             <tbody>
@@ -173,35 +182,10 @@ export function FaqView() {
 
       {/* Empfehlungs-Priorisierung */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Empfehlungs-Priorisierung</h2>
-        <p className="text-sm text-muted-foreground">Jede Analyse erzeugt priorisierte Handlungsempfehlungen in drei Stufen:</p>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_priority")}</h2>
+        <p className="text-sm text-muted-foreground">{t("faq.priority_desc")}</p>
         <div className="space-y-3">
-          {[
-            {
-              dot: "🔴",
-              label: "Kritisch",
-              color: "hsl(0 84% 60%)",
-              bg: "hsl(0 84% 60% / 0.08)",
-              border: "hsl(0 84% 60% / 0.3)",
-              desc: "Fundamentale Fehler, die sofort behoben werden müssen (z. B. fehlendes HTTPS, keine strukturierten Daten, kein H1).",
-            },
-            {
-              dot: "🟠",
-              label: "Hoher Hebel",
-              color: "hsl(35 92% 55%)",
-              bg: "hsl(35 92% 55% / 0.08)",
-              border: "hsl(35 92% 55% / 0.3)",
-              desc: "Maßnahmen mit dem größten Wirkungspotenzial (z. B. fehlende FAQPage-Schema, dünne Produktbeschreibungen, fehlende Anwendungsszenarien).",
-            },
-            {
-              dot: "🟡",
-              label: "Nachgeordnet",
-              color: "hsl(43 96% 50%)",
-              bg: "hsl(43 96% 50% / 0.08)",
-              border: "hsl(43 96% 50% / 0.3)",
-              desc: "Optimierungen für nach der Erstbereinigung (z. B. Meta-Description-Länge, Alt-Text-Lücken).",
-            },
-          ].map((tier) => (
+          {priorityTiers.map((tier) => (
             <div
               key={tier.label}
               className="rounded-lg border px-4 py-3 flex gap-3 items-start"
@@ -219,9 +203,9 @@ export function FaqView() {
 
       {/* Hinweise zur Genauigkeit */}
       <section className="space-y-3">
-        <h2 className="text-xl font-semibold border-b border-border pb-2">Hinweise zur Genauigkeit</h2>
+        <h2 className="text-xl font-semibold border-b border-border pb-2">{t("faq.section_accuracy")}</h2>
         <p className="text-base leading-relaxed text-muted-foreground">
-          Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe (Startseite + max. 3 Unterseiten). Die LLM-Sichtbarkeitssimulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.
+          {t("faq.accuracy_desc")}
         </p>
       </section>
     </div>
