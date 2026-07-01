@@ -100,11 +100,8 @@ export function TextverwaltungView() {
     {},
   );
 
-  const selectedKeyGroup = selectedKey ? (labelDefaults[selectedKey]?.group ?? null) : null;
-
   function isGroupExpanded(grp: string): boolean {
     if (isSearching) return true;
-    if (grp === selectedKeyGroup) return true;
     return openGroup === grp;
   }
 
