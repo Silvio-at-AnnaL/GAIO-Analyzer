@@ -197,4 +197,12 @@ export const labelDefaults: Record<string, LabelDef> = {
   "shared.iframe_title":       { group: "shared", de: "GAIO Analyse — {domain}" },
   "shared.footer_shared_by":   { group: "shared", de: "Dieser Report wurde geteilt von {company}." },
   "shared.footer_valid_until": { group: "shared", de: "Gültig bis {date}." },
+
+  "settings.subtitle":        { group: "settings", de: "App-Konfiguration und Darstellung." },
+  "settings.section_display": { group: "settings", de: "Darstellung" },
+  "settings.color_mode":      { group: "settings", de: "Farbmodus" },
+  "settings.theme_light":     { group: "settings", de: "Hell" },
+  "settings.theme_dark":      { group: "settings", de: "Dunkel" },
+  "settings.theme_system":    { group: "settings", de: "Systemeinstellung" },
+  "settings.theme_default":   { group: "settings", de: "(Standard)" },
 };
