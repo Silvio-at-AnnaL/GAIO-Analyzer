@@ -5,21 +5,29 @@ interface LabelContextValue {
   locale: Locale;
   locales: Locale[];
   setLocale: (l: Locale) => void;
-  t: (key: string) => string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}
+
+function applyVars(raw: string, vars?: Record<string, string | number>): string {
+  if (!vars) return raw;
+  return raw.replace(/\{([^}]+)\}/g, (match, name: string) => {
+    const val = vars[name];
+    return val !== undefined ? String(val) : match;
+  });
 }
 
 const LabelContext = createContext<LabelContextValue>({
   locale: "de",
   locales: SUPPORTED_LOCALES as unknown as Locale[],
   setLocale: () => {},
-  t: (key) => labelDefaults[key]?.de ?? key,
+  t: (key, vars) => applyVars(labelDefaults[key]?.de ?? key, vars),
 });
 
 export function useLabelContext(): LabelContextValue {
   return useContext(LabelContext);
 }
 
-export function useT(): (key: string) => string {
+export function useT(): (key: string, vars?: Record<string, string | number>) => string {
   return useContext(LabelContext).t;
 }
 
@@ -101,11 +109,15 @@ export function LabelProvider({ children }: { children: ReactNode }) {
     })();
   }
 
-  function t(key: string): string {
-    if (key in labelsMap) return labelsMap[key] as string;
-    const def = labelDefaults[key];
-    if (def) return def.de;
-    return key;
+  function t(key: string, vars?: Record<string, string | number>): string {
+    let raw: string;
+    if (key in labelsMap) {
+      raw = labelsMap[key] as string;
+    } else {
+      const def = labelDefaults[key];
+      raw = def ? def.de : key;
+    }
+    return applyVars(raw, vars);
   }
 
   return (
