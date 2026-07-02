@@ -20,6 +20,7 @@ import {
   Info, Clock, ChevronDown, ChevronUp, ExternalLink, Share2, Copy, Check,
 } from "lucide-react";
 import { useAuth, adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -49,7 +50,20 @@ const MODULE_NAMES = [
   "Empfehlungen generieren",
 ];
 
+const MODULE_NAME_LABELS: Record<string, string> = {
+  "Crawling Website":                     "progress.module_crawling",
+  "Technisches SEO":                      "progress.module_technical_seo",
+  "Schema.org / Strukturierte Daten":     "progress.module_schema",
+  "Heading-Struktur":                     "progress.module_headings",
+  "Inhaltliche Relevanz (KI-Analyse)":    "progress.module_content",
+  "FAQ-Qualität":                         "progress.module_faq",
+  "LLM-Auffindbarkeit":                   "progress.module_llm",
+  "Wettbewerbsvergleich":                 "progress.module_competitor",
+  "Empfehlungen generieren":              "progress.module_recommendations",
+};
+
 function ProgressView({ analysisId, onComplete }: { analysisId: string; onComplete: () => void }) {
+  const t = useT();
   const [completedModules, setCompletedModules] = useState<string[]>([]);
   const [currentModuleName, setCurrentModuleName] = useState<string | null>(null);
   const { domainForm } = useAppStore();
@@ -84,30 +98,26 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
           {isFailed
-            ? "Analyse fehlgeschlagen"
-            : `Analyse für ${domainForm.companyName?.trim() || domainForm.url || report?.url || "…"} läuft…`}
+            ? t("progress.title_failed")
+            : t("progress.title_running", { target: domainForm.companyName?.trim() || domainForm.url || report?.url || "…" })}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {report?.url ? `Crawle ${report.url}` : "Verarbeite Daten…"}
+          {report?.url ? t("progress.crawling_url", { url: report.url }) : t("progress.processing_data")}
         </p>
         {!isFailed && (
           <div className="text-sm mt-4 mb-6 space-y-3" style={{ color: "hsl(var(--foreground))" }}>
             <p>
-              Die von mir jetzt durchzuführende{" "}
-              <i><b>Analyse</b></i> ist wirklich sehr umfangreich und{" "}
-              <i><b>kann bis zu 10 Minuten dauern</b></i>.{" "}
-              Insbesondere ganz am Ende — bei den „Empfehlungen generieren" — wird Ihre Geduld
-              wahrscheinlich wirklich auf die Probe gestellt! Aber gerade da soll ich ja auch
-              besonders genau sein, oder?
+              {t("progress.para_time_pre")}
+              <i><b>{t("progress.para_time_emph1")}</b></i>
+              {t("progress.para_time_mid")}
+              <i><b>{t("progress.para_time_emph2")}</b></i>
+              {t("progress.para_time_post")}
             </p>
-            <p>Aber: Nicht verzweifeln — bisher habe ich noch jede Analyse zu Ende gebracht!</p>
+            <p>{t("progress.para_never_give_up")}</p>
+            <p>{t("progress.para_coffee")}</p>
             <p>
-              Wie wäre es, wenn Sie sich in der Zwischenzeit einen Kaffee, Tee oder — je nach
-              Tageszeit — ein anderes Getränk holen und mich kurz arbeiten lassen?
-            </p>
-            <p>
-              <b>Wichtig:</b> Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall,
-              da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen.
+              <b>{t("progress.para_dont_close_prefix")}</b>
+              {t("progress.para_dont_close_body")}
             </p>
           </div>
         )}
@@ -115,7 +125,11 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
 
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{report?.currentModule || "Initialisierung…"}</span>
+          <span>
+            {report?.currentModule
+              ? t(MODULE_NAME_LABELS[report.currentModule] ?? report.currentModule)
+              : t("progress.initializing")}
+          </span>
           <span>{Math.round(progress)}%</span>
         </div>
         <Progress value={progress} className="h-1.5" />
@@ -147,7 +161,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
               ) : (
                 <Clock className="w-4 h-4 shrink-0 text-muted-foreground/40" />
               )}
-              <span className="text-xs">{name}</span>
+              <span className="text-xs">{t(MODULE_NAME_LABELS[name] ?? name)}</span>
             </div>
           );
         })}
@@ -155,7 +169,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
 
       {report?.errors && report.errors.length > 0 && (
         <div className="p-3 rounded-md bg-muted/50 space-y-1">
-          <p className="text-xs text-muted-foreground">Hinweise:</p>
+          <p className="text-xs text-muted-foreground">{t("progress.hints_label")}</p>
           {report.errors.map((e, i) => (
             <p key={i} className="text-xs text-muted-foreground">– {e}</p>
           ))}

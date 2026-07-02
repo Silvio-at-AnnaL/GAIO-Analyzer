@@ -1,0 +1,39 @@
+Migrate ONLY the ProgressView component to the existing label system. Work ONLY on the file named below, and ONLY within the ProgressView function (do not touch calcPdfDimensions, ReportView, ErgebnisseView, or any other function in this file — they are separate, larger migration tasks). Do not touch components/AnalysisProgress.tsx (a similar but separate component — out of scope). Do not touch report-export.ts. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "progress"
+Scope:         ONLY the ProgressView function and, if needed for it, a new display-label map placed near MODULE_NAMES (see below).
+
+IMPORTANT — DO NOT MODIFY MODULE_NAMES ITSELF. Its German string values (e.g. "Technisches SEO", "Crawling Website") are matched by exact equality (===) against report.currentModule, which is set server-side in artifacts/api-server/src/lib/analysis-engine.ts using the identical literal German strings. Renaming or keying MODULE_NAMES would silently break that matching against the backend. Leave MODULE_NAMES exactly as it is, used only for the matching/identity logic (isCompleted, isCurrent checks) as today.
+
+Instead, add a SEPARATE display-label lookup next to MODULE_NAMES:
+  const MODULE_NAME_LABELS: Record<string, string> = {
+    "Crawling Website": "progress.module_crawling",
+    "Technisches SEO": "progress.module_technical_seo",
+    "Schema.org / Strukturierte Daten": "progress.module_schema",
+    "Heading-Struktur": "progress.module_headings",
+    "Inhaltliche Relevanz (KI-Analyse)": "progress.module_content",
+    "FAQ-Qualität": "progress.module_faq",
+    "LLM-Auffindbarkeit": "progress.module_llm",
+    "Wettbewerbsvergleich": "progress.module_competitor",
+    "Empfehlungen generieren": "progress.module_recommendations",
+  };
+Add each of these 9 keys to labelDefaults.ts under group "progress", with the original German string (the map's key, e.g. "Technisches SEO") as the `de` value.
+Where ProgressView currently renders `{name}` for each module row (mapping over MODULE_NAMES), change the DISPLAYED text to `{t(MODULE_NAME_LABELS[name] ?? name)}` — resolving through the label map for display, while `name` itself (the German string) continues to be used unchanged for all matching/comparison logic (isCompleted, isCurrent, key={name}).
+
+Then, within ProgressView (call useT() and useLabelContext() at the top of the component):
+1. Replace all hardcoded German UI strings with t("progress.<name>") calls, INCLUDING the multi-paragraph explanatory text block (each <p> as its own key) and the "Hinweise:" label.
+2. For the two interpolated strings, use vars instead of template literals:
+   - `Analyse für ${domainForm.companyName?.trim() || domainForm.url || report?.url || "…"} läuft…`
+     -> t("progress.title_running", { target: domainForm.companyName?.trim() || domainForm.url || report?.url || "…" })
+     -> manifest: "progress.title_running": { group: "progress", de: "Analyse für {target} läuft…" }
+   - `Crawle ${report.url}`
+     -> t("progress.crawling_url", { url: report.url })
+     -> manifest: "progress.crawling_url": { group: "progress", de: "Crawle {url}" }
+   - Keep "Analyse fehlgeschlagen" (the isFailed title) and "Verarbeite Daten…" (the no-url fallback) as their own separate non-interpolated keys.
+3. "Initialisierung…" (the currentModule fallback) also becomes its own key.
+4. Do NOT turn into labels: MODULE_NAMES values themselves, analysisId, onComplete, report.errors content (dynamic data), percentages, icons, test-ids, CSS values.
+5. For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "progress.<name>": { group: "progress", de: "<exact original German text>" }.
+6. Do NOT translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify: ProgressView renders identically in "de" during a running analysis (title, subtitle, explanatory paragraphs, module list labels, "Hinweise" if errors present). Verify the module-progress highlighting (grey/current/completed/error icons) still works correctly — this depends on MODULE_NAMES/report.currentModule matching being untouched. Under EN, all text falls back to German (never blank, never a raw key), while the progress-matching logic itself still functions (since it never depended on translation).
