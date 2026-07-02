@@ -352,9 +352,7 @@ export function DomainAnalyseView() {
 
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
-                {t("domain.pages_count")
-                  .replace("{selected}", String(selectedPages.length))
-                  .replace("{total}", String(editablePages.length))}
+                {t("domain.pages_count", { selected: selectedPages.length, total: editablePages.length })}
               </span>
               <button
                 type="button"
@@ -492,7 +490,7 @@ export function DomainAnalyseView() {
                 ) : (
                   <>
                     <ChevronDown className="w-3 h-3" />
-                    {t("domain.pages_show_more").replace("{n}", String(editablePages.length - MAX_VISIBLE_PAGES))}
+                    {t("domain.pages_show_more", { n: editablePages.length - MAX_VISIBLE_PAGES })}
                   </>
                 )}
               </button>

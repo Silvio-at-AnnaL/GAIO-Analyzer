@@ -89,7 +89,7 @@ export function SharedAnalysisView() {
   return (
     <div style={pageStyle}>
       <TopBar
-        title={data.title ?? t("shared.analyse_prefix").replace("{domain}", data.domain)}
+        title={data.title ?? t("shared.analyse_prefix", { domain: data.domain })}
         domain={data.domain}
       />
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -97,7 +97,7 @@ export function SharedAnalysisView() {
           srcDoc={data.htmlContent}
           sandbox="allow-same-origin allow-popups"
           style={{ flex: 1, border: "none", width: "100%", height: "100%" }}
-          title={t("shared.iframe_title").replace("{domain}", data.domain)}
+          title={t("shared.iframe_title", { domain: data.domain })}
         />
       </div>
       <Footer
@@ -142,9 +142,9 @@ function Footer({ contactCompany, expiresAt }: { contactCompany: string | null; 
       fontSize: 11, color: "#6b7280",
     }}>
       {contactCompany
-        ? t("shared.footer_shared_by").replace("{company}", contactCompany) + " "
+        ? t("shared.footer_shared_by", { company: contactCompany }) + " "
         : ""}
-      {t("shared.footer_valid_until").replace("{date}", dateStr)}
+      {t("shared.footer_valid_until", { date: dateStr })}
     </div>
   );
 }

@@ -1,0 +1,35 @@
+Migrate all existing manual .replace("{x}", value) placeholder call-sites to the new t(key, vars) interpolation mechanism. Work ONLY on the two files below; do not touch other views, do not touch LabelProvider.tsx, do not touch report-export.ts, do not publish.
+
+File 1: artifacts/gaio-analyzer/src/views/DomainAnalyseView.tsx
+- Replace:
+    t("domain.pages_count")
+      .replace("{selected}", String(selectedPages.length))
+      .replace("{total}", String(editablePages.length))
+  with:
+    t("domain.pages_count", { selected: selectedPages.length, total: editablePages.length })
+- Replace:
+    t("domain.pages_show_more").replace("{n}", String(editablePages.length - MAX_VISIBLE_PAGES))
+  with:
+    t("domain.pages_show_more", { n: editablePages.length - MAX_VISIBLE_PAGES })
+
+File 2: artifacts/gaio-analyzer/src/views/SharedAnalysisView.tsx
+- Replace:
+    t("shared.analyse_prefix").replace("{domain}", data.domain)
+  with:
+    t("shared.analyse_prefix", { domain: data.domain })
+- Replace:
+    t("shared.iframe_title").replace("{domain}", data.domain)
+  with:
+    t("shared.iframe_title", { domain: data.domain })
+- Replace:
+    t("shared.footer_shared_by").replace("{company}", contactCompany)
+  with:
+    t("shared.footer_shared_by", { company: contactCompany })
+- Replace:
+    t("shared.footer_valid_until").replace("{date}", dateStr)
+  with:
+    t("shared.footer_valid_until", { date: dateStr })
+
+Do not change labelDefaults.ts — the "{selected}", "{total}", "{n}", "{domain}", "{company}", "{date}" placeholder names in the existing German source strings already match these var names exactly, no manifest edit needed. Do not change any other logic, styling, or unrelated code in these two files.
+
+After the change: confirm TS compiles and the dev server starts. Verify DomainAnalyseView still shows the correct "X von Y ausgewählt"-style count and "show more" text with correct numbers; verify a shared-analysis page still shows the correct domain in the title/iframe and correct company/date in the footer — all identical to before.
