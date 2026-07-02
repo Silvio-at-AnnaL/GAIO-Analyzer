@@ -4,8 +4,11 @@ import { useAppStore } from "@/store/appStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeftRight, Upload, FileSearch, RefreshCw, Building2, Calendar, BarChart3 } from "lucide-react";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 const BASE = (import.meta.env.BASE_URL as string ?? "/").replace(/\/$/, "");
+
+const LOCALE_MAP: Record<string, string> = { de: "de-DE", en: "en-US" };
 
 interface DimensionScores {
   technical: number;
@@ -39,12 +42,12 @@ interface LogItem {
 
 const DIM_KEYS: (keyof DimensionScores)[] = ["technical", "schema", "headings", "content", "faq", "llm"];
 const DIM_LABELS: Record<keyof DimensionScores, string> = {
-  technical: "Technisches SEO",
-  schema:    "Strukturierte Daten",
-  headings:  "Überschriften",
-  content:   "Content-Relevanz",
-  faq:       "FAQ-Qualität",
-  llm:       "LLM-Auffindbarkeit",
+  technical: "compare.dim_technical",
+  schema:    "compare.dim_schema",
+  headings:  "compare.dim_headings",
+  content:   "compare.dim_content",
+  faq:       "compare.dim_faq",
+  llm:       "compare.dim_llm",
 };
 
 function parseLogScores(scoresJson: string | null): DimensionScores {
@@ -100,6 +103,16 @@ function scoreColor(delta: number) {
   return "#6b7280";
 }
 
+function interpretDelta(delta: number): string {
+  if (delta >= 15)  return "compare.delta_major_up";
+  if (delta >= 5)   return "compare.delta_pos";
+  if (delta >= 1)   return "compare.delta_minor_up";
+  if (delta === 0)  return "compare.delta_stable";
+  if (delta >= -4)  return "compare.delta_minor_down";
+  if (delta >= -14) return "compare.delta_neg";
+  return "compare.delta_major_down";
+}
+
 function DeltaBadge({ delta }: { delta: number }) {
   const color = scoreColor(delta);
   const sign  = delta > 0 ? "+" : "";
@@ -111,22 +124,14 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
-function interpretDelta(delta: number): string {
-  if (delta >= 15) return "Deutliche Verbesserung — der GAIO Score hat sich signifikant erhöht.";
-  if (delta >= 5)  return "Positive Entwicklung — sichtbarer Fortschritt in der LLM-Auffindbarkeit und SEO-Qualität.";
-  if (delta >= 1)  return "Leichte Verbesserung — kleinere Optimierungen zeigen erste Wirkung.";
-  if (delta === 0) return "Keine Änderung — der GAIO Score ist stabil geblieben.";
-  if (delta >= -4) return "Leichter Rückgang — geringfügige Verschlechterung, Monitoring empfohlen.";
-  if (delta >= -14) return "Negativer Trend — relevante Verschlechterung, Handlungsbedarf prüfen.";
-  return "Deutlicher Rückgang — der GAIO Score hat sich signifikant verschlechtert.";
-}
-
 function ScoreCell({ score }: { score: number }) {
   const color = score >= 70 ? "#3b82f6" : score >= 45 ? "#d97706" : "#ef4444";
   return <span style={{ fontWeight: 700, color }}>{score}</span>;
 }
 
 function SnapCard({ snap, muted }: { snap: AnalysisSnapshot; muted?: boolean }) {
+  const { locale } = useLabelContext();
+  const intlLocale = LOCALE_MAP[locale] ?? "de-DE";
   const scoreColor = snap.gaioScore >= 70 ? "#3b82f6" : snap.gaioScore >= 45 ? "#d97706" : "#ef4444";
   return (
     <div
@@ -143,7 +148,7 @@ function SnapCard({ snap, muted }: { snap: AnalysisSnapshot; muted?: boolean }) 
       )}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-0.5">
         <Calendar className="w-3 h-3 shrink-0" />
-        {new Date(snap.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+        {new Date(snap.date).toLocaleDateString(intlLocale, { day: "2-digit", month: "2-digit", year: "numeric" })}
       </div>
       <div className="flex items-end gap-1 pt-1">
         <span style={{ fontSize: 26, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{snap.gaioScore}</span>
@@ -154,6 +159,7 @@ function SnapCard({ snap, muted }: { snap: AnalysisSnapshot; muted?: boolean }) 
 }
 
 function CompareResult({ current, comparison }: { current: AnalysisSnapshot; comparison: AnalysisSnapshot }) {
+  const t = useT();
   const delta      = current.gaioScore - comparison.gaioScore;
   const deltaColor = scoreColor(delta);
 
@@ -165,21 +171,21 @@ function CompareResult({ current, comparison }: { current: AnalysisSnapshot; com
       </div>
 
       <div className="rounded-xl border p-6 text-center" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
-        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Veränderung GAIO Score</div>
+        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">{t("compare.change_title")}</div>
         <div style={{ fontSize: 48, fontWeight: 800, color: deltaColor, lineHeight: 1 }}>
           {delta > 0 ? "+" : ""}{delta}
         </div>
         <div className="text-xs text-muted-foreground mt-1">{current.gaioScore} − {comparison.gaioScore}</div>
-        <div className="mt-3 text-sm" style={{ color: "hsl(var(--foreground))" }}>{interpretDelta(delta)}</div>
+        <div className="mt-3 text-sm" style={{ color: "hsl(var(--foreground))" }}>{t(interpretDelta(delta))}</div>
       </div>
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
-              <th className="text-left px-4 py-2 font-semibold text-xs text-muted-foreground">Dimension</th>
-              <th className="text-center px-3 py-2 font-semibold text-xs text-muted-foreground">Vergleich</th>
-              <th className="text-center px-3 py-2 font-semibold text-xs text-muted-foreground">Aktuell</th>
+              <th className="text-left px-4 py-2 font-semibold text-xs text-muted-foreground">{t("compare.col_dimension")}</th>
+              <th className="text-center px-3 py-2 font-semibold text-xs text-muted-foreground">{t("compare.col_comparison")}</th>
+              <th className="text-center px-3 py-2 font-semibold text-xs text-muted-foreground">{t("compare.col_current")}</th>
               <th className="text-center px-3 py-2 font-semibold text-xs text-muted-foreground">Δ</th>
             </tr>
           </thead>
@@ -194,7 +200,7 @@ function CompareResult({ current, comparison }: { current: AnalysisSnapshot; com
                     background:   i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted)/0.3)",
                   }}
                 >
-                  <td className="px-4 py-2 font-medium">{DIM_LABELS[key]}</td>
+                  <td className="px-4 py-2 font-medium">{t(DIM_LABELS[key])}</td>
                   <td className="px-3 py-2 text-center"><ScoreCell score={comparison.scores[key]} /></td>
                   <td className="px-3 py-2 text-center"><ScoreCell score={current.scores[key]} /></td>
                   <td className="px-3 py-2 text-center"><DeltaBadge delta={d} /></td>
@@ -209,8 +215,9 @@ function CompareResult({ current, comparison }: { current: AnalysisSnapshot; com
 }
 
 function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => void; loaded: boolean }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [error, setError]     = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const processFile = useCallback((file: File) => {
@@ -220,13 +227,13 @@ function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => 
       const html = e.target?.result as string;
       const data = extractEmbedJson(html);
       if (!data) {
-        setError("Diese Datei enthält keine maschinenlesbaren Analysedaten.");
+        setError(t("compare.error_no_embed_data"));
         return;
       }
       const snap: AnalysisSnapshot = {
         domain:      String(data.domain ?? ""),
         companyName: data.companyName ? String(data.companyName) : null,
-        label:       "Vergleichsanalyse",
+        label:       t("compare.label_comparison"),
         date:        String(data.exportDate ?? new Date().toISOString()),
         gaioScore:   Number(data.gaioScore ?? 0),
         scores:      parseEmbedScores(data),
@@ -234,7 +241,7 @@ function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => 
       onLoad(snap);
     };
     reader.readAsText(file);
-  }, [onLoad]);
+  }, [onLoad, t]);
 
   return (
     <div
@@ -257,11 +264,11 @@ function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => 
       />
       <Upload className="mx-auto mb-2" style={{ width: 20, height: 20, color: loaded ? "#3b82f6" : "hsl(var(--muted-foreground))" }} />
       {loaded ? (
-        <div className="text-sm font-medium" style={{ color: "#3b82f6" }}>Geladen ✓</div>
+        <div className="text-sm font-medium" style={{ color: "#3b82f6" }}>{t("compare.file_loaded")}</div>
       ) : (
         <>
-          <div className="text-sm font-medium text-muted-foreground">HTML-Export hier ablegen oder klicken zum Auswählen</div>
-          <div className="text-xs text-muted-foreground mt-1">Nur .html-Dateien aus dem GAIO Analyzer Export</div>
+          <div className="text-sm font-medium text-muted-foreground">{t("compare.file_drop_hint")}</div>
+          <div className="text-xs text-muted-foreground mt-1">{t("compare.file_drop_subhint")}</div>
         </>
       )}
       {error && <div className="mt-2 text-xs" style={{ color: "#d97706" }}>{error}</div>}
@@ -272,6 +279,10 @@ function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => 
 type Mode = "protokoll" | "upload";
 
 export function VergleichView() {
+  const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = LOCALE_MAP[locale] ?? "de-DE";
+
   const { isAuthenticated, user, permissions } = useAuth();
   const { analysisId } = useAppStore();
   const role                = user?.role ?? "";
@@ -298,7 +309,7 @@ export function VergleichView() {
           id:          (report.logId as number | undefined) ?? undefined,
           domain:      String(report.domain ?? ""),
           companyName: report.companyName ? String(report.companyName) : null,
-          label:       "Aktuelle Analyse",
+          label:       t("compare.label_current"),
           date:        String(report.startedAt ?? report.createdAt ?? new Date().toISOString()),
           gaioScore:   Number(report.overallScore ?? 0),
           scores:      parseReportScores(report),
@@ -330,7 +341,7 @@ export function VergleichView() {
       id:          item.id,
       domain:      item.domain,
       companyName: item.companyName,
-      label:       "Vergleichsanalyse",
+      label:       t("compare.label_comparison"),
       date:        item.startedAt,
       gaioScore:   item.gaioScore ?? 0,
       scores:      parseLogScores(item.scoresJson),
@@ -353,9 +364,9 @@ export function VergleichView() {
       <div className="flex items-center gap-3">
         <ArrowLeftRight className="shrink-0" style={{ width: 20, height: 20, color: "#3b82f6" }} />
         <div>
-          <h1 className="text-xl font-bold">Analyse-Vergleich</h1>
+          <h1 className="text-xl font-bold">{t("compare.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Vergleiche die aktuelle Analyse mit einer früheren und sieh die Entwicklung auf einen Blick.
+            {t("compare.subtitle")}
           </p>
         </div>
       </div>
@@ -364,26 +375,26 @@ export function VergleichView() {
         <div className="space-y-6">
           {/* Left side — current analysis (fixed) */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aktuelle Analyse (Referenz)</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("compare.current_ref_label")}</div>
             {loadingCurrent ? (
               <div className="rounded-lg border p-4 text-sm text-muted-foreground" style={{ borderColor: "hsl(var(--border))" }}>
-                Lade aktuelle Analyse…
+                {t("compare.loading_current")}
               </div>
             ) : currentSnap ? (
               <>
-                <SnapCard snap={{ ...currentSnap, label: "Aktuelle Analyse" }} muted />
-                <p className="text-xs text-muted-foreground">Diese Analyse wird als Referenz verwendet.</p>
+                <SnapCard snap={{ ...currentSnap, label: t("compare.label_current") }} muted />
+                <p className="text-xs text-muted-foreground">{t("compare.current_ref_note")}</p>
               </>
             ) : (
               <div className="rounded-lg border p-4 text-sm text-muted-foreground" style={{ borderColor: "hsl(var(--border))" }}>
-                Keine Analyse geladen.
+                {t("compare.no_analysis_loaded")}
               </div>
             )}
           </div>
 
           {/* Right side — comparison source */}
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vergleichsanalyse auswählen</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("compare.select_comparison")}</div>
 
             {hasProtokollAccess ? (
               <>
@@ -399,7 +410,7 @@ export function VergleichView() {
                         color:       mode === m ? "#fff" : "hsl(var(--muted-foreground))",
                       }}
                     >
-                      {m === "protokoll" ? "Aus Protokoll laden" : "HTML-Datei hochladen"}
+                      {m === "protokoll" ? t("compare.tab_protokoll") : t("compare.tab_upload")}
                     </button>
                   ))}
                 </div>
@@ -409,16 +420,16 @@ export function VergleichView() {
                     {!logLoaded ? (
                       <Button variant="outline" size="sm" onClick={loadLog} disabled={logLoading}>
                         {logLoading
-                          ? <><RefreshCw className="w-3 h-3 mr-2 animate-spin" />Wird geladen…</>
-                          : <><FileSearch className="w-3 h-3 mr-2" />Protokoll laden</>}
+                          ? <><RefreshCw className="w-3 h-3 mr-2 animate-spin" />{t("compare.loading")}</>
+                          : <><FileSearch className="w-3 h-3 mr-2" />{t("compare.btn_load_log")}</>}
                       </Button>
                     ) : logItems.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Keine weiteren abgeschlossenen Analysen im Protokoll vorhanden.
+                        {t("compare.log_empty")}
                       </p>
                     ) : (
                       <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Analyse auswählen</label>
+                        <label className="text-xs text-muted-foreground">{t("compare.select_label")}</label>
                         <select
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           style={{ borderColor: "hsl(var(--border))" }}
@@ -428,10 +439,15 @@ export function VergleichView() {
                             if (item) handleLogSelect(item);
                           }}
                         >
-                          <option value="">— Analyse auswählen —</option>
+                          <option value="">{t("compare.select_placeholder")}</option>
                           {logItems.map((item) => (
                             <option key={item.id} value={item.id}>
-                              {item.domain} · {new Date(item.startedAt).toLocaleDateString("de-DE")} · Score: {item.gaioScore ?? "n/a"}{item.companyName ? ` · ${item.companyName}` : ""}
+                              {t("compare.log_option", {
+                                domain:  item.domain,
+                                date:    new Date(item.startedAt).toLocaleDateString(intlLocale),
+                                score:   item.gaioScore ?? "n/a",
+                                company: item.companyName ? ` · ${item.companyName}` : "",
+                              })}
                             </option>
                           ))}
                         </select>
@@ -473,7 +489,7 @@ export function VergleichView() {
             onClick={() => setComparing(true)}
           >
             <BarChart3 className="w-4 h-4 mr-2" />
-            Vergleich anzeigen
+            {t("compare.btn_show")}
           </Button>
         </div>
       ) : (
@@ -481,9 +497,9 @@ export function VergleichView() {
           <div className="flex items-center justify-between">
             <Badge variant="outline" className="text-xs">
               <ArrowLeftRight style={{ width: 11, height: 11, marginRight: 4 }} />
-              Vergleichsansicht
+              {t("compare.badge_view")}
             </Badge>
-            <Button variant="outline" size="sm" onClick={resetComp}>Zurücksetzen</Button>
+            <Button variant="outline" size="sm" onClick={resetComp}>{t("compare.btn_reset")}</Button>
           </div>
           {currentSnap && compSnap && (
             <CompareResult current={currentSnap} comparison={compSnap} />

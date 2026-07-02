@@ -1,0 +1,37 @@
+Migrate VergleichView.tsx (and its co-located helper components in the same file) to the existing label system. Work ONLY on this file; do not touch other views, do not touch LabelProvider.tsx or labelDefaults.ts's existing entries besides adding new ones, do not touch report-export.ts, do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/VergleichView.tsx
+Key namespace: "compare"
+
+STANDARD MIGRATION — for every component in this file that is a proper React component (DeltaBadge, ScoreCell, SnapCard, CompareResult, FileDropZone, VergleichView itself), call useT() (and useLabelContext() where locale is needed, see below) at the top of that component and replace every hardcoded German string with t("compare.<name>"), INCLUDING strings inside event handlers / setError calls and inside object literals like `label: "Vergleichsanalyse"`. Add each to labelDefaults.ts as "compare.<name>": { group: "compare", de: "<exact original text>" }.
+
+SPECIAL CASE 1 — DIM_LABELS (module-scope const, ~line 41): this object is defined outside any component, so it cannot call useT(). Change its type from Record<keyof DimensionScores, string> to hold LABEL KEYS instead of German text directly, e.g.:
+  const DIM_LABELS: Record<keyof DimensionScores, string> = {
+    technical: "compare.dim_technical",
+    schema:    "compare.dim_schema",
+    headings:  "compare.dim_headings",
+    content:   "compare.dim_content",
+    faq:       "compare.dim_faq",
+    llm:       "compare.dim_llm",
+  };
+Add each "compare.dim_*" key to labelDefaults.ts with the original German text as `de`. Then update every place that reads DIM_LABELS[...] to resolve it through t(...) at the point of use, inside a component that has called useT().
+
+SPECIAL CASE 2 — interpretDelta(delta) (module-scope function, ~line 114): also outside any component. Change it to return a LABEL KEY instead of the German sentence, e.g. return "compare.delta_major_up" instead of the German text, with one key per branch (7 branches total). Add each to labelDefaults.ts with the original sentence as `de`. Then wherever interpretDelta(delta) is called, wrap it: t(interpretDelta(delta)) — from inside a component that has called useT().
+
+SPECIAL CASE 3 — hardcoded date locale (two occurrences: SnapCard ~line 146, and the log-select <option> list inside VergleichView ~line 434, using new Date(...).toLocaleDateString("de-DE", ...)): make the locale used for date formatting follow the app's active locale instead of being hardcoded to "de-DE". Get `locale` from useLabelContext() in the relevant component and map it to an Intl locale string (currently supported: "de" -> "de-DE", "en" -> "en-US"; use "de-DE" as the default/fallback for any unmapped locale). This is a formatting fix, not a label — do NOT add a labelDefaults entry for it.
+
+SPECIAL CASE 4 — the interpolated option text at ~line 434:
+  {item.domain} · {new Date(item.startedAt).toLocaleDateString("de-DE")} · Score: {item.gaioScore ?? "n/a"}{item.companyName ? ` · ${item.companyName}` : ""}
+Replace with a single t() call using vars, e.g.:
+  t("compare.log_option", {
+    domain: item.domain,
+    date: <locale-aware formatted date, per Special Case 3>,
+    score: item.gaioScore ?? "n/a",
+    company: item.companyName ? ` · ${item.companyName}` : "",
+  })
+Add to labelDefaults.ts: "compare.log_option": { group: "compare", de: "{domain} · {date} · Score: {score}{company}" }
+Do NOT use manual .replace() for this — this project has just standardized on the t(key, vars) mechanism; do not reintroduce .replace().
+
+Do NOT turn into labels: dynamic scores, colors, domains, dates themselves, arrows/symbols (▲▼—), test-ids, CSS values.
+
+After the change: confirm TS compiles and the dev server starts. Verify: the view renders identically in "de" (including delta interpretation sentences and dimension labels); under EN, untranslated keys show German fallback, never blank, never a raw key; the log-select dropdown option text is correctly assembled via vars; and — specifically test this — a date shown in this view under EN locale is NOT hardcoded to German date formatting once an "en" translation exists (it should use en-US formatting even before any label overrides are added, since this is a formatting fix independent of translation content).
