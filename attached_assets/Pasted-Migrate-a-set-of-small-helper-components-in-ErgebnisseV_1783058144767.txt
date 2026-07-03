@@ -1,0 +1,37 @@
+Migrate a set of small helper components in ErgebnisseView.tsx to the existing label system. Work ONLY on the functions listed below, in the file named below. Do NOT touch ProgressView (already migrated), CompetitorCard, scoreLabel, ReportView, ErgebnisseView, LlmQuestionRow, or BarChart3Placeholder — all out of scope for this prompt. Do not touch report-export.ts. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+IN SCOPE — migrate these functions only:
+
+1. RecommendationCard — inspect it, but it currently has NO static German text (only dynamic rec.finding/whyItMatters/fixInstruction, which are AI-generated analysis content, not UI labels). Leave this function completely unchanged — do not invent labels for dynamic content.
+
+2. getTrafficLight (module-scope function, NOT a component) + TrafficLightValue (the component that calls it) — SPECIAL CASE: getTrafficLight is defined outside any component and returns objects like { dot: "🟢", label: "Gut", className: ... }. It cannot call useT(). Change it to return label KEYS instead of German text:
+   - "Gut" -> "results.traffic_good"
+   - "Akzeptabel" -> "results.traffic_acceptable"
+   - "Kritisch" -> "results.traffic_critical"
+   Add these 3 keys to labelDefaults.ts with the original German words as `de`. Then in TrafficLightValue (which IS a component — call useT() at its top), resolve the returned key via t(label) before rendering. Leave the literal "ms" unit suffix in TrafficLightValue as plain text, unmigrated (it's an international unit abbreviation, identical in German and English).
+
+3. MetricLabelWithTooltip — the `aria-label={`Info: ${label}`}` template literal: replace with t("results.tooltip_info_prefix", { label }) where the manifest value is "Info: {label}". (Note: `label` here is itself dynamic content passed in as a prop, not something to add to the manifest — only the "Info: " prefix is the translatable part.)
+
+4. CompetitorCrawledPages — migrate the "Analysierte Seiten" heading to t("results.analyzed_pages_heading").
+
+5. Delta — this IS a proper component (not a module-scope trap); call useT() at its top and migrate the three label strings directly: "Ihr Vorteil", "Aufholbedarf", "Gleichstand".
+
+6. CrawledPagesPanel — migrate "Gecrawlte Seiten ({pages.length} Seiten)" using vars: t("results.crawled_pages_heading", { count: pages.length }), manifest value "Gecrawlte Seiten ({count} Seiten)".
+
+7. getLangBadgeInfo — leave the `{ flag: "🌐", name: "Default" }` x-default fallback UNCHANGED (it's already a neutral technical hreflang term, not worth migrating).
+
+8. LANG_INFO (module-scope const, ~40 language entries) — DO NOT MODIFY OR TRANSLATE. Its `name` values (e.g. "Slovenčina", "Magyar", "Українська") are language autonyms — each language's own name for itself, shown in a language picker. These are proper nouns, not UI text to translate, regardless of the active app locale.
+
+9. HreflangVariantsPanel — migrate:
+   - "Erkannte Sprachvarianten der Website" -> t("results.hreflang_title")
+   - "Keine Sprachvarianten dieser Website gefunden." -> t("results.hreflang_empty")
+   - "{uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse" -> t("results.hreflang_count_note", { count: uniqueLangs.length }), manifest value "{count} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse"
+
+OUT OF SCOPE — explicitly leave unchanged: scoreBadgeColor, scoreLabel, formatDomainForFilename, buildExportTimestamp, fetchAsBase64, regionToFlag (all pure logic/formatting, no display text, or deferred to a later chunk).
+
+For every new key, add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed analysis report still renders identically in "de" for: traffic-light response-time/TTFB values, competitor crawled-pages lists, the crawled-pages panel toggle with correct page count, and the hreflang/language-variants panel (including that non-German language names in badges are unaffected). Under EN, all newly migrated text falls back to German — never blank, never a raw key — while language autonyms in LANG_INFO remain in their own language regardless of app locale.

@@ -199,21 +199,22 @@ type TrafficLightType = "responseTime" | "ttfb";
 
 function getTrafficLight(value: number, type: TrafficLightType) {
   if (type === "responseTime") {
-    if (value < 400) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
-    if (value <= 800) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
-    return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+    if (value < 400) return { dot: "🟢", label: "results.traffic_good", className: "text-green-600 dark:text-green-400" };
+    if (value <= 800) return { dot: "🟡", label: "results.traffic_acceptable", className: "text-yellow-600 dark:text-yellow-400" };
+    return { dot: "🔴", label: "results.traffic_critical", className: "text-red-600 dark:text-red-400" };
   }
   // ttfb
-  if (value < 200) return { dot: "🟢", label: "Gut", className: "text-green-600 dark:text-green-400" };
-  if (value <= 500) return { dot: "🟡", label: "Akzeptabel", className: "text-yellow-600 dark:text-yellow-400" };
-  return { dot: "🔴", label: "Kritisch", className: "text-red-600 dark:text-red-400" };
+  if (value < 200) return { dot: "🟢", label: "results.traffic_good", className: "text-green-600 dark:text-green-400" };
+  if (value <= 500) return { dot: "🟡", label: "results.traffic_acceptable", className: "text-yellow-600 dark:text-yellow-400" };
+  return { dot: "🔴", label: "results.traffic_critical", className: "text-red-600 dark:text-red-400" };
 }
 
 function TrafficLightValue({ value, type }: { value: number; type: TrafficLightType }) {
+  const t = useT();
   const { dot, label, className } = getTrafficLight(value, type);
   return (
     <span className={`text-sm font-bold font-mono ${className}`}>
-      {value} ms {dot} {label}
+      {value} ms {dot} {t(label)}
     </span>
   );
 }
@@ -221,6 +222,7 @@ function TrafficLightValue({ value, type }: { value: number; type: TrafficLightT
 // ─── Change C2: Metric label with tooltip ─────────────────────────────────────
 
 function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: string }) {
+  const t = useT();
   const [show, setShow] = useState(false);
   return (
     <span className="inline-flex items-center gap-1 relative">
@@ -232,7 +234,7 @@ function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: st
         onFocus={() => setShow(true)}
         onBlur={() => setShow(false)}
         className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-        aria-label={`Info: ${label}`}
+        aria-label={t("results.tooltip_info_prefix", { label })}
       >
         <Info className="w-3 h-3" />
       </button>
@@ -251,9 +253,10 @@ function MetricLabelWithTooltip({ label, tooltip }: { label: string; tooltip: st
 // ─── Change B3: Competitor crawled pages list ─────────────────────────────────
 
 function CompetitorCrawledPages({ pages }: { pages: Array<{ url: string; title: string | null }> }) {
+  const t = useT();
   return (
     <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground">Analysierte Seiten</p>
+      <p className="text-xs font-medium text-muted-foreground">{t("results.analyzed_pages_heading")}</p>
       <div className="rounded-lg border border-border overflow-hidden">
         {pages.map((page, i) => {
           let displayPath = page.url;
@@ -294,9 +297,10 @@ function scoreLabel(score: number): string {
 }
 
 function Delta({ main, comp }: { main: number; comp: number }) {
+  const t = useT();
   const delta = main - comp;
   const color = delta > 0 ? "hsl(142 71% 45%)" : delta < 0 ? "hsl(0 84% 60%)" : "hsl(var(--muted-foreground))";
-  const label = delta > 0 ? "Ihr Vorteil" : delta < 0 ? "Aufholbedarf" : "Gleichstand";
+  const label = delta > 0 ? t("results.delta_advantage") : delta < 0 ? t("results.delta_catchup") : t("results.delta_even");
   return (
     <span className="text-xs font-semibold" style={{ color }}>
       {delta > 0 ? "+" : ""}{delta}
@@ -478,6 +482,7 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
 }
 
 function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMode?: boolean }) {
+  const t = useT();
   const [isOpen, setIsOpen] = useState(false);
   const expanded = isOpen || pdfMode;
 
@@ -488,7 +493,7 @@ function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMod
         onClick={() => setIsOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors text-left"
       >
-        <span>Gecrawlte Seiten ({pages.length} Seiten)</span>
+        <span>{t("results.crawled_pages_heading", { count: pages.length })}</span>
         {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
       {expanded && (
@@ -579,6 +584,7 @@ function getLangBadgeInfo(langTag: string): { flag: string; name: string } {
 }
 
 function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
+  const t = useT();
   const uniqueLangs = Array.from(new Map(variants.map((v) => [v.lang, v])).keys());
 
   const sorted = [...uniqueLangs].sort((a, b) => {
@@ -589,9 +595,9 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
 
   return (
     <div className="rounded-lg border border-border px-4 py-3 space-y-2.5">
-      <p className="text-sm font-medium">Erkannte Sprachvarianten der Website</p>
+      <p className="text-sm font-medium">{t("results.hreflang_title")}</p>
       {uniqueLangs.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Keine Sprachvarianten dieser Website gefunden.</p>
+        <p className="text-xs text-muted-foreground">{t("results.hreflang_empty")}</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
@@ -610,7 +616,7 @@ function HreflangVariantsPanel({ variants }: { variants: HreflangVariant[] }) {
             })}
           </div>
           <p className="text-xs text-muted-foreground">
-            {uniqueLangs.length} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse
+            {t("results.hreflang_count_note", { count: uniqueLangs.length })}
           </p>
         </>
       )}

@@ -272,4 +272,17 @@ export const labelDefaults: Record<string, LabelDef> = {
   "progress.para_dont_close_prefix":  { group: "progress", de: "Wichtig:" },
   "progress.para_dont_close_body":    { group: "progress", de: " Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall, da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen." },
   "progress.hints_label":             { group: "progress", de: "Hinweise:" },
+
+  "results.traffic_good":               { group: "results", de: "Gut" },
+  "results.traffic_acceptable":         { group: "results", de: "Akzeptabel" },
+  "results.traffic_critical":           { group: "results", de: "Kritisch" },
+  "results.tooltip_info_prefix":        { group: "results", de: "Info: {label}" },
+  "results.analyzed_pages_heading":     { group: "results", de: "Analysierte Seiten" },
+  "results.delta_advantage":            { group: "results", de: "Ihr Vorteil" },
+  "results.delta_catchup":              { group: "results", de: "Aufholbedarf" },
+  "results.delta_even":                 { group: "results", de: "Gleichstand" },
+  "results.crawled_pages_heading":      { group: "results", de: "Gecrawlte Seiten ({count} Seiten)" },
+  "results.hreflang_title":             { group: "results", de: "Erkannte Sprachvarianten der Website" },
+  "results.hreflang_empty":             { group: "results", de: "Keine Sprachvarianten dieser Website gefunden." },
+  "results.hreflang_count_note":        { group: "results", de: "{count} Sprachvarianten erkannt — URLs gespeichert für spätere Mehrsprachenanalyse" },
 };
