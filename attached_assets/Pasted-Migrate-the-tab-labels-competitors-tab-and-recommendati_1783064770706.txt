@@ -1,0 +1,28 @@
+Migrate the tab labels, "competitors" tab, and "recommendations" tab within ReportView in ErgebnisseView.tsx to the existing label system. This is ReportView's FIRST migration — call useT() once at the top of ReportView, alongside its existing useState declarations (unconditional, not inside any handler or conditional block). Work ONLY on the parts listed below. Do NOT touch anything before the <Tabs> element (state, PDF/HTML export handlers, email modal, share modal, or any summary/header content above the tabs — all out of scope, reserved for later work), and do NOT touch the "details" or "llm" TabsContent bodies. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. Tab labels (the four TabsTrigger children):
+   "Details" -> t("results.tab_details")
+   "LLM-Auffindbarkeit" -> t("results.tab_llm")
+   "Wettbewerb" -> t("results.tab_competitors")
+   "Empfehlungen" -> t("results.tab_recommendations")
+
+2. Inside the "competitors" TabsContent:
+   - "Gesamt-Score Übersicht" -> t("results.competitor_overview_title")
+   - The chart tooltip formatter's "Score" label (`formatter={(v) => [`${v}`, "Score"]}`) -> replace "Score" with t("results.chart_score_label")
+   - "Ihre Seite ist blau hervorgehoben." -> t("results.your_site_highlighted")
+   - The empty-state ternary: "Wettbewerbsvergleich nicht verfügbar im HTML-Modus." -> t("results.competitors_unavailable_html"), and "Keine Wettbewerber-URLs angegeben." -> t("results.no_competitor_urls")
+
+3. Inside the "recommendations" TabsContent — these three headings currently mix JSX text with a count expression like `Kritisch ({criticalRecs.length})`. Convert each to a single vars-based call instead of splitting text around the count:
+   - `Kritisch ({criticalRecs.length})` -> t("results.rec_critical_heading", { count: criticalRecs.length }), manifest "Kritisch ({count})"
+   - `Hoher Hebel ({highRecs.length})` -> t("results.rec_high_heading", { count: highRecs.length }), manifest "Hoher Hebel ({count})"
+   - `Sekundär ({secondaryRecs.length})` -> t("results.rec_secondary_heading", { count: secondaryRecs.length }), manifest "Sekundär ({count})"
+   - "Keine Empfehlungen generiert." -> t("results.no_recommendations")
+
+Do NOT turn into labels: competitorChartData, mainScores, competitor.url/name (dynamic), rec objects passed to RecommendationCard (dynamic AI content — RecommendationCard itself is already fully migrated/correctly left alone), icon components, CSS/style values, chart colors.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report renders identically in "de": all four tab labels, the competitor overview chart (title, tooltip, caption) and its two empty-state variants (HTML-mode vs. no-competitor-URLs — you may need to check both conditions), and the recommendations tab with all three severity headings showing correct counts plus the empty state. Under EN, all migrated text falls back to German — never blank, never a raw key.

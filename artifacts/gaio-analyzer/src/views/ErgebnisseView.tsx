@@ -683,6 +683,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [shareCreating, setShareCreating] = useState(false);
   const [shareExpiryDays, setShareExpiryDays] = useState(30);
   const [shareCopied, setShareCopied] = useState(false);
+  const t = useT();
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -1995,10 +1996,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       {/* Tabs */}
       <Tabs defaultValue="details">
         <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="llm">LLM-Auffindbarkeit</TabsTrigger>
-          <TabsTrigger value="competitors">Wettbewerb</TabsTrigger>
-          <TabsTrigger value="recommendations">Empfehlungen</TabsTrigger>
+          <TabsTrigger value="details">{t("results.tab_details")}</TabsTrigger>
+          <TabsTrigger value="llm">{t("results.tab_llm")}</TabsTrigger>
+          <TabsTrigger value="competitors">{t("results.tab_competitors")}</TabsTrigger>
+          <TabsTrigger value="recommendations">{t("results.tab_recommendations")}</TabsTrigger>
         </TabsList>
 
         {/* Details Tab */}
@@ -2519,7 +2520,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               <Card>
                 <CardHeader>
                   <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Gesamt-Score Übersicht
+                    {t("results.competitor_overview_title")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2528,7 +2529,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis type="number" domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
                       <YAxis type="category" dataKey="name" width={140} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                      <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} formatter={(v) => [`${v}`, "Score"]} />
+                      <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: "6px", color: "hsl(var(--foreground))" }} formatter={(v) => [`${v}`, t("results.chart_score_label")]} />
                       <Bar dataKey="compositeScore" radius={[0, 4, 4, 0]} isAnimationActive={!pdfMode}>
                         {competitorChartData.map((entry, i) => (
                           <Cell key={i} fill={entry.isMain ? "hsl(var(--primary))" : "hsl(var(--chart-3))"} />
@@ -2536,7 +2537,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                  <p className="text-xs text-muted-foreground mt-2">Ihre Seite ist blau hervorgehoben.</p>
+                  <p className="text-xs text-muted-foreground mt-2">{t("results.your_site_highlighted")}</p>
                 </CardContent>
               </Card>
 
@@ -2548,7 +2549,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           ) : (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                {report.mode === "html" ? "Wettbewerbsvergleich nicht verfügbar im HTML-Modus." : "Keine Wettbewerber-URLs angegeben."}
+                {report.mode === "html" ? t("results.competitors_unavailable_html") : t("results.no_competitor_urls")}
               </CardContent>
             </Card>
           )}
@@ -2559,7 +2560,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           {criticalRecs.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold flex items-center gap-2 text-red-500 uppercase tracking-wider">
-                <AlertCircle className="w-3.5 h-3.5" /> Kritisch ({criticalRecs.length})
+                <AlertCircle className="w-3.5 h-3.5" /> {t("results.rec_critical_heading", { count: criticalRecs.length })}
               </h3>
               {criticalRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
             </div>
@@ -2567,7 +2568,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           {highRecs.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold flex items-center gap-2 text-orange-500 uppercase tracking-wider">
-                <AlertTriangle className="w-3.5 h-3.5" /> Hoher Hebel ({highRecs.length})
+                <AlertTriangle className="w-3.5 h-3.5" /> {t("results.rec_high_heading", { count: highRecs.length })}
               </h3>
               {highRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
             </div>
@@ -2575,14 +2576,14 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           {secondaryRecs.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold flex items-center gap-2 text-yellow-500 uppercase tracking-wider">
-                <Info className="w-3.5 h-3.5" /> Sekundär ({secondaryRecs.length})
+                <Info className="w-3.5 h-3.5" /> {t("results.rec_secondary_heading", { count: secondaryRecs.length })}
               </h3>
               {secondaryRecs.map((rec, i) => <RecommendationCard key={i} rec={rec} />)}
             </div>
           )}
           {recommendations.length === 0 && (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">Keine Empfehlungen generiert.</CardContent>
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">{t("results.no_recommendations")}</CardContent>
             </Card>
           )}
         </TabsContent>

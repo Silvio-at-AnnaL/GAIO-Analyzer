@@ -309,4 +309,18 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.competitor_multi_pages":     { group: "results", de: "{count} gecrawlte Seiten" },
   "results.competitor_single_page":     { group: "results", de: "Einzelseiten-Stichprobe (Startseite)" },
   "results.llm_no_source_found":        { group: "results", de: "Keine passende Quellseite gefunden" },
+
+  "results.tab_details":                { group: "results", de: "Details" },
+  "results.tab_llm":                    { group: "results", de: "LLM-Auffindbarkeit" },
+  "results.tab_competitors":            { group: "results", de: "Wettbewerb" },
+  "results.tab_recommendations":        { group: "results", de: "Empfehlungen" },
+  "results.competitor_overview_title":  { group: "results", de: "Gesamt-Score Übersicht" },
+  "results.chart_score_label":          { group: "results", de: "Score" },
+  "results.your_site_highlighted":      { group: "results", de: "Ihre Seite ist blau hervorgehoben." },
+  "results.competitors_unavailable_html": { group: "results", de: "Wettbewerbsvergleich nicht verfügbar im HTML-Modus." },
+  "results.no_competitor_urls":         { group: "results", de: "Keine Wettbewerber-URLs angegeben." },
+  "results.rec_critical_heading":       { group: "results", de: "Kritisch ({count})" },
+  "results.rec_high_heading":           { group: "results", de: "Hoher Hebel ({count})" },
+  "results.rec_secondary_heading":      { group: "results", de: "Sekundär ({count})" },
+  "results.no_recommendations":         { group: "results", de: "Keine Empfehlungen generiert." },
 };
