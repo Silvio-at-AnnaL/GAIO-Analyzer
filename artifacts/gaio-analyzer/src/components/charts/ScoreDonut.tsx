@@ -7,10 +7,8 @@ export function ScoreDonut({ score }: Props) {
   const cx = 130, cy = 130, r = 100;
   const trackLen = Math.PI * r;
 
-  const zoneColor = score >= 71 ? '#22c55e'
-    : score >= 41 ? '#f59e0b' : '#ef4444';
-
-  const activeLen = (score / 100) * trackLen;
+  const zoneColor = score >= 71 ? '#16a34a'
+    : score >= 41 ? '#eab308' : '#dc2626';
 
   const needleAngle = Math.PI * (score / 100 - 1);
   const needleLen = 85;
@@ -44,33 +42,18 @@ export function ScoreDonut({ score }: Props) {
       minHeight: 260,
     }}>
       <svg width="260" height="175" viewBox="0 0 260 175">
-        <defs>
-          <linearGradient id="zoneR" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.7" />
-            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.2" />
-          </linearGradient>
-          <linearGradient id="zoneA" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.2" />
-          </linearGradient>
-          <linearGradient id="zoneG" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.7" />
-          </linearGradient>
-        </defs>
-
         {/* Zone background arcs */}
         <path d="M 30 130 A 100 100 0 0 1 230 130"
-          fill="none" stroke="url(#zoneR)" strokeWidth="14"
+          fill="none" stroke="#dc2626" strokeWidth="14"
           strokeLinecap="butt"
           strokeDasharray={`${trackLen * 0.4} ${trackLen}`} />
         <path d="M 30 130 A 100 100 0 0 1 230 130"
-          fill="none" stroke="url(#zoneA)" strokeWidth="14"
+          fill="none" stroke="#eab308" strokeWidth="14"
           strokeLinecap="butt"
           strokeDasharray={`${trackLen * 0.3} ${trackLen}`}
           strokeDashoffset={-trackLen * 0.4} />
         <path d="M 30 130 A 100 100 0 0 1 230 130"
-          fill="none" stroke="url(#zoneG)" strokeWidth="14"
+          fill="none" stroke="#16a34a" strokeWidth="14"
           strokeLinecap="butt"
           strokeDasharray={`${trackLen * 0.3} ${trackLen}`}
           strokeDashoffset={-trackLen * 0.7} />
@@ -79,12 +62,6 @@ export function ScoreDonut({ score }: Props) {
         <path d="M 30 130 A 100 100 0 0 1 230 130"
           fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="15"
           strokeLinecap="round" />
-
-        {/* Active score arc */}
-        <path d="M 30 130 A 100 100 0 0 1 230 130"
-          fill="none" stroke={zoneColor} strokeWidth="14"
-          strokeLinecap="round"
-          strokeDasharray={`${activeLen} ${trackLen}`} />
 
         {/* Tick marks */}
         {ticks.map((t, i) => (
@@ -123,17 +100,17 @@ export function ScoreDonut({ score }: Props) {
 
         {/* Legend — centered */}
         <g transform="translate(0, 150)">
-          <rect x="18" y="0" width="8" height="8" rx="2" fill="#ef4444" />
+          <rect x="18" y="0" width="8" height="8" rx="2" fill="#dc2626" />
           <text x="30" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
             {t("results.score_critical")}
           </text>
-          <rect x="93" y="0" width="8" height="8" rx="2" fill="#f59e0b" />
+          <rect x="93" y="0" width="8" height="8" rx="2" fill="#eab308" />
           <text x="105" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
             {t("results.score_developing")}
           </text>
-          <rect x="195" y="0" width="8" height="8" rx="2" fill="#22c55e" />
+          <rect x="195" y="0" width="8" height="8" rx="2" fill="#16a34a" />
           <text x="207" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
             {t("results.score_strong")}

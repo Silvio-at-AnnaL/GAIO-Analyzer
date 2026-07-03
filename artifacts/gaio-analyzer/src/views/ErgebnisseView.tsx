@@ -1142,8 +1142,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       const buildDonut = (score: number): string => {
         const cx = 130, cy = 130, r = 100;
         const trackLen = Math.PI * r;
-        const color = score >= 71 ? '#22c55e' : score >= 41 ? '#f59e0b' : '#ef4444';
-        const activeLen = (score / 100) * trackLen;
+        const color = score >= 71 ? '#16a34a' : score >= 41 ? '#eab308' : '#dc2626';
         const needleAngle = Math.PI * (score / 100 - 1);
         const needleLen = 85;
         const nx = (cx + needleLen * Math.cos(needleAngle)).toFixed(2);
@@ -1161,27 +1160,21 @@ function ReportView({ analysisId }: { analysisId: string }) {
         }).join('');
         return '<div style="background:#1e2235;border-radius:12px;padding:20px 24px 14px;display:inline-block">' +
           '<svg width="260" height="165" viewBox="0 0 260 165">' +
-          '<defs>' +
-          '<linearGradient id="pdR" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ef4444" stop-opacity="0.7"/><stop offset="100%" stop-color="#ef4444" stop-opacity="0.2"/></linearGradient>' +
-          '<linearGradient id="pdA" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f59e0b" stop-opacity="0.5"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0.2"/></linearGradient>' +
-          '<linearGradient id="pdG" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.2"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0.7"/></linearGradient>' +
-          '</defs>' +
-          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="url(#pdR)" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.4).toFixed(2) + ' ' + trackLen.toFixed(2) + '"/>' +
-          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="url(#pdA)" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.3).toFixed(2) + ' ' + trackLen.toFixed(2) + '" stroke-dashoffset="' + (-trackLen * 0.4).toFixed(2) + '"/>' +
-          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="url(#pdG)" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.3).toFixed(2) + ' ' + trackLen.toFixed(2) + '" stroke-dashoffset="' + (-trackLen * 0.7).toFixed(2) + '"/>' +
+          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="#dc2626" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.4).toFixed(2) + ' ' + trackLen.toFixed(2) + '"/>' +
+          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="#eab308" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.3).toFixed(2) + ' ' + trackLen.toFixed(2) + '" stroke-dashoffset="' + (-trackLen * 0.4).toFixed(2) + '"/>' +
+          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="butt" stroke-dasharray="' + (trackLen * 0.3).toFixed(2) + ' ' + trackLen.toFixed(2) + '" stroke-dashoffset="' + (-trackLen * 0.7).toFixed(2) + '"/>' +
           '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="15" stroke-linecap="round"/>' +
-          '<path d="M 30 130 A 100 100 0 0 1 230 130" fill="none" stroke="' + color + '" stroke-width="14" stroke-linecap="round" stroke-dasharray="' + activeLen.toFixed(2) + ' ' + trackLen.toFixed(2) + '"/>' +
           tickSvg +
           '<line x1="' + cx + '" y1="' + cy + '" x2="' + nx + '" y2="' + ny + '" stroke="white" stroke-width="2.5" stroke-linecap="round"/>' +
           '<polygon points="' + (cx - 6) + ',' + cy + ' ' + (cx + 6) + ',' + cy + ' ' + cx + ',' + (cy - 12) + '" fill="white" opacity="0.9"/>' +
           '<circle cx="' + cx + '" cy="' + cy + '" r="7" fill="#1e2235" stroke="white" stroke-width="2"/>' +
           '<circle cx="' + cx + '" cy="' + cy + '" r="3" fill="white"/>' +
           '<text x="' + cx + '" y="112" text-anchor="middle" font-size="36" font-weight="800" fill="' + color + '" font-family="DM Sans,sans-serif">' + score + '</text>' +
-          '<rect x="28" y="150" width="7" height="5" rx="1" fill="#ef4444" opacity="0.8"/>' +
+          '<rect x="28" y="150" width="7" height="5" rx="1" fill="#dc2626"/>' +
           '<text x="39" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_critical") + '</text>' +
-          '<rect x="90" y="150" width="7" height="5" rx="1" fill="#f59e0b" opacity="0.8"/>' +
+          '<rect x="90" y="150" width="7" height="5" rx="1" fill="#eab308"/>' +
           '<text x="101" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_developing") + '</text>' +
-          '<rect x="165" y="150" width="7" height="5" rx="1" fill="#22c55e" opacity="0.8"/>' +
+          '<rect x="165" y="150" width="7" height="5" rx="1" fill="#16a34a"/>' +
           '<text x="176" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_strong") + '</text>' +
           '</svg></div>';
       };

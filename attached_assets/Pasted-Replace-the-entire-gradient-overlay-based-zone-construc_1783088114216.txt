@@ -1,0 +1,22 @@
+Replace the entire gradient/overlay-based zone construction in BOTH gauge implementations with a flat, solid, high-contrast traffic-light color scheme. This is an accessibility fix for red-green color vision deficiency — no gradients, no opacity variation, no blended/muted tones anywhere in the zone bands. Do not touch any label/text/t() work, do not touch any other component, do not touch any image/binary asset files, do not publish.
+
+Use these three flat colors consistently in both files (adjust exact hex only if there's already an established "vivid yellow"/"rich green" constant elsewhere in this codebase worth reusing — otherwise use these):
+  RED (Kritisch, 0-40):    #dc2626  (solid, no gradient, no opacity < 1)
+  YELLOW (Ausbaufähig, 40-70): #eab308  (true yellow, NOT amber/orange — this is a deliberate change from the previous #f59e0b)
+  GREEN (Stark, 70-100):   #16a34a  (solid, no gradient, no opacity < 1)
+
+File 1: artifacts/gaio-analyzer/src/components/charts/ScoreDonut.tsx
+
+1. Remove the three <linearGradient> definitions (zoneR/zoneA/zoneG) entirely — no longer needed.
+2. Change the three background zone <path> elements from `stroke="url(#zoneR)"` / `url(#zoneA)` / `url(#zoneG)` to flat solid strokes: `stroke="#dc2626"`, `stroke="#eab308"`, `stroke="#16a34a"` respectively (same order: first zone red, second zone yellow, third zone green). Keep their existing strokeDasharray/strokeDashoffset values (0-40%/40-70%/70-100% split) UNCHANGED — only the stroke color/fill mechanism changes, not the zone boundaries or geometry.
+3. Remove the "Active score arc" <path> entirely (the one using `stroke={zoneColor}` and `strokeDasharray={activeLen ...}`) — it is redundant with the needle and center score number, and was the source of the occlusion bug. Remove the now-unused `activeLen` constant if TS/lint flags it.
+4. Update `zoneColor` (still used for the center score-number fill and needle-adjacent styling if any) to use the same three flat values: `score >= 71 ? '#16a34a' : score >= 41 ? '#eab308' : '#dc2626'`.
+5. Update the three legend swatch `fill` attributes (currently `#ef4444`/`#f59e0b`/`#22c55e`) to match: `#dc2626`/`#eab308`/`#16a34a`.
+
+File 2: artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx, inside handlePdfExport's SVG string builder (the donut-building section)
+
+Apply the exact same changes to keep this duplicate visually in sync with File 1: remove the linearGradient defs, change the three zone paths to flat `#dc2626`/`#eab308`/`#16a34a` strokes with unchanged dasharray/dashoffset splits, remove the active-score overlay path, update the `color` variable (this file's equivalent of zoneColor) to the same three flat values, and update any matching legend-swatch colors in this same builder if present.
+
+Do NOT change: the zone boundary percentages/proportions (0.4/0.3/0.3 split), the needle geometry, the tick marks, the center score number's position/size, or anything unrelated to color.
+
+After the change: confirm TS compiles and the dev server starts. Verify on the live "Ergebnisse" page and in a freshly generated PDF export, ideally with two different analyses (one scoring below 40, one between 40-70): all three zones are now flat, fully saturated, fully visible at all times regardless of score, using pure red/yellow/green with no gradient or muted tones, and the legend swatches match the zone colors exactly.
