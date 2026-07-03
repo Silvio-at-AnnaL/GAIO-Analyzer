@@ -1,6 +1,9 @@
+import { useT } from "../../lib/LabelProvider";
+
 interface Props { score: number }
 
 export function ScoreDonut({ score }: Props) {
+  const t = useT();
   const cx = 130, cy = 130, r = 100;
   const trackLen = Math.PI * r;
 
@@ -123,17 +126,17 @@ export function ScoreDonut({ score }: Props) {
           <rect x="18" y="0" width="8" height="8" rx="2" fill="#ef4444" />
           <text x="30" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
-            Kritisch
+            {t("results.score_critical")}
           </text>
           <rect x="93" y="0" width="8" height="8" rx="2" fill="#f59e0b" />
           <text x="105" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
-            Ausbaufähig
+            {t("results.score_developing")}
           </text>
           <rect x="195" y="0" width="8" height="8" rx="2" fill="#22c55e" />
           <text x="207" y="7.5" fontSize={11} fontWeight={600}
             fill="rgba(255,255,255,0.7)" fontFamily="DM Sans,sans-serif">
-            Stark
+            {t("results.score_strong")}
           </text>
         </g>
       </svg>
