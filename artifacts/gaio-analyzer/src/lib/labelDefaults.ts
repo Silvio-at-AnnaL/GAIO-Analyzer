@@ -308,4 +308,5 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.score_basis_prefix":         { group: "results", de: "Score-Basis:" },
   "results.competitor_multi_pages":     { group: "results", de: "{count} gecrawlte Seiten" },
   "results.competitor_single_page":     { group: "results", de: "Einzelseiten-Stichprobe (Startseite)" },
+  "results.llm_no_source_found":        { group: "results", de: "Keine passende Quellseite gefunden" },
 };

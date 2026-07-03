@@ -2632,6 +2632,7 @@ export function ErgebnisseView() {
 }
 
 function LlmQuestionRow({ q }: { q: { question: string; rating: number; gap: string; sourceUrl?: string | null } }) {
+  const t = useT();
   return (
     <div className="p-3 rounded-lg bg-muted/30 space-y-2">
       <div className="flex items-start justify-between gap-4">
@@ -2649,7 +2650,7 @@ function LlmQuestionRow({ q }: { q: { question: string; rating: number; gap: str
           <span className="truncate">{q.sourceUrl}</span>
         </a>
       ) : (
-        <p className="text-[11px] text-muted-foreground italic">Keine passende Quellseite gefunden</p>
+        <p className="text-[11px] text-muted-foreground italic">{t("results.llm_no_source_found")}</p>
       )}
     </div>
   );
