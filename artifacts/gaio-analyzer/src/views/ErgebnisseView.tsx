@@ -290,10 +290,10 @@ function scoreBadgeColor(score: number): string {
 }
 
 function scoreLabel(score: number): string {
-  if (score >= 76) return "Stark";
-  if (score >= 61) return "Solide";
-  if (score >= 41) return "Ausbaufähig";
-  return "Kritisch";
+  if (score >= 76) return "results.score_strong";
+  if (score >= 61) return "results.score_solid";
+  if (score >= 41) return "results.score_developing";
+  return "results.score_critical";
 }
 
 function Delta({ main, comp }: { main: number; comp: number }) {
@@ -334,6 +334,7 @@ interface CompetitorCardProps {
 }
 
 function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
+  const t = useT();
   if (competitor.error) {
     return (
       <Card className="border-border/50 opacity-75">
@@ -349,13 +350,13 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
               <span className="font-bold text-base truncate text-muted-foreground">{competitor.name}</span>
             </div>
             <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-muted text-muted-foreground border border-border">
-              Nicht erreichbar
+              {t("results.competitor_unreachable")}
             </span>
           </div>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">
-            Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).{" "}
+            {t("results.competitor_unreachable_desc")}{" "}
             <a href={competitor.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
               {competitor.url} <ExternalLink className="w-3 h-3" />
             </a>
@@ -366,11 +367,11 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
   }
 
   const metrics = [
-    { label: "Technical SEO", main: mainScores.technicalScore, comp: competitor.technicalScore },
-    { label: "Schema.org", main: mainScores.schemaScore, comp: competitor.schemaScore },
-    { label: "Inhaltliche Relevanz", main: mainScores.contentScore, comp: competitor.contentScore },
-    { label: "Heading-Struktur", main: mainScores.headingScore, comp: competitor.headingScore },
-    { label: "FAQ-Qualität", main: mainScores.faqScore, comp: competitor.faqScore },
+    { label: t("results.metric_technical_seo"), main: mainScores.technicalScore, comp: competitor.technicalScore },
+    { label: t("results.metric_schema"), main: mainScores.schemaScore, comp: competitor.schemaScore },
+    { label: t("results.metric_content"), main: mainScores.contentScore, comp: competitor.contentScore },
+    { label: t("results.metric_headings"), main: mainScores.headingScore, comp: competitor.headingScore },
+    { label: t("results.metric_faq"), main: mainScores.faqScore, comp: competitor.faqScore },
   ];
 
   const badgeColor = scoreBadgeColor(competitor.compositeScore);
@@ -392,7 +393,7 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
             className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide"
             style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}40` }}
           >
-            {competitor.compositeScore} · {scoreLabel(competitor.compositeScore)}
+            {competitor.compositeScore} · {t(scoreLabel(competitor.compositeScore))}
           </div>
         </div>
       </CardHeader>
@@ -403,10 +404,10 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Metrik</th>
-                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ihre Seite</th>
-                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wettbewerber</th>
-                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-2">Delta / Bewertung</th>
+                <th className="text-left pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.table_metric")}</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.table_your_site")}</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.table_competitor")}</th>
+                <th className="text-right pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-2">{t("results.table_delta_rating")}</th>
               </tr>
             </thead>
             <tbody>
@@ -432,16 +433,16 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
 
         {/* LLM note */}
         <p className="text-xs text-muted-foreground italic">
-          LLM-Sichtbarkeit wird nur für die Hauptdomain vollständig analysiert
+          {t("results.llm_note")}
         </p>
 
         {/* Findings */}
         {competitor.findings && (
           <div className="space-y-2 pt-1">
             {[
-              { emoji: "⚠️", label: "Was macht dieser Wettbewerber besser?", text: competitor.findings.betterThanYou, color: "hsl(0 84% 60% / 0.08)", border: "hsl(0 84% 60% / 0.25)" },
-              { emoji: "✅", label: "Ihr klarer Vorteil", text: competitor.findings.yourAdvantage, color: "hsl(142 71% 45% / 0.08)", border: "hsl(142 71% 45% / 0.25)" },
-              { emoji: "💡", label: "Konkrete Empfehlung", text: competitor.findings.recommendation, color: "hsl(217 91% 60% / 0.08)", border: "hsl(217 91% 60% / 0.25)" },
+              { emoji: "⚠️", label: t("results.finding_better"), text: competitor.findings.betterThanYou, color: "hsl(0 84% 60% / 0.08)", border: "hsl(0 84% 60% / 0.25)" },
+              { emoji: "✅", label: t("results.finding_advantage"), text: competitor.findings.yourAdvantage, color: "hsl(142 71% 45% / 0.08)", border: "hsl(142 71% 45% / 0.25)" },
+              { emoji: "💡", label: t("results.finding_recommendation"), text: competitor.findings.recommendation, color: "hsl(217 91% 60% / 0.08)", border: "hsl(217 91% 60% / 0.25)" },
             ].map((f) => (
               <div
                 key={f.label}
@@ -462,10 +463,10 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
 
         {/* Data quality note */}
         <p className="text-xs text-muted-foreground">
-          Score-Basis:{" "}
+          {t("results.score_basis_prefix")}{" "}
           {competitor.crawledPagesCount > 1
-            ? `${competitor.crawledPagesCount} gecrawlte Seiten`
-            : "Einzelseiten-Stichprobe (Startseite)"}
+            ? t("results.competitor_multi_pages", { count: competitor.crawledPagesCount })
+            : t("results.competitor_single_page")}
           {" · "}
           <a
             href={competitor.url}

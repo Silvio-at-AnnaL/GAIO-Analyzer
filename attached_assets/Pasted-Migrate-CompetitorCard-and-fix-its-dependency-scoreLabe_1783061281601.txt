@@ -1,0 +1,30 @@
+Migrate CompetitorCard (and fix its dependency scoreLabel) in ErgebnisseView.tsx to the existing label system. Work ONLY on these two functions in the file named below. Do NOT touch any other function (ReportView, ErgebnisseView, CrawledPagesPanel, or anything already migrated). Do not touch report-export.ts. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+SPECIAL CASE — scoreLabel (module-scope function, NOT a component, ~4 branches: "Stark"/"Solide"/"Ausbaufähig"/"Kritisch"): change it to return label KEYS instead of German text, same pattern as getTrafficLight was already migrated:
+  "Stark" -> "results.score_strong"
+  "Solide" -> "results.score_solid"
+  "Ausbaufähig" -> "results.score_developing"
+  "Kritisch" -> "results.score_critical"
+scoreLabel's only caller is inside CompetitorCard (`{competitor.compositeScore} · {scoreLabel(competitor.compositeScore)}`); wrap it there as t(scoreLabel(competitor.compositeScore)).
+
+CompetitorCard — call useT() at the very top of the component, BEFORE the early `if (competitor.error) return (...)` block (Rules of Hooks: the hook call must be unconditional, so it must come before any conditional return), then migrate:
+
+1. "Nicht erreichbar" (error-state badge)
+2. "Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL)." (error-state text)
+3. The `metrics` array's `label` values — migrate all five to t()-resolved labels. IMPORTANT TEXT CORRECTION: the first entry currently reads "Technical SEO" (English) while its siblings are German ("Schema.org", "Inhaltliche Relevanz", "Heading-Struktur", "FAQ-Qualität") — this is a pre-existing inconsistency. Use "Technisches SEO" as the German manifest value for this key (matching how the same concept is labeled elsewhere in the app, e.g. compare.dim_technical), not the literal "Technical SEO" currently in the source.
+4. Table headers: "Metrik", "Ihre Seite", "Wettbewerber", "Delta / Bewertung"
+5. "LLM-Sichtbarkeit wird nur für die Hauptdomain vollständig analysiert"
+6. The findings array's `label` values only: "Was macht dieser Wettbewerber besser?", "Ihr klarer Vorteil", "Konkrete Empfehlung". Do NOT touch the `text:` fields in this array (competitor.findings.betterThanYou / yourAdvantage / recommendation) — those are AI-generated analysis content, not UI labels.
+7. The data-quality note, which has three parts:
+   - "Score-Basis:" (static prefix) -> t("results.score_basis_prefix")
+   - `` `${competitor.crawledPagesCount} gecrawlte Seiten` `` (interpolated) -> t("results.competitor_multi_pages", { count: competitor.crawledPagesCount }), manifest "{count} gecrawlte Seiten"
+   - "Einzelseiten-Stichprobe (Startseite)" (static fallback for the ternary's other branch) -> t("results.competitor_single_page")
+
+Do NOT turn into labels: competitor.name, competitor.url, competitor.compositeScore and other numeric scores, competitor.findings text content, emoji characters, scoreBadgeColor's color values, test-ids, CSS values.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<text — see note above for the Technical SEO correction>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed analysis report's competitor cards render identically in "de": error-state cards (unreachable competitor), the metrics table (including "Technisches SEO" now, not "Technical SEO"), findings boxes, the crawled-pages sub-list, and the score-basis note in both its single-page and multi-page variants. Under EN, all migrated text falls back to German — never blank, never a raw key.
