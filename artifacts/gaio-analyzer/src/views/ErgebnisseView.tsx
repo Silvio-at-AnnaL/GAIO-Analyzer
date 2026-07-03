@@ -20,7 +20,7 @@ import {
   Info, Clock, ChevronDown, ChevronUp, ExternalLink, Share2, Copy, Check,
 } from "lucide-react";
 import { useAuth, adminFetch } from "@/store/authStore";
-import { useT } from "@/lib/LabelProvider";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -689,6 +689,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [shareExpiryDays, setShareExpiryDays] = useState(30);
   const [shareCopied, setShareCopied] = useState(false);
   const t = useT();
+  const { locale } = useLabelContext();
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -1010,10 +1011,10 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
       // Tab label map — keep in sync with TabsContent value props.
       const TAB_LABELS: Record<string, string> = {
-        details: "Details",
-        llm: "LLM-Auffindbarkeit",
-        competitors: "Wettbewerb",
-        recommendations: "Empfehlungen",
+        details:         t("results.tab_details"),
+        llm:             t("results.tab_llm"),
+        competitors:     t("results.tab_competitors"),
+        recommendations: t("results.tab_recommendations"),
       };
 
       // Throw early with a visible message if no panels found.
@@ -1135,7 +1136,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       };
       const hdrDomain     = report.url || "";
       const hdrPageCount  = (report.crawledPages as string[] | null)?.length ?? 0;
-      const hdrDate       = new Date().toLocaleDateString("de-DE");
+      const hdrDate       = new Date().toLocaleDateString(locale);
 
       // Pure-SVG helper functions (no Recharts, no DOM dependency) ─────────────
       const buildDonut = (score: number): string => {
@@ -1177,23 +1178,23 @@ function ReportView({ analysisId }: { analysisId: string }) {
           '<circle cx="' + cx + '" cy="' + cy + '" r="3" fill="white"/>' +
           '<text x="' + cx + '" y="112" text-anchor="middle" font-size="36" font-weight="800" fill="' + color + '" font-family="DM Sans,sans-serif">' + score + '</text>' +
           '<rect x="28" y="150" width="7" height="5" rx="1" fill="#ef4444" opacity="0.8"/>' +
-          '<text x="39" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">Kritisch</text>' +
+          '<text x="39" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_critical") + '</text>' +
           '<rect x="90" y="150" width="7" height="5" rx="1" fill="#f59e0b" opacity="0.8"/>' +
-          '<text x="101" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">Ausbauf\u00e4hig</text>' +
+          '<text x="101" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_developing") + '</text>' +
           '<rect x="165" y="150" width="7" height="5" rx="1" fill="#22c55e" opacity="0.8"/>' +
-          '<text x="176" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">Stark</text>' +
+          '<text x="176" y="156" font-size="8.5" fill="rgba(255,255,255,0.4)" font-family="DM Sans,sans-serif">' + t("results.score_strong") + '</text>' +
           '</svg></div>';
       };
 
       const buildDarkRadarInner = (s: typeof hdrScores): string => {
         const CX = 160, CY = 160, MAX_R = 120, RINGS = 5;
         const dims = [
-          { label: "Techn. SEO", val: s.technSeo, color: "#ef4444" },
-          { label: "Schema.org", val: s.schema,   color: "#a855f7" },
-          { label: "Headings",   val: s.headings, color: "#3b82f6" },
-          { label: "Inhalt",     val: s.inhalt,   color: "#22c55e" },
-          { label: "FAQ",        val: s.faq,      color: "#f59e0b" },
-          { label: "LLM",        val: s.llm,      color: "#06b6d4" },
+          { label: t("results.chart_dim_technical"), val: s.technSeo, color: "#ef4444" },
+          { label: t("results.chart_dim_schema"),    val: s.schema,   color: "#a855f7" },
+          { label: t("results.chart_dim_headings"),  val: s.headings, color: "#3b82f6" },
+          { label: t("results.chart_dim_content"),   val: s.inhalt,   color: "#22c55e" },
+          { label: "FAQ",                            val: s.faq,      color: "#f59e0b" },
+          { label: "LLM",                            val: s.llm,      color: "#06b6d4" },
         ];
         const N = dims.length;
         const ptF = (i: number, r: number) => {
@@ -1298,7 +1299,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         tabValue: string;
       };
       const pages: PageData[] = [];
-      const currentDateString = new Date().toLocaleDateString("de-DE");
+      const currentDateString = new Date().toLocaleDateString(locale);
 
       for (const panel of panels) {
         const tabValue = panel.id?.replace(/^.*-content-/, "") ?? "tab";
@@ -1336,7 +1337,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           "width:100%;margin-top:32px;padding-top:12px;border-top:1px solid #dde0e8;" +
           "font-size:11px;color:#9ca3af;text-align:left;font-family:-apple-system,sans-serif;";
         footerEl.textContent =
-          (brandingFooterText || "IndustryStock.com") + "/GAIO-Analyzer · Exportiert am " + currentDateString;
+          (brandingFooterText || "IndustryStock.com") + t("results.pdf_footer_export_date_prefix") + currentDateString;
         panel.appendChild(footerEl);
         // FIX B — Add explicit bottom padding so footer is never clipped.
         panel.style.paddingBottom = "80px";
@@ -1511,7 +1512,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         companyName: domainForm.companyName.trim() || null,
         targetAudience: domainForm.personas.trim() || null,
         competitors: domainForm.competitors.filter((c) => c.trim()),
-        analysisDate: new Date().toLocaleString("de-DE"),
+        analysisDate: new Date().toLocaleString(locale),
         crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
       };
 
@@ -1663,7 +1664,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         } else {
           pdf.setFontSize(12);
           pdf.setTextColor(150, 150, 150);
-          pdf.text("Seite konnte nicht exportiert werden", PDF_MM_W / 2, tabY + page.mmH / 2, { align: "center" });
+          pdf.text(t("results.pdf_page_export_failed"), PDF_MM_W / 2, tabY + page.mmH / 2, { align: "center" });
         }
 
         // Small label line — sits inside the top margin.
@@ -1719,7 +1720,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       console.error("PDF export failed:", err);
       if (!mailTo) {
         setExportError(
-          "PDF-Export fehlgeschlagen: " +
+          t("results.pdf_export_failed_prefix") +
           (err instanceof Error ? err.message : String(err))
         );
       }

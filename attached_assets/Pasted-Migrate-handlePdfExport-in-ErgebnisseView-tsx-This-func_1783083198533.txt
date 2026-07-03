@@ -1,0 +1,32 @@
+Migrate handlePdfExport in ErgebnisseView.tsx. This function is ~780 lines of DOM/canvas/PDF-generation logic — work ONLY on the specific string replacements listed below. Do NOT restructure, refactor, or touch any of the chart-math/SVG-path/DOM-manipulation logic itself — only replace the exact string literals named. Do not touch any other function. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+
+1. REUSE — duplicate TAB_LABELS object (~line 56-59). Replace the four hardcoded values with the SAME keys already used for the real tab triggers elsewhere in this file — do NOT create new keys:
+   "Details" -> t("results.tab_details")
+   "LLM-Auffindbarkeit" -> t("results.tab_llm")
+   "Wettbewerb" -> t("results.tab_competitors")
+   "Empfehlungen" -> t("results.tab_recommendations")
+
+2. REUSE — donut chart zone labels (embedded in an SVG string, ~line 223-227: "Kritisch", "Ausbaufähig" as \u00E4-escaped, "Stark"). Replace with the SAME keys created for scoreLabel earlier — do NOT create new keys:
+   "Kritisch" -> t("results.score_critical")
+   "Ausbaufähig" -> t("results.score_developing")
+   "Stark" -> t("results.score_strong")
+
+3. REUSE — radar chart dimension labels (~line 234-237: "Techn. SEO", "Schema.org", "Headings", "Inhalt"). Replace with the SAME keys just created for radarData/RadarDimensions elsewhere in this file — do NOT create new keys:
+   "Techn. SEO" -> t("results.chart_dim_technical")
+   "Schema.org" -> t("results.chart_dim_schema")
+   "Headings" -> t("results.chart_dim_headings")
+   "Inhalt" -> t("results.chart_dim_content")
+
+4. FIX — three separate hardcoded "de-DE" locale date-formatting calls within this function (approx lines 181, 344, 557 — search for `.toLocaleDateString("de-DE"` and `.toLocaleString("de-DE"` within this function only). Make the locale follow the app's active locale, same pattern already used in VergleichView: get `locale` from useLabelContext() (ReportView should already have it in scope, or add it if not — check what's already destructured from useT()/useLabelContext() at the top of ReportView) and map it to an Intl locale string ("de" -> "de-DE", "en" -> "en-US", default "de-DE" for anything unmapped). Apply this to all three occurrences.
+
+5. NEW — genuine UI strings not seen elsewhere:
+   "Seite konnte nicht exportiert werden" (embedded via pdf.text(...) directly into the generated PDF when a page fails to export) -> t("results.pdf_page_export_failed"), add to labelDefaults.ts: "results.pdf_page_export_failed": { group: "results", de: "Seite konnte nicht exportiert werden" }
+   "PDF-Export fehlgeschlagen: " (error message prefix, likely concatenated with an error detail) -> t("results.pdf_export_failed_prefix"), add: "results.pdf_export_failed_prefix": { group: "results", de: "PDF-Export fehlgeschlagen: " }
+
+6. NEW — footer text fragment: `(brandingFooterText || "IndustryStock.com") + "/GAIO-Analyzer · Exportiert am " + currentDateString`. Keep "IndustryStock.com" untouched (brand-name fallback, not translatable). Migrate only the middle fragment: "/GAIO-Analyzer · Exportiert am " -> t("results.pdf_footer_export_date_prefix"), add: "results.pdf_footer_export_date_prefix": { group: "results", de: "/GAIO-Analyzer · Exportiert am " }
+
+Do NOT turn into labels: any SVG path/coordinate strings, CSS/style strings, DOM selectors, HTML tag names, console.log messages, "html-to-image"/"jspdf" import paths, data-testid values, hex colors, or any technical/structural string not explicitly listed above.
+
+After the change: confirm TS compiles and the dev server starts. Generate a PDF export from a completed analysis and verify: the donut chart's three zone labels, the radar chart's four dimension labels (in both the header/summary chart at the top AND the per-tab-page charts if they repeat), and the tab-page headers in the generated PDF still show correctly in German. Under EN locale, confirm the reused keys correctly show German fallback (since none of these specific labels have EN translations yet) or their EN translation if you've already entered one, and confirm the export date now formats according to the active locale rather than always German.

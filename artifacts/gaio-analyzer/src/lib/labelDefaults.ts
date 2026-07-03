@@ -438,4 +438,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.share_expiry_label":        { group: "results", de: "G\u00FCltig f\u00FCr (Tage)" },
   "results.share_creating_loading":    { group: "results", de: "Erstelle\u2026" },
   "results.share_create_button":       { group: "results", de: "Link erstellen" },
+  "results.pdf_page_export_failed":    { group: "results", de: "Seite konnte nicht exportiert werden" },
+  "results.pdf_export_failed_prefix":  { group: "results", de: "PDF-Export fehlgeschlagen: " },
+  "results.pdf_footer_export_date_prefix": { group: "results", de: "/GAIO-Analyzer \u00B7 Exportiert am " },
 };
