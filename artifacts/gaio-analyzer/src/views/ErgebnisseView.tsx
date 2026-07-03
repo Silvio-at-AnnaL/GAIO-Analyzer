@@ -62,6 +62,11 @@ const MODULE_NAME_LABELS: Record<string, string> = {
   "Empfehlungen generieren":              "progress.module_recommendations",
 };
 
+const LLM_PART_LABELS: Record<string, string> = {
+  "Teil A \u2014 Problem-/Kategorie-Fragen (ohne Markenname)": "results.llm_part_a_label",
+  "Teil B \u2014 Marken-Verifikationsfragen":                  "results.llm_part_b_label",
+};
+
 function ProgressView({ analysisId, onComplete }: { analysisId: string; onComplete: () => void }) {
   const t = useT();
   const [completedModules, setCompletedModules] = useState<string[]>([]);
@@ -2432,23 +2437,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               <div className="grid grid-cols-3 gap-3">
                 <Card>
                   <CardContent className="p-4 text-center">
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Auffindbarkeit (Teil A · 70%)</div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{t("results.llm_grid_part_a")}</div>
                     <div className="text-2xl font-mono font-bold mt-1">{llmPartA?.score ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmPartA?.avgRating?.toFixed(2) ?? "—"} / 5</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{t("results.llm_avg_rating", { value: llmPartA?.avgRating?.toFixed(2) ?? "—" })}</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4 text-center">
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Informationstiefe (Teil B · 30%)</div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{t("results.llm_grid_part_b")}</div>
                     <div className="text-2xl font-mono font-bold mt-1">{llmPartB?.score ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmPartB?.avgRating?.toFixed(2) ?? "—"} / 5</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{t("results.llm_avg_rating", { value: llmPartB?.avgRating?.toFixed(2) ?? "—" })}</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4 text-center">
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Gesamt (gewichtet)</div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{t("results.llm_grid_total")}</div>
                     <div className="text-2xl font-mono font-bold mt-1">{(llmDiscoverability?.score as number) ?? 0}<span className="text-sm text-muted-foreground">/100</span></div>
-                    <div className="text-[10px] text-muted-foreground mt-1">Ø {llmAvgRating.toFixed(2)} / 5</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{t("results.llm_avg_rating", { value: llmAvgRating.toFixed(2) })}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -2458,10 +2463,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {llmPartA.label}
+                      {t(LLM_PART_LABELS[llmPartA.label] ?? llmPartA.label)}
                     </CardTitle>
                     <p className="text-[11px] text-muted-foreground font-normal normal-case">
-                      Buyer kennt das Unternehmen NICHT — testet, ob die Seite in Kategorie- und Problemfragen auftaucht.
+                      {t("results.llm_part_a_explainer")}
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -2477,10 +2482,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {llmPartB.label}
+                      {t(LLM_PART_LABELS[llmPartB.label] ?? llmPartB.label)}
                     </CardTitle>
                     <p className="text-[11px] text-muted-foreground font-normal normal-case">
-                      Buyer kennt die Marke bereits — prüft, wie tief und konkret die Seite Markenfragen beantwortet.
+                      {t("results.llm_part_b_explainer")}
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -2496,7 +2501,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      LLM-Auffindbarkeits-Simulation (Score: {(llmDiscoverability?.score as number) ?? 0}/100)
+                      {t("results.llm_fallback_title", { score: (llmDiscoverability?.score as number) ?? 0 })}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -2507,7 +2512,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             </>
           ) : (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">Keine LLM-Daten verfügbar.</CardContent>
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">{t("results.llm_no_data")}</CardContent>
             </Card>
           )}
         </TabsContent>

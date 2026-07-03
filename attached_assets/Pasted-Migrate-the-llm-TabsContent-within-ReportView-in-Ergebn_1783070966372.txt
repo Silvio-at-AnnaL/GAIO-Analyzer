@@ -1,0 +1,36 @@
+Migrate the "llm" TabsContent within ReportView in ErgebnisseView.tsx to the existing label system. useT() is already called at the top of ReportView (from the previous migration) — reuse it, do not add a second call. Work ONLY on the "llm" TabsContent body. Do NOT touch the "details" TabsContent, anything before the <Tabs> element, or anything already migrated. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. Sub-score grid headers (3 static labels):
+   "Auffindbarkeit (Teil A · 70%)" -> t("results.llm_grid_part_a")
+   "Informationstiefe (Teil B · 30%)" -> t("results.llm_grid_part_b")
+   "Gesamt (gewichtet)" -> t("results.llm_grid_total")
+
+2. The two "Ø {value} / 5" average-rating displays (appears 3 times total: under Part A, Part B, and the total grid cell) — replace each with vars-based interpolation:
+   t("results.llm_avg_rating", { value: llmPartA?.avgRating?.toFixed(2) ?? "—" })  // and analogously for Part B and llmAvgRating.toFixed(2)
+   Add manifest: "results.llm_avg_rating": { group: "results", de: "Ø {value} / 5" }
+   (Use ONE shared key for all three occurrences — the value passed differs, the template does not.)
+
+3. SPECIAL CASE — {llmPartA.label} and {llmPartB.label}: these are NOT hardcoded strings in this file. They come from the API response (set server-side in artifacts/api-server/src/lib/analyzers/llm-discoverability.ts, hardcoded German literals: "Teil A — Problem-/Kategorie-Fragen (ohne Markenname)" and "Teil B — Marken-Verifikationsfragen"). Do NOT modify the backend file. Instead, add a client-side display-label lookup in ErgebnisseView.tsx, same pattern as the existing MODULE_NAME_LABELS:
+   const LLM_PART_LABELS: Record<string, string> = {
+     "Teil A — Problem-/Kategorie-Fragen (ohne Markenname)": "results.llm_part_a_label",
+     "Teil B — Marken-Verifikationsfragen": "results.llm_part_b_label",
+   };
+   Add both to labelDefaults.ts with the original German sentence as `de`. Render {t(LLM_PART_LABELS[llmPartA.label] ?? llmPartA.label)} instead of {llmPartA.label} (and analogously for llmPartB.label) — the `?? llmPartA.label` fallback ensures nothing breaks if the API ever returns a different string.
+
+4. The two explanatory paragraphs (static JSX text, not from the API):
+   "Buyer kennt das Unternehmen NICHT — testet, ob die Seite in Kategorie- und Problemfragen auftaucht." -> t("results.llm_part_a_explainer")
+   "Buyer kennt die Marke bereits — prüft, wie tief und konkret die Seite Markenfragen beantwortet." -> t("results.llm_part_b_explainer")
+
+5. The fallback section (old reports without partA/partB):
+   `LLM-Auffindbarkeits-Simulation (Score: {(llmDiscoverability?.score as number) ?? 0}/100)` -> t("results.llm_fallback_title", { score: (llmDiscoverability?.score as number) ?? 0 }), manifest "LLM-Auffindbarkeits-Simulation (Score: {score}/100)"
+
+6. Empty state: "Keine LLM-Daten verfügbar." -> t("results.llm_no_data")
+
+Do NOT turn into labels: llmQuestions, q.question/q.gap/q.sourceUrl (rendered inside the already-migrated LlmQuestionRow — do not touch that component again), numeric scores themselves, the "/100" and "/5" suffixes are part of the vars templates above, not separate labels.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report's LLM tab renders identically in "de": the 3-card sub-score grid with correct average-rating formatting, Part A and Part B cards (title via the new lookup, explainer text, question rows), the fallback path if you can trigger it (old-format report without partA/partB), and the empty state. Under EN, all migrated text falls back to German — never blank, never a raw key — including the two API-sourced part labels via the new lookup.

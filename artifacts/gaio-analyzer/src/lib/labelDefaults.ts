@@ -323,4 +323,15 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.rec_high_heading":           { group: "results", de: "Hoher Hebel ({count})" },
   "results.rec_secondary_heading":      { group: "results", de: "Sekundär ({count})" },
   "results.no_recommendations":         { group: "results", de: "Keine Empfehlungen generiert." },
+
+  "results.llm_grid_part_a":            { group: "results", de: "Auffindbarkeit (Teil A \u00B7 70%)" },
+  "results.llm_grid_part_b":            { group: "results", de: "Informationstiefe (Teil B \u00B7 30%)" },
+  "results.llm_grid_total":             { group: "results", de: "Gesamt (gewichtet)" },
+  "results.llm_avg_rating":             { group: "results", de: "\u00D8 {value} / 5" },
+  "results.llm_part_a_label":           { group: "results", de: "Teil A \u2014 Problem-/Kategorie-Fragen (ohne Markenname)" },
+  "results.llm_part_b_label":           { group: "results", de: "Teil B \u2014 Marken-Verifikationsfragen" },
+  "results.llm_part_a_explainer":       { group: "results", de: "Buyer kennt das Unternehmen NICHT \u2014 testet, ob die Seite in Kategorie- und Problemfragen auftaucht." },
+  "results.llm_part_b_explainer":       { group: "results", de: "Buyer kennt die Marke bereits \u2014 pr\u00FCft, wie tief und konkret die Seite Markenfragen beantwortet." },
+  "results.llm_fallback_title":         { group: "results", de: "LLM-Auffindbarkeits-Simulation (Score: {score}/100)" },
+  "results.llm_no_data":                { group: "results", de: "Keine LLM-Daten verf\u00FCgbar." },
 };
