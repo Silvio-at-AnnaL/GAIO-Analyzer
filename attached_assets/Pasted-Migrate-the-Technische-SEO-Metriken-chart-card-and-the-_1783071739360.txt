@@ -1,0 +1,30 @@
+Migrate the "Technische SEO-Metriken" chart card and the "Technische Details" metrics-grid card within ReportView's "details" TabsContent in ErgebnisseView.tsx. useT() is already called at the top of ReportView — reuse it. Work ONLY on these two cards. Do NOT touch the "Technische Dateien" card (robots.txt/sitemap/llms.txt — separate, upcoming chunk), the "Schema.org" or "Inhaltliche Relevanz" cards (also upcoming), or anything else. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. Card title "Technische SEO-Metriken" -> t("results.technical_metrics_title")
+
+2. Card title "Technische Details" -> t("results.technical_details_title")
+
+3. MetricLabelWithTooltip is called twice with hardcoded German props — migrate the label/tooltip STRING VALUES passed in (MetricLabelWithTooltip itself is already migrated and unaffected):
+   - label="Antwortzeit" -> label={t("results.metric_response_time")}
+   - tooltip="Die Antwortzeit misst, wie lange der Server insgesamt braucht, um eine vollständige Seite zu liefern. Unter 400 ms gilt als schnell. Über 800 ms wirkt sich negativ auf SEO und Nutzererfahrung aus." -> tooltip={t("results.metric_response_time_tooltip")}
+   - label="TTFB" -> label={t("results.metric_ttfb")}
+   - tooltip="Time to First Byte (TTFB) misst, wie schnell der Server mit der Auslieferung beginnt — bevor der Browser die Seite aufgebaut hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-Performance. Google nutzt TTFB als Qualitätssignal." -> tooltip={t("results.metric_ttfb_tooltip")}
+
+4. The 7-item metrics array's `label` fields — migrate all seven via t(), even the technical-jargon ones (their German and eventual English values may be identical, that's fine — the point is making them editable/consistent):
+   "robots.txt" -> t("results.metric_robots_txt")
+   "Sitemap" -> t("results.metric_sitemap")
+   "llms.txt" -> t("results.metric_llms_txt")
+   "HTTPS" -> t("results.metric_https")
+   "Viewport" -> t("results.metric_viewport")
+   "Alt-Text" -> t("results.metric_alt_text")
+   "Canonical Tags" -> t("results.metric_canonical_tags")
+   Do NOT touch the `val` fields in this array (✓/✗ symbols, percentages, counts — all dynamic, not labels).
+
+Do NOT turn into labels: technicalBarData, technicalSeo field values, any ✓/✗ symbols or percentages, chart colors/CSS, pdfMode.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report's "Details" tab renders identically in "de" for the chart card and the metrics grid (all 7 metric labels, both tooltips readable via hover/info icon, response-time/TTFB traffic-light values unaffected). Under EN, all migrated text falls back to German — never blank, never a raw key.

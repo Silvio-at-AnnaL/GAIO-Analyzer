@@ -334,4 +334,18 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.llm_part_b_explainer":       { group: "results", de: "Buyer kennt die Marke bereits \u2014 pr\u00FCft, wie tief und konkret die Seite Markenfragen beantwortet." },
   "results.llm_fallback_title":         { group: "results", de: "LLM-Auffindbarkeits-Simulation (Score: {score}/100)" },
   "results.llm_no_data":                { group: "results", de: "Keine LLM-Daten verf\u00FCgbar." },
+
+  "results.technical_metrics_title":    { group: "results", de: "Technische SEO-Metriken" },
+  "results.technical_details_title":    { group: "results", de: "Technische Details" },
+  "results.metric_response_time":       { group: "results", de: "Antwortzeit" },
+  "results.metric_response_time_tooltip": { group: "results", de: "Die Antwortzeit misst, wie lange der Server insgesamt braucht, um eine vollst\u00E4ndige Seite zu liefern. Unter 400 ms gilt als schnell. \u00DCber 800 ms wirkt sich negativ auf SEO und Nutzererfahrung aus." },
+  "results.metric_ttfb":                { group: "results", de: "TTFB" },
+  "results.metric_ttfb_tooltip":        { group: "results", de: "Time to First Byte (TTFB) misst, wie schnell der Server mit der Auslieferung beginnt \u2014 bevor der Browser die Seite aufgebaut hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-Performance. Google nutzt TTFB als Qualit\u00E4tssignal." },
+  "results.metric_robots_txt":          { group: "results", de: "robots.txt" },
+  "results.metric_sitemap":             { group: "results", de: "Sitemap" },
+  "results.metric_llms_txt":            { group: "results", de: "llms.txt" },
+  "results.metric_https":               { group: "results", de: "HTTPS" },
+  "results.metric_viewport":            { group: "results", de: "Viewport" },
+  "results.metric_alt_text":            { group: "results", de: "Alt-Text" },
+  "results.metric_canonical_tags":      { group: "results", de: "Canonical Tags" },
 };

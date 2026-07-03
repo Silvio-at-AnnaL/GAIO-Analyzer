@@ -2011,7 +2011,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         <TabsContent forceMount value="details" className="space-y-4 pt-4">
           {technicalBarData.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische SEO-Metriken</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.technical_metrics_title")}</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={technicalBarData} layout="vertical">
@@ -2038,14 +2038,14 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
           {technicalSeo && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Details</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.technical_details_title")}</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {/* C1 + C2: Antwortzeit with traffic light and tooltip */}
                   <div>
                     <MetricLabelWithTooltip
-                      label="Antwortzeit"
-                      tooltip="Die Antwortzeit misst, wie lange der Server insgesamt braucht, um eine vollständige Seite zu liefern. Unter 400 ms gilt als schnell. Über 800 ms wirkt sich negativ auf SEO und Nutzererfahrung aus."
+                      label={t("results.metric_response_time")}
+                      tooltip={t("results.metric_response_time_tooltip")}
                     />
                     <TrafficLightValue
                       value={technicalSeo.responseTime as number}
@@ -2055,8 +2055,8 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   {/* C1 + C2: TTFB with traffic light and tooltip */}
                   <div>
                     <MetricLabelWithTooltip
-                      label="TTFB"
-                      tooltip="Time to First Byte (TTFB) misst, wie schnell der Server mit der Auslieferung beginnt — bevor der Browser die Seite aufgebaut hat. Ein niedriger TTFB (unter 200 ms) zeigt gute Server-Performance. Google nutzt TTFB als Qualitätssignal."
+                      label={t("results.metric_ttfb")}
+                      tooltip={t("results.metric_ttfb_tooltip")}
                     />
                     <TrafficLightValue
                       value={technicalSeo.ttfb as number}
@@ -2065,13 +2065,13 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   </div>
                   {/* Remaining metrics */}
                   {[
-                    { label: "robots.txt", val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
-                    { label: "Sitemap", val: (() => { const t = technicalSeo.sitemapType as string; if (t === "xml") return "XML ✓"; if (t === "xml_index") return "XML-Index ✓"; if (t === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓" : "✗"; })() },
-                    { label: "llms.txt", val: (technicalSeo.llmsTxt as boolean) ? "✓" : "✗" },
-                    { label: "HTTPS", val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },
-                    { label: "Viewport", val: (technicalSeo.mobileViewport as boolean) ? "✓" : "✗" },
-                    { label: "Alt-Text", val: `${technicalSeo.imageAltCoverage}%` },
-                    { label: "Canonical Tags", val: String((technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0) },
+                    { label: t("results.metric_robots_txt"), val: (technicalSeo.robotsTxt as boolean) ? "✓" : "✗" },
+                    { label: t("results.metric_sitemap"), val: (() => { const st = technicalSeo.sitemapType as string; if (st === "xml") return "XML ✓"; if (st === "xml_index") return "XML-Index ✓"; if (st === "html") return "HTML ✓"; return (technicalSeo.sitemapXml as boolean) ? "✓" : "✗"; })() },
+                    { label: t("results.metric_llms_txt"), val: (technicalSeo.llmsTxt as boolean) ? "✓" : "✗" },
+                    { label: t("results.metric_https"), val: (technicalSeo.httpsEnforced as boolean) ? "✓" : "✗" },
+                    { label: t("results.metric_viewport"), val: (technicalSeo.mobileViewport as boolean) ? "✓" : "✗" },
+                    { label: t("results.metric_alt_text"), val: `${technicalSeo.imageAltCoverage}%` },
+                    { label: t("results.metric_canonical_tags"), val: String((technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0) },
                   ].map(({ label, val }) => (
                     <div key={label}>
                       <p className="text-xs text-muted-foreground">{label}</p>
