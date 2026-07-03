@@ -824,7 +824,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const handleModalSend = async () => {
     const email = emailInput.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setSendError("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
+      setSendError(t("results.email_invalid"));
       return;
     }
     setSending(true);
@@ -835,7 +835,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       setSendFeedback(email);
       setTimeout(() => { setEmailModal(null); setSendFeedback(null); setEmailInput(""); }, 2500);
     } catch {
-      setSendError("E-Mail konnte nicht gesendet werden. Bitte prüfen Sie die Mailserver-Einstellungen.");
+      setSendError(t("results.email_send_failed"));
     } finally {
       setSending(false);
     }
@@ -886,12 +886,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
 
   const radarData = [
-    { subject: "Techn. SEO", value: (technicalSeo?.score as number) ?? 0 },
-    { subject: "Schema.org", value: (schemaOrg?.score as number) ?? 0 },
-    { subject: "Headings", value: (headingStructure?.score as number) ?? 0 },
-    { subject: "Inhalt", value: (contentRelevance?.score as number) ?? 0 },
-    { subject: "FAQ", value: (faqQuality?.score as number) ?? 0 },
-    { subject: "LLM", value: (llmDiscoverability?.score as number) ?? 0 },
+    { subject: t("results.chart_dim_technical"), value: (technicalSeo?.score as number) ?? 0 },
+    { subject: t("results.chart_dim_schema"),    value: (schemaOrg?.score as number) ?? 0 },
+    { subject: t("results.chart_dim_headings"),  value: (headingStructure?.score as number) ?? 0 },
+    { subject: t("results.chart_dim_content"),   value: (contentRelevance?.score as number) ?? 0 },
+    { subject: "FAQ",                            value: (faqQuality?.score as number) ?? 0 },
+    { subject: "LLM",                            value: (llmDiscoverability?.score as number) ?? 0 },
   ];
 
   const mainScores = {
@@ -1792,9 +1792,9 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Ergebnisse</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("results.page_title")}</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten
+            {report.url || t("results.html_upload_fallback")} · {t("results.pages_suffix", { count: report.crawledPages.length })}
           </p>
         </div>
         <div className="flex gap-2">
@@ -1805,7 +1805,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             data-testid="button-export-pdf"
           >
             {exportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
-            {exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}
+            {exportingPdf ? t("results.pdf_export_loading") : t("results.pdf_export_button")}
           </Button>
           <Button
             size="sm"
@@ -1814,7 +1814,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             data-testid="button-export-html"
           >
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
-            {exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}
+            {exportingHtml ? t("results.html_export_loading") : t("results.html_export_button")}
           </Button>
           {isAuthenticated && (
             <Button
@@ -1824,7 +1824,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               data-testid="button-share"
             >
               <Share2 className="w-4 h-4 mr-1.5" />
-              Teilen
+              {t("results.share_button")}
             </Button>
           )}
         </div>
@@ -1841,23 +1841,23 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       {/* Prompt to re-run */}
       <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
-        Basisdaten ändern oder neue Analyse starten? → Wechseln Sie zu <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.
+        {t("results.rerun_hint_pre")}<strong>Domainanalyse</strong>{t("results.rerun_hint_mid")}<strong>HTML-Analyse</strong>{t("results.rerun_hint_post")}
       </p>
 
       {/* Email delivery modal */}
       {emailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget && !sending) { setEmailModal(null); setEmailInput(""); setSendError(null); } }}>
           <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
-            <h2 className="text-base font-semibold">Report per E-Mail senden</h2>
+            <h2 className="text-base font-semibold">{t("results.email_modal_title")}</h2>
             <p className="text-sm text-muted-foreground">
-              Geben Sie die Empfängeradresse ein.
-              Der {emailModal === "pdf" ? "PDF-" : "HTML-"}Report wird generiert und direkt zugestellt.
+              {t("results.email_modal_subtitle")}{" "}
+              {t("results.email_modal_generating", { type: emailModal === "pdf" ? "PDF" : "HTML" })}
             </p>
 
             {sendFeedback ? (
               <div className="flex items-center gap-2 text-sm text-green-400">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                Report wurde an <strong>{sendFeedback}</strong> gesendet.
+                {t("results.email_sent_prefix")}<strong>{sendFeedback}</strong>{t("results.email_sent_suffix")}
               </div>
             ) : (
               <>
@@ -1887,7 +1887,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     onClick={() => { setEmailModal(null); setEmailInput(""); setSendError(null); }}
                     disabled={sending}
                   >
-                    Abbrechen
+                    {t("domain.aria_cancel")}
                   </Button>
                   <Button
                     size="sm"
@@ -1895,8 +1895,8 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     disabled={sending || !emailInput.trim()}
                   >
                     {sending
-                      ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Wird gesendet…</>
-                      : "Senden"}
+                      ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />{t("results.sending_loading")}</>
+                      : t("results.send_button")}
                   </Button>
                 </div>
               </>
@@ -1911,16 +1911,16 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
             <div className="flex items-center gap-2">
               <Share2 className="w-4 h-4" style={{ color: "#3b82f6" }} />
-              <h2 className="text-base font-semibold">Analyse teilen</h2>
+              <h2 className="text-base font-semibold">{t("results.share_modal_title")}</h2>
             </div>
 
             {!(report as unknown as Record<string, unknown>).logId ? (
               <p className="text-sm text-muted-foreground">
-                Diese Analyse wurde noch nicht im Protokoll gespeichert. Bitte exportieren Sie den Report zuerst als HTML.
+                {t("results.share_no_log")}
               </p>
             ) : shareResult ? (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Freigabe-Link wurde erstellt:</p>
+                <p className="text-sm text-muted-foreground">{t("results.share_link_created")}</p>
                 <div className="flex items-center gap-2 rounded-md border px-3 py-2" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted))" }}>
                   <span className="flex-1 text-xs font-mono truncate">{shareResult.shareUrl}</span>
                   <button
@@ -1930,26 +1930,26 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       setTimeout(() => setShareCopied(false), 2000);
                     }}
                     className="shrink-0 p-1 rounded hover:bg-muted transition-colors"
-                    title="Kopieren"
+                    title={t("results.copy_button_title")}
                   >
                     {shareCopied ? <Check className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Gültig bis {new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}.
-                  Verwalten Sie alle Freigaben unter <strong>Geteilte Analysen</strong>.
+                  {t("results.share_valid_until", { date: new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) })}{" "}
+                  {t("results.share_manage_prefix")}<strong>Geteilte Analysen</strong>{t("results.share_manage_suffix")}
                 </p>
                 <div className="flex justify-end">
-                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Schließen</Button>
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>{t("results.close_button")}</Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Erstellt einen öffentlichen Link zu diesem Analyse-Report.
+                  {t("results.share_create_description")}
                 </p>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Gültig für (Tage)</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t("results.share_expiry_label")}</label>
                   <input
                     type="number"
                     min={1}
@@ -1961,9 +1961,9 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   />
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>Abbrechen</Button>
+                  <Button size="sm" variant="outline" onClick={() => setShareModal(false)}>{t("domain.aria_cancel")}</Button>
                   <Button size="sm" onClick={() => void handleCreateShare()} disabled={shareCreating}>
-                    {shareCreating ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Erstelle…</> : "Link erstellen"}
+                    {shareCreating ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />{t("results.share_creating_loading")}</> : t("results.share_create_button")}
                   </Button>
                 </div>
               </div>
@@ -1986,10 +1986,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           <div className="md:col-span-2 overflow-hidden h-full"
             style={{ background: '#1e2235', borderRadius: '0.5rem' }}>
             <RadarDimensions dimensions={[
-              { label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" },
-              { label: "Schema.org", value: radarData[1].value, color: "#a855f7" },
-              { label: "Headings",   value: radarData[2].value, color: "#3b82f6" },
-              { label: "Inhalt",     value: radarData[3].value, color: "#22c55e" },
+              { label: t("results.chart_dim_technical"), value: radarData[0].value, color: "#ef4444" },
+              { label: t("results.chart_dim_schema"),    value: radarData[1].value, color: "#a855f7" },
+              { label: t("results.chart_dim_headings"),  value: radarData[2].value, color: "#3b82f6" },
+              { label: t("results.chart_dim_content"),   value: radarData[3].value, color: "#22c55e" },
               { label: "FAQ",        value: radarData[4].value, color: "#f59e0b" },
               { label: "LLM",        value: radarData[5].value, color: "#06b6d4" },
             ]} />

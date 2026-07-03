@@ -1,0 +1,40 @@
+Migrate the small handlers and the toolbar/header JSX body within ReportView in ErgebnisseView.tsx. useT() is already called at the top of ReportView — reuse it. Work ONLY on: handleModalSend, handleCreateShare (their string literals only), and the JSX return body from the start of `return (` up to (but NOT including) the `<Tabs defaultValue="details">` element. Do NOT touch handlePdfExport or handleHtmlExport's internals (separate, upcoming work). Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. handleModalSend error messages:
+   "Bitte geben Sie eine gültige E-Mail-Adresse ein." -> t("results.email_invalid")
+   "E-Mail konnte nicht gesendet werden. Bitte prüfen Sie die Mailserver-Einstellungen." -> t("results.email_send_failed")
+
+2. SPECIAL CASE — the four chart dimension labels ("Techn. SEO", "Schema.org", "Headings", "Inhalt") appear in THREE places in this file: (a) the `radarData` array construction (in the handlers area, e.g. `{ subject: "Techn. SEO", value: ... }`), (b) the JSX render body's radar-chart label array (e.g. `{ label: "Techn. SEO", value: radarData[0].value, color: "#ef4444" }`), and (c) inside handlePdfExport's SVG string builder (`{ label: "Techn. SEO", val: s.technSeo, color: "#ef4444" }` — DO NOT touch this third occurrence in this prompt, it's out of scope, reserved for the handlePdfExport work). For occurrences (a) and (b) ONLY, replace the four label strings with t() calls using ONE shared set of keys used consistently in both places:
+   "Techn. SEO" -> t("results.chart_dim_technical")
+   "Schema.org" -> t("results.chart_dim_schema")
+   "Headings" -> t("results.chart_dim_headings")
+   "Inhalt" -> t("results.chart_dim_content")
+   (Note: "subject" in radarData and "label" in the render-body array are different object keys holding the same four string values — migrate both consistently with the same 4 keys.)
+
+3. JSX render body — toolbar and headers:
+   `{report.url || "HTML-Upload"} · {report.crawledPages.length} Seiten` -> keep the dynamic parts (report.url, count) as-is, migrate the static parts: "HTML-Upload" -> t("results.html_upload_fallback"), and combine the "Seiten" suffix into a vars-based call if it reads more naturally that way, e.g. t("results.pages_suffix", { count: report.crawledPages.length }) with manifest "{count} Seiten" — OR keep report.url/count exactly as rendered today and only wrap "HTML-Upload"; use your judgement for minimal disruption, but "HTML-Upload" must not stay hardcoded.
+   `{exportingPdf ? "PDF wird erstellt…" : "Report als PDF exportieren"}` -> t("results.pdf_export_loading") / t("results.pdf_export_button")
+   `{exportingHtml ? "Bereite Export vor…" : "Report als HTML exportieren"}` -> t("results.html_export_loading") / t("results.html_export_button")
+
+4. The "Basisdaten ändern..." hint, containing embedded <strong> tags around "Domainanalyse" and "HTML-Analyse" — split into prefix/mid/suffix keys around the two <strong> elements (same technique used previously in ProgressView), preserving the exact surrounding text and arrow character.
+
+5. Email-send modal:
+   `Der {emailModal === "pdf" ? "PDF-" : "HTML-"}Report wird generiert und direkt zugestellt.` -> use vars: t("results.email_modal_generating", { type: emailModal === "pdf" ? "PDF" : "HTML" }), manifest "Der {type}-Report wird generiert und direkt zugestellt."
+   The send button's loading/idle text ("Senden" and whatever the loading-state label is — read the actual ternary) -> migrate both branches.
+
+6. Share modal:
+   "Kopieren" (button title attribute) -> t("results.copy_button_title")
+   "Verwalten Sie alle Freigaben unter <strong>Geteilte Analysen</strong>." -> split into prefix/suffix around the <strong>, same technique as item 4.
+   "Schließen" -> t("results.close_button") — CHECK FIRST if a "common.close"-style key already exists anywhere in labelDefaults.ts from earlier work; reuse it if so, otherwise create this one.
+   "Abbrechen" -> t("results.cancel_button") — same reuse check as above.
+
+Read the actual current code for any string literals not explicitly listed above but clearly hardcoded German UI text within this scope (e.g. share-modal labels, expiry-day options, loading states) and migrate them following the same conventions — the list above may not be 100% exhaustive given the modal's full contents.
+
+Do NOT turn into labels: report.url, crawledPages.length, dynamic share tokens/URLs, dates, scores, CSS/style values, test-ids, the four dimension VALUES (radarData[i].value), colors.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest. Check for existing reusable keys (e.g. generic close/cancel buttons) before creating new ones.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report's toolbar (PDF/HTML export buttons in both idle and loading states), the email-send modal, and the share modal (including creating a share link) all render identically in "de". Under EN, all migrated text falls back to German — never blank, never a raw key.
