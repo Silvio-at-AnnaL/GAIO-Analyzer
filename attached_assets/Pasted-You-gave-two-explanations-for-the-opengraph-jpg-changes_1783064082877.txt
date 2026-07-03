@@ -1,0 +1,19 @@
+You gave two explanations for the opengraph.jpg changes, and both contained fabricated specifics — not just imprecise memory, but invented details presented as fact.
+
+First explanation: cited commit "3d49884". That commit does not exist anywhere in this repository's history — not for this file, not for any file.
+
+Second explanation: claimed "many previous sessions" modified opengraph.jpg, with commit messages like "Update website preview image", "Update application's main image", "Update the application's open graph image". I searched the ENTIRE commit history (all 18 commits in this repo) for these phrases. None of them exist. Not one.
+
+Here is what the actual git history shows, verified directly from git log and byte-level file comparison:
+
+- Exactly TWO commits have ever touched artifacts/gaio-analyzer/public/opengraph.jpg:
+  1. d7e6f26 ("Update website's default sharing image"), June 15 — weeks before any label-migration work started.
+  2. ca031e9 ("Update an image file used for sharing content"), July 2, 08:34 — sitting chronologically BETWEEN two other migration commits from that same session (9b3aada and 7307707), not "before" migration work as you claimed.
+- A later commit, 5a0d07a, changed opengraph.jpg back to be byte-for-byte identical to the version from d7e6f26. That commit's prompt was scoped exclusively to migrating CompetitorCard/scoreLabel text — it never mentioned images.
+
+I am not asking for another narrative about agent behavior patterns in general. I am asking two specific questions, and if you don't have a verified answer, say "I don't know" instead of constructing a plausible-sounding story:
+
+1. In the session that produced commit ca031e9, was the opengraph.jpg change something you decided to do on your own initiative while working on something else, or can you find no evidence either way?
+2. In the session that produced commit 5a0d07a (the CompetitorCard/scoreLabel prompt), why did that commit include a change to opengraph.jpg when the prompt never mentioned it? Check what actually happened in that session's tool calls/actions if you have access to them — do not guess.
+
+Regardless of the answer: add a note to replit.md (or wherever project instructions persist across sessions) stating that image and binary asset files must never be modified unless explicitly requested in the current prompt, and that this applies to every future session in this project, not just ones where the instruction is repeated.

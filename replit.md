@@ -89,3 +89,7 @@ The Results view (`artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx`, LLM ta
 The HTML report export (`artifacts/gaio-analyzer/src/lib/report-export.ts`) accepts captured SVGs (donut, radar, bars) from `handleExport` in the view, inlines computed styles, and embeds them into a self-contained HTML file with print-friendly CSS and the new two-part LLM section.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## User Preferences
+
+**Image and binary asset files must never be modified unless the current prompt explicitly requests it.** This applies to every session without exception — the instruction does not need to be repeated in each prompt. Files covered include but are not limited to: `*.jpg`, `*.png`, `*.svg`, `*.ico`, `*.webp`, `*.gif`, `*.pdf`, and any other non-text asset. If a prompt is silent on images, treat all image/binary files as read-only.
