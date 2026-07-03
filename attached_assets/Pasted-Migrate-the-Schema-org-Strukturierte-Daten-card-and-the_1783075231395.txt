@@ -1,0 +1,16 @@
+Migrate the "Schema.org / Strukturierte Daten" card and the "Inhaltliche Relevanz" card within ReportView's "details" TabsContent in ErgebnisseView.tsx. useT() is already called at the top of ReportView — reuse it. Work ONLY on these two cards. This completes the "details" tab migration — do NOT touch anything else in the file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. Card title: "Schema.org / Strukturierte Daten" -> t("results.schema_title")
+2. "Erkannte Typen:" -> t("results.schema_detected_types_label")
+3. "Keine strukturierten Daten gefunden" -> t("results.schema_none_found")
+4. "Fehlende wichtige Typen:" -> t("results.schema_missing_types_label")
+5. Card title: "Inhaltliche Relevanz" -> t("results.content_relevance_title")
+
+Do NOT turn into labels: schemaOrg.detectedTypes and schemaOrg.missingHighValue values themselves (these are Schema.org vocabulary type names like "Organization", "Product", "FAQPage" — a fixed external technical specification, identical in every language, not UI text). Do NOT turn into labels: dim.name or any string inside dim.findings (these are AI-generated per-analysis content from an LLM call, not static UI labels — same category as competitor.findings, already correctly excluded elsewhere). Do NOT touch dim.score, the color logic, or the leading-dash-stripping regex on findings text.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report's Schema.org card (both the detected-types list and, if available, a report with missing high-value types) and Inhaltliche Relevanz card render identically in "de" — dimension names and findings text unchanged (still AI-generated German from that analysis). Under EN, the four static Schema.org strings and the "Inhaltliche Relevanz" title fall back to German; the AI-generated dimension names/findings remain in whatever language they were generated in (unaffected by the locale switch — this is expected, not a bug, per the Backend-i18n-Backlog).

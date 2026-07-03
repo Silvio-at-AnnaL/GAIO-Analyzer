@@ -2356,22 +2356,22 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
           {schemaOrg && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Schema.org / Strukturierte Daten</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.schema_title")}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1.5">Erkannte Typen:</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">{t("results.schema_detected_types_label")}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {((schemaOrg.detectedTypes as string[]) || []).length > 0
                       ? ((schemaOrg.detectedTypes as string[]) || []).map((t) => (
                           <Badge key={t} variant="secondary" className="font-mono text-xs">{t}</Badge>
                         ))
-                      : <span className="text-sm text-muted-foreground">Keine strukturierten Daten gefunden</span>
+                      : <span className="text-sm text-muted-foreground">{t("results.schema_none_found")}</span>
                     }
                   </div>
                 </div>
                 {((schemaOrg.missingHighValue as string[]) || []).length > 0 && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5">Fehlende wichtige Typen:</p>
+                    <p className="text-xs text-muted-foreground mb-1.5">{t("results.schema_missing_types_label")}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {((schemaOrg.missingHighValue as string[]) || []).map((t) => (
                         <Badge key={t} variant="destructive" className="font-mono text-xs">{t}</Badge>
@@ -2385,7 +2385,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
           {contentRelevance && (
             <Card>
-              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Inhaltliche Relevanz</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.content_relevance_title")}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {((contentRelevance.dimensions as Array<{ name: string; score: number; findings: string[] }>) || []).map((dim) => (
                   <div key={dim.name} className="space-y-2 pb-3 border-b border-border/30 last:border-0 last:pb-0">

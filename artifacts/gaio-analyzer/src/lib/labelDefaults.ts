@@ -395,4 +395,10 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.llms_linked_pages_count":    { group: "results", de: "{count} verlinkte Seiten" },
   "results.llms_has_description":       { group: "results", de: "\u2713 Beschreibung vorhanden" },
   "results.llms_no_description":        { group: "results", de: "\u2717 Keine Beschreibung" },
+
+  "results.schema_title":               { group: "results", de: "Schema.org / Strukturierte Daten" },
+  "results.schema_detected_types_label": { group: "results", de: "Erkannte Typen:" },
+  "results.schema_none_found":          { group: "results", de: "Keine strukturierten Daten gefunden" },
+  "results.schema_missing_types_label": { group: "results", de: "Fehlende wichtige Typen:" },
+  "results.content_relevance_title":    { group: "results", de: "Inhaltliche Relevanz" },
 };
