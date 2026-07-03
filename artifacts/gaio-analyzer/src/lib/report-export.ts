@@ -330,11 +330,20 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   }
 
   if (content) {
+    const dims = (content.dimensions as Array<{ name: string; score: number; findings: string[] }> | undefined) ?? [];
     html += `
     <h3>Inhaltliche Relevanz</h3>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((content.score as number) ?? 0)}">${content.score}/100</div></div>
-    </div>`;
+    </div>
+    ${dims.map((dim) => `
+    <div style="margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <span style="font-size:13px;font-weight:600;color:${C.text};">${esc(dim.name)}</span>
+        <span style="font-family:monospace;font-size:13px;font-weight:700;color:${scoreColor(dim.score * 10)};">${dim.score}/10</span>
+      </div>
+      ${dim.findings.length > 0 ? `<ul style="font-size:12px;color:${C.textSec};margin:4px 0;padding-left:16px;">${dim.findings.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+    </div>`).join("")}`;
   }
 
   if (faq) {

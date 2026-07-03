@@ -1,0 +1,16 @@
+In artifacts/gaio-analyzer/src/lib/report-export.ts, expand the "Inhaltliche Relevanz" block inside renderDetailsSection (currently only renders a score box, unlike its sibling sections which include real detail). Work ONLY on this one `if (content) { ... }` block. Do not touch any other section, do not touch any other file, do not publish.
+
+Current code:
+  if (content) {
+    html += `
+    <h3>Inhaltliche Relevanz</h3>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((content.score as number) ?? 0)}">${content.score}/100</div></div>
+    </div>`;
+  }
+
+The `content` object (report.contentRelevance) has the same shape used elsewhere in this app: `{ score: number, dimensions: Array<{ name: string; score: number; findings: string[] }> }`. Extend this block to also render each dimension, matching the structure and level of detail shown in the live app view (ErgebnisseView.tsx's "Inhaltliche Relevanz" card): for each dimension, its name, its score (out of 10, using scoreColor or similar for the number's color), and its findings as a bulleted list. Follow the HTML/CSS conventions already used elsewhere in this same file (e.g. how the "Heading-Struktur" block above renders its `issues` list with `<ul>`/`<li>` and `esc()`-escaped text, and how `detail-grid`/`detail-item` are used for score boxes).
+
+IMPORTANT: dimension names and findings are AI-generated per-analysis content (not static UI labels) — embed them as-is from the data, HTML-escaped via the existing `esc()` helper (used elsewhere in this file for the same reason), same as `issues.map((i) => `<li>${esc(i)}</li>`)` does for Heading-Struktur. Do not attempt to route them through any translation/label system.
+
+After the change: confirm TypeScript compiles. Generate an HTML export from a completed analysis and verify the "Inhaltliche Relevanz" section now shows the score plus all dimensions with their names, per-dimension scores, and findings bullets — matching what the same analysis shows in the live app view's "Details" tab.
