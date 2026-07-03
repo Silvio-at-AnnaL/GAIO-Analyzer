@@ -2096,10 +2096,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             const sitemapContent = technicalSeo.sitemapXmlContent as string | null;
             const llmsContent = technicalSeo.llmsTxtContent as string | null;
             const statusColor = (s: string) => s === "allowed" ? "text-green-600" : s === "disallowed" ? "text-red-600" : "text-muted-foreground";
-            const statusLabel = (s: string) => s === "allowed" ? "Erlaubt" : s === "disallowed" ? "Gesperrt" : "Nicht erwähnt";
+            const statusLabel = (s: string) => s === "allowed" ? t("results.status_allowed") : s === "disallowed" ? t("results.status_blocked") : t("results.status_not_mentioned");
             return (
               <Card>
-                <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technische Dateien</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.technical_files_title")}</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
 
                   {/* robots.txt */}
@@ -2107,18 +2107,18 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold">robots.txt</span>
                       <Badge variant={(technicalSeo.robotsTxt as boolean) ? "secondary" : "destructive"} className="font-mono text-xs">
-                        {(technicalSeo.robotsTxt as boolean) ? "gefunden" : "nicht gefunden"}
+                        {(technicalSeo.robotsTxt as boolean) ? t("results.status_found") : t("results.status_not_found")}
                       </Badge>
                     </div>
                     {robots ? (
                       <div className="space-y-3 pl-1">
                         {robots.siteBlockedAgents.length > 0 && (
                           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                            <strong>Kritisch:</strong> Komplette Sperrung (Disallow: /) für: {robots.siteBlockedAgents.join(", ")}
+                            <strong>{t("results.robots_blocked_prefix")}</strong> {t("results.robots_blocked_message", { agents: robots.siteBlockedAgents.join(", ") })}
                           </div>
                         )}
                         <div>
-                          <p className="text-xs text-muted-foreground mb-2 font-medium">LLM-Crawler Status</p>
+                          <p className="text-xs text-muted-foreground mb-2 font-medium">{t("results.robots_llm_crawler_status")}</p>
                           <div className="grid grid-cols-2 gap-x-6 gap-y-1">
                             {robots.llmCrawlers.map((c) => (
                               <div key={c.name} className="flex items-center justify-between text-xs py-0.5 border-b border-border/40 last:border-0">
@@ -2130,29 +2130,29 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                         </div>
                         {robots.crawlDelays.length > 0 && (
                           <div className="text-xs text-muted-foreground">
-                            <span className="font-medium">Crawl-Delay:</span> {robots.crawlDelays.map((d) => `${d.agent}: ${d.delay}s`).join(", ")}
+                            <span className="font-medium">{t("results.robots_crawl_delay_label")}</span> {robots.crawlDelays.map((d) => `${d.agent}: ${d.delay}s`).join(", ")}
                           </div>
                         )}
                         {robots.sitemapUrls.length > 0 && (
                           <div className="text-xs text-muted-foreground">
-                            <span className="font-medium">Sitemap-Referenzen:</span> {robots.sitemapUrls.join(", ")}
+                            <span className="font-medium">{t("results.robots_sitemap_refs_label")}</span> {robots.sitemapUrls.join(", ")}
                           </div>
                         )}
                         {robots.userAgents.length > 0 && (
                           <div className="text-xs text-muted-foreground">
-                            <span className="font-medium">Erwähnte User-Agents:</span> {robots.userAgents.join(", ")}
+                            <span className="font-medium">{t("results.robots_user_agents_label")}</span> {robots.userAgents.join(", ")}
                           </div>
                         )}
                         <p className="text-xs text-muted-foreground italic">{robots.summary}</p>
                         {robotsContent && !pdfMode && (
                           <details className="text-xs">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{t("results.raw_data_toggle")}</summary>
                             <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{robotsContent}</pre>
                           </details>
                         )}
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground pl-1">robots.txt wurde nicht gefunden oder ist nicht erreichbar.</p>
+                      <p className="text-xs text-muted-foreground pl-1">{t("results.robots_not_found")}</p>
                     )}
                   </div>
 
@@ -2165,47 +2165,47 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       const isXml = sType === "xml" || sType === "xml_index";
                       const isHtml = sType === "html";
                       const found = isXml || isHtml;
-                      const badgeLabel = sType === "xml" ? "XML" : sType === "xml_index" ? "XML-Index" : sType === "html" ? "HTML-Sitemap" : "nicht gefunden";
+                      const badgeLabel = sType === "xml" ? t("results.sitemap_badge_xml") : sType === "xml_index" ? t("results.sitemap_badge_xml_index") : sType === "html" ? t("results.sitemap_badge_html") : t("results.status_not_found");
                       return (
                         <>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm font-semibold">Sitemap</span>
+                            <span className="font-mono text-sm font-semibold">{t("results.metric_sitemap")}</span>
                             <Badge variant={found ? "secondary" : "destructive"} className="font-mono text-xs">{badgeLabel}</Badge>
                           </div>
                           {sitemap && isXml && (
                             <div className="space-y-3 pl-1">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div>
-                                  <p className="text-xs text-muted-foreground">URLs gesamt</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_urls_total")}</p>
                                   <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Typ</p>
-                                  <p className="text-sm font-bold">{sitemap.isSitemapIndex ? "Sitemap-Index" : "Einzelne Sitemap"}</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_type_label")}</p>
+                                  <p className="text-sm font-bold">{sitemap.isSitemapIndex ? t("results.sitemap_is_index") : t("results.sitemap_single")}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_crawl_coverage")}</p>
                                   <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Spezial-Typen</p>
-                                  <p className="text-sm font-bold">{[sitemap.hasImageSitemap && "Bild", sitemap.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_special_types")}</p>
+                                  <p className="text-sm font-bold">{[sitemap.hasImageSitemap && t("results.sitemap_type_image"), sitemap.hasVideoSitemap && t("results.sitemap_type_video")].filter(Boolean).join(", ") || "—"}</p>
                                 </div>
                                 {sitemap.oldestLastmod && (
                                   <div>
-                                    <p className="text-xs text-muted-foreground">Älteste Lastmod</p>
+                                    <p className="text-xs text-muted-foreground">{t("results.sitemap_oldest_lastmod")}</p>
                                     <p className="text-sm font-mono">{sitemap.oldestLastmod.slice(0, 10)}</p>
                                   </div>
                                 )}
                                 {sitemap.newestLastmod && (
                                   <div>
-                                    <p className="text-xs text-muted-foreground">Neueste Lastmod</p>
+                                    <p className="text-xs text-muted-foreground">{t("results.sitemap_newest_lastmod")}</p>
                                     <p className="text-sm font-mono">{sitemap.newestLastmod.slice(0, 10)}</p>
                                   </div>
                                 )}
                                 {Object.keys(sitemap.priorityDistribution).length > 0 && (
                                   <div className="col-span-2">
-                                    <p className="text-xs text-muted-foreground mb-1">Priority-Verteilung</p>
+                                    <p className="text-xs text-muted-foreground mb-1">{t("results.sitemap_priority_distribution")}</p>
                                     <div className="flex flex-wrap gap-1">
                                       {Object.entries(sitemap.priorityDistribution).sort(([a], [b]) => parseFloat(b) - parseFloat(a)).map(([val, count]) => (
                                         <Badge key={val} variant="outline" className="font-mono text-xs">{val} × {count}</Badge>
@@ -2217,7 +2217,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                               <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
                               {sitemapContent && !pdfMode && (
                                 <details className="text-xs">
-                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{t("results.raw_data_toggle")}</summary>
                                   <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
                                 </details>
                               )}
@@ -2228,25 +2228,25 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                 {sitemap.htmlSitemapUrl && (
                                   <div className="col-span-2 md:col-span-3">
-                                    <p className="text-xs text-muted-foreground">Gefunden unter</p>
+                                    <p className="text-xs text-muted-foreground">{t("results.sitemap_found_at")}</p>
                                     <p className="text-sm font-mono break-all">{sitemap.htmlSitemapUrl}</p>
                                   </div>
                                 )}
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Verlinkungen gesamt</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_links_total")}</p>
                                   <p className="text-sm font-bold font-mono">{sitemap.totalUrls}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Crawl-Abdeckung</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_crawl_coverage")}</p>
                                   <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Struktur-Sektionen</p>
+                                  <p className="text-xs text-muted-foreground">{t("results.sitemap_structure_sections")}</p>
                                   <p className="text-sm font-bold font-mono">{sitemap.htmlSections?.length ?? 0}</p>
                                 </div>
                                 {sitemap.htmlSections && sitemap.htmlSections.length > 0 && (
                                   <div className="col-span-2 md:col-span-3">
-                                    <p className="text-xs text-muted-foreground mb-1">Sektion-Überschriften</p>
+                                    <p className="text-xs text-muted-foreground mb-1">{t("results.sitemap_section_headings")}</p>
                                     <div className="flex flex-wrap gap-1">
                                       {sitemap.htmlSections.map((s, i) => (
                                         <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
@@ -2257,21 +2257,21 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                               </div>
                               <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
                               <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-                                HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine <span className="font-mono">/sitemap.xml</span>.
+                                {t("results.html_sitemap_warning_pre")}<span className="font-mono">/sitemap.xml</span>{t("results.html_sitemap_warning_post")}
                               </div>
                               {sitemapContent && !pdfMode && (
                                 <details className="text-xs">
-                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">HTML-Vorschau (erste 500 Zeichen)</summary>
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{t("results.html_preview_toggle")}</summary>
                                   <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{sitemapContent}</pre>
                                 </details>
                               )}
                             </div>
                           )}
                           {!sitemap && !found && (
-                            <p className="text-xs text-muted-foreground pl-1">Keine Sitemap gefunden (weder XML noch HTML).</p>
+                            <p className="text-xs text-muted-foreground pl-1">{t("results.sitemap_none_found")}</p>
                           )}
                           {!sitemap && found && (
-                            <p className="text-xs text-muted-foreground pl-1">Sitemap erkannt, aber keine Detailanalyse verfügbar.</p>
+                            <p className="text-xs text-muted-foreground pl-1">{t("results.sitemap_no_detail")}</p>
                           )}
                         </>
                       );
@@ -2285,13 +2285,13 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold">llms.txt</span>
                       <Badge variant={(technicalSeo.llmsTxt as boolean) ? "secondary" : "outline"} className="font-mono text-xs">
-                        {(technicalSeo.llmsTxt as boolean) ? "gefunden" : "nicht gefunden"}
+                        {(technicalSeo.llmsTxt as boolean) ? t("results.status_found") : t("results.status_not_found")}
                       </Badge>
                     </div>
                     {llms && !llms.present ? (
                       <div className="pl-1 space-y-2">
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                          <strong>Verpasste Chance:</strong> llms.txt ist ein aufkommender Standard, mit dem Website-Betreiber strukturierte Informationen speziell für LLM-Crawler bereitstellen — ähnlich wie robots.txt, aber mit inhaltlichem Fokus für KI-Systeme wie ChatGPT, Claude und Perplexity.
+                          <strong>{t("results.llms_missed_chance_label")}</strong> {t("results.llms_missed_chance_text")}
                         </div>
                         <p className="text-xs text-muted-foreground italic">{llms.summary}</p>
                       </div>
@@ -2299,19 +2299,19 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       <div className="space-y-3 pl-1">
                         {llms.title && (
                           <div>
-                            <p className="text-xs text-muted-foreground">Titel</p>
+                            <p className="text-xs text-muted-foreground">{t("results.llms_title_label")}</p>
                             <p className="text-sm font-semibold">{llms.title}</p>
                           </div>
                         )}
                         {llms.description && (
                           <div>
-                            <p className="text-xs text-muted-foreground">Beschreibung</p>
+                            <p className="text-xs text-muted-foreground">{t("results.llms_description_label")}</p>
                             <p className="text-sm">{llms.description}</p>
                           </div>
                         )}
                         {llms.sections.length > 0 && (
                           <div>
-                            <p className="text-xs text-muted-foreground mb-2 font-medium">Abschnitte ({llms.sections.length})</p>
+                            <p className="text-xs text-muted-foreground mb-2 font-medium">{t("results.llms_sections_heading", { count: llms.sections.length })}</p>
                             <div className="space-y-2">
                               {llms.sections.map((section, si) => (
                                 <div key={si} className="rounded-md border border-border/60 px-3 py-2">
@@ -2327,7 +2327,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                                       ))}
                                     </ul>
                                   ) : (
-                                    <p className="text-xs text-muted-foreground">Keine Links in diesem Abschnitt</p>
+                                    <p className="text-xs text-muted-foreground">{t("results.llms_no_links_in_section")}</p>
                                   )}
                                 </div>
                               ))}
@@ -2335,13 +2335,13 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                           </div>
                         )}
                         <div className="flex gap-4 text-xs text-muted-foreground">
-                          <span><span className="font-medium">{llms.linkedPageCount}</span> verlinkte Seiten</span>
-                          <span>{llms.hasDescription ? "✓ Beschreibung vorhanden" : "✗ Keine Beschreibung"}</span>
+                          <span>{t("results.llms_linked_pages_count", { count: llms.linkedPageCount })}</span>
+                          <span>{llms.hasDescription ? t("results.llms_has_description") : t("results.llms_no_description")}</span>
                         </div>
                         <p className="text-xs text-muted-foreground italic">{llms.summary}</p>
                         {llmsContent && !pdfMode && (
                           <details className="text-xs">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Rohdaten anzeigen (erste 500 Zeichen)</summary>
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{t("results.raw_data_toggle")}</summary>
                             <pre className="mt-2 rounded-md bg-muted p-3 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{llmsContent}</pre>
                           </details>
                         )}

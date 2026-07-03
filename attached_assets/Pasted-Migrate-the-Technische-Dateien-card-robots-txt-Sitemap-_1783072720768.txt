@@ -1,0 +1,58 @@
+Migrate the "Technische Dateien" card (robots.txt / Sitemap / llms.txt sections) within ReportView's "details" TabsContent in ErgebnisseView.tsx. useT() is already called at the top of ReportView — reuse it. Work ONLY on this one card (the block starting at the "Technische Dateien" CardTitle and ending at its closing </Card>, containing the robots.txt, Sitemap, and llms.txt sub-sections plus the module-scope-safe statusLabel closure inside it). Do NOT touch the "Technische SEO-Metriken" or "Technische Details" cards (already migrated), the "Schema.org" or "Inhaltliche Relevanz" cards (separate, upcoming chunk), or anything else. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. Card title: "Technische Dateien" -> t("results.technical_files_title")
+
+2. The `statusLabel` function is a local closure INSIDE this component's render (not module-scope — it's fine to call t() there since it's nested inside ReportView, which already has `const t = useT()` in scope). Convert it to use t() directly instead of returning hardcoded strings:
+   "Erlaubt" -> t("results.status_allowed")
+   "Gesperrt" -> t("results.status_blocked")
+   "Nicht erwähnt" -> t("results.status_not_mentioned")
+
+3. robots.txt section:
+   - Badge text ternary: "gefunden" -> t("results.status_found"), "nicht gefunden" -> t("results.status_not_found")  (NOTE: reuse these same two keys for the llms.txt badge in step 5 — do not duplicate)
+   - "LLM-Crawler Status" -> t("results.robots_llm_crawler_status")
+   - Critical-block message, currently `<strong>Kritisch:</strong> Komplette Sperrung (Disallow: /) für: {robots.siteBlockedAgents.join(", ")}` — keep "Kritisch:" and the join() as-is structurally (the <strong> wrapper and the dynamic agent list stay outside the translatable string), but migrate the surrounding text: t("results.robots_blocked_prefix") for "Kritisch:" and t("results.robots_blocked_message", { agents: robots.siteBlockedAgents.join(", ") }) for "Komplette Sperrung (Disallow: /) für: {agents}"
+   - "Crawl-Delay:" label -> t("results.robots_crawl_delay_label"); the value part `{robots.crawlDelays.map((d) => \`${d.agent}: ${d.delay}s\`).join(", ")}` stays as-is (pure data formatting, not translatable text)
+   - "Sitemap-Referenzen:" -> t("results.robots_sitemap_refs_label")
+   - "Erwähnte User-Agents:" -> t("results.robots_user_agents_label")
+   - "Rohdaten anzeigen (erste 500 Zeichen)" (appears 3 times total across robots/sitemap/llms sections — use ONE shared key for all occurrences) -> t("results.raw_data_toggle")
+   - "robots.txt wurde nicht gefunden oder ist nicht erreichbar." -> t("results.robots_not_found")
+
+4. Sitemap section:
+   - "Sitemap" label (the `<span className="font-mono...">Sitemap</span>` heading, NOT the metrics-grid one from the previous chunk — this is a separate occurrence) -> t("results.metric_sitemap") (REUSE the existing key from the previous chunk, do not create a duplicate)
+   - badgeLabel values: "XML" -> t("results.sitemap_badge_xml"), "XML-Index" -> t("results.sitemap_badge_xml_index"), "HTML-Sitemap" -> t("results.sitemap_badge_html"), "nicht gefunden" -> reuse t("results.status_not_found") from step 3
+   - "URLs gesamt" -> t("results.sitemap_urls_total")
+   - "Typ" -> t("results.sitemap_type_label")
+   - "Sitemap-Index" / "Einzelne Sitemap" ternary -> t("results.sitemap_is_index") / t("results.sitemap_single")
+   - "Crawl-Abdeckung" (appears twice, XML and HTML variants — shared key) -> t("results.sitemap_crawl_coverage")
+   - "Spezial-Typen" -> t("results.sitemap_special_types")
+   - "Bild" / "Video" (inside the special-types filter) -> t("results.sitemap_type_image") / t("results.sitemap_type_video")
+   - "Älteste Lastmod" -> t("results.sitemap_oldest_lastmod")
+   - "Neueste Lastmod" -> t("results.sitemap_newest_lastmod")
+   - "Priority-Verteilung" -> t("results.sitemap_priority_distribution")
+   - "Gefunden unter" -> t("results.sitemap_found_at")
+   - "Verlinkungen gesamt" -> t("results.sitemap_links_total")
+   - "Struktur-Sektionen" -> t("results.sitemap_structure_sections")
+   - "Sektion-Überschriften" -> t("results.sitemap_section_headings")
+   - The HTML-sitemap warning box — contains an embedded styled <span>: `HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine <span className="font-mono">/sitemap.xml</span>.` — split into a prefix and suffix key around the styled span (same technique used previously in ProgressView for embedded emphasis): t("results.html_sitemap_warning_pre") = "HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine " and t("results.html_sitemap_warning_post") = "." — keep the <span className="font-mono">/sitemap.xml</span> exactly as-is between them (it's a technical filename, not translatable).
+   - "HTML-Vorschau (erste 500 Zeichen)" -> t("results.html_preview_toggle")
+   - "Keine Sitemap gefunden (weder XML noch HTML)." -> t("results.sitemap_none_found")
+   - "Sitemap erkannt, aber keine Detailanalyse verfügbar." -> t("results.sitemap_no_detail")
+
+5. llms.txt section:
+   - "gefunden" / "nicht gefunden" badge -> reuse t("results.status_found") / t("results.status_not_found") from step 3
+   - The amber "Verpasste Chance:" box: split into t("results.llms_missed_chance_label") = "Verpasste Chance:" and t("results.llms_missed_chance_text") = "llms.txt ist ein aufkommender Standard, mit dem Website-Betreiber strukturierte Informationen speziell für LLM-Crawler bereitstellen — ähnlich wie robots.txt, aber mit inhaltlichem Fokus für KI-Systeme wie ChatGPT, Claude und Perplexity." (keep the <strong> wrapper structure as-is, just wrap each text part in t())
+   - "Titel" -> t("results.llms_title_label")
+   - "Beschreibung" -> t("results.llms_description_label")
+   - "Abschnitte ({llms.sections.length})" -> t("results.llms_sections_heading", { count: llms.sections.length })
+   - "Keine Links in diesem Abschnitt" -> t("results.llms_no_links_in_section")
+   - "{llms.linkedPageCount} verlinkte Seiten" — currently the count is in a separate bold <span>, followed by plain text "verlinkte Seiten". Combine into a single interpolated call (accepting the minor style simplification of no longer bolding only the number): t("results.llms_linked_pages_count", { count: llms.linkedPageCount }), manifest "{count} verlinkte Seiten" — remove the now-redundant inner <span className="font-medium"> wrapper, or keep the outer <span> wrapping the whole t() result if you prefer consistent spacing, whichever keeps the surrounding layout closest to identical.
+   - "✓ Beschreibung vorhanden" / "✗ Keine Beschreibung" ternary -> t("results.llms_has_description") / t("results.llms_no_description")
+
+Do NOT turn into labels: robots.llmCrawlers c.name values (dynamic crawler names from data), robots.summary/sitemap.summary/llms.summary (dynamic AI/analyzer-generated summary text, not static UI labels), robotsContent/sitemapContent/llmsContent (raw fetched file content), URLs, counts/numbers themselves outside the vars shown above, section.name/link.title/link.description/link.url (dynamic content from the analyzed site), CSS/style values, the /sitemap.xml filename span.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts: "results.<name>": { group: "results", de: "<exact original German text>" }. Do not translate to other languages — only the German source goes in the manifest. Before adding a key, check whether it should reuse an EXISTING key per the reuse notes above — do not create duplicate keys for text that already has one.
+
+After the change: confirm TS compiles and the dev server starts. Verify a completed report's "Technische Dateien" card renders identically in "de" — ideally test with a report where robots.txt has a critical block, one where sitemap is XML type, and one with llms.txt present (all three states may not appear in a single report; check what's available). Under EN, all migrated text falls back to German — never blank, never a raw key.
