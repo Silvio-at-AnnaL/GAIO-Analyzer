@@ -1,0 +1,39 @@
+Complete the migration of ErgebnisseView.tsx — these are the last remaining hardcoded German strings in this file. Work ONLY on the six locations listed below. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+ReportView already calls useT() — reuse it for items 1-5.
+
+1. Loading state (~line 785): `<div className="text-muted-foreground text-sm">Lade Bericht…</div>`
+   -> t("results.loading_report"), manifest: { group: "results", de: "Lade Bericht…" }
+
+2. Error thrown inside handlePdfExport (~line 1024): `throw new Error(\`Keine Tab-Panels gefunden. Selektor: ${PANEL_SELECTOR}\`)`
+   This message IS user-visible — it reaches the user through the catch block that renders t("results.pdf_export_failed_prefix") + err.message.
+   -> throw new Error(t("results.pdf_no_panels_error", { selector: PANEL_SELECTOR }))
+   -> manifest: "results.pdf_no_panels_error": { group: "results", de: "Keine Tab-Panels gefunden. Selektor: {selector}" }
+
+3. PDF progress overlay (~line 1049): inside the `overlay.innerHTML = \`...\`` template literal there is `<span>PDF wird erstellt…</span>`.
+   REUSE the existing key — do NOT create a new one: replace the literal text with `${t("results.pdf_export_loading")}` (the existing manifest entry already reads "PDF wird erstellt…", identical text, used for the toolbar button).
+
+4. Email input placeholder (~line 1863): `placeholder="empfaenger@unternehmen.de"`
+   -> placeholder={t("results.email_placeholder")}, manifest: { group: "results", de: "empfaenger@unternehmen.de" }
+
+5. Errors card title (~line 2593): `<CardTitle ...>Hinweise &amp; Fehler</CardTitle>`
+   -> t("results.errors_card_title"), manifest: { group: "results", de: "Hinweise & Fehler" }
+   (Note: the source uses the HTML entity &amp; — the manifest value must contain a literal & character.)
+
+6. SPECIAL CASE — the outer ErgebnisseView component (~line 2604, `export function ErgebnisseView()`) does NOT yet call useT(). Add `const t = useT();` at the top of that component (unconditional, before the `if (!analysisId ...)` early return — Rules of Hooks), then migrate its empty state:
+   - "Noch keine Analyse durchgeführt." -> t("results.empty_no_analysis")
+   - `Starten Sie unter <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.` — this sentence has TWO embedded <strong> elements. Split into three text parts around them, same technique used previously in ProgressView:
+       t("results.empty_start_pre")   = "Starten Sie unter "
+       <strong>{t("results.empty_link_domain")}</strong>   with manifest de: "Domainanalyse"
+       t("results.empty_start_mid")   = " oder "
+       <strong>{t("nav.html_analyse")}</strong>   <- REUSE this existing nav key, its value is already exactly "HTML-Analyse", do NOT create a duplicate
+       t("results.empty_start_post")  = "."
+     IMPORTANT: do NOT reuse nav.domain_analyse for "Domainanalyse" — that key's value is "Domainanalyse – Basisdaten", which would change the visible sentence. Create the separate results.empty_link_domain key as specified.
+   - Preserve the exact spacing so the rendered sentence is character-for-character identical to today.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify: the results page shows the empty state identically in "de" when no analysis has run; a completed report renders identically including the errors card (if the report has errors); the email modal's input placeholder is unchanged; and the PDF export still shows its progress overlay. Under EN, all migrated text falls back to German — never blank, never a raw key.

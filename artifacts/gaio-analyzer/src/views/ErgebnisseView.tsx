@@ -782,7 +782,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
     })();
   }, [report?.status]);
 
-  if (!report) return <div className="text-muted-foreground text-sm">Lade Bericht…</div>;
+  if (!report) return <div className="text-muted-foreground text-sm">{t("results.loading_report")}</div>;
 
   // ── Send report by email (public endpoint, no auth needed) ───────────────────
   const sendReportByEmail = async (
@@ -1021,7 +1021,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       const panels = Array.from(document.querySelectorAll<HTMLElement>(PANEL_SELECTOR));
       console.log("Panels found:", panels.length, "selector:", PANEL_SELECTOR);
       if (!panels || panels.length === 0) {
-        throw new Error(`Keine Tab-Panels gefunden. Selektor: ${PANEL_SELECTOR}`);
+        throw new Error(t("results.pdf_no_panels_error", { selector: PANEL_SELECTOR }));
       }
 
       // ── Full-screen overlay so the user sees a clean loading screen ──────────
@@ -1046,7 +1046,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
         </svg>
         <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-        <span>PDF wird erstellt…</span>
+        <span>${t("results.pdf_export_loading")}</span>
       `;
       document.body.appendChild(overlay);
 
@@ -1860,7 +1860,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   value={emailInput}
                   onChange={(e) => { setEmailInput(e.target.value); setSendError(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !sending) void handleModalSend(); }}
-                  placeholder="empfaenger@unternehmen.de"
+                  placeholder={t("results.email_placeholder")}
                   disabled={sending}
                   autoFocus
                   className="w-full px-3 py-2 rounded-md text-sm border outline-none focus:ring-1"
@@ -2590,7 +2590,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       {report.errors.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-xs font-semibold text-destructive uppercase tracking-wider">Hinweise &amp; Fehler</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-xs font-semibold text-destructive uppercase tracking-wider">{t("results.errors_card_title")}</CardTitle></CardHeader>
           <CardContent>
             <ul className="text-sm text-muted-foreground space-y-0.5">
               {report.errors.map((e, i) => <li key={i}>– {e}</li>)}
@@ -2603,6 +2603,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 }
 
 export function ErgebnisseView() {
+  const t = useT();
   const { analysisId, analysisStatus, setAnalysisStatus } = useAppStore();
 
   if (!analysisId || analysisStatus === "idle") {
@@ -2612,8 +2613,8 @@ export function ErgebnisseView() {
           <BarChart3Placeholder />
         </div>
         <div>
-          <p className="text-base font-medium text-muted-foreground">Noch keine Analyse durchgeführt.</p>
-          <p className="text-sm text-muted-foreground mt-1">Starten Sie unter <strong>Domainanalyse</strong> oder <strong>HTML-Analyse</strong>.</p>
+          <p className="text-base font-medium text-muted-foreground">{t("results.empty_no_analysis")}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("results.empty_start_pre")}<strong>{t("results.empty_link_domain")}</strong>{t("results.empty_start_mid")}<strong>{t("nav.html_analyse")}</strong>{t("results.empty_start_post")}</p>
         </div>
       </div>
     );

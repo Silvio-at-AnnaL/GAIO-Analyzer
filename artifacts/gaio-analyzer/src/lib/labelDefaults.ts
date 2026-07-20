@@ -441,4 +441,13 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.pdf_page_export_failed":    { group: "results", de: "Seite konnte nicht exportiert werden" },
   "results.pdf_export_failed_prefix":  { group: "results", de: "PDF-Export fehlgeschlagen: " },
   "results.pdf_footer_export_date_prefix": { group: "results", de: "/GAIO-Analyzer \u00B7 Exportiert am " },
+  "results.loading_report":               { group: "results", de: "Lade Bericht\u2026" },
+  "results.pdf_no_panels_error":          { group: "results", de: "Keine Tab-Panels gefunden. Selektor: {selector}" },
+  "results.email_placeholder":            { group: "results", de: "empfaenger@unternehmen.de" },
+  "results.errors_card_title":            { group: "results", de: "Hinweise & Fehler" },
+  "results.empty_no_analysis":            { group: "results", de: "Noch keine Analyse durchgef\u00FChrt." },
+  "results.empty_start_pre":              { group: "results", de: "Starten Sie unter " },
+  "results.empty_link_domain":            { group: "results", de: "Domainanalyse" },
+  "results.empty_start_mid":              { group: "results", de: " oder " },
+  "results.empty_start_post":             { group: "results", de: "." },
 };
