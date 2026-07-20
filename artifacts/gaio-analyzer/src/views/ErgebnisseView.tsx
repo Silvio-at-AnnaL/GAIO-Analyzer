@@ -817,7 +817,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as { error?: string };
-      throw new Error(err.error ?? "Sendefehler");
+      throw new Error(err.error ?? t("results.email_send_error_fallback"));
     }
   };
 
@@ -904,11 +904,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
   };
 
   const technicalBarData = technicalSeo ? [
-    { name: "Meta-Titel", value: Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, report.crawledPages.length)) * 100) },
-    { name: "Meta-Beschr.", value: Math.round(((technicalSeo.metaDescriptions as Record<string, number>)?.present / Math.max(1, report.crawledPages.length)) * 100) },
-    { name: "Alt-Texte", value: (technicalSeo.imageAltCoverage as number) ?? 0 },
-    { name: "HTTPS", value: (technicalSeo.httpsEnforced as boolean) ? 100 : 0 },
-    { name: "Viewport", value: (technicalSeo.mobileViewport as boolean) ? 100 : 0 },
+    { name: t("results.chart_meta_title"), value: Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, report.crawledPages.length)) * 100) },
+    { name: t("results.chart_meta_desc"), value: Math.round(((technicalSeo.metaDescriptions as Record<string, number>)?.present / Math.max(1, report.crawledPages.length)) * 100) },
+    { name: t("results.chart_alt_texts"), value: (technicalSeo.imageAltCoverage as number) ?? 0 },
+    { name: t("results.metric_https"), value: (technicalSeo.httpsEnforced as boolean) ? 100 : 0 },
+    { name: t("results.metric_viewport"), value: (technicalSeo.mobileViewport as boolean) ? 100 : 0 },
   ] : [];
 
   const criticalRecs = recommendations.filter((r) => r.tier === "critical");
@@ -921,7 +921,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const llmPartB = (llmDiscoverability?.partB as LlmPart | undefined);
   const llmAvgRating = (llmDiscoverability?.avgRating as number | undefined) ?? 0;
 
-  const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return "Ihre Seite"; } })() : "Ihre Seite";
+  const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return t("results.chart_your_site"); } })() : t("results.chart_your_site");
 
   const competitorChartData = competitorComparison ? [
     { name: myDomain, compositeScore: report.overallScore ?? 0, isMain: true },

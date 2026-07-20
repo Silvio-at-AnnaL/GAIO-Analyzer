@@ -450,4 +450,9 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.empty_link_domain":            { group: "results", de: "Domainanalyse" },
   "results.empty_start_mid":              { group: "results", de: " oder " },
   "results.empty_start_post":             { group: "results", de: "." },
+  "results.chart_meta_title":             { group: "results", de: "Meta-Titel" },
+  "results.chart_meta_desc":              { group: "results", de: "Meta-Beschr." },
+  "results.chart_alt_texts":              { group: "results", de: "Alt-Texte" },
+  "results.chart_your_site":              { group: "results", de: "Ihre Seite" },
+  "results.email_send_error_fallback":    { group: "results", de: "Sendefehler" },
 };

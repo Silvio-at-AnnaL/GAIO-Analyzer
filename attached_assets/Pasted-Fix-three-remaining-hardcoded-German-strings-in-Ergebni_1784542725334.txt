@@ -1,0 +1,28 @@
+Fix three remaining hardcoded German strings in ErgebnisseView.tsx that were missed in earlier passes. ReportView already calls useT() — all three locations are inside ReportView, so reuse it. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+View file:     artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+Key namespace: "results"
+
+1. technicalBarData array (~line 906) — the `name` fields are the visible Y-axis labels of the "Technische SEO-Metriken" bar chart (an earlier prompt wrongly excluded this array from migration). Migrate all five, REUSING existing keys where the text is identical:
+   { name: "Meta-Titel", ... }    -> name: t("results.chart_meta_title")     [NEW key, de: "Meta-Titel"]
+   { name: "Meta-Beschr.", ... }  -> name: t("results.chart_meta_desc")      [NEW key, de: "Meta-Beschr."]
+   { name: "Alt-Texte", ... }     -> name: t("results.chart_alt_texts")      [NEW key, de: "Alt-Texte"]
+       (NOTE: do NOT reuse results.metric_alt_text — its value is "Alt-Text" singular, this chart label is "Alt-Texte" plural; they must stay distinct)
+   { name: "HTTPS", ... }         -> name: t("results.metric_https")         [REUSE existing key, identical text]
+   { name: "Viewport", ... }      -> name: t("results.metric_viewport")      [REUSE existing key, identical text]
+   Do NOT touch the `value:` expressions in this array — those are computed numbers.
+
+2. myDomain fallback (~line 924): `const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return "Ihre Seite"; } })() : "Ihre Seite";`
+   Both occurrences of "Ihre Seite" are the visible series label in the competitor comparison chart when no URL is available (HTML-upload mode). Replace BOTH with t("results.chart_your_site").
+   -> manifest: "results.chart_your_site": { group: "results", de: "Ihre Seite" }
+   Keep the URL-parsing logic itself unchanged — only the two fallback string literals change.
+
+3. Email send error fallback (~line 820): `throw new Error(err.error ?? "Sendefehler");`
+   This IS user-visible: when sendReportByEmail is called from within handlePdfExport/handleHtmlExport, the thrown message is surfaced via setExportError(t("results.pdf_export_failed_prefix") + err.message).
+   Replace ONLY the hardcoded fallback: `throw new Error(err.error ?? t("results.email_send_error_fallback"));`
+   -> manifest: "results.email_send_error_fallback": { group: "results", de: "Sendefehler" }
+   Do NOT touch `err.error` — that is the server-provided message and must keep priority.
+
+For each new key add an entry to artifacts/gaio-analyzer/src/lib/labelDefaults.ts. Do not translate to other languages — only the German source goes in the manifest.
+
+After the change: confirm TS compiles and the dev server starts. Verify on a completed report that the "Technische SEO-Metriken" bar chart still shows all five axis labels identically in "de", and that the competitor comparison chart still shows the correct domain name (or "Ihre Seite" for an HTML-upload analysis). Under EN, all migrated text falls back to German — never blank, never a raw key.
