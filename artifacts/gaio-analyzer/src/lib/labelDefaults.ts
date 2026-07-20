@@ -455,4 +455,5 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.chart_alt_texts":              { group: "results", de: "Alt-Texte" },
   "results.chart_your_site":              { group: "results", de: "Ihre Seite" },
   "results.email_send_error_fallback":    { group: "results", de: "Sendefehler" },
+  "results.pdf_no_valid_pages_error":     { group: "results", de: "Keine Seiten konnten gerendert werden. Alle {count} Panels haben leere Canvas." },
 };

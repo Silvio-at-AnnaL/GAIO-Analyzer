@@ -1611,9 +1611,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         (p) => p.imgData && p.mmW > 0 && p.mmH > 0
       );
       if (validPages.length === 0) {
-        throw new Error(
-          `Keine Seiten konnten gerendert werden. Alle ${pages.length} Panels haben leere Canvas.`
-        );
+        throw new Error(t("results.pdf_no_valid_pages_error", { count: pages.length }));
       }
 
       // Build file name using shared helpers.
