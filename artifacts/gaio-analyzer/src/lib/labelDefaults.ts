@@ -613,6 +613,8 @@ export const labelDefaults: Record<string, LabelDef> = {
   "texts.saved_msg":        { group: "texts", de: "Gespeichert" },
   "texts.override_removed": { group: "texts", de: "Override entfernt" },
   "texts.reset_error":      { group: "texts", de: "Fehler beim Zur\u00FCcksetzen" },
+  "texts.override_active":  { group: "texts", de: "Override aktiv" },
+  "texts.editor_placeholder": { group: "texts", de: "\u00DCbersetzung / Override auf {locale} eingeben\u2026" },
 
   "prompts.loading":            { group: "prompts", de: "L\u00E4dt\u2026" },
   "prompts.empty_hint":         { group: "prompts", de: "W\u00E4hlen Sie einen Prompt aus der linken Liste" },
@@ -622,4 +624,6 @@ export const labelDefaults: Record<string, LabelDef> = {
   "prompts.placeholders_label": { group: "prompts", de: "Verf\u00FCgbare Platzhalter" },
   "prompts.reset_title":        { group: "prompts", de: "Auf Standard zur\u00FCcksetzen" },
   "prompts.reset_done":         { group: "prompts", de: "Auf Standard zur\u00FCckgesetzt" },
+  "prompts.modified_count":     { group: "prompts", de: "{modified} von {total} angepasst" },
+  "prompts.char_count":         { group: "prompts", de: "{count} Zeichen" },
 };

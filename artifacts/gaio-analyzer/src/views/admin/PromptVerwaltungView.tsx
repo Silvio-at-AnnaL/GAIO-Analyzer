@@ -130,7 +130,7 @@ export function PromptVerwaltungView() {
             {t("nav.admin_prompt_verwaltung")}
           </h2>
           <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {prompts.filter((p) => p.isModified).length} von {prompts.length} angepasst
+            {t("prompts.modified_count", { modified: prompts.filter((p) => p.isModified).length, total: prompts.length })}
           </p>
         </div>
         <div className="py-2">
@@ -306,9 +306,9 @@ export function PromptVerwaltungView() {
                   {t("prompts.template_label")}
                 </span>
                 <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  {editorValue.length.toLocaleString()} Zeichen
+                  {t("prompts.char_count", { count: editorValue.length.toLocaleString() })}
                   {isDirty && (
-                    <span style={{ color: "hsl(var(--chart-4))" }}> · Nicht gespeichert</span>
+                    <span style={{ color: "hsl(var(--chart-4))" }}> · {t("texts.unsaved")}</span>
                   )}
                 </span>
               </div>

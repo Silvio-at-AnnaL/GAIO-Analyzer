@@ -1,0 +1,45 @@
+Fix five remaining hardcoded German strings in two already-migrated files. Both components already call useT() — reuse the existing `t`. Work ONLY on these five locations. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+=== A) artifacts/gaio-analyzer/src/views/admin/TextverwaltungView.tsx ===
+
+A1. ~line 307: `<span style={{ marginLeft: 8, color: "hsl(var(--chart-4))" }}>· Override aktiv</span>`
+    Keep the "·" bullet as a literal (it is punctuation), migrate only the words:
+        <span style={{ marginLeft: 8, color: "hsl(var(--chart-4))" }}>· {t("texts.override_active")}</span>
+    -> manifest: "texts.override_active": { group: "texts", de: "Override aktiv" }
+    Note the source has NO space between "·" and "Override"; adding one space as shown is required
+    because JSX would otherwise swallow it — verify the rendered result still reads "· Override aktiv".
+
+A2. ~line 390: `placeholder={\`Übersetzung / Override auf ${locale.toUpperCase()} eingeben…\`}`
+    -> placeholder={t("texts.editor_placeholder", { locale: locale.toUpperCase() })}
+    -> manifest: "texts.editor_placeholder": { group: "texts", de: "Übersetzung / Override auf {locale} eingeben…" }
+    Keep the locale.toUpperCase() call itself unchanged.
+
+=== B) artifacts/gaio-analyzer/src/views/admin/PromptVerwaltungView.tsx ===
+
+B1. ~line 133: `{prompts.filter((p) => p.isModified).length} von {prompts.length} angepasst`
+    This is one sentence split across two expressions. Replace the whole thing with a single
+    interpolated label:
+        {t("prompts.modified_count", { modified: prompts.filter((p) => p.isModified).length, total: prompts.length })}
+    -> manifest: "prompts.modified_count": { group: "prompts", de: "{modified} von {total} angepasst" }
+    Keep the filter expression itself unchanged.
+
+B2. ~line 309: `{editorValue.length.toLocaleString()} Zeichen`
+    -> {t("prompts.char_count", { count: editorValue.length.toLocaleString() })}
+    -> manifest: "prompts.char_count": { group: "prompts", de: "{count} Zeichen" }
+    Leave the .toLocaleString() call as-is.
+
+B3. ~line 311: `<span style={{ color: "hsl(var(--chart-4))" }}> · Nicht gespeichert</span>`
+    REUSE the existing key — the words are identical to texts.unsaved:
+        <span style={{ color: "hsl(var(--chart-4))" }}> · {t("texts.unsaved")}</span>
+    Keep the leading space and the "·" bullet as literals. Do NOT create a new key.
+
+=== Manifest ===
+Add the four NEW keys (texts.override_active, texts.editor_placeholder, prompts.modified_count,
+prompts.char_count) to artifacts/gaio-analyzer/src/lib/labelDefaults.ts in their respective groups,
+escaping special characters (ä, ö, ü, ß, …) the same way existing entries do.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": in Textverwaltung, an
+entry with an override shows "· Override aktiv" with correct spacing and the editor placeholder shows
+the current locale code; in Prompt-Verwaltung, the header shows "N von M angepasst" with correct
+numbers, and editing a prompt shows the character count plus "· Nicht gespeichert". Under EN, everything
+falls back to German — never blank, never a raw key.

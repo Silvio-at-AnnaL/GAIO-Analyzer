@@ -304,7 +304,7 @@ export function TextverwaltungView() {
                     <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
                       {t("texts.lang_label")} <strong>{locale.toUpperCase()}</strong>
                       {hasOverride && (
-                        <span style={{ marginLeft: 8, color: "hsl(var(--chart-4))" }}>· Override aktiv</span>
+                        <span style={{ marginLeft: 8, color: "hsl(var(--chart-4))" }}>· {t("texts.override_active")}</span>
                       )}
                     </p>
                   </div>
@@ -387,7 +387,7 @@ export function TextverwaltungView() {
                 <textarea
                   value={editorValue}
                   onChange={(e) => setEditorValue(e.target.value)}
-                  placeholder={`Übersetzung / Override auf ${locale.toUpperCase()} eingeben…`}
+                  placeholder={t("texts.editor_placeholder", { locale: locale.toUpperCase() })}
                   spellCheck={false}
                   className="flex-1 resize-none p-4 text-sm focus:outline-none"
                   style={{
