@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, Send, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Database, Info } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 // ── Mail settings ─────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ interface MailSettings {
 type EncryptionMode = "starttls" | "ssl" | "none";
 
 const encryptionOptions: { value: EncryptionMode; label: string; port: string; secure: string }[] = [
-  { value: "starttls", label: "STARTTLS (587)", port: "587", secure: "false" },
-  { value: "ssl",      label: "SSL/TLS (465)",  port: "465", secure: "true"  },
-  { value: "none",     label: "Keine (25)",      port: "25",  secure: "false" },
+  { value: "starttls", label: "mail.enc_starttls", port: "587", secure: "false" },
+  { value: "ssl",      label: "mail.enc_ssl",      port: "465", secure: "true"  },
+  { value: "none",     label: "mail.enc_none",     port: "25",  secure: "false" },
 ];
 
 function encryptionFromSettings(port: string, secure: string): EncryptionMode {
@@ -39,6 +40,7 @@ interface DbStatus {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function MailserverView() {
+  const t = useT();
   // ── Mail state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState<MailSettings>({
     mail_host: "", mail_port: "587", mail_secure: "false",
@@ -102,11 +104,11 @@ export function MailserverView() {
     });
     setSaving(false);
     if (res.ok) {
-      setFeedback({ type: "ok", msg: "Einstellungen gespeichert" });
+      setFeedback({ type: "ok", msg: t("delivery.saved_msg") });
       setEditedPassword(undefined);
       setTimeout(() => setFeedback(null), 3500);
     } else {
-      setFeedback({ type: "err", msg: "Fehler beim Speichern" });
+      setFeedback({ type: "err", msg: t("delivery.save_error") });
     }
   }
 
@@ -117,11 +119,11 @@ export function MailserverView() {
     const data = await res.json() as { success: boolean; error?: string; fallback?: boolean };
     setTesting(false);
     if (data.success && !data.fallback) {
-      setTestResult({ type: "ok", msg: "Testmail erfolgreich gesendet" });
+      setTestResult({ type: "ok", msg: t("mail.test_success") });
     } else if (data.success && data.fallback) {
-      setTestResult({ type: "ok", msg: "Kein Mailserver konfiguriert — E-Mail wurde im Server-Log protokolliert" });
+      setTestResult({ type: "ok", msg: t("mail.test_logged") });
     } else {
-      setTestResult({ type: "err", msg: data.error ?? "Testmail fehlgeschlagen" });
+      setTestResult({ type: "err", msg: data.error ?? t("mail.test_failed") });
     }
     setTimeout(() => setTestResult(null), 5000);
   }
@@ -195,7 +197,7 @@ export function MailserverView() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Server</h1>
         <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          SMTP-Konfiguration und Datenbankverbindung
+          {t("mail.subtitle")}
         </p>
       </div>
 
@@ -203,12 +205,12 @@ export function MailserverView() {
       <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center gap-2 mb-1">
           <Send className="w-4 h-4" style={{ color: "hsl(var(--muted-foreground))" }} />
-          <span className="text-sm font-semibold">Mailserver (SMTP)</span>
+          <span className="text-sm font-semibold">{t("mail.title")}</span>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2 space-y-1.5">
-            <label className="text-sm font-medium">SMTP-Host</label>
+            <label className="text-sm font-medium">{t("mail.host_label")}</label>
             <input
               type="text"
               value={form.mail_host}
@@ -220,7 +222,7 @@ export function MailserverView() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Verschlüsselung</label>
+            <label className="text-sm font-medium">{t("mail.encryption_label")}</label>
             <select
               value={encryption}
               onChange={(e) => handleEncryptionChange(e.target.value as EncryptionMode)}
@@ -228,13 +230,13 @@ export function MailserverView() {
               style={inputStyle}
             >
               {encryptionOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Port</label>
+            <label className="text-sm font-medium">{t("mail.port_label")}</label>
             <input
               type="number"
               value={form.mail_port}
@@ -245,7 +247,7 @@ export function MailserverView() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Benutzername</label>
+            <label className="text-sm font-medium">{t("auth.username_label")}</label>
             <input
               type="text"
               value={form.mail_user}
@@ -256,7 +258,7 @@ export function MailserverView() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Passwort</label>
+            <label className="text-sm font-medium">{t("auth.password_label")}</label>
             <input
               type="password"
               value={editedPassword ?? form.mail_password}
@@ -269,7 +271,7 @@ export function MailserverView() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Absendername</label>
+            <label className="text-sm font-medium">{t("mail.from_name_label")}</label>
             <input
               type="text"
               value={form.mail_from_name}
@@ -280,7 +282,7 @@ export function MailserverView() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Absenderadresse</label>
+            <label className="text-sm font-medium">{t("mail.from_address_label")}</label>
             <input
               type="email"
               value={form.mail_from_address}
@@ -299,7 +301,7 @@ export function MailserverView() {
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Einstellungen speichern
+            {t("delivery.save_button")}
           </button>
 
           <button
@@ -309,7 +311,7 @@ export function MailserverView() {
             style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "transparent" }}
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Testmail senden
+            {t("mail.test_button")}
           </button>
         </div>
 
@@ -328,8 +330,7 @@ export function MailserverView() {
       </div>
 
       <div className="rounded-md p-4 text-sm" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-        Ohne konfigurierten Mailserver werden E-Mails als Konsolenausgabe protokolliert.
-        Funktionen wie Nutzer-Einladungen und Bestätigungscodes sind dann nur im Server-Log verfügbar.
+        {t("mail.hint_box")}
       </div>
 
       {/* ── Database card ──────────────────────────────────────────────────────── */}

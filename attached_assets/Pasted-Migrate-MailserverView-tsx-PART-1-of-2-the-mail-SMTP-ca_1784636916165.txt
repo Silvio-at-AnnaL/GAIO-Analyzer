@@ -1,0 +1,67 @@
+Migrate MailserverView.tsx — PART 1 of 2: the mail (SMTP) card only. Do NOT touch the database card
+(everything from the "Database card" comment onwards, ~line 336) — that is Part 2. Work ONLY on this
+file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/MailserverView.tsx
+Key namespace: "mail"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the
+MailserverView component body, before any early return.
+
+=== CRITICAL — do NOT touch ===
+  - `mail_from_name: "GAIO Analyzer"` in the useState initialiser (~line 45) — product name, not UI text
+  - the EncryptionMode type union and every `value:`, `port:`, `secure:` field in encryptionOptions
+  - the "PATCH" HTTP method string
+  - any mail_host / mail_port / mail_secure / mail_user / mail_password / mail_from_* object keys
+
+=== A) MODULE-SCOPE HOOK TRAP (~lines 19-23) ===
+encryptionOptions sits at module level. Replace only the `label:` values with key strings; leave
+`value:`, `port:` and `secure:` untouched:
+    { value: "starttls", label: "mail.enc_starttls", port: "587", secure: "false" }   [NEW, de: "STARTTLS (587)"]
+    { value: "ssl",      label: "mail.enc_ssl",      port: "465", secure: "true"  }   [NEW, de: "SSL/TLS (465)"]
+    { value: "none",     label: "mail.enc_none",     port: "25",  secure: "false" }   [NEW, de: "Keine (25)"]
+Then find the render site (the encryption <select> or radio group) and wrap the label in t(...).
+
+=== B) CARD HEADER ===
+  `Mailserver (SMTP)`                              -> {t("mail.title")}      [NEW]
+  `SMTP-Konfiguration und Datenbankverbindung`     -> {t("mail.subtitle")}   [NEW]
+
+=== C) FIELD LABELS ===
+  <label>SMTP-Host</label>       -> {t("mail.host_label")}         [NEW]
+  <label>Port</label>            -> {t("mail.port_label")}         [NEW]
+  <label>Verschlüsselung</label> -> {t("mail.encryption_label")}   [NEW]
+  <label>Benutzername</label>    -> {t("auth.username_label")}     <- REUSE existing key
+  <label>Passwort</label>        -> {t("auth.password_label")}     <- REUSE existing key
+  <label>Absendername</label>    -> {t("mail.from_name_label")}    [NEW]
+  <label>Absenderadresse</label> -> {t("mail.from_address_label")} [NEW]
+
+=== D) BUTTONS ===
+  `Einstellungen speichern` -> {t("delivery.save_button")}   <- REUSE existing key (identical text)
+  `Testmail senden`         -> {t("mail.test_button")}       [NEW]
+
+=== E) MESSAGES ===
+  "Einstellungen gespeichert"  -> t("delivery.saved_msg")   <- REUSE (identical text)
+  "Fehler beim Speichern"      -> t("delivery.save_error")  <- REUSE (identical, no trailing period)
+  "Testmail erfolgreich gesendet"                                        -> t("mail.test_success")  [NEW]
+  "Kein Mailserver konfiguriert — E-Mail wurde im Server-Log protokolliert" -> t("mail.test_logged") [NEW]
+      (the character before "E-Mail" is an em-dash —, preserve it exactly)
+  "Testmail fehlgeschlagen"                                              -> t("mail.test_failed")   [NEW]
+  Leave `{testResult.msg}` at the render site as-is — it already holds the resolved string.
+
+=== F) HINT BOX (~lines 331-333, two source lines rendering as one block) ===
+  `Ohne konfigurierten Mailserver werden E-Mails als Konsolenausgabe protokolliert.
+   Funktionen wie Nutzer-Einladungen und Bestätigungscodes sind dann nur im Server-Log verfügbar.`
+      -> {t("mail.hint_box")}   [NEW]
+      manifest de: ONE line, single space where the source had a line break.
+
+=== Manifest ===
+Add ONLY the NEW mail.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "mail",
+escaping special characters (ä, ö, ü, ß, —) the same way existing entries do. Add no auth.* or
+delivery.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the mail card shows its
+heading, all seven field labels, the encryption dropdown with all three options, both buttons, and the
+hint box. Change the encryption setting and save — the port must still switch automatically to the
+matching value (this proves the encryptionOptions value/port/secure fields were not touched). Send a
+test mail and confirm the result message appears. Under EN, everything falls back to German — never
+blank, never a raw key.
