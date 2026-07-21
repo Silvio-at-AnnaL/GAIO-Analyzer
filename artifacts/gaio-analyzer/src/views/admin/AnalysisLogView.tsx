@@ -3,7 +3,7 @@ import { Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { useAuth } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
-import { useT } from "@/lib/LabelProvider";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 interface LogItem {
   id: number;
@@ -35,11 +35,11 @@ function scoreColor(score: number | null): string {
   return "#ef4444";
 }
 
-function formatTimestamp(value: string | Date | null | undefined): string {
+function formatTimestamp(value: string | Date | null | undefined, locale: string): string {
   if (!value) return "–";
   const d = new Date(value);
   if (isNaN(d.getTime())) return "–";
-  return d.toLocaleString("de-DE", {
+  return d.toLocaleString(locale, {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
@@ -52,6 +52,8 @@ function StorageDisplay({ kb }: { kb: number }) {
 
 export function AnalysisLogView() {
   const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { user, isAuthenticated, isLoading } = useAuth();
   const { setActiveView } = useAppStore();
 
@@ -200,10 +202,10 @@ export function AnalysisLogView() {
                   {[
                     { id: "datetime",  label: t("log.col_datetime") },
                     { id: "company",   label: t("log.col_company") },
-                    { id: "score",     label: "GAIO Score" },
+                    { id: "score",     label: t("log.col_score") },
                     { id: "pages",     label: t("log.col_pages") },
                     { id: "status",    label: t("users.col_status") },
-                    { id: "export",    label: "HTML-Export" },
+                    { id: "export",    label: t("log.col_export") },
                     { id: "actions",   label: t("users.col_actions") },
                   ].map(({ id, label }) => (
                     <th key={id} className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</th>
@@ -215,7 +217,7 @@ export function AnalysisLogView() {
                   <tr key={item.id} style={{ borderBottom: i < data.items.length - 1 ? "1px solid hsl(var(--border) / 0.5)" : undefined }}>
                     {/* Datum */}
                     <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      {formatTimestamp(item.startedAt)}
+                      {formatTimestamp(item.startedAt, intlLocale)}
                     </td>
 
                     {/* Unternehmen / Domain */}
@@ -348,7 +350,7 @@ export function AnalysisLogView() {
             <p className="text-sm text-muted-foreground">
               {t("log.delete_confirm_pre")}
               <strong>{deleteTarget.companyName || deleteTarget.domain}</strong>
-              {t("log.delete_confirm_post", { date: formatTimestamp(deleteTarget.startedAt) })}
+              {t("log.delete_confirm_post", { date: formatTimestamp(deleteTarget.startedAt, intlLocale) })}
               {deleteTarget.hasHtmlExport && t("log.delete_confirm_html")}
             </p>
             <div className="flex gap-3 justify-end">

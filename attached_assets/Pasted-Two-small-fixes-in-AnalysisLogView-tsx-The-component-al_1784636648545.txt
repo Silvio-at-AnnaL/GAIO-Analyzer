@@ -1,0 +1,45 @@
+Two small fixes in AnalysisLogView.tsx. The component already calls useT() — reuse the existing `t`.
+Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files.
+Do not publish.
+
+File: artifacts/gaio-analyzer/src/views/admin/AnalysisLogView.tsx
+
+=== A) Two table headers missed in the previous pass (~lines 203, 206) ===
+The header array now holds { id, label } objects. Two labels are still hardcoded:
+    { id: "score",  label: "GAIO Score" }   -> label: t("log.col_score")
+    { id: "export", label: "HTML-Export" }  -> label: t("log.col_export")
+manifest:
+    "log.col_score":  { group: "log", de: "GAIO Score" }
+    "log.col_export": { group: "log", de: "HTML-Export" }
+Leave the `id` values ("score", "export") unchanged — they are the React keys.
+
+=== B) Locale-aware timestamp formatting ===
+formatTimestamp() at module level (~line 38) hardcodes "de-DE", so timestamps stay German even when
+the UI is switched to another language. Fix it the same way it was done in ErgebnisseView.tsx:
+
+1. Change the helper signature to accept a locale string:
+       function formatTimestamp(value: string | Date | null | undefined, locale: string): string {
+         ...
+         return d.toLocaleString(locale, {
+           day: "2-digit", month: "2-digit", year: "numeric",
+           hour: "2-digit", minute: "2-digit",
+         });
+       }
+   Keep the null/NaN guards and the "–" fallback exactly as they are.
+
+2. In the component, import useLabelContext alongside useT (same import line, same path already used
+   by ErgebnisseView.tsx) and add:
+       const { locale } = useLabelContext();
+   Map the app locale to an Intl locale string the same way ErgebnisseView does:
+       "de" -> "de-DE", "en" -> "en-US", anything unmapped -> "de-DE".
+
+3. Update BOTH call sites to pass it:
+       ~line 218: {formatTimestamp(item.startedAt, intlLocale)}
+       ~line 351: {t("log.delete_confirm_post", { date: formatTimestamp(deleteTarget.startedAt, intlLocale) })}
+
+Do not change anything else in this file.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the log table shows all
+seven column headers including "GAIO Score" and "HTML-Export", and timestamps still render as
+DD.MM.YYYY HH:MM. Switch the UI to EN and confirm the timestamps switch to US format while the column
+headers fall back to their German source text.
