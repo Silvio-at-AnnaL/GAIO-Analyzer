@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Save, RotateCcw, ChevronRight } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { labelDefaults, SUPPORTED_LOCALES, type Locale } from "@/lib/labelDefaults";
+import { useT } from "@/lib/LabelProvider";
 
 const GROUPED = Object.entries(labelDefaults).reduce<Record<string, string[]>>((acc, [key, def]) => {
   (acc[def.group] ??= []).push(key);
@@ -9,6 +10,7 @@ const GROUPED = Object.entries(labelDefaults).reduce<Record<string, string[]>>((
 }, {});
 
 export function TextverwaltungView() {
+  const t = useT();
   const [locale, setLocale] = useState<Locale>("en");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -47,12 +49,12 @@ export function TextverwaltungView() {
       });
       if (r.ok) {
         setOverrides((prev) => ({ ...prev, [selectedKey]: editorValue }));
-        setMsg("Gespeichert");
+        setMsg(t("texts.saved_msg"));
       } else {
-        setMsg("Fehler beim Speichern");
+        setMsg(t("delivery.save_error"));
       }
     } catch {
-      setMsg("Fehler beim Speichern");
+      setMsg(t("delivery.save_error"));
     } finally {
       setSaving(false);
     }
@@ -74,10 +76,10 @@ export function TextverwaltungView() {
           return next;
         });
         setEditorValue("");
-        setMsg("Override entfernt");
+        setMsg(t("texts.override_removed"));
       }
     } catch {
-      setMsg("Fehler beim Zurücksetzen");
+      setMsg(t("texts.reset_error"));
     } finally {
       setResetting(false);
     }
@@ -120,7 +122,7 @@ export function TextverwaltungView() {
       {/* Locale selector */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-foreground))", marginRight: 4 }}>
-          Sprache bearbeiten:
+          {t("texts.lang_edit_label")}
         </span>
         {SUPPORTED_LOCALES.map((l) => (
           <button
@@ -153,11 +155,11 @@ export function TextverwaltungView() {
         >
           <div className="px-4 py-3 border-b" style={{ borderColor: "hsl(var(--border))" }}>
             <h2 className="text-sm font-semibold mb-2" style={{ color: "hsl(var(--foreground))" }}>
-              Textverwaltung
+              {t("nav.admin_textverwaltung")}
             </h2>
             <input
               type="text"
-              placeholder="Suchen…"
+              placeholder={t("texts.search_placeholder")}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -262,7 +264,7 @@ export function TextverwaltungView() {
                         </div>
                         {k in overrides && (
                           <div className="text-xs mt-0.5" style={{ color: "hsl(var(--chart-4))" }}>
-                            Angepasst
+                            {t("texts.badge_customized")}
                           </div>
                         )}
                       </button>
@@ -282,7 +284,7 @@ export function TextverwaltungView() {
               style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
             >
               <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-                Wählen Sie einen Text-Schlüssel aus der linken Liste
+                {t("texts.empty_hint")}
               </p>
             </div>
           )}
@@ -300,7 +302,7 @@ export function TextverwaltungView() {
                       {selectedKey}
                     </h3>
                     <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      Sprache: <strong>{locale.toUpperCase()}</strong>
+                      {t("texts.lang_label")} <strong>{locale.toUpperCase()}</strong>
                       {hasOverride && (
                         <span style={{ marginLeft: 8, color: "hsl(var(--chart-4))" }}>· Override aktiv</span>
                       )}
@@ -318,7 +320,7 @@ export function TextverwaltungView() {
                         }}
                       >
                         <RotateCcw size={14} />
-                        {resetting ? "…" : "Zurücksetzen"}
+                        {resetting ? "…" : t("texts.reset_button")}
                       </button>
                     )}
                     <button
@@ -333,7 +335,7 @@ export function TextverwaltungView() {
                       }}
                     >
                       <Save size={14} />
-                      {saving ? "Speichert…" : "Speichern"}
+                      {saving ? t("texts.saving_loading") : t("profile.save_button")}
                     </button>
                   </div>
                 </div>
@@ -357,7 +359,7 @@ export function TextverwaltungView() {
                 style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
               >
                 <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  Quelle (Deutsch — Standard)
+                  {t("texts.source_label")}
                 </div>
                 <p className="text-sm" style={{ color: "hsl(var(--foreground))", lineHeight: 1.55 }}>
                   {deSource}
@@ -378,7 +380,7 @@ export function TextverwaltungView() {
                   </span>
                   {isDirty && (
                     <span className="text-xs" style={{ color: "hsl(var(--chart-4))" }}>
-                      Nicht gespeichert
+                      {t("texts.unsaved")}
                     </span>
                   )}
                 </div>

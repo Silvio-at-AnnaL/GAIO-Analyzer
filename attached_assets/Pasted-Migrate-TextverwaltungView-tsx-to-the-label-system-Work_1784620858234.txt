@@ -1,0 +1,51 @@
+Migrate TextverwaltungView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/TextverwaltungView.tsx
+Key namespace: "texts"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the
+TextverwaltungView component body, before any early return.
+
+CRITICAL — do NOT touch the `msg.startsWith("Fehler")` colour check (~line 344). It is a comparison
+against the message text, not display text itself. Leave it exactly as written.
+
+=== 1) HEADER / CONTROLS ===
+  `Textverwaltung` (heading)        -> {t("nav.admin_textverwaltung")}   <- REUSE existing key
+  `Sprache bearbeiten:`             -> {t("texts.lang_edit_label")}      [NEW]
+  `Sprache:`                        -> {t("texts.lang_label")}           [NEW]
+  placeholder="Suchen…"             -> placeholder={t("texts.search_placeholder")}   [NEW]
+
+=== 2) LIST / DETAIL PANE ===
+  `Angepasst` (badge on customised entries)  -> {t("texts.badge_customized")}   [NEW]
+  `Wählen Sie einen Text-Schlüssel aus der linken Liste`  -> {t("texts.empty_hint")}   [NEW]
+  `Quelle (Deutsch — Standard)`     -> {t("texts.source_label")}   [NEW]
+      (the character between "Deutsch" and "Standard" is an em-dash —, preserve it exactly)
+  `Nicht gespeichert`               -> {t("texts.unsaved")}       [NEW]
+
+=== 3) BUTTONS ===
+  {resetting ? "…" : "Zurücksetzen"}
+      -> {resetting ? "…" : t("texts.reset_button")}   [NEW key for "Zurücksetzen" only]
+      Leave the bare "…" ellipsis as a literal — it is punctuation, not translatable text.
+  {saving ? "Speichert…" : "Speichern"}
+      -> {saving ? t("texts.saving_loading") : t("profile.save_button")}
+      "Speichert…" is a NEW key — do NOT reuse auth.saving_loading, whose value is "Speichern…"
+      (different verb form). "Speichern" REUSES the existing profile.save_button.
+
+=== 4) STATUS MESSAGES ===
+  setMsg("Gespeichert")                 -> t("texts.saved_msg")        [NEW]
+  setMsg("Fehler beim Speichern")       -> t("delivery.save_error")    <- REUSE existing key,
+      value is already exactly "Fehler beim Speichern" with no trailing period. Both occurrences
+      (there are two) use the same key.
+  setMsg("Override entfernt")           -> t("texts.override_removed") [NEW]
+  setMsg("Fehler beim Zurücksetzen")    -> t("texts.reset_error")      [NEW]
+
+=== Manifest ===
+Add ONLY the NEW texts.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "texts",
+escaping special characters (ä, ö, ü, ß, —, …) the same way existing entries do. Add no nav.*,
+profile.* or delivery.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the Textverwaltung page
+shows its heading, both language selector labels, the search placeholder, the "Angepasst" badge on
+customised entries, and the empty-state hint. Save an override and reset it — both status messages must
+appear, and the error-vs-success colouring must still work. Under EN, everything falls back to German —
+never blank, never a raw key.

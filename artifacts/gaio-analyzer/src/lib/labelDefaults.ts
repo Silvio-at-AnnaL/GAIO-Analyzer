@@ -600,4 +600,17 @@ export const labelDefaults: Record<string, LabelDef> = {
   "delivery.saved_msg":          { group: "delivery", de: "Einstellungen gespeichert" },
   "delivery.save_error":         { group: "delivery", de: "Fehler beim Speichern" },
   "delivery.info_box":           { group: "delivery", de: "Im Download-Modus erhalten die konfigurierten BCC-Adressen automatisch eine Kopie nach jeder abgeschlossenen Analyse. Im E-Mail-Modus wird der Report direkt an den Nutzer versendet, BCC-Adressen erhalten ebenfalls eine Kopie." },
+
+  "texts.lang_edit_label":  { group: "texts", de: "Sprache bearbeiten:" },
+  "texts.lang_label":       { group: "texts", de: "Sprache:" },
+  "texts.search_placeholder": { group: "texts", de: "Suchen\u2026" },
+  "texts.badge_customized": { group: "texts", de: "Angepasst" },
+  "texts.empty_hint":       { group: "texts", de: "W\u00E4hlen Sie einen Text-Schl\u00FCssel aus der linken Liste" },
+  "texts.source_label":     { group: "texts", de: "Quelle (Deutsch \u2014 Standard)" },
+  "texts.unsaved":          { group: "texts", de: "Nicht gespeichert" },
+  "texts.reset_button":     { group: "texts", de: "Zur\u00FCcksetzen" },
+  "texts.saving_loading":   { group: "texts", de: "Speichert\u2026" },
+  "texts.saved_msg":        { group: "texts", de: "Gespeichert" },
+  "texts.override_removed": { group: "texts", de: "Override entfernt" },
+  "texts.reset_error":      { group: "texts", de: "Fehler beim Zur\u00FCcksetzen" },
 };
