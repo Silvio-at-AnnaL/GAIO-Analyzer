@@ -78,6 +78,7 @@ function NavGroup({
   role: string;
   permissions: Permissions;
 }) {
+  const t = useT();
   const accessibleItems = group.items.filter(
     (itemId) => canAccess(itemId, role, permissions),
   );
@@ -114,7 +115,7 @@ function NavGroup({
         <span className="shrink-0 flex items-center" style={{ width: 15, height: 15 }}>
           <GroupIcon style={{ width: 15, height: 15 }} />
         </span>
-        <span className="flex-1 text-sm font-semibold leading-tight">{group.label}</span>
+        <span className="flex-1 text-sm font-semibold leading-tight">{t(group.label)}</span>
         <span
           className="shrink-0"
           style={{
@@ -155,7 +156,7 @@ function NavGroup({
                 fontWeight:   active ? 500 : 400,
               }}
             >
-              {label}
+              {t(label)}
             </button>
           );
         })}

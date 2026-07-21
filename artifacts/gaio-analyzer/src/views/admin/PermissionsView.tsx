@@ -2,6 +2,7 @@ import { Fragment, useState, useEffect } from "react";
 import { ShieldCheck, Save, CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { adminFetch, useAuth } from "@/store/authStore";
 import { ADMIN_FEATURES, ADMIN_NAV_GROUPS } from "@/config/adminFeatures";
+import { useT } from "@/lib/LabelProvider";
 
 const ROLES: { id: string; label: string; locked: boolean }[] = [
   { id: "admin",         label: "Admin",           locked: true  },
@@ -22,6 +23,7 @@ const DEFAULT_PERMISSIONS: PermissionsMap = Object.fromEntries(
 const ALL_GROUP_ITEMS = new Set(ADMIN_NAV_GROUPS.flatMap((g) => g.items as readonly string[]));
 
 export function PermissionsView() {
+  const t = useT();
   const { reloadPermissions } = useAuth();
   const [permissions, setPermissions] = useState<PermissionsMap>(DEFAULT_PERMISSIONS);
   const [status, setStatus]           = useState<"idle" | "saving" | "ok" | "error">("idle");
@@ -79,7 +81,7 @@ export function PermissionsView() {
         className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
         style={idx % 2 !== 0 ? { background: "hsl(var(--muted)/0.15)" } : {}}
       >
-        <td className="px-5 py-3 font-medium pl-8 text-sm">{feature.label}</td>
+        <td className="px-5 py-3 font-medium pl-8 text-sm">{t(feature.label)}</td>
         {ROLES.map((role) => {
           if (role.locked) {
             return (
@@ -149,7 +151,7 @@ export function PermissionsView() {
                   <tr className="border-b border-border" style={{ background: "hsl(var(--muted)/0.3)" }}>
                     <td colSpan={ROLES.length + 1} className="px-5 py-2">
                       <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
-                        {group.label}
+                        {t(group.label)}
                       </span>
                     </td>
                   </tr>

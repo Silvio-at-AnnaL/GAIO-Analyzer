@@ -1,0 +1,66 @@
+Migrate the admin navigation labels in adminFeatures.ts and resolve them at the two render sites. Work ONLY on the three files listed. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+Key namespace: "nav" (extends the existing nav.* group)
+
+=== FILE 1: artifacts/gaio-analyzer/src/config/adminFeatures.ts ===
+This is a plain .ts config module, NOT a React component — useT() cannot be called here. Replace each
+`label:` VALUE with a label key string. The `id:`, `icon:`, `defaultRoles:`, `isGroup:` and `items:`
+fields must stay EXACTLY as they are — the ids are permission identifiers compared at runtime
+(e.g. canAccess("analyseprotokoll", ...)), and changing them would break access control.
+
+In ADMIN_FEATURES, replace the label values:
+  "Nutzerverwaltung"            -> "nav.admin_nutzerverwaltung"
+  "Analyseprotokoll"            -> "nav.admin_analyseprotokoll"
+  "Geteilte Analysen"           -> "nav.admin_geteilte_analysen"
+  "Angebots-Creator"            -> "nav.admin_angebots_creator"
+  "Versand-Analyse"             -> "nav.admin_versand_analyse"
+  "Erscheinungsbild"            -> "nav.admin_erscheinungsbild"
+  "Kontakt-Daten"               -> "nav.admin_kontakt_daten"
+  "Rechtemanagement"            -> "nav.admin_rechtemanagement"
+  "Prompt-Verwaltung"           -> "nav.admin_prompt_verwaltung"
+  "KI-Tool"                     -> "nav.admin_ki_tool"
+  "Textverwaltung"              -> "nav.admin_textverwaltung"
+  "Server"                      -> "nav.server"                      <- REUSE existing key, value is already "Server"
+  "User (Gruppe)"               -> "nav.admin_feat_group_user"
+  "Analysen (Gruppe)"           -> "nav.admin_feat_group_analysen"
+  "Darstellung (Gruppe)"        -> "nav.admin_feat_group_darstellung"
+  "LLM-Einstellungen (Gruppe)"  -> "nav.admin_feat_group_llm"
+
+In ADMIN_NAV_GROUPS, replace the label values (these are the sidebar group headers — different text
+from the "(Gruppe)" entries above, so they need their own keys):
+  "User"              -> "nav.admin_grp_user"
+  "Analysen"          -> "nav.admin_grp_analysen"
+  "Darstellung"       -> "nav.admin_grp_darstellung"
+  "LLM-Einstellungen" -> "nav.admin_grp_llm"
+
+Keep the `as const` assertions and the FeatureId type export unchanged.
+
+=== FILE 2: artifacts/gaio-analyzer/src/components/layout/Sidebar.tsx ===
+Sidebar already calls useT() — reuse the existing `t`.
+  ~line 117: `{group.label}`  -> `{t(group.label)}`
+  ~line 140/158: the code does `const label = FEATURE_LABEL[itemId] ?? itemId;` and later renders `{label}`.
+      `label` now holds a key string, so change the render to `{t(label)}`.
+      Leave the `?? itemId` fallback as-is (it only fires for an unknown id, and t() returns the key
+      unchanged when no entry exists, so the behaviour stays sane).
+  Do NOT touch the FEATURE_LABEL map construction itself (~line 37) — it maps id -> label and still works.
+  Do NOT touch the already-migrated customer-facing nav rendering (~line 241, `const label = t(labelKey)`).
+
+=== FILE 3: artifacts/gaio-analyzer/src/views/admin/PermissionsView.tsx ===
+This component does NOT yet call useT(). Add `import { useT } from "@/lib/LabelProvider";` and
+`const t = useT();` as the first line inside the component body, before any early return.
+Then wrap ONLY these two feature/group label render sites — nothing else in this file yet
+(the rest of PermissionsView is a separate task):
+  ~line 82:  `{feature.label}` -> `{t(feature.label)}`
+  ~line 152: `{group.label}`   -> `{t(group.label)}`
+  Do NOT touch `{r.label}` (~line 136) — that is the ROLES array, handled in the separate PermissionsView task.
+
+=== Manifest ===
+Add the 19 NEW nav.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "nav",
+German source values exactly as they read today. Do NOT add nav.server — it already exists.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de" while logged in as admin:
+the sidebar shows all four admin group headers and every sub-item with its correct German name, and the
+Rechtemanagement table lists all features and groups with the same names as before. Most importantly,
+confirm that clicking a sidebar admin entry still opens the right view and that permission checks still
+work (this proves the ids were not touched). Under EN, everything falls back to German — never blank,
+never a raw key.
