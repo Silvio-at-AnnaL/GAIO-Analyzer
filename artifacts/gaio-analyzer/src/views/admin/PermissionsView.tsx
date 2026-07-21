@@ -5,9 +5,9 @@ import { ADMIN_FEATURES, ADMIN_NAV_GROUPS } from "@/config/adminFeatures";
 import { useT } from "@/lib/LabelProvider";
 
 const ROLES: { id: string; label: string; locked: boolean }[] = [
-  { id: "admin",         label: "Admin",           locked: true  },
-  { id: "user_extended", label: "User, erweitert", locked: false },
-  { id: "user",          label: "User, basic",     locked: false },
+  { id: "admin",         label: "users.role_admin_short", locked: true  },
+  { id: "user_extended", label: "perm.role_extended",     locked: false },
+  { id: "user",          label: "perm.role_basic",        locked: false },
 ];
 
 type AnyFeature = { id: string; label: string; defaultRoles: readonly string[]; isGroup?: boolean };
@@ -62,15 +62,15 @@ export function PermissionsView() {
       });
       if (res.ok) {
         setStatus("ok");
-        setMsg("Berechtigungen gespeichert.");
+        setMsg(t("perm.saved_msg"));
         await reloadPermissions();
       } else {
         setStatus("error");
-        setMsg("Fehler beim Speichern.");
+        setMsg(t("perm.save_error"));
       }
     } catch {
       setStatus("error");
-      setMsg("Netzwerkfehler.");
+      setMsg(t("perm.network_error"));
     }
   }
 
@@ -86,7 +86,7 @@ export function PermissionsView() {
           if (role.locked) {
             return (
               <td key={role.id} className="px-4 py-3 text-center">
-                <div className="flex justify-center" title="Admins haben immer Zugriff">
+                <div className="flex justify-center" title={t("perm.admin_always_title")}>
                   <Lock className="w-4 h-4 text-muted-foreground/50" />
                 </div>
               </td>
@@ -123,19 +123,19 @@ export function PermissionsView() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <ShieldCheck className="w-5 h-5" style={{ color: "#3b82f6" }} />
-          <h1 className="text-2xl font-bold tracking-tight">Rechtemanagement</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_rechtemanagement")}</h1>
         </div>
-        <p className="text-muted-foreground text-sm">Steuern Sie, welche Rollen auf Admin-Bereiche zugreifen dürfen.</p>
+        <p className="text-muted-foreground text-sm">{t("perm.subtitle")}</p>
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border" style={{ background: "hsl(var(--muted)/0.4)" }}>
-              <th className="text-left px-5 py-3 font-semibold text-muted-foreground w-1/2">Funktion</th>
+              <th className="text-left px-5 py-3 font-semibold text-muted-foreground w-1/2">{t("perm.col_function")}</th>
               {ROLES.map((r) => (
                 <th key={r.id} className="text-center px-4 py-3 font-semibold text-muted-foreground" style={{ width: "16.6%" }}>
-                  {r.label}
+                  {t(r.label)}
                 </th>
               ))}
             </tr>
@@ -166,7 +166,7 @@ export function PermissionsView() {
                 <tr className="border-b border-border" style={{ background: "hsl(var(--muted)/0.3)" }}>
                   <td colSpan={ROLES.length + 1} className="px-5 py-2">
                     <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      System
+                      {t("perm.col_system")}
                     </span>
                   </td>
                 </tr>
@@ -187,7 +187,7 @@ export function PermissionsView() {
           style={{ background: "#3b82f6" }}
         >
           <Save className="w-4 h-4" />
-          {status === "saving" ? "Speichern…" : "Speichern"}
+          {status === "saving" ? t("auth.saving_loading") : t("profile.save_button")}
         </button>
         {msg && (
           <span className="flex items-center gap-1.5 text-sm" style={{ color: status === "ok" ? "#3b82f6" : "#d97706" }}>
@@ -201,11 +201,8 @@ export function PermissionsView() {
         className="rounded-lg border border-border p-4 text-sm text-muted-foreground"
         style={{ background: "hsl(var(--muted)/0.3)" }}
       >
-        <p className="font-medium text-foreground mb-1">Hinweis</p>
-        <p>
-          Änderungen gelten sofort für alle angemeldeten User. Admins behalten immer Zugriff
-          auf alle Bereiche, unabhängig von dieser Konfiguration.
-        </p>
+        <p className="font-medium text-foreground mb-1">{t("perm.hint_title")}</p>
+        <p>{t("perm.hint_text")}</p>
       </div>
     </div>
   );

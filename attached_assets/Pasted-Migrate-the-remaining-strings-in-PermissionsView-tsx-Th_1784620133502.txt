@@ -1,0 +1,59 @@
+Migrate the remaining strings in PermissionsView.tsx. The two feature/group label render sites are already done — do not redo them. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/PermissionsView.tsx
+Key namespace: "perm"
+The component already calls useT() at line 26 — reuse the existing `t`.
+
+=== A) MODULE-SCOPE HOOK TRAP (~lines 6-9) ===
+The ROLES array sits at module level. The `id:` values are backend role identifiers and the `locked:`
+flags are logic — leave both untouched. Replace only the `label:` values with key strings:
+    { id: "admin",         label: "users.role_admin_short", locked: true  }   <- REUSE existing key ("Admin")
+    { id: "user_extended", label: "perm.role_extended",     locked: false }   [NEW, de: "User, erweitert"]
+    { id: "user",          label: "perm.role_basic",        locked: false }   [NEW, de: "User, basic"]
+Then at the render site (~line 138) change `{r.label}` to `{t(r.label)}`.
+
+=== B) HEADER (~lines 126-128) ===
+  <h1>Rechtemanagement</h1>  -> {t("nav.admin_rechtemanagement")}   <- REUSE the key just created for the
+                                 sidebar entry; the text is identical and they should stay in sync
+  <p>Steuern Sie, welche Rollen auf Admin-Bereiche zugreifen dürfen.</p>  -> {t("perm.subtitle")}   [NEW]
+
+=== C) TABLE ===
+  <th>Funktion</th>              -> {t("perm.col_function")}   [NEW, de: "Funktion"]
+  the header cell containing `System` (it sits on its own line inside the element)
+                                 -> {t("perm.col_system")}     [NEW, de: "System"]
+  title="Admins haben immer Zugriff" (~line 89)
+                                 -> title={t("perm.admin_always_title")}   [NEW]
+
+=== D) SAVE BUTTON (~line 190) ===
+  {status === "saving" ? "Speichern…" : "Speichern"}
+      -> {status === "saving" ? t("auth.saving_loading") : t("profile.save_button")}   [both REUSE]
+  CRITICAL: the comparison value "saving" on the left of === is a state value, NOT display text.
+  Leave it exactly as it is.
+
+=== E) STATUS MESSAGES ===
+  setMsg("Berechtigungen gespeichert.")  -> t("perm.saved_msg")      [NEW]
+  setMsg("Fehler beim Speichern.")       -> t("perm.save_error")     [NEW]
+  setMsg("Netzwerkfehler.")              -> t("perm.network_error")  [NEW, de: "Netzwerkfehler."]
+      (do NOT reuse auth.network_error — that value is the longer "Netzwerkfehler. Bitte versuchen Sie es erneut.")
+  CRITICAL: do NOT touch any setStatus(...) call — "saving", "error", "idle" etc. are state values,
+  not display text. Only setMsg(...) arguments change.
+
+=== F) HINT BOX (~lines 204-207) ===
+  <p ...>Hinweis</p>   -> {t("perm.hint_title")}   [NEW, de: "Hinweis"]
+  The paragraph below it spans two source lines and renders as one sentence:
+      "Änderungen gelten sofort für alle angemeldeten User. Admins behalten immer Zugriff
+       auf alle Bereiche, unabhängig von dieser Konfiguration."
+      -> {t("perm.hint_text")}
+      manifest de (ONE line, single space where the source had a line break):
+      "Änderungen gelten sofort für alle angemeldeten User. Admins behalten immer Zugriff auf alle Bereiche, unabhängig von dieser Konfiguration."
+
+=== Manifest ===
+Add ONLY the NEW perm.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "perm",
+escaping special characters (ä, ö, ü, ß, …) the same way existing entries do. Add no users.*, nav.*,
+auth.* or profile.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the Rechtemanagement
+page shows its heading, subtitle, both column headers, all three role column labels, the hint box, and
+the save button in both idle and saving state. Most importantly, toggle a permission and save it — the
+success message must appear and the setting must persist (this proves the state values and role ids
+were not touched). Under EN, everything falls back to German — never blank, never a raw key.

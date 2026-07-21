@@ -569,4 +569,16 @@ export const labelDefaults: Record<string, LabelDef> = {
   "nav.admin_grp_analysen":        { group: "nav", de: "Analysen" },
   "nav.admin_grp_darstellung":     { group: "nav", de: "Darstellung" },
   "nav.admin_grp_llm":             { group: "nav", de: "LLM-Einstellungen" },
+
+  "perm.role_extended":      { group: "perm", de: "User, erweitert" },
+  "perm.role_basic":         { group: "perm", de: "User, basic" },
+  "perm.subtitle":           { group: "perm", de: "Steuern Sie, welche Rollen auf Admin-Bereiche zugreifen d\u00FCrfen." },
+  "perm.col_function":       { group: "perm", de: "Funktion" },
+  "perm.col_system":         { group: "perm", de: "System" },
+  "perm.admin_always_title": { group: "perm", de: "Admins haben immer Zugriff" },
+  "perm.saved_msg":          { group: "perm", de: "Berechtigungen gespeichert." },
+  "perm.save_error":         { group: "perm", de: "Fehler beim Speichern." },
+  "perm.network_error":      { group: "perm", de: "Netzwerkfehler." },
+  "perm.hint_title":         { group: "perm", de: "Hinweis" },
+  "perm.hint_text":          { group: "perm", de: "\u00C4nderungen gelten sofort f\u00FCr alle angemeldeten User. Admins behalten immer Zugriff auf alle Bereiche, unabh\u00E4ngig von dieser Konfiguration." },
 };
