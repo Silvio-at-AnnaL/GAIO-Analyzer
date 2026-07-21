@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, RotateCcw, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface Placeholder {
   key: string;
@@ -24,6 +25,7 @@ interface PromptDetail extends PromptListItem {
 }
 
 export function PromptVerwaltungView() {
+  const t = useT();
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
   const [selected, setSelected] = useState<PromptDetail | null>(null);
   const [editorValue, setEditorValue] = useState("");
@@ -68,12 +70,12 @@ export function PromptVerwaltungView() {
         const updated = { ...selected, template: editorValue, isModified: true };
         setSelected(updated);
         setPrompts((prev) => prev.map((p) => (p.slug === selected.slug ? { ...p, isModified: true } : p)));
-        setSaveMsg("Gespeichert");
+        setSaveMsg(t("texts.saved_msg"));
       } else {
-        setSaveMsg("Fehler beim Speichern");
+        setSaveMsg(t("delivery.save_error"));
       }
     } catch {
-      setSaveMsg("Fehler beim Speichern");
+      setSaveMsg(t("delivery.save_error"));
     } finally {
       setSaving(false);
     }
@@ -90,10 +92,10 @@ export function PromptVerwaltungView() {
         setSelected(data);
         setEditorValue(data.template);
         setPrompts((prev) => prev.map((p) => (p.slug === selected.slug ? { ...p, isModified: false } : p)));
-        setSaveMsg("Auf Standard zurückgesetzt");
+        setSaveMsg(t("prompts.reset_done"));
       }
     } catch {
-      setSaveMsg("Fehler beim Zurücksetzen");
+      setSaveMsg(t("texts.reset_error"));
     } finally {
       setResetting(false);
     }
@@ -125,7 +127,7 @@ export function PromptVerwaltungView() {
       >
         <div className="px-4 py-3 border-b" style={{ borderColor: "hsl(var(--border))" }}>
           <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-            Prompt-Verwaltung
+            {t("nav.admin_prompt_verwaltung")}
           </h2>
           <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
             {prompts.filter((p) => p.isModified).length} von {prompts.length} angepasst
@@ -161,7 +163,7 @@ export function PromptVerwaltungView() {
                       className="text-xs mt-0.5"
                       style={{ color: "hsl(var(--chart-4))" }}
                     >
-                      Angepasst
+                      {t("texts.badge_customized")}
                     </div>
                   )}
                 </button>
@@ -179,7 +181,7 @@ export function PromptVerwaltungView() {
             style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           >
             <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Wählen Sie einen Prompt aus der linken Liste
+              {t("prompts.empty_hint")}
             </p>
           </div>
         )}
@@ -190,7 +192,7 @@ export function PromptVerwaltungView() {
             style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           >
             <p className="text-sm animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Lädt…
+              {t("prompts.loading")}
             </p>
           </div>
         )}
@@ -221,10 +223,10 @@ export function PromptVerwaltungView() {
                         borderColor: "hsl(var(--border))",
                         color: "hsl(var(--muted-foreground))",
                       }}
-                      title="Auf Standard zurücksetzen"
+                      title={t("prompts.reset_title")}
                     >
                       <RotateCcw size={14} />
-                      {resetting ? "…" : "Zurücksetzen"}
+                      {resetting ? "…" : t("texts.reset_button")}
                     </button>
                   )}
                   <button
@@ -239,7 +241,7 @@ export function PromptVerwaltungView() {
                     }}
                   >
                     <Save size={14} />
-                    {saving ? "Speichert…" : "Speichern"}
+                    {saving ? t("texts.saving_loading") : t("profile.save_button")}
                   </button>
                 </div>
               </div>
@@ -264,7 +266,7 @@ export function PromptVerwaltungView() {
                 style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
               >
                 <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  Verfügbare Platzhalter
+                  {t("prompts.placeholders_label")}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {selected.placeholders.map((ph) => (
@@ -301,7 +303,7 @@ export function PromptVerwaltungView() {
                 style={{ borderColor: "hsl(var(--border))" }}
               >
                 <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  Template
+                  {t("prompts.template_label")}
                 </span>
                 <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
                   {editorValue.length.toLocaleString()} Zeichen
@@ -335,13 +337,13 @@ export function PromptVerwaltungView() {
                   className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors"
                   style={{ color: "hsl(var(--muted-foreground))" }}
                 >
-                  <span>Standard-Prompt anzeigen</span>
+                  <span>{t("prompts.show_default")}</span>
                   {showOriginal ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
                 {showOriginal && (
                   <div className="px-4 pb-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
                     <p className="text-xs py-2" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      Schreibgeschützt — Originaltext aus dem System-Default
+                      {t("prompts.readonly_note")}
                     </p>
                     <textarea
                       readOnly

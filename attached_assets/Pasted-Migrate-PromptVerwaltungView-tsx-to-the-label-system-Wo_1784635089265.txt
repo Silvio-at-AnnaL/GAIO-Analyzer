@@ -1,0 +1,46 @@
+Migrate PromptVerwaltungView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/PromptVerwaltungView.tsx
+Key namespace: "prompts"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the
+component body, before any early return.
+
+CRITICAL — do NOT touch:
+  - the `saveMsg.startsWith("Fehler")` colour check (~line 250) — it compares against message text
+  - `selected.placeholders` / `ph.key` — those come from the backend, not from this file
+  - any AI prompt template content or {{PLACEHOLDER}} syntax inside the textarea value
+
+=== 1) REUSE-ONLY (no new keys — the text is identical to keys that already exist) ===
+  `Prompt-Verwaltung` (heading)         -> {t("nav.admin_prompt_verwaltung")}
+  `Angepasst` (badge)                   -> {t("texts.badge_customized")}
+  `Zurücksetzen` (button text, ~line 227) -> {t("texts.reset_button")}
+  {saving ? "Speichert…" : "Speichern"} -> {saving ? t("texts.saving_loading") : t("profile.save_button")}
+  setSaveMsg("Gespeichert")             -> t("texts.saved_msg")
+  setSaveMsg("Fehler beim Speichern")   -> t("delivery.save_error")   (BOTH occurrences, ~lines 73 and 76)
+  setSaveMsg("Fehler beim Zurücksetzen") -> t("texts.reset_error")
+
+=== 2) NEW KEYS ===
+  `Lädt…`                                -> {t("prompts.loading")}
+      [NEW, de: "Lädt…" — do NOT reuse profile.loading, whose value is "Laden…", a different word form]
+  `Wählen Sie einen Prompt aus der linken Liste`  -> {t("prompts.empty_hint")}
+      [NEW — do NOT reuse texts.empty_hint, which says "Text-Schlüssel" instead of "Prompt"]
+  `Schreibgeschützt — Originaltext aus dem System-Default`  -> {t("prompts.readonly_note")}
+      [NEW; the character after "Schreibgeschützt" is an em-dash —, preserve it exactly]
+  `Standard-Prompt anzeigen`             -> {t("prompts.show_default")}      [NEW]
+  `Template`                             -> {t("prompts.template_label")}    [NEW]
+  `Verfügbare Platzhalter`               -> {t("prompts.placeholders_label")} [NEW]
+  title="Auf Standard zurücksetzen" (~line 224) -> title={t("prompts.reset_title")}  [NEW]
+  setSaveMsg("Auf Standard zurückgesetzt") -> t("prompts.reset_done")        [NEW]
+
+=== Manifest ===
+Add ONLY the NEW prompts.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group:
+"prompts", escaping special characters (ä, ö, ü, ß, —, …) the same way existing entries do.
+Add no nav.*, texts.*, delivery.* or profile.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the Prompt-Verwaltung
+page shows its heading, the empty-state hint before selecting a prompt, and for a selected prompt the
+Template label, the placeholder chips section, and the read-only note where applicable. Save a prompt
+and reset it — both status messages must appear with correct error/success colouring. Confirm the
+{{PLACEHOLDER}} tokens inside prompt templates are unchanged. Under EN, everything falls back to German
+— never blank, never a raw key.

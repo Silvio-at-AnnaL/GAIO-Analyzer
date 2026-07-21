@@ -613,4 +613,13 @@ export const labelDefaults: Record<string, LabelDef> = {
   "texts.saved_msg":        { group: "texts", de: "Gespeichert" },
   "texts.override_removed": { group: "texts", de: "Override entfernt" },
   "texts.reset_error":      { group: "texts", de: "Fehler beim Zur\u00FCcksetzen" },
+
+  "prompts.loading":            { group: "prompts", de: "L\u00E4dt\u2026" },
+  "prompts.empty_hint":         { group: "prompts", de: "W\u00E4hlen Sie einen Prompt aus der linken Liste" },
+  "prompts.readonly_note":      { group: "prompts", de: "Schreibgesch\u00FCtzt \u2014 Originaltext aus dem System-Default" },
+  "prompts.show_default":       { group: "prompts", de: "Standard-Prompt anzeigen" },
+  "prompts.template_label":     { group: "prompts", de: "Template" },
+  "prompts.placeholders_label": { group: "prompts", de: "Verf\u00FCgbare Platzhalter" },
+  "prompts.reset_title":        { group: "prompts", de: "Auf Standard zur\u00FCcksetzen" },
+  "prompts.reset_done":         { group: "prompts", de: "Auf Standard zur\u00FCckgesetzt" },
 };
