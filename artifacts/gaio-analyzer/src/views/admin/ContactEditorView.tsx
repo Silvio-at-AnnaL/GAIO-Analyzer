@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { ContactRound, UploadCloud, Trash2, Save, CheckCircle, AlertCircle, Mail } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface ContactSettings {
   contact_name: string;
@@ -25,6 +26,7 @@ function ContactPreview({
   name: string; title: string; company: string; email: string;
   photoSrc: string; ctaText: string; ctaSubtext: string;
 }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-border bg-card p-6 space-y-5 text-sm">
       {/* Avatar */}
@@ -41,9 +43,9 @@ function ContactPreview({
           </div>
         )}
         <div className="text-center">
-          <p className="font-bold text-base">{name || "Name"}</p>
-          <p className="text-muted-foreground text-xs mt-0.5">{title || "Funktion"}</p>
-          <p className="text-muted-foreground text-xs">{company || "Unternehmen"}</p>
+          <p className="font-bold text-base">{name || t("contactedit.field_name")}</p>
+          <p className="text-muted-foreground text-xs mt-0.5">{title || t("contactedit.preview_title_ph")}</p>
+          <p className="text-muted-foreground text-xs">{company || t("contactedit.field_company")}</p>
         </div>
         {email && (
           <a
@@ -73,7 +75,7 @@ function ContactPreview({
           style={{ background: "#3b82f6" }}
         >
           <Mail className="w-3 h-3" />
-          E-Mail schreiben
+          {t("contactedit.mail_button")}
         </a>
       )}
     </div>
@@ -81,6 +83,7 @@ function ContactPreview({
 }
 
 export function ContactEditorView() {
+  const t = useT();
   const [name, setName]           = useState("Silvio Haase");
   const [title, setTitle]         = useState("CMO & Head of Business Development");
   const [company, setCompany]     = useState("Deutscher Medien Verlag GmbH / IndustryStock.com");
@@ -118,7 +121,7 @@ export function ContactEditorView() {
       const dataUrl = ev.target?.result as string;
       if (!sizeOk(dataUrl)) {
         setStatus("error");
-        setMsg("Datei zu groß. Maximal 500 KB erlaubt.");
+        setMsg(t("contactedit.file_too_large"));
         return;
       }
       setPhotoSrc(dataUrl);
@@ -147,15 +150,15 @@ export function ContactEditorView() {
       });
       if (res.ok) {
         setStatus("ok");
-        setMsg("Kontaktdaten gespeichert.");
+        setMsg(t("contactedit.saved_msg"));
       } else {
         const d = (await res.json()) as { error?: string };
         setStatus("error");
-        setMsg(d.error ?? "Fehler beim Speichern.");
+        setMsg(d.error ?? t("perm.save_error"));
       }
     } catch {
       setStatus("error");
-      setMsg("Netzwerkfehler.");
+      setMsg(t("perm.network_error"));
     }
   }
 
@@ -164,9 +167,9 @@ export function ContactEditorView() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <ContactRound className="w-5 h-5" style={{ color: "#3b82f6" }} />
-          <h1 className="text-2xl font-bold tracking-tight">Kontakt-Daten</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_kontakt_daten")}</h1>
         </div>
-        <p className="text-muted-foreground text-sm">Kontaktperson und CTA-Text für die Kontaktseite bearbeiten.</p>
+        <p className="text-muted-foreground text-sm">{t("contactedit.subtitle")}</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -176,15 +179,15 @@ export function ContactEditorView() {
 
             {/* Kontaktperson */}
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Kontaktperson</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">{t("contactedit.section_person")}</h2>
               <div className="space-y-3">
                 {[
-                  { label: "Name",                value: name,    setter: setName,    type: "text" },
-                  { label: "Funktion / Titel",    value: title,   setter: setTitle,   type: "text" },
-                  { label: "Unternehmen",         value: company, setter: setCompany, type: "text" },
-                  { label: "E-Mail",              value: email,   setter: setEmail,   type: "email" },
-                ].map(({ label, value, setter, type }) => (
-                  <div key={label}>
+                  { id: "name",    label: t("contactedit.field_name"),    value: name,    setter: setName,    type: "text" },
+                  { id: "title",   label: t("contactedit.field_title"),   value: title,   setter: setTitle,   type: "text" },
+                  { id: "company", label: t("contactedit.field_company"), value: company, setter: setCompany, type: "text" },
+                  { id: "email",   label: t("users.email_label"),         value: email,   setter: setEmail,   type: "email" },
+                ].map(({ id, label, value, setter, type }) => (
+                  <div key={id}>
                     <label className="block text-sm font-medium mb-1">{label}</label>
                     <input
                       type={type}
@@ -199,12 +202,12 @@ export function ContactEditorView() {
 
             {/* Profilbild */}
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Profilbild</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">{t("contactedit.photo_label")}</h2>
               <div className="flex items-center gap-4 mb-3">
                 {photoSrc ? (
                   <img
                     src={photoSrc}
-                    alt="Profilbild"
+                    alt={t("contactedit.photo_label")}
                     className="w-16 h-16 rounded-full object-cover object-top border-2 border-border"
                   />
                 ) : (
@@ -225,7 +228,7 @@ export function ContactEditorView() {
                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
                   >
                     <UploadCloud className="w-3.5 h-3.5" />
-                    Foto hochladen
+                    {t("contactedit.photo_upload")}
                   </button>
                   {photoSrc && (
                     <button
@@ -233,7 +236,7 @@ export function ContactEditorView() {
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Foto entfernen
+                      {t("contactedit.photo_remove")}
                     </button>
                   )}
                 </div>
@@ -242,11 +245,11 @@ export function ContactEditorView() {
 
             {/* Kontakttext */}
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Kontakttext</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">{t("contactedit.section_cta")}</h2>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">CTA-Text</label>
-                  <p className="text-xs text-muted-foreground mb-1">Haupttext über dem Button</p>
+                  <label className="block text-sm font-medium mb-1">{t("contactedit.cta_text_label")}</label>
+                  <p className="text-xs text-muted-foreground mb-1">{t("contactedit.cta_text_hint")}</p>
                   <textarea
                     rows={3}
                     value={ctaText}
@@ -255,8 +258,8 @@ export function ContactEditorView() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">CTA-Subtext</label>
-                  <p className="text-xs text-muted-foreground mb-1">Kleinerer Text unter dem Haupttext</p>
+                  <label className="block text-sm font-medium mb-1">{t("contactedit.cta_subtext_label")}</label>
+                  <p className="text-xs text-muted-foreground mb-1">{t("contactedit.cta_subtext_hint")}</p>
                   <textarea
                     rows={2}
                     value={ctaSubtext}
@@ -276,7 +279,7 @@ export function ContactEditorView() {
                 style={{ background: "#3b82f6" }}
               >
                 <Save className="w-4 h-4" />
-                {status === "saving" ? "Speichern…" : "Speichern"}
+                {status === "saving" ? t("auth.saving_loading") : t("profile.save_button")}
               </button>
               {msg && (
                 <span className="flex items-center gap-1.5 text-sm" style={{ color: status === "ok" ? "#3b82f6" : "#d97706" }}>
@@ -290,7 +293,7 @@ export function ContactEditorView() {
 
         {/* Right: live preview */}
         <div className="lg:w-72 shrink-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Vorschau</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{t("contactedit.preview")}</p>
           <ContactPreview
             name={name}
             title={title}

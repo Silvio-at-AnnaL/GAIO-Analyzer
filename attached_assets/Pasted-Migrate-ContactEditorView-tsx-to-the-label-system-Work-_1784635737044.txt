@@ -1,0 +1,73 @@
+Migrate ContactEditorView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/ContactEditorView.tsx
+Key namespace: "contactedit"
+
+This file contains TWO components: a preview component (upper part, ends ~line 81) and
+ContactEditorView itself (~line 83). Add `import { useT } from "@/lib/LabelProvider";` once, and add
+`const t = useT();` as the FIRST line inside BOTH component bodies.
+
+=== CRITICAL — do NOT migrate these ===
+  - The useState initial values at ~lines 84-87: "Silvio Haase", "CMO & Head of Business Development",
+    "Deutscher Medien Verlag GmbH / IndustryStock.com", "Silvio.Haase@IndustryStock.com".
+    These are real personal/company data seeded into the form, NOT interface text.
+  - MAX_B64_BYTES and any file-size arithmetic.
+  - The `status === "saving"` / "idle" / "ok" / "error" state values.
+
+=== A) PREVIEW COMPONENT (upper part) ===
+  Empty-field placeholders — these ARE visible when a field is blank:
+    {name    || "Name"}         -> {name    || t("contactedit.field_name")}      [NEW, de: "Name"]
+    {title   || "Funktion"}     -> {title   || t("contactedit.preview_title_ph")} [NEW, de: "Funktion"]
+    {company || "Unternehmen"}  -> {company || t("contactedit.field_company")}   [NEW, de: "Unternehmen"]
+  `E-Mail schreiben` (mailto button) -> {t("contactedit.mail_button")}   [NEW]
+  Keep the `href={\`mailto:${email}\`}` expression unchanged.
+
+=== B) HEADER ===
+  `Kontakt-Daten` (heading)  -> {t("nav.admin_kontakt_daten")}   <- REUSE existing key
+  `Kontaktperson und CTA-Text für die Kontaktseite bearbeiten.` -> {t("contactedit.subtitle")}   [NEW]
+
+=== C) SECTIONS ===
+  `Kontaktperson`  -> {t("contactedit.section_person")}   [NEW]
+  `Kontakttext`    -> {t("contactedit.section_cta")}      [NEW]
+  `Vorschau`       -> {t("contactedit.preview")}          [NEW]
+  `Profilbild`     -> {t("contactedit.photo_label")}      [NEW]
+  alt="Profilbild" -> alt={t("contactedit.photo_label")}  <- REUSE the same key, identical text
+  `Foto hochladen` -> {t("contactedit.photo_upload")}     [NEW]
+  `Foto entfernen` -> {t("contactedit.photo_remove")}     [NEW]
+
+=== D) FIELD ARRAY (~lines 182-186) ===
+This array sits inside the JSX, so t() can be called directly:
+    { label: "Name",             ... } -> label: t("contactedit.field_name")     [REUSE key from section A]
+    { label: "Funktion / Titel", ... } -> label: t("contactedit.field_title")    [NEW — note: NOT the same
+                                          text as the preview placeholder "Funktion", separate key]
+    { label: "Unternehmen",      ... } -> label: t("contactedit.field_company")  [REUSE key from section A]
+    { label: "E-Mail",           ... } -> label: t("users.email_label")          [REUSE existing key]
+IMPORTANT: `key={label}` on the wrapping div (~line 187) would become a translated string. Add an `id`
+field to each object ("name", "title", "company", "email") and change it to `key={id}`.
+
+=== E) CTA FIELDS ===
+  `CTA-Text`                          -> {t("contactedit.cta_text_label")}     [NEW]
+  `Haupttext über dem Button`         -> {t("contactedit.cta_text_hint")}      [NEW]
+  `CTA-Subtext`                       -> {t("contactedit.cta_subtext_label")}  [NEW]
+  `Kleinerer Text unter dem Haupttext` -> {t("contactedit.cta_subtext_hint")}  [NEW]
+
+=== F) MESSAGES + SAVE BUTTON ===
+  setMsg("Datei zu groß. Maximal 500 KB erlaubt.") -> t("contactedit.file_too_large")   [NEW]
+  setMsg("Kontaktdaten gespeichert.")              -> t("contactedit.saved_msg")        [NEW]
+  setMsg(d.error ?? "Fehler beim Speichern.")      -> d.error ?? t("perm.save_error")   <- REUSE
+      (perm.save_error is exactly "Fehler beim Speichern." WITH the trailing period — matches)
+  setMsg("Netzwerkfehler.")                        -> t("perm.network_error")           <- REUSE
+  {status === "saving" ? "Speichern…" : "Speichern"}
+      -> {status === "saving" ? t("auth.saving_loading") : t("profile.save_button")}    <- both REUSE
+      Leave the "saving" comparison value untouched.
+
+=== Manifest ===
+Add ONLY the NEW contactedit.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group:
+"contactedit", escaping special characters (ä, ö, ü, ß) the same way existing entries do. Add no nav.*,
+users.*, perm.*, auth.* or profile.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the page shows both
+section headings, all four person fields with their labels, both CTA fields with their hints, and the
+live preview. Clear the name field — the preview must show the "Name" placeholder. Save the form — the
+success message must appear and the data must persist. Under EN, everything falls back to German —
+never blank, never a raw key.
