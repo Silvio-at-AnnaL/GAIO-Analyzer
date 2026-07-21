@@ -1,0 +1,49 @@
+Migrate ProfileView.tsx to the label system — PART 1 of 2: module-scope constants, guard branches, and all handler status messages. Do NOT touch the JSX form sections below line ~136 in this pass (that is Part 2). Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File: artifacts/gaio-analyzer/src/views/admin/ProfileView.tsx
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the ProfileView component body — it must come before the `if (isLoading)` / `if (!user)` early returns (Rules of Hooks).
+
+=== A) MODULE-SCOPE HOOK TRAP ===
+POLICY_CHECKS (~lines 6-12) sits at module level and is IDENTICAL to the array already migrated in ForcePasswordChangeView.tsx. Replace each `label:` value with the SAME existing key strings — do NOT create new keys:
+  "Mindestens 10 Zeichen"    -> "auth.policy_min_length"
+  "Großbuchstabe (A–Z)"      -> "auth.policy_uppercase"
+  "Kleinbuchstabe (a–z)"     -> "auth.policy_lowercase"
+  "Ziffer (0–9)"             -> "auth.policy_digit"
+  "Sonderzeichen (!@#$%…)"   -> "auth.policy_special"
+Leave every `test:` function completely unchanged.
+Then find where these labels are rendered further down (the policy checklist, ~line 224) and change `{c.label}` to `{t(c.label)}`. Leave `key={c.label}` as-is.
+
+=== B) GUARD BRANCHES (~lines 66-72) ===
+  "Laden…"                      -> t("profile.loading")            [NEW, de: "Laden…"]
+  "Sie sind nicht angemeldet."  -> t("profile.not_logged_in")      [NEW, de: "Sie sind nicht angemeldet."]
+      (do NOT reuse auth.already_logged_in_text — that says "bereits", opposite meaning)
+  button "Zum Login"            -> t("auth.go_to_login_button")    [REUSE existing key, identical text]
+
+=== C) HANDLER STATUS MESSAGES ===
+CRITICAL: five success messages start with a "✓" character. The UI reads `emailMsg.startsWith("✓")` (~line 183) to decide whether to render the message in the success colour. The "✓ " prefix MUST be preserved inside the manifest values, exactly as it appears today, or that colour logic silently breaks.
+
+  setNameMsg("✓ Gespeichert")                    -> t("profile.msg_saved")             [NEW, de: "✓ Gespeichert"]
+  setUsernameMsg("✓ Benutzername aktualisiert")  -> t("profile.msg_username_updated")  [NEW, de: "✓ Benutzername aktualisiert"]
+  setEmailMsg("✓ E-Mail aktualisiert")           -> t("profile.msg_email_updated")     [NEW, de: "✓ E-Mail aktualisiert"]
+  setEmailMsg("✓ E-Mail erfolgreich geändert")   -> t("profile.msg_email_changed")     [NEW, de: "✓ E-Mail erfolgreich geändert"]
+  setPwMsg("✓ Passwort geändert")                -> t("profile.msg_password_changed")  [NEW, de: "✓ Passwort geändert"]
+
+  setEmailMsg("Kein E-Mail-Server konfiguriert – Ihr Code wird direkt angezeigt:")
+      -> t("profile.no_mailserver")   [NEW — note the character between "konfiguriert" and "Ihr" is an en-dash (–), not a hyphen; preserve it exactly]
+  setEmailMsg("Bestätigungscode wurde an Ihre aktuelle E-Mail gesendet.")
+      -> t("profile.code_sent")       [NEW]
+
+  The four identical `data.error ?? "Fehler"` fallbacks (setNameMsg, setUsernameMsg, setEmailMsg, setPwMsg)
+      -> `data.error ?? t("profile.error_generic")`   [NEW key, de: "Fehler" — ONE key, four call sites]
+      Keep data.error priority in all four.
+  setVerifyMsg(data.error ?? "Ungültiger Code")
+      -> `data.error ?? t("profile.invalid_code")`    [NEW, de: "Ungültiger Code"]
+
+  setPwMsg("Passwörter stimmen nicht überein")            -> t("auth.pw_mismatch")    [REUSE existing key]
+  setPwMsg("Bitte erfüllen Sie alle Passwortanforderungen") -> t("auth.policy_not_met") [REUSE existing key]
+
+=== Manifest ===
+Add ONLY the NEW profile.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "profile". Escape special characters (ä, ö, ü, ß, –, …, ✓) the same way existing entries in that file do. Do not add any auth.* key — those all already exist. Do not translate to other languages.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the profile page loads, the password policy checklist shows all five rules, and saving a name change shows the green "✓ Gespeichert" message in the SUCCESS colour (this confirms the ✓ prefix survived). Under EN, everything falls back to German — never blank, never a raw key.

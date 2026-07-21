@@ -486,4 +486,16 @@ export const labelDefaults: Record<string, LabelDef> = {
   "auth.go_to_profile_button":    { group: "auth", de: "Zum Profil" },
   "auth.no_active_session":       { group: "auth", de: "Keine aktive Passwort-\u00C4nderungssitzung. Bitte melden Sie sich zuerst an." },
   "auth.go_to_login_button":      { group: "auth", de: "Zum Login" },
+
+  "profile.loading":              { group: "profile", de: "Laden\u2026" },
+  "profile.not_logged_in":        { group: "profile", de: "Sie sind nicht angemeldet." },
+  "profile.msg_saved":            { group: "profile", de: "\u2713 Gespeichert" },
+  "profile.msg_username_updated": { group: "profile", de: "\u2713 Benutzername aktualisiert" },
+  "profile.msg_email_updated":    { group: "profile", de: "\u2713 E-Mail aktualisiert" },
+  "profile.msg_email_changed":    { group: "profile", de: "\u2713 E-Mail erfolgreich ge\u00E4ndert" },
+  "profile.msg_password_changed": { group: "profile", de: "\u2713 Passwort ge\u00E4ndert" },
+  "profile.no_mailserver":        { group: "profile", de: "Kein E-Mail-Server konfiguriert \u2013 Ihr Code wird direkt angezeigt:" },
+  "profile.code_sent":            { group: "profile", de: "Best\u00E4tigungscode wurde an Ihre aktuelle E-Mail gesendet." },
+  "profile.error_generic":        { group: "profile", de: "Fehler" },
+  "profile.invalid_code":         { group: "profile", de: "Ung\u00FCltiger Code" },
 };

@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { Check, X } from "lucide-react";
 import { useAuth, adminFetch } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
+import { useT } from "@/lib/LabelProvider";
 
 const POLICY_CHECKS = [
-  { label: "Mindestens 10 Zeichen",     test: (p: string) => p.length >= 10 },
-  { label: "Großbuchstabe (A–Z)",       test: (p: string) => /[A-Z]/.test(p) },
-  { label: "Kleinbuchstabe (a–z)",      test: (p: string) => /[a-z]/.test(p) },
-  { label: "Ziffer (0–9)",              test: (p: string) => /[0-9]/.test(p) },
-  { label: "Sonderzeichen (!@#$%…)",    test: (p: string) => /[!@#$%^&*()\-_=+\[\]{}|;':",.<>?/~`]/.test(p) },
+  { label: "auth.policy_min_length",  test: (p: string) => p.length >= 10 },
+  { label: "auth.policy_uppercase",   test: (p: string) => /[A-Z]/.test(p) },
+  { label: "auth.policy_lowercase",   test: (p: string) => /[a-z]/.test(p) },
+  { label: "auth.policy_digit",       test: (p: string) => /[0-9]/.test(p) },
+  { label: "auth.policy_special",     test: (p: string) => /[!@#$%^&*()\-_=+\[\]{}|;':",.<>?/~`]/.test(p) },
 ];
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
@@ -32,6 +33,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function ProfileView() {
+  const t = useT();
   const { user, isAuthenticated, isLoading, logout, refreshUser } = useAuth();
   const { setActiveView } = useAppStore();
 
@@ -63,12 +65,12 @@ export function ProfileView() {
     if (user) { setFirstName(user.firstName); setLastName(user.lastName); }
   }, [user]);
 
-  if (isLoading) return <div className="p-8 text-muted-foreground text-sm">Laden…</div>;
+  if (isLoading) return <div className="p-8 text-muted-foreground text-sm">{t("profile.loading")}</div>;
   if (!isAuthenticated) {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
-        <p className="text-muted-foreground">Sie sind nicht angemeldet.</p>
-        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>Zum Login</button>
+        <p className="text-muted-foreground">{t("profile.not_logged_in")}</p>
+        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>{t("auth.go_to_login_button")}</button>
       </div>
     );
   }
@@ -78,8 +80,8 @@ export function ProfileView() {
     const res = await adminFetch("/api/admin/profile", { method: "PATCH", body: JSON.stringify({ firstName, lastName }) });
     const data = await res.json();
     setNameSaving(false);
-    if (res.ok) { await refreshUser(); setNameMsg("✓ Gespeichert"); }
-    else setNameMsg(data.error ?? "Fehler");
+    if (res.ok) { await refreshUser(); setNameMsg(t("profile.msg_saved")); }
+    else setNameMsg(data.error ?? t("profile.error_generic"));
   }
 
   async function saveUsername(e: React.FormEvent) {
@@ -87,8 +89,8 @@ export function ProfileView() {
     const res = await adminFetch("/api/admin/profile", { method: "PATCH", body: JSON.stringify({ newUsername, currentPassword: currentPwU }) });
     const data = await res.json();
     setUsernameSaving(false);
-    if (res.ok) { await refreshUser(); setNewUsername(""); setCurrentPwU(""); setUsernameMsg("✓ Benutzername aktualisiert"); }
-    else setUsernameMsg(data.error ?? "Fehler");
+    if (res.ok) { await refreshUser(); setNewUsername(""); setCurrentPwU(""); setUsernameMsg(t("profile.msg_username_updated")); }
+    else setUsernameMsg(data.error ?? t("profile.error_generic"));
   }
 
   async function saveEmail(e: React.FormEvent) {
@@ -101,33 +103,33 @@ export function ProfileView() {
         setAwaitingCode(true);
         if (data.code) {
           setInlineCode(data.code);
-          setEmailMsg("Kein E-Mail-Server konfiguriert – Ihr Code wird direkt angezeigt:");
+          setEmailMsg(t("profile.no_mailserver"));
         } else {
-          setEmailMsg("Bestätigungscode wurde an Ihre aktuelle E-Mail gesendet.");
+          setEmailMsg(t("profile.code_sent"));
         }
-      } else { await refreshUser(); setNewEmail(""); setEmailMsg("✓ E-Mail aktualisiert"); }
-    } else setEmailMsg(data.error ?? "Fehler");
+      } else { await refreshUser(); setNewEmail(""); setEmailMsg(t("profile.msg_email_updated")); }
+    } else setEmailMsg(data.error ?? t("profile.error_generic"));
   }
 
   async function verifyEmailCode(e: React.FormEvent) {
     e.preventDefault(); setVerifyMsg("");
     const res = await adminFetch("/api/admin/verify-code", { method: "POST", body: JSON.stringify({ code: verifyCode, purpose: "email_change" }) });
     const data = await res.json();
-    if (res.ok) { await refreshUser(); setAwaitingCode(false); setNewEmail(""); setVerifyCode(""); setInlineCode(null); setEmailMsg("✓ E-Mail erfolgreich geändert"); }
-    else setVerifyMsg(data.error ?? "Ungültiger Code");
+    if (res.ok) { await refreshUser(); setAwaitingCode(false); setNewEmail(""); setVerifyCode(""); setInlineCode(null); setEmailMsg(t("profile.msg_email_changed")); }
+    else setVerifyMsg(data.error ?? t("profile.invalid_code"));
   }
 
   const allPolicyMet = POLICY_CHECKS.every(c => c.test(newPw));
   async function savePassword(e: React.FormEvent) {
     e.preventDefault(); setPwMsg("");
-    if (newPw !== confirmPw) { setPwMsg("Passwörter stimmen nicht überein"); return; }
-    if (!allPolicyMet) { setPwMsg("Bitte erfüllen Sie alle Passwortanforderungen"); return; }
+    if (newPw !== confirmPw) { setPwMsg(t("auth.pw_mismatch")); return; }
+    if (!allPolicyMet) { setPwMsg(t("auth.policy_not_met")); return; }
     setPwSaving(true);
     const res = await adminFetch("/api/admin/profile", { method: "PATCH", body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }) });
     const data = await res.json();
     setPwSaving(false);
-    if (res.ok) { setCurrentPw(""); setNewPw(""); setConfirm(""); setPwMsg("✓ Passwort geändert"); }
-    else setPwMsg(data.error ?? "Fehler");
+    if (res.ok) { setCurrentPw(""); setNewPw(""); setConfirm(""); setPwMsg(t("profile.msg_password_changed")); }
+    else setPwMsg(data.error ?? t("profile.error_generic"));
   }
 
   return (
@@ -223,13 +225,13 @@ export function ProfileView() {
               {POLICY_CHECKS.map(c => (
                 <div key={c.label} className="flex items-center gap-2 text-xs">
                   {c.test(newPw) ? <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <X className="w-3.5 h-3.5 text-gray-500 shrink-0" />}
-                  <span style={{ color: c.test(newPw) ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>{c.label}</span>
+                  <span style={{ color: c.test(newPw) ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>{t(c.label)}</span>
                 </div>
               ))}
             </div>
           )}
           <Field label="Passwort bestätigen" value={confirmPw} onChange={setConfirm} type="password" />
-          {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">Passwörter stimmen nicht überein</p>}
+          {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">{t("auth.pw_mismatch")}</p>}
           {pwMsg && <p className="text-sm" style={{ color: pwMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>{pwMsg}</p>}
           <button type="submit" disabled={pwSaving || !currentPw || !allPolicyMet || newPw !== confirmPw}
             className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
