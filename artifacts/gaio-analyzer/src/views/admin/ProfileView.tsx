@@ -136,71 +136,71 @@ export function ProfileView() {
     <div className="max-w-2xl mx-auto space-y-6 pb-16">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Profil</h1>
-          <p className="text-sm text-muted-foreground">{user?.role === "admin" ? "Administrator" : user?.role === "user_extended" ? "Erweiterter Benutzer" : "Benutzer"}</p>
+          <h1 className="text-2xl font-bold">{t("profile.title")}</h1>
+          <p className="text-sm text-muted-foreground">{user?.role === "admin" ? t("profile.role_admin") : user?.role === "user_extended" ? t("profile.role_user_extended") : t("profile.role_user")}</p>
         </div>
         <button onClick={async () => { await logout(); setActiveView(7); }}
           className="text-sm px-4 py-2 rounded-lg"
           style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-          Abmelden
+          {t("profile.logout_button")}
         </button>
       </div>
 
       {/* Personal data */}
-      <Section title="Persönliche Daten">
+      <Section title={t("profile.section_personal")}>
         <form onSubmit={saveName} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Vorname" value={firstName} onChange={setFirstName} />
-            <Field label="Nachname" value={lastName}  onChange={setLastName} />
+            <Field label={t("profile.first_name_label")} value={firstName} onChange={setFirstName} />
+            <Field label={t("profile.last_name_label")} value={lastName}  onChange={setLastName} />
           </div>
           {nameMsg && <p className="text-sm" style={{ color: nameMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>{nameMsg}</p>}
           <button type="submit" disabled={nameSaving}
             className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-            {nameSaving ? "Speichern…" : "Speichern"}
+            {nameSaving ? t("auth.saving_loading") : t("profile.save_button")}
           </button>
         </form>
       </Section>
 
       {/* Username */}
-      <Section title="Benutzername ändern">
+      <Section title={t("profile.section_username")}>
         <form onSubmit={saveUsername} className="space-y-4">
-          <Field label="Aktueller Benutzername" value={user?.username ?? ""} onChange={() => {}} />
-          <Field label="Neuer Benutzername" value={newUsername} onChange={setNewUsername} />
-          <Field label="Aktuelles Passwort zur Bestätigung" value={currentPwU} onChange={setCurrentPwU} type="password" />
+          <Field label={t("profile.current_username_label")} value={user?.username ?? ""} onChange={() => {}} />
+          <Field label={t("profile.new_username_label")} value={newUsername} onChange={setNewUsername} />
+          <Field label={t("profile.current_pw_confirm_label")} value={currentPwU} onChange={setCurrentPwU} type="password" />
           {usernameMsg && <p className="text-sm" style={{ color: usernameMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>{usernameMsg}</p>}
           <button type="submit" disabled={usernameSaving || !newUsername || !currentPwU}
             className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-            {usernameSaving ? "Speichern…" : "Benutzername ändern"}
+            {usernameSaving ? t("auth.saving_loading") : t("profile.section_username")}
           </button>
         </form>
       </Section>
 
       {/* Email */}
-      <Section title="E-Mail ändern">
+      <Section title={t("profile.section_email")}>
         <form onSubmit={saveEmail} className="space-y-4">
-          <Field label="Aktuelle E-Mail" value={user?.email ?? ""} onChange={() => {}} type="email" />
-          <Field label="Neue E-Mail" value={newEmail} onChange={setNewEmail} type="email" />
+          <Field label={t("profile.current_email_label")} value={user?.email ?? ""} onChange={() => {}} type="email" />
+          <Field label={t("profile.new_email_label")} value={newEmail} onChange={setNewEmail} type="email" />
           {emailMsg && <p className="text-sm" style={{ color: emailMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}>{emailMsg}</p>}
           {inlineCode && (
             <div className="rounded-lg p-4 space-y-1" style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--primary) / 0.4)" }}>
-              <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Ihr Bestätigungscode (15 Min. gültig):</p>
+              <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{t("profile.inline_code_title")}</p>
               <p className="text-3xl font-mono font-bold tracking-widest" style={{ color: "hsl(var(--primary))" }}>{inlineCode}</p>
-              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Geben Sie diesen Code im Feld unten ein.</p>
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{t("profile.inline_code_hint")}</p>
             </div>
           )}
           {!awaitingCode && (
             <button type="submit" disabled={emailSaving || !newEmail}
               className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
               style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-              {emailSaving ? "Senden…" : "Bestätigungscode senden"}
+              {emailSaving ? t("profile.sending_loading") : t("profile.send_code_button")}
             </button>
           )}
         </form>
         {awaitingCode && (
           <form onSubmit={verifyEmailCode} className="space-y-3 mt-4 pt-4" style={{ borderTop: "1px solid hsl(var(--border))" }}>
-            <label className="text-sm font-medium">Bestätigungscode (6 Ziffern)</label>
+            <label className="text-sm font-medium">{t("profile.verify_code_label")}</label>
             <input type="text" inputMode="numeric" maxLength={6} value={verifyCode} onChange={e => setVerifyCode(e.target.value.replace(/\D/g, ""))}
               placeholder="000000"
               className="w-40 px-3 py-2 rounded-lg text-sm font-mono"
@@ -209,17 +209,17 @@ export function ProfileView() {
             <button type="submit" disabled={verifyCode.length !== 6}
               className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
               style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-              Code bestätigen
+              {t("profile.verify_code_button")}
             </button>
           </form>
         )}
       </Section>
 
       {/* Password */}
-      <Section title="Passwort ändern">
+      <Section title={t("profile.section_password")}>
         <form onSubmit={savePassword} className="space-y-4">
-          <Field label="Aktuelles Passwort" value={currentPw} onChange={setCurrentPw} type="password" />
-          <Field label="Neues Passwort"     value={newPw}     onChange={setNewPw}     type="password" />
+          <Field label={t("profile.current_password_label")} value={currentPw} onChange={setCurrentPw} type="password" />
+          <Field label={t("auth.new_password_label")}        value={newPw}     onChange={setNewPw}     type="password" />
           {newPw && (
             <div className="space-y-1 p-3 rounded-lg" style={{ background: "hsl(var(--muted))" }}>
               {POLICY_CHECKS.map(c => (
@@ -230,13 +230,13 @@ export function ProfileView() {
               ))}
             </div>
           )}
-          <Field label="Passwort bestätigen" value={confirmPw} onChange={setConfirm} type="password" />
+          <Field label={t("auth.confirm_password_label")} value={confirmPw} onChange={setConfirm} type="password" />
           {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">{t("auth.pw_mismatch")}</p>}
           {pwMsg && <p className="text-sm" style={{ color: pwMsg.startsWith("✓") ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>{pwMsg}</p>}
           <button type="submit" disabled={pwSaving || !currentPw || !allPolicyMet || newPw !== confirmPw}
             className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-            {pwSaving ? "Speichern…" : "Passwort ändern"}
+            {pwSaving ? t("auth.saving_loading") : t("profile.section_password")}
           </button>
         </form>
       </Section>

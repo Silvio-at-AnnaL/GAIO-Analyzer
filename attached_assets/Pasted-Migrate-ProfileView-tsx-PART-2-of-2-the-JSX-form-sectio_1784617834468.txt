@@ -1,0 +1,62 @@
+Migrate ProfileView.tsx — PART 2 of 2: the JSX form sections. Part 1 (module scope, guard branches, handler messages) is already done — do not redo it. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File: artifacts/gaio-analyzer/src/views/admin/ProfileView.tsx
+ProfileView already calls useT() at line 36 — reuse the existing `t`.
+
+=== CRITICAL — do NOT break the role logic (~line 140) ===
+    {user?.role === "admin" ? "Administrator" : user?.role === "user_extended" ? "Erweiterter Benutzer" : "Benutzer"}
+The strings "admin" and "user_extended" on the LEFT of each === are backend role identifiers and MUST stay exactly as they are.
+Only the three DISPLAY strings change:
+    "Administrator"        -> t("profile.role_admin")
+    "Erweiterter Benutzer" -> t("profile.role_user_extended")
+    "Benutzer"             -> t("profile.role_user")
+
+=== Header (~lines 139, and the logout button just below) ===
+  <h1>Profil</h1>                -> t("profile.title")
+  button text `Abmelden`         -> t("profile.logout_button")   (this text sits on its own line inside the button)
+
+=== Section: Persönliche Daten (~lines 150-161) ===
+  <Section title="Persönliche Daten">        -> title={t("profile.section_personal")}
+  <Field label="Vorname" ...>                -> label={t("profile.first_name_label")}
+  <Field label="Nachname" ...>               -> label={t("profile.last_name_label")}
+  {nameSaving ? "Speichern…" : "Speichern"}  -> {nameSaving ? t("auth.saving_loading") : t("profile.save_button")}
+      ("Speichern…" REUSES the existing auth.saving_loading key; "Speichern" is a NEW key)
+
+=== Section: Benutzername ändern (~lines 166-176) ===
+  <Section title="Benutzername ändern">                    -> title={t("profile.section_username")}
+  <Field label="Aktueller Benutzername" ...>               -> label={t("profile.current_username_label")}
+  <Field label="Neuer Benutzername" ...>                   -> label={t("profile.new_username_label")}
+  <Field label="Aktuelles Passwort zur Bestätigung" ...>   -> label={t("profile.current_pw_confirm_label")}
+  {usernameSaving ? "Speichern…" : "Benutzername ändern"}
+      -> {usernameSaving ? t("auth.saving_loading") : t("profile.section_username")}
+      (the button text is IDENTICAL to the section title — REUSE profile.section_username, do NOT create a second key)
+
+=== Section: E-Mail ändern (~lines 181-215) ===
+  <Section title="E-Mail ändern">                          -> title={t("profile.section_email")}
+  <Field label="Aktuelle E-Mail" ...>                      -> label={t("profile.current_email_label")}
+  <Field label="Neue E-Mail" ...>                          -> label={t("profile.new_email_label")}
+  <p>Ihr Bestätigungscode (15 Min. gültig):</p>            -> {t("profile.inline_code_title")}
+  <p>Geben Sie diesen Code im Feld unten ein.</p>          -> {t("profile.inline_code_hint")}
+  {emailSaving ? "Senden…" : "Bestätigungscode senden"}
+      -> {emailSaving ? t("profile.sending_loading") : t("profile.send_code_button")}   (both NEW)
+  <label>Bestätigungscode (6 Ziffern)</label>              -> {t("profile.verify_code_label")}
+  button text `Code bestätigen`                            -> t("profile.verify_code_button")   (own line inside the button)
+  Do NOT touch placeholder="000000" — that is a digit-pattern hint, identical in every language.
+
+=== Section: Passwort ändern (~lines 219-240) ===
+  <Section title="Passwort ändern">                        -> title={t("profile.section_password")}
+  <Field label="Aktuelles Passwort" ...>                   -> label={t("profile.current_password_label")}   [NEW]
+  <Field label="Neues Passwort" ...>                       -> label={t("auth.new_password_label")}          [REUSE existing]
+  <Field label="Passwort bestätigen" ...>                  -> label={t("auth.confirm_password_label")}      [REUSE existing]
+  {pwSaving ? "Speichern…" : "Passwort ändern"}
+      -> {pwSaving ? t("auth.saving_loading") : t("profile.section_password")}
+      (button text IDENTICAL to the section title — REUSE, do NOT create a second key)
+
+=== Do NOT touch ===
+The four `.startsWith("✓")` colour checks (nameMsg, usernameMsg, emailMsg, pwMsg — approx. lines 156, 171, 185, 235). Those read a character that Part 1 preserved inside the label values; leave the comparisons exactly as they are.
+The local Field and Section helper components themselves (lines 14-33) — they receive their text as props, so nothing inside them changes.
+
+=== Manifest ===
+Add ONLY the NEW profile.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "profile", German source values exactly as they read today, escaping special characters (ä, ö, ü, ß, …) the same way existing entries do. Add no auth.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the profile page shows the correct role label for the logged-in user (this confirms the role comparison logic still works), all four section headings, every field label, and each button in both idle and saving state. Under EN, everything falls back to German — never blank, never a raw key.
