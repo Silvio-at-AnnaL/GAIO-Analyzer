@@ -1,0 +1,100 @@
+Migrate AnalysisLogView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/AnalysisLogView.tsx
+Key namespace: "log"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the
+AnalysisLogView component body, before any early return.
+
+=== CRITICAL — do NOT touch ===
+  - All <option value="..."> attributes: "", "completed", "failed", "running", "10", "25", "50".
+    These are filter/query values sent to the backend.
+  - All `item.status === "completed" | "failed" | "running"` comparisons.
+  - The formatTimestamp() helper at module level (~line 36) INCLUDING its "de-DE" argument —
+    that is a separate follow-up task, leave it entirely alone in this pass.
+
+=== A) REUSE-ONLY (identical text already exists) ===
+  `Analyseprotokoll` (heading)  -> {t("nav.admin_analyseprotokoll")}
+  `Kein Zugriff. Bitte als Administrator anmelden.` -> {t("log.no_access")}   [NEW — different wording
+      from users.no_access, keep separate]
+  `Zum Login`                   -> {t("auth.go_to_login_button")}
+  `Laden…`                      -> {t("profile.loading")}
+  `Lädt…`                       -> {t("prompts.loading")}
+  `Abbrechen`                   -> {t("domain.aria_cancel")}
+  table header `Status`         -> {t("users.col_status")}
+  table header `Aktionen`       -> {t("users.col_actions")}
+  setError(... "Fehler beim Löschen") -> t("users.delete_error")   (identical text)
+
+=== B) COUNT LINE (~line 146) — has singular/plural ===
+  `{data.total} {data.total === 1 ? "Analyse" : "Analysen"} gesamt`
+      -> {data.total === 1
+            ? t("log.count_one",  { count: data.total })
+            : t("log.count_many", { count: data.total })}
+      manifest: "log.count_one":  de: "{count} Analyse gesamt"
+                "log.count_many": de: "{count} Analysen gesamt"
+  `<> · Gespeicherter Speicherplatz: <StorageDisplay .../></>` (~line 148)
+      -> keep the "·" bullet and the <StorageDisplay/> element as literals, migrate only the words:
+         <> · {t("log.storage_saved")} <StorageDisplay kb={data.storageTotalKb} /></>
+      manifest: "log.storage_saved": de: "Gespeicherter Speicherplatz:"
+
+=== C) FILTER BAR ===
+  placeholder="Domain oder Unternehmen suchen…" -> placeholder={t("log.search_placeholder")}   [NEW]
+  <option value="">Alle Status</option>          -> {t("log.filter_all")}          [NEW]
+  <option value="completed">Abgeschlossen</option> -> {t("log.status_completed")}  [NEW]
+  <option value="failed">Fehlgeschlagen</option>   -> {t("log.status_failed")}     [NEW]
+  <option value="running">Läuft</option>           -> {t("log.status_running")}    [NEW]
+
+=== D) TABLE ===
+  header `Datum/Uhrzeit`         -> {t("log.col_datetime")}   [NEW]
+  header `Unternehmen / Domain`  -> {t("log.col_company")}    [NEW]
+  header `Seiten`                -> {t("log.col_pages")}      [NEW]
+  empty state (~line 188):
+      {debouncedSearch || statusFilter ? "Keine Einträge für diese Suche." : "Noch keine Analysen durchgeführt."}
+      -> {... ? t("log.empty_search") : t("log.empty_none")}   [both NEW]
+  status badge `⚠ Fehlgeschlagen` — keep the ⚠ symbol as a literal, REUSE the filter key for the word:
+      ⚠ {t("log.status_failed")}
+  status badge `Läuft…`          -> {t("log.status_running_loading")}   [NEW, de: "Läuft…"]
+  title="HTML-Export herunterladen" -> title={t("log.export_title")}    [NEW]
+  title="Eintrag löschen"           -> title={t("log.delete_title")}    [NEW]
+
+=== E) PAGINATION ===
+  `Seite {data.page} von {data.pages}`
+      -> {t("log.pagination", { page: data.page, pages: data.pages })}
+      manifest: "log.pagination": de: "Seite {page} von {pages}"
+  The three per-page options — the visible text only, values stay:
+      <option value="10">10 / Seite</option>  -> {t("log.per_page", { count: 10 })}
+      <option value="25">25 / Seite</option>  -> {t("log.per_page", { count: 25 })}
+      <option value="50">50 / Seite</option>  -> {t("log.per_page", { count: 50 })}
+      manifest: "log.per_page": de: "{count} / Seite"   (ONE key, three call sites)
+
+=== F) DELETE DIALOG (~lines 335-340) ===
+  <h3>Eintrag löschen?</h3>  -> {t("log.delete_confirm_title")}   [NEW]
+  The body sentence wraps a <strong> and an interpolated date, plus a conditional suffix. Split it:
+      {t("log.delete_confirm_pre")}
+      <strong>{deleteTarget.companyName || deleteTarget.domain}</strong>
+      {t("log.delete_confirm_post", { date: formatTimestamp(deleteTarget.startedAt) })}
+      {deleteTarget.hasHtmlExport && t("log.delete_confirm_html")}
+  manifest:
+      "log.delete_confirm_pre":  de: "Der Eintrag für "        (WITH trailing space)
+      "log.delete_confirm_post": de: " vom {date} wird dauerhaft gelöscht."   (WITH leading space)
+      "log.delete_confirm_html": de: " Der gespeicherte HTML-Export wird ebenfalls entfernt."  (WITH leading space)
+  {deleting ? "Löschen…" : "Löschen"}
+      -> {deleting ? t("log.deleting") : t("log.delete_button")}   [both NEW]
+
+=== G) ERROR MESSAGES ===
+  setError("Fehler beim Laden")        -> t("log.load_error")          [NEW]
+  setError("Netzwerkfehler")           -> t("log.network_error")       [NEW, de: "Netzwerkfehler" —
+      NO trailing period; do NOT reuse perm.network_error which ends with one]
+  setError("Export nicht verfügbar")   -> t("log.export_unavailable")  [NEW]
+
+=== Manifest ===
+Add ONLY the NEW log.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "log",
+escaping special characters (ä, ö, ü, ß, …, ·, ⚠) the same way existing entries do. Add no nav.*,
+auth.*, profile.*, prompts.*, domain.* or users.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the log table renders
+with all five column headers, the status filter with all four options, correct status badges per row,
+the count line with correct singular/plural, pagination text, and the delete dialog with the entry name
+and timestamp interpolated correctly. Filter by status and change page size — both must still work
+(this proves the option values were not touched). Under EN, everything falls back to German — never
+blank, never a raw key.

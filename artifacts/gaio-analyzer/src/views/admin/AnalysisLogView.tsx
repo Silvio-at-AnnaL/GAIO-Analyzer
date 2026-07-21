@@ -3,6 +3,7 @@ import { Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { useAuth } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface LogItem {
   id: number;
@@ -50,6 +51,7 @@ function StorageDisplay({ kb }: { kb: number }) {
 }
 
 export function AnalysisLogView() {
+  const t = useT();
   const { user, isAuthenticated, isLoading } = useAuth();
   const { setActiveView } = useAppStore();
 
@@ -82,14 +84,14 @@ export function AnalysisLogView() {
     if (debouncedSearch) params.set("search", debouncedSearch);
     try {
       const res = await adminFetch(`/api/admin/analysis-log?${params}`);
-      if (!res.ok) { setError("Fehler beim Laden"); return; }
+      if (!res.ok) { setError(t("log.load_error")); return; }
       setData(await res.json() as LogResponse);
     } catch {
-      setError("Netzwerkfehler");
+      setError(t("log.network_error"));
     } finally {
       setLoading(false);
     }
-  }, [page, limit, statusFilter, debouncedSearch]);
+  }, [page, limit, statusFilter, debouncedSearch, t]);
 
   useEffect(() => { if (isAuthenticated && user?.role === "admin") fetchLog(); }, [fetchLog, isAuthenticated, user]);
 
@@ -97,7 +99,7 @@ export function AnalysisLogView() {
     setDownloading(item.id);
     try {
       const res = await adminFetch(`/api/admin/analysis-log/${item.id}/export`);
-      if (!res.ok) { alert("Export nicht verfügbar"); return; }
+      if (!res.ok) { alert(t("log.export_unavailable")); return; }
       const html = await res.text();
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
@@ -117,18 +119,18 @@ export function AnalysisLogView() {
     try {
       const res = await adminFetch(`/api/admin/analysis-log/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) { setDeleteTarget(null); await fetchLog(); }
-      else alert("Fehler beim Löschen");
+      else alert(t("users.delete_error"));
     } finally {
       setDeleting(false);
     }
   }
 
-  if (isLoading) return <div className="p-8 text-muted-foreground text-sm">Laden…</div>;
+  if (isLoading) return <div className="p-8 text-muted-foreground text-sm">{t("profile.loading")}</div>;
   if (!isAuthenticated || user?.role !== "admin") {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
-        <p className="text-muted-foreground">Kein Zugriff. Bitte als Administrator anmelden.</p>
-        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>Zum Login</button>
+        <p className="text-muted-foreground">{t("log.no_access")}</p>
+        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>{t("auth.go_to_login_button")}</button>
       </div>
     );
   }
@@ -140,12 +142,14 @@ export function AnalysisLogView() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Analyseprotokoll</h1>
+          <h1 className="text-2xl font-bold">{t("nav.admin_analyseprotokoll")}</h1>
           {data && (
             <p className="text-sm text-muted-foreground mt-0.5">
-              {data.total} {data.total === 1 ? "Analyse" : "Analysen"} gesamt
+              {data.total === 1
+                ? t("log.count_one",  { count: data.total })
+                : t("log.count_many", { count: data.total })}
               {data.storageTotalKb > 0 && (
-                <> · Gespeicherter Speicherplatz: <StorageDisplay kb={data.storageTotalKb} /></>
+                <> · {t("log.storage_saved")} <StorageDisplay kb={data.storageTotalKb} /></>
               )}
             </p>
           )}
@@ -156,7 +160,7 @@ export function AnalysisLogView() {
       <div className="flex gap-3 flex-wrap">
         <input
           type="text"
-          placeholder="Domain oder Unternehmen suchen…"
+          placeholder={t("log.search_placeholder")}
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="flex-1 min-w-48 px-3 py-2 rounded-lg text-sm"
@@ -168,10 +172,10 @@ export function AnalysisLogView() {
           className="px-3 py-2 rounded-lg text-sm"
           style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
         >
-          <option value="">Alle Status</option>
-          <option value="completed">Abgeschlossen</option>
-          <option value="failed">Fehlgeschlagen</option>
-          <option value="running">Läuft</option>
+          <option value="">{t("log.filter_all")}</option>
+          <option value="completed">{t("log.status_completed")}</option>
+          <option value="failed">{t("log.status_failed")}</option>
+          <option value="running">{t("log.status_running")}</option>
         </select>
       </div>
 
@@ -181,11 +185,11 @@ export function AnalysisLogView() {
           <div className="p-4 text-sm text-amber-400">{error}</div>
         )}
         {loading && !data && (
-          <div className="p-8 text-center text-sm text-muted-foreground">Lädt…</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">{t("prompts.loading")}</div>
         )}
         {!loading && data?.items.length === 0 && (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            {debouncedSearch || statusFilter ? "Keine Einträge für diese Suche." : "Noch keine Analysen durchgeführt."}
+            {debouncedSearch || statusFilter ? t("log.empty_search") : t("log.empty_none")}
           </div>
         )}
         {data && data.items.length > 0 && (
@@ -193,8 +197,16 @@ export function AnalysisLogView() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--muted) / 0.5)" }}>
-                  {["Datum/Uhrzeit", "Unternehmen / Domain", "GAIO Score", "Seiten", "Status", "HTML-Export", "Aktionen"].map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
+                  {[
+                    { id: "datetime",  label: t("log.col_datetime") },
+                    { id: "company",   label: t("log.col_company") },
+                    { id: "score",     label: "GAIO Score" },
+                    { id: "pages",     label: t("log.col_pages") },
+                    { id: "status",    label: t("users.col_status") },
+                    { id: "export",    label: "HTML-Export" },
+                    { id: "actions",   label: t("users.col_actions") },
+                  ].map(({ id, label }) => (
+                    <th key={id} className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</th>
                   ))}
                 </tr>
               </thead>
@@ -243,7 +255,7 @@ export function AnalysisLogView() {
                       {item.status === "completed" && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                           style={{ background: "#1e3a5f", color: "#93c5fd" }}>
-                          Abgeschlossen
+                          {t("log.status_completed")}
                         </span>
                       )}
                       {item.status === "failed" && (
@@ -251,13 +263,13 @@ export function AnalysisLogView() {
                           title={item.errorMessage ?? undefined}
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium cursor-help"
                           style={{ background: "#78350f", color: "#fcd34d" }}>
-                          ⚠ Fehlgeschlagen
+                          ⚠ {t("log.status_failed")}
                         </span>
                       )}
                       {item.status === "running" && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                           style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-                          Läuft…
+                          {t("log.status_running_loading")}
                         </span>
                       )}
                     </td>
@@ -268,7 +280,7 @@ export function AnalysisLogView() {
                         <button
                           onClick={() => downloadExport(item)}
                           disabled={downloading === item.id}
-                          title="HTML-Export herunterladen"
+                          title={t("log.export_title")}
                           className="inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors disabled:opacity-50"
                           style={{ border: "1px solid hsl(var(--border))" }}>
                           <Download className="w-3.5 h-3.5" />
@@ -282,7 +294,7 @@ export function AnalysisLogView() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => setDeleteTarget(item)}
-                        title="Eintrag löschen"
+                        title={t("log.delete_title")}
                         className="inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:text-amber-400"
                         style={{ border: "1px solid hsl(var(--border))" }}>
                         <Trash2 className="w-3.5 h-3.5" />
@@ -300,15 +312,15 @@ export function AnalysisLogView() {
       {data && data.pages > 1 && (
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Seite {data.page} von {data.pages}</span>
+            <span>{t("log.pagination", { page: data.page, pages: data.pages })}</span>
             <select
               value={limit}
               onChange={e => { setLimit(parseInt(e.target.value)); setPage(1); }}
               className="ml-2 px-2 py-1 rounded text-xs"
               style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}>
-              <option value="10">10 / Seite</option>
-              <option value="25">25 / Seite</option>
-              <option value="50">50 / Seite</option>
+              <option value="10">{t("log.per_page", { count: 10 })}</option>
+              <option value="25">{t("log.per_page", { count: 25 })}</option>
+              <option value="50">{t("log.per_page", { count: 50 })}</option>
             </select>
           </div>
           <div className="flex items-center gap-1">
@@ -332,21 +344,23 @@ export function AnalysisLogView() {
       {deleteTarget && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: "rgba(0,0,0,0.6)" }}>
           <div className="rounded-xl p-6 max-w-sm w-full mx-4 space-y-4" style={cardStyle}>
-            <h3 className="font-semibold text-base">Eintrag löschen?</h3>
+            <h3 className="font-semibold text-base">{t("log.delete_confirm_title")}</h3>
             <p className="text-sm text-muted-foreground">
-              Der Eintrag für <strong>{deleteTarget.companyName || deleteTarget.domain}</strong> vom {formatTimestamp(deleteTarget.startedAt)} wird dauerhaft gelöscht.
-              {deleteTarget.hasHtmlExport && " Der gespeicherte HTML-Export wird ebenfalls entfernt."}
+              {t("log.delete_confirm_pre")}
+              <strong>{deleteTarget.companyName || deleteTarget.domain}</strong>
+              {t("log.delete_confirm_post", { date: formatTimestamp(deleteTarget.startedAt) })}
+              {deleteTarget.hasHtmlExport && t("log.delete_confirm_html")}
             </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteTarget(null)} disabled={deleting}
                 className="px-4 py-2 rounded-lg text-sm"
                 style={{ border: "1px solid hsl(var(--border))" }}>
-                Abbrechen
+                {t("domain.aria_cancel")}
               </button>
               <button onClick={confirmDelete} disabled={deleting}
                 className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
                 style={{ background: "#b45309", color: "white" }}>
-                {deleting ? "Löschen…" : "Löschen"}
+                {deleting ? t("log.deleting") : t("log.delete_button")}
               </button>
             </div>
           </div>
