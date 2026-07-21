@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface DeliverySettings {
   delivery_mode: string;
@@ -15,6 +16,7 @@ function parseBccInput(raw: string): string[] {
 }
 
 export function DeliveryView() {
+  const t = useT();
   const [form, setForm] = useState<DeliverySettings>({
     delivery_mode: "download",
     delivery_bcc: "",
@@ -50,7 +52,7 @@ export function DeliveryView() {
     if (form.delivery_mode === "mail-only") {
       const addresses = parseBccInput(form.delivery_bcc);
       if (addresses.length === 0) {
-        setBccError("Mindestens eine BCC-Adresse ist erforderlich, wenn der E-Mail-Versand aktiv ist.");
+        setBccError(t("delivery.bcc_required_error"));
         return;
       }
       const invalid = addresses.filter((a) => !EMAIL_RE.test(a));
@@ -71,10 +73,10 @@ export function DeliveryView() {
     setSaving(false);
     if (res.ok) {
       setForm((f) => ({ ...f, delivery_bcc: bccNormalized }));
-      setFeedback({ type: "ok", msg: "Einstellungen gespeichert" });
+      setFeedback({ type: "ok", msg: t("delivery.saved_msg") });
       setTimeout(() => setFeedback(null), 3500);
     } else {
-      setFeedback({ type: "err", msg: "Fehler beim Speichern" });
+      setFeedback({ type: "err", msg: t("delivery.save_error") });
     }
   }
 
@@ -91,18 +93,18 @@ export function DeliveryView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Versand-Analyse</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_versand_analyse")}</h1>
         <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          Bereitstellungsmodus für Analyseberichte konfigurieren
+          {t("delivery.subtitle")}
         </p>
       </div>
 
       <div className="rounded-lg border p-5 space-y-5" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-        <h2 className="text-base font-semibold">Bereitstellung von Analyseberichten</h2>
+        <h2 className="text-base font-semibold">{t("delivery.section_title")}</h2>
 
         {/* Mode selection */}
         <div className="space-y-2">
-          <p className="text-sm font-medium">Bereitstellungsmodus</p>
+          <p className="text-sm font-medium">{t("delivery.mode_label")}</p>
 
           <label className="flex items-start gap-3 cursor-pointer p-3 rounded-md border transition-colors"
             style={{ borderColor: form.delivery_mode === "download" ? "hsl(var(--primary))" : "hsl(var(--border))", background: form.delivery_mode === "download" ? "hsl(var(--primary) / 0.06)" : "transparent" }}>
@@ -115,9 +117,9 @@ export function DeliveryView() {
               className="mt-0.5 accent-blue-500"
             />
             <div>
-              <p className="text-sm font-medium">Download (Standard)</p>
+              <p className="text-sm font-medium">{t("delivery.mode_download")}</p>
               <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                Nutzer laden PDF/HTML direkt herunter.
+                {t("delivery.mode_download_desc")}
               </p>
             </div>
           </label>
@@ -133,9 +135,9 @@ export function DeliveryView() {
               className="mt-0.5 accent-blue-500"
             />
             <div>
-              <p className="text-sm font-medium">Nur per E-Mail</p>
+              <p className="text-sm font-medium">{t("delivery.mode_mail")}</p>
               <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                Nutzer geben eine Mailadresse ein; der Report wird zugesandt.
+                {t("delivery.mode_mail_desc")}
               </p>
             </div>
           </label>
@@ -144,13 +146,13 @@ export function DeliveryView() {
         {/* BCC field — shown in both modes (BCC always applies) */}
         <div className="space-y-1.5">
           <label className="text-sm font-medium">
-            BCC-Adressen{form.delivery_mode === "mail-only" && <span className="text-red-400"> *</span>}
+            {t("delivery.bcc_label")}{form.delivery_mode === "mail-only" && <span className="text-red-400"> *</span>}
           </label>
           <textarea
             rows={3}
             value={form.delivery_bcc}
             onChange={(e) => { setForm((f) => ({ ...f, delivery_bcc: e.target.value })); setBccError(null); }}
-            placeholder={"bcc1@firma.de\nbcc2@firma.de"}
+            placeholder={t("delivery.bcc_placeholder")}
             className="w-full px-3 py-2 rounded-md text-sm border resize-none font-mono"
             style={{
               background: "hsl(var(--input))",
@@ -159,7 +161,7 @@ export function DeliveryView() {
             }}
           />
           <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Mehrere Adressen mit Komma oder Zeilenumbruch trennen. Jeder versandte Report wird als Kopie an diese Adressen gesendet.
+            {t("delivery.bcc_hint")}
           </p>
           {bccError && (
             <p className="text-xs text-red-400 flex items-center gap-1">
@@ -174,15 +176,15 @@ export function DeliveryView() {
             {mailHost ? (
               <div className="flex flex-col gap-0.5">
                 <span className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 shrink-0" /> Mailserver konfiguriert ({mailHost})
+                  <CheckCircle className="w-4 h-4 shrink-0" /> {t("delivery.mailserver_ok", { host: mailHost })}
                 </span>
                 {bccList.length > 0 && (
-                  <span className="text-xs opacity-80 pl-6">BCC an: {bccList.join(", ")}</span>
+                  <span className="text-xs opacity-80 pl-6">{t("delivery.bcc_to", { list: bccList.join(", ") })}</span>
                 )}
               </div>
             ) : (
               <span className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" /> Kein Mailserver konfiguriert – E-Mail-Versand nicht möglich. Bitte zuerst den Mailserver einrichten.
+                <AlertCircle className="w-4 h-4 shrink-0" /> {t("delivery.mailserver_missing")}
               </span>
             )}
           </div>
@@ -196,7 +198,7 @@ export function DeliveryView() {
           style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Einstellungen speichern
+          {t("delivery.save_button")}
         </button>
 
         {feedback && (
@@ -209,8 +211,7 @@ export function DeliveryView() {
 
       {/* Info box */}
       <div className="rounded-md p-4 text-sm" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-        Im Download-Modus erhalten die konfigurierten BCC-Adressen automatisch eine Kopie nach jeder abgeschlossenen Analyse.
-        Im E-Mail-Modus wird der Report direkt an den Nutzer versendet, BCC-Adressen erhalten ebenfalls eine Kopie.
+        {t("delivery.info_box")}
       </div>
     </div>
   );

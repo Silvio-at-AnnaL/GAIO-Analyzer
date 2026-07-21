@@ -1,0 +1,81 @@
+Migrate DeliveryView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/DeliveryView.tsx
+Key namespace: "delivery"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the
+DeliveryView component body, before any early return.
+
+CRITICAL — do NOT touch any of these, they are logic values, not display text:
+  - `form.delivery_mode === "mail-only"` and any other delivery_mode comparison
+  - the `type: "ok"` / `type: "err"` fields inside setFeedback({...}) — only the `msg:` values change
+  - the EMAIL_RE regular expression at module level
+
+=== 1) HEADER ===
+  <h1>Versand-Analyse</h1>   -> {t("nav.admin_versand_analyse")}   <- REUSE existing key (same text as
+                                the sidebar entry; keeping them on one key keeps them in sync)
+  the subtitle line `Bereitstellungsmodus für Analyseberichte konfigurieren` (own line inside its element)
+                             -> {t("delivery.subtitle")}                    [NEW]
+
+=== 2) MODE SECTION ===
+  <h2>Bereitstellung von Analyseberichten</h2>  -> {t("delivery.section_title")}      [NEW]
+  <p>Bereitstellungsmodus</p>                   -> {t("delivery.mode_label")}         [NEW]
+  <p>Download (Standard)</p>                    -> {t("delivery.mode_download")}      [NEW]
+  `Nutzer laden PDF/HTML direkt herunter.`      -> {t("delivery.mode_download_desc")} [NEW]
+  <p>Nur per E-Mail</p>                         -> {t("delivery.mode_mail")}          [NEW]
+  `Nutzer geben eine Mailadresse ein; der Report wird zugesandt.`
+                                                -> {t("delivery.mode_mail_desc")}     [NEW]
+
+=== 3) BCC FIELD ===
+  The label reads `BCC-Adressen{... && <span className="text-red-400"> *</span>}`.
+  Migrate ONLY the text part, keep the conditional asterisk span exactly as it is:
+      {t("delivery.bcc_label")}{form.delivery_mode === "mail-only" && <span className="text-red-400"> *</span>}
+      [NEW key, de: "BCC-Adressen"]
+  placeholder={"bcc1@firma.de\nbcc2@firma.de"}  -> placeholder={t("delivery.bcc_placeholder")}   [NEW]
+      IMPORTANT: this value contains a real newline between the two addresses. In labelDefaults.ts write
+      it with an escaped newline (\n) inside the string so the two example addresses still appear on
+      separate lines in the textarea.
+  the hint line `Mehrere Adressen mit Komma oder Zeilenumbruch trennen. Jeder versandte Report wird als
+  Kopie an diese Adressen gesendet.`            -> {t("delivery.bcc_hint")}            [NEW]
+  setBccError("Mindestens eine BCC-Adresse ist erforderlich, wenn der E-Mail-Versand aktiv ist.")
+                                                -> t("delivery.bcc_required_error")    [NEW]
+
+=== 4) MAIL SERVER STATUS — both have interpolation ===
+  `Mailserver konfiguriert ({mailHost})`
+      -> {t("delivery.mailserver_ok", { host: mailHost })}
+      manifest de: "Mailserver konfiguriert ({host})"
+      Keep the surrounding <CheckCircle .../> icon and its spacing unchanged.
+  `BCC an: {bccList.join(", ")}`
+      -> {t("delivery.bcc_to", { list: bccList.join(", ") })}
+      manifest de: "BCC an: {list}"
+  `Kein Mailserver konfiguriert – E-Mail-Versand nicht möglich. Bitte zuerst den Mailserver einrichten.`
+      -> {t("delivery.mailserver_missing")}   [NEW]
+      (the character after "konfiguriert" is an en-dash –, not a hyphen; preserve it exactly)
+
+=== 5) SAVE + FEEDBACK ===
+  button text `Einstellungen speichern`         -> {t("delivery.save_button")}   [NEW]
+  setFeedback({ type: "ok",  msg: "Einstellungen gespeichert" })
+      -> msg: t("delivery.saved_msg")    [NEW]
+  setFeedback({ type: "err", msg: "Fehler beim Speichern" })
+      -> msg: t("delivery.save_error")   [NEW, de: "Fehler beim Speichern" — note: NO trailing period.
+         Do NOT reuse perm.save_error, whose value ends with a period.)
+  Leave `{feedback.msg}` at the render site as-is — it already holds the resolved string.
+
+=== 6) INFO BOX (bottom, two source lines rendering as one block) ===
+  `Im Download-Modus erhalten die konfigurierten BCC-Adressen automatisch eine Kopie nach jeder
+   abgeschlossenen Analyse. Im E-Mail-Modus wird der Report direkt an den Nutzer versendet,
+   BCC-Adressen erhalten ebenfalls eine Kopie.`
+      -> {t("delivery.info_box")}   [NEW]
+      manifest de: ONE line, single spaces where the source had line breaks.
+
+=== Manifest ===
+Add ONLY the NEW delivery.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group:
+"delivery", escaping special characters (ä, ö, ü, ß, –, \n) the same way existing entries do.
+Add no nav.* key — the reused one already exists.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the page shows both
+mode options with their descriptions, the BCC textarea with its two-line example placeholder, and the
+mail-server status line with the actual host name interpolated. Switch the mode to "Nur per E-Mail" and
+save — the success message must appear and the setting must persist (this proves the delivery_mode
+comparison values were not touched). Under EN, everything falls back to German — never blank, never a
+raw key.
