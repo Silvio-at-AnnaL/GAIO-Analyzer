@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useAuth, adminFetch } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
+import { useT } from "@/lib/LabelProvider";
 
 export function LoginView() {
+  const t = useT();
   const { isAuthenticated, login, setPendingChangeUsername } = useAuth();
   const { setActiveView } = useAppStore();
   const [username, setUsername] = useState("");
@@ -36,7 +38,7 @@ export function LoginView() {
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Anmeldung fehlgeschlagen"); return; }
+      if (!res.ok) { setError(data.error ?? t("auth.login_failed")); return; }
       if (data.mustChangePw) {
         setPendingChangeUsername(username);
         setActiveView(8);
@@ -45,7 +47,7 @@ export function LoginView() {
       login(data.user);
       setActiveView(7);
     } catch {
-      setError("Netzwerkfehler. Bitte versuchen Sie es erneut.");
+      setError(t("auth.network_error"));
     } finally {
       setLoading(false);
     }
@@ -54,11 +56,11 @@ export function LoginView() {
   return (
     <div className="max-w-md mx-auto mt-16">
       <div className="p-8 rounded-xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
-        <h1 className="text-2xl font-bold mb-1">Admin Login</h1>
-        <p className="text-sm text-muted-foreground mb-6">Melden Sie sich mit Ihren Zugangsdaten an.</p>
+        <h1 className="text-2xl font-bold mb-1">{t("auth.login_title")}</h1>
+        <p className="text-sm text-muted-foreground mb-6">{t("auth.login_subtitle")}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Benutzername</label>
+            <label className="text-sm font-medium">{t("auth.username_label")}</label>
             <input
               type="text" value={username} onChange={e => setUsername(e.target.value)}
               autoComplete="username" required
@@ -67,7 +69,7 @@ export function LoginView() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Passwort</label>
+            <label className="text-sm font-medium">{t("auth.password_label")}</label>
             <input
               type="password" value={password} onChange={e => setPassword(e.target.value)}
               autoComplete="current-password" required
@@ -79,7 +81,7 @@ export function LoginView() {
           <button type="submit" disabled={loading}
             className="w-full py-2.5 px-4 rounded-lg text-sm font-semibold disabled:opacity-60"
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-            {loading ? "Anmelden…" : "Anmelden"}
+            {loading ? t("auth.login_button_loading") : t("auth.login_button")}
           </button>
         </form>
       </div>

@@ -2,16 +2,18 @@ import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { useAuth, adminFetch } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
+import { useT } from "@/lib/LabelProvider";
 
 const POLICY_CHECKS = [
-  { label: "Mindestens 10 Zeichen",       test: (p: string) => p.length >= 10 },
-  { label: "Großbuchstabe (A–Z)",          test: (p: string) => /[A-Z]/.test(p) },
-  { label: "Kleinbuchstabe (a–z)",         test: (p: string) => /[a-z]/.test(p) },
-  { label: "Ziffer (0–9)",                 test: (p: string) => /[0-9]/.test(p) },
-  { label: "Sonderzeichen (!@#$%…)",       test: (p: string) => /[!@#$%^&*()\-_=+\[\]{}|;':",.<>?/~`]/.test(p) },
+  { label: "auth.policy_min_length",  test: (p: string) => p.length >= 10 },
+  { label: "auth.policy_uppercase",   test: (p: string) => /[A-Z]/.test(p) },
+  { label: "auth.policy_lowercase",   test: (p: string) => /[a-z]/.test(p) },
+  { label: "auth.policy_digit",       test: (p: string) => /[0-9]/.test(p) },
+  { label: "auth.policy_special",     test: (p: string) => /[!@#$%^&*()\-_=+\[\]{}|;':",.<>?/~`]/.test(p) },
 ];
 
 export function ForcePasswordChangeView() {
+  const t = useT();
   const { pendingChangeUsername, login } = useAuth();
   const { setActiveView } = useAppStore();
 
@@ -35,8 +37,8 @@ export function ForcePasswordChangeView() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (newPw !== confirmPw) { setError("Passwörter stimmen nicht überein"); return; }
-    if (!allPolicyMet)       { setError("Bitte erfüllen Sie alle Passwortanforderungen"); return; }
+    if (newPw !== confirmPw) { setError(t("auth.pw_mismatch")); return; }
+    if (!allPolicyMet)       { setError(t("auth.policy_not_met")); return; }
     setLoading(true);
     try {
       const res = await adminFetch("/api/admin/set-initial-password", {
@@ -44,11 +46,11 @@ export function ForcePasswordChangeView() {
         body: JSON.stringify({ username: pendingChangeUsername, tempPassword: tempPw, newPassword: newPw, confirmPassword: confirmPw }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Fehler beim Setzen des Passworts"); return; }
+      if (!res.ok) { setError(data.error ?? t("auth.set_password_failed")); return; }
       login(data.user);
       setActiveView(7);
     } catch {
-      setError("Netzwerkfehler. Bitte versuchen Sie es erneut.");
+      setError(t("auth.network_error"));
     } finally {
       setLoading(false);
     }
@@ -57,24 +59,24 @@ export function ForcePasswordChangeView() {
   return (
     <div className="max-w-md mx-auto mt-12">
       <div className="p-8 rounded-xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
-        <h1 className="text-2xl font-bold mb-1">Passwort setzen</h1>
+        <h1 className="text-2xl font-bold mb-1">{t("auth.set_password_title")}</h1>
         <p className="text-sm text-muted-foreground mb-1">
-          Anmeldung als <span className="font-mono font-semibold">{pendingChangeUsername}</span>
+          {t("auth.logged_in_as")}<span className="font-mono font-semibold">{pendingChangeUsername}</span>
         </p>
         <p className="text-sm text-muted-foreground mb-6">
-          Bitte setzen Sie Ihr persönliches Passwort, um fortzufahren.
+          {t("auth.set_password_subtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Temporäres Passwort</label>
+            <label className="text-sm font-medium">{t("auth.temp_password_label")}</label>
             <input type="password" value={tempPw} onChange={e => setTempPw(e.target.value)} required
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Neues Passwort</label>
+            <label className="text-sm font-medium">{t("auth.new_password_label")}</label>
             <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} required
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
@@ -88,7 +90,7 @@ export function ForcePasswordChangeView() {
                     ? <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                     : <X    className="w-3.5 h-3.5 text-gray-500 shrink-0" />}
                   <span style={{ color: c.test(newPw) ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>
-                    {c.label}
+                    {t(c.label)}
                   </span>
                 </div>
               ))}
@@ -96,11 +98,11 @@ export function ForcePasswordChangeView() {
           )}
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Passwort bestätigen</label>
+            <label className="text-sm font-medium">{t("auth.confirm_password_label")}</label>
             <input type="password" value={confirmPw} onChange={e => setConfirm(e.target.value)} required
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={{ background: "hsl(var(--input))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
-            {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">Passwörter stimmen nicht überein</p>}
+            {confirmPw && newPw !== confirmPw && <p className="text-xs text-amber-400">{t("auth.pw_mismatch")}</p>}
           </div>
 
           {error && <p className="text-sm text-amber-400">{error}</p>}
@@ -108,7 +110,7 @@ export function ForcePasswordChangeView() {
           <button type="submit" disabled={loading || !allPolicyMet || newPw !== confirmPw}
             className="w-full py-2.5 px-4 rounded-lg text-sm font-semibold disabled:opacity-60"
             style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-            {loading ? "Speichern…" : "Passwort setzen & anmelden"}
+            {loading ? t("auth.saving_loading") : t("auth.set_password_button")}
           </button>
         </form>
       </div>
