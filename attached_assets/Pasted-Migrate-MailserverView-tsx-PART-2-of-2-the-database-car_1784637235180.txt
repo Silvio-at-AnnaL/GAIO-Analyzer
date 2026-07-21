@@ -1,0 +1,79 @@
+Migrate MailserverView.tsx — PART 2 of 2: the database card only (from the "Database card" comment,
+~line 338, to the end of the component). Part 1 (mail/SMTP card) is done — do not redo it. Work ONLY on
+this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/MailserverView.tsx
+Key namespace: "mail" (continue the same group, using a db_ prefix per key)
+The component already calls useT() — reuse the existing `t`.
+
+=== CRITICAL — do NOT touch ===
+  - "DATABASE_URL" wherever it appears — it is an environment variable name, identical in every language
+  - the <a href="https://neon.tech"> link and its visible text "neon.tech" — a domain name
+  - dbStatus / dbLoading / dbFormOpen / dbShowPw / dbEdited / dbSaved state values and comparisons
+  - the connection-string input value itself
+
+=== A) CARD HEADER + LOADING ===
+  `Datenbankverbindung`  -> {t("mail.db_title")}     [NEW]
+  `Lade Status…`         -> {t("mail.db_loading")}   [NEW]
+  `Status konnte nicht geladen werden.` (~line 479) -> {t("mail.db_status_error")}   [NEW]
+
+=== B) ENV-VARIABLE NOTICES ===
+  `Verbindung über Umgebungsvariable DATABASE_URL konfiguriert.` (~line 354)
+      -> {t("mail.db_env_configured")}   [NEW — keep DATABASE_URL inside the label value as literal text]
+  `Umgebungsvariablen haben Vorrang. Auf Replit: Replit Secrets verwenden.` (~line 362)
+      -> {t("mail.db_env_priority")}     [NEW]
+
+=== C) CONNECTION STATUS ===
+  `Aktuelle Verbindung`  -> {t("mail.db_current_connection")}   [NEW]
+  `Verbunden`            -> {t("mail.db_connected")}            [NEW]
+  The ternary at ~lines 387-388:
+      ? "Standardverbindung aktiv — bitte eigene Zugangsdaten hinterlegen."
+      : "Keine aktive Verbindung"
+      -> ? t("mail.db_default_active")   [NEW; the character before "bitte" is an em-dash —, preserve it]
+         : t("mail.db_no_connection")    [NEW]
+
+=== D) EDIT FORM ===
+  `Connection String ändern` (~line 401)      -> {t("mail.db_change_conn")}   [NEW]
+  `PostgreSQL Connection String` (~line 409)  -> {t("mail.db_conn_label")}    [NEW]
+  The hint paragraph at ~lines 431-432 has two parts around a literal separator and a link:
+      Format: postgresql://[user]:[passwort]@[host]/[datenbank]?sslmode=require
+      {" · "}Kostenlose Datenbank: <a ...>neon.tech</a>
+      ->
+      {t("mail.db_format_hint")}
+      {" · "}{t("mail.db_free_db")}<a href="https://neon.tech" ... >neon.tech</a>
+      manifest:
+        "mail.db_format_hint": de: "Format: postgresql://[user]:[passwort]@[host]/[datenbank]?sslmode=require"
+        "mail.db_free_db":     de: "Kostenlose Datenbank: "   (WITH trailing space)
+      Keep the {" · "} separator and the entire <a> element untouched.
+
+=== E) BUTTONS ===
+  `Verbindung testen` (~line 444)  -> {t("mail.db_test_button")}   [NEW]
+  `Speichern` (~line 454)          -> {t("profile.save_button")}   <- REUSE existing key
+
+=== F) TEST RESULT + SAVED (~lines 460-469) ===
+  `<CheckCircle .../> Verbindung OK ({dbTestResult.ms} ms)`
+      -> <CheckCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_ok", { ms: dbTestResult.ms })}
+      manifest: "mail.db_test_ok": de: "Verbindung OK ({ms} ms)"
+  `<AlertCircle .../> Verbindungsfehler: {dbTestResult.error}`
+      -> <AlertCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_error", { error: dbTestResult.error })}
+      manifest: "mail.db_test_error": de: "Verbindungsfehler: {error}"
+  `Gespeichert.` (~line 469) -> {t("mail.db_saved")}   [NEW, de: "Gespeichert." WITH the period —
+      do NOT reuse texts.saved_msg, whose value is "Gespeichert" without one]
+  Keep the icon elements and their classNames exactly as they are.
+
+=== G) PLATFORM HINT (bottom, ~lines 485-486) ===
+  `Auf Replit: DATABASE_URL in den Replit Secrets eintragen — hat automatisch Vorrang und bleibt nach
+   Neustarts erhalten.`  -> {t("mail.db_platform_hint_replit")}   [NEW; em-dash preserved]
+  `Auf eigenem Server: dieses Formular oder Umgebungsvariable DATABASE_URL.`
+                         -> {t("mail.db_platform_hint_own")}      [NEW]
+
+=== Manifest ===
+Add ONLY the NEW mail.db_* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "mail",
+escaping special characters (ä, ö, ü, ß, —, …) the same way existing entries do. Add no profile.* key —
+the reused one already exists.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the database card shows
+its heading, the current connection status, and the platform hint. Open the edit form — the connection
+string label, format hint with the neon.tech link intact, and both buttons must render. Run a connection
+test and confirm the result message shows the millisecond value interpolated correctly. Under EN,
+everything falls back to German — never blank, never a raw key.

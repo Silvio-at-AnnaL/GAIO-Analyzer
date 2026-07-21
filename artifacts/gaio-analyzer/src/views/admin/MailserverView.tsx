@@ -337,12 +337,12 @@ export function MailserverView() {
       <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center gap-2 mb-1">
           <Database className="w-4 h-4" style={{ color: "hsl(var(--muted-foreground))" }} />
-          <span className="text-sm font-semibold">Datenbankverbindung</span>
+          <span className="text-sm font-semibold">{t("mail.db_title")}</span>
         </div>
 
         {dbLoading ? (
           <div className="flex items-center gap-2 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            <Loader2 className="w-4 h-4 animate-spin" /> Lade Status…
+            <Loader2 className="w-4 h-4 animate-spin" /> {t("mail.db_loading")}
           </div>
         ) : dbStatus ? (
           <>
@@ -351,7 +351,7 @@ export function MailserverView() {
               <div className="rounded-md p-4 space-y-2" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
                 <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "#1d4ed8" }}>
                   <Info className="w-4 h-4 shrink-0" />
-                  Verbindung über Umgebungsvariable DATABASE_URL konfiguriert.
+                  {t("mail.db_env_configured")}
                 </div>
                 {dbStatus.maskedUrl && (
                   <div className="font-mono text-xs break-all" style={{ color: "#4b5563" }}>
@@ -359,7 +359,7 @@ export function MailserverView() {
                   </div>
                 )}
                 <div className="text-xs" style={{ color: "#6b7280" }}>
-                  Umgebungsvariablen haben Vorrang. Auf Replit: Replit Secrets verwenden.
+                  {t("mail.db_env_priority")}
                 </div>
               </div>
             )}
@@ -370,7 +370,7 @@ export function MailserverView() {
                 {/* Current connection status */}
                 <div className="space-y-1">
                   <div className="text-xs font-medium uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    Aktuelle Verbindung
+                    {t("mail.db_current_connection")}
                   </div>
                   {dbStatus.maskedUrl ? (
                     <div className="font-mono text-xs break-all" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -381,11 +381,11 @@ export function MailserverView() {
                   )}
                   <div className={`flex items-center gap-1.5 text-xs ${dbStatus.connected ? "text-green-500" : "text-amber-500"}`}>
                     {dbStatus.connected
-                      ? <><CheckCircle className="w-3.5 h-3.5" /> Verbunden</>
+                      ? <><CheckCircle className="w-3.5 h-3.5" /> {t("mail.db_connected")}</>
                       : <><AlertCircle className="w-3.5 h-3.5" />
                           {dbStatus.source === "default"
-                            ? "Standardverbindung aktiv — bitte eigene Zugangsdaten hinterlegen."
-                            : "Keine aktive Verbindung"}
+                            ? t("mail.db_default_active")
+                            : t("mail.db_no_connection")}
                         </>
                     }
                   </div>
@@ -398,7 +398,7 @@ export function MailserverView() {
                     className="text-xs underline"
                     style={{ color: "hsl(var(--muted-foreground))" }}
                   >
-                    Connection String ändern
+                    {t("mail.db_change_conn")}
                   </button>
                 )}
 
@@ -406,7 +406,7 @@ export function MailserverView() {
                 {dbFormOpen && (
                   <div className="space-y-3 pt-1">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium">PostgreSQL Connection String</label>
+                      <label className="text-sm font-medium">{t("mail.db_conn_label")}</label>
                       <div className="relative">
                         <input
                           type={dbShowPw ? "text" : "password"}
@@ -428,8 +428,8 @@ export function MailserverView() {
                         </button>
                       </div>
                       <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                        Format: postgresql://[user]:[passwort]@[host]/[datenbank]?sslmode=require
-                        {" · "}Kostenlose Datenbank: <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "hsl(var(--primary))" }}>neon.tech</a>
+                        {t("mail.db_format_hint")}
+                        {" · "}{t("mail.db_free_db")}<a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "hsl(var(--primary))" }}>neon.tech</a>
                       </p>
                     </div>
 
@@ -441,7 +441,7 @@ export function MailserverView() {
                         style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "transparent" }}
                       >
                         {dbTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                        Verbindung testen
+                        {t("mail.db_test_button")}
                       </button>
 
                       <button
@@ -451,22 +451,22 @@ export function MailserverView() {
                         style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
                       >
                         {dbSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        Speichern
+                        {t("profile.save_button")}
                       </button>
                     </div>
 
                     {dbTestResult && (
                       <div className={`flex items-center gap-2 text-sm ${dbTestResult.ok ? "text-green-500" : "text-red-400"}`}>
                         {dbTestResult.ok
-                          ? <><CheckCircle className="w-4 h-4 shrink-0" /> Verbindung OK ({dbTestResult.ms} ms)</>
-                          : <><AlertCircle className="w-4 h-4 shrink-0" /> Verbindungsfehler: {dbTestResult.error}</>
+                          ? <><CheckCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_ok", { ms: dbTestResult.ms ?? 0 })}</>
+                          : <><AlertCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_error", { error: dbTestResult.error ?? "" })}</>
                         }
                       </div>
                     )}
 
                     {dbSaved && (
                       <div className="flex items-center gap-2 text-sm text-green-500">
-                        <CheckCircle className="w-4 h-4 shrink-0" /> Gespeichert.
+                        <CheckCircle className="w-4 h-4 shrink-0" /> {t("mail.db_saved")}
                       </div>
                     )}
                   </div>
@@ -476,14 +476,14 @@ export function MailserverView() {
           </>
         ) : (
           <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Status konnte nicht geladen werden.
+            {t("mail.db_status_error")}
           </div>
         )}
 
         {/* Platform hint */}
         <div className="pt-2 text-xs border-t" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-          Auf Replit: DATABASE_URL in den Replit Secrets eintragen — hat automatisch Vorrang und bleibt nach Neustarts erhalten.
-          Auf eigenem Server: dieses Formular oder Umgebungsvariable DATABASE_URL.
+          {t("mail.db_platform_hint_replit")}
+          {" "}{t("mail.db_platform_hint_own")}
         </div>
       </div>
     </div>
