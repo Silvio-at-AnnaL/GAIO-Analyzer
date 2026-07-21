@@ -1,0 +1,91 @@
+Migrate UserManagementView.tsx to the label system. Work ONLY on this file. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/UserManagementView.tsx
+Key namespace: "users"
+
+Add `import { useT } from "@/lib/LabelProvider";` and `const t = useT();` as the FIRST line inside the UserManagementView component body — before the `if (isLoading)` / `if (!isAuthenticated)` / `if (me?.role !== "admin")` early returns (Rules of Hooks).
+
+=== A) MODULE-SCOPE HOOK TRAP (~line 19) ===
+There is a role-label object at module level:
+    const ROLE_LABELS = { admin: "Admin", user_extended: "Erw. Benutzer", user: "Benutzer" };
+The OBJECT KEYS (admin, user_extended, user) are backend role identifiers — do NOT rename them.
+Replace only the VALUES with label key strings:
+    admin:         "users.role_admin_short"      [NEW, de: "Admin"]
+    user_extended: "users.role_extended_short"   [NEW, de: "Erw. Benutzer"]
+    user:          "profile.role_user"           [REUSE existing key, value is already "Benutzer"]
+Then find every render site that reads from this object and wrap it in t(...). Search the file for ROLE_LABELS to find them all.
+
+=== B) GUARD BRANCHES (~lines 54-56) ===
+  "Laden…"                       -> t("profile.loading")            [REUSE]
+  "Sie sind nicht angemeldet."   -> t("profile.not_logged_in")      [REUSE]
+  "Zum Login"                    -> t("auth.go_to_login_button")    [REUSE]
+  "Kein Zugriff. Diese Seite ist nur für Administratoren."
+                                 -> t("users.no_access")            [NEW]
+  Do NOT change the `me?.role !== "admin"` comparison itself.
+
+=== C) HEADER / CREATE FORM ===
+  <h1>Nutzerverwaltung</h1>              -> t("users.title")             [NEW]
+  title="Aktualisieren" (refresh button) -> title={t("users.refresh_title")}  [NEW]
+  <h2>Neuen Benutzer anlegen</h2>        -> t("users.create_heading")    [NEW]
+
+  The inline field array (~lines 101-105) sits INSIDE the JSX, so t() can be called directly:
+      { label: "Vorname",  ... }  -> label: t("profile.first_name_label")   [REUSE]
+      { label: "Nachname", ... }  -> label: t("profile.last_name_label")    [REUSE]
+      { label: "E-Mail",   ... }  -> label: t("users.email_label")          [NEW, de: "E-Mail"]
+  IMPORTANT: `key={f.label}` on the wrapping div then becomes a translated string. Change it to a stable key —
+  add an `id` field to each object ("first", "last", "email") and use `key={f.id}` instead.
+
+  {creating ? "Anlegen…" : "Anlegen"}
+      -> {creating ? t("users.create_loading") : t("users.create_button")}   [both NEW]
+  button text `Abbrechen` (own line)     -> t("domain.aria_cancel")      [REUSE existing key, value is already "Abbrechen"]
+
+=== D) TABLE ===
+  The inline header array (~line 139) — all eight strings:
+      "Name"          -> t("users.col_name")            [NEW]
+      "E-Mail"        -> t("users.email_label")         [REUSE the key created above — same text]
+      "Benutzername"  -> t("auth.username_label")       [REUSE existing]
+      "Rolle"         -> t("users.col_role")            [NEW]
+      "Status"        -> t("users.col_status")          [NEW]
+      "Erstellt"      -> t("users.col_created")         [NEW]
+      "Letzter Login" -> t("users.col_last_login")      [NEW]
+      "Aktionen"      -> t("users.col_actions")         [NEW]
+  IMPORTANT: this array is also used as the React key (`key={h}` or similar). Since the values become
+  translated strings, switch the map to use the array index as key instead, or keep a parallel id list.
+
+  The three <option> elements (~lines 157-159): the `value="user"` / `value="user_extended"` /
+  `value="admin"` attributes are backend identifiers and must NOT change. Only the visible text:
+      >Benutzer<      -> {t("profile.role_user")}          [REUSE]
+      >Erw. Benutzer< -> {t("users.role_extended_short")}  [REUSE the key from section A]
+      >Admin<         -> {t("users.role_admin_short")}     [REUSE the key from section A]
+
+  {u.isActive ? "Aktiv" : "Inaktiv"}
+      -> {u.isActive ? t("users.status_active") : t("users.status_inactive")}   [both NEW]
+  "Löschen?"                 -> t("users.delete_confirm")   [NEW]
+  "Ja"                       -> t("users.delete_yes")       [NEW]
+  "Nein"                     -> t("users.delete_no")        [NEW]
+  "Keine Benutzer gefunden"  -> t("users.empty")            [NEW]
+  "Laden…" (table loading, ~line 134) -> t("profile.loading")   [REUSE]
+
+  Footer line (~line 196) — this one has interpolation:
+      {users.length} Benutzer · Rollen können nur für aktive Benutzer auf "Admin" gesetzt werden
+      -> {t("users.footer_note", { count: users.length })}
+      manifest de: `{count} Benutzer · Rollen können nur für aktive Benutzer auf "Admin" gesetzt werden`
+      (keep the straight double quotes around Admin exactly as they are today)
+
+=== E) ERROR MESSAGES ===
+  setError("Benutzer konnten nicht geladen werden.")     -> t("users.load_error")          [NEW]
+  setError(d.error ?? "Fehler beim Ändern der Rolle")    -> d.error ?? t("users.role_change_error")  [NEW]
+  setError(d.error ?? "Fehler beim Löschen")             -> d.error ?? t("users.delete_error")       [NEW]
+  setCreateMsg(d.error ?? "Fehler beim Anlegen")         -> d.error ?? t("users.create_error")       [NEW]
+  Keep d.error priority in all three fallback cases.
+
+=== Manifest ===
+Add ONLY the NEW users.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "users",
+German source values exactly as they read today, escaping special characters (ä, ö, ü, ß, …, ·) the same
+way existing entries do. Add no profile.*, auth.* or domain.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the user table renders
+with all eight column headers, correct role names in the dropdown, correct Aktiv/Inaktiv status, the
+create form with its three field labels, and the footer line showing the correct user count. Confirm that
+changing a user's role still works (this proves the option value attributes were not touched). Under EN,
+everything falls back to German — never blank, never a raw key.
