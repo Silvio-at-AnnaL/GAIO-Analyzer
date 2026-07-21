@@ -15,14 +15,14 @@ export function LoginView() {
   if (isAuthenticated) {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
-        <h1 className="text-2xl font-bold">Login</h1>
-        <p className="text-sm text-muted-foreground">Sie sind bereits angemeldet.</p>
+        <h1 className="text-2xl font-bold">{t("auth.already_logged_in_title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("auth.already_logged_in_text")}</p>
         <button
           className="px-4 py-2 rounded-lg text-sm font-medium"
           style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
           onClick={() => setActiveView(7)}
         >
-          Zum Profil
+          {t("auth.go_to_profile_button")}
         </button>
       </div>
     );

@@ -1,0 +1,27 @@
+Migrate the five remaining hardcoded German strings in the two auth views. These are all inside early-return guard branches that were missed in the previous pass. Both components already call useT() before the early return — reuse the existing `t`. Work ONLY on these five locations. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+Key namespace: "auth"
+
+=== A) artifacts/gaio-analyzer/src/views/admin/LoginView.tsx ===
+The `if (isAuthenticated)` branch (~lines 15-27):
+  <h1 ...>Login</h1>                                    -> {t("auth.already_logged_in_title")}
+      manifest de: "Login"
+      (NOTE: do NOT reuse auth.login_title — that key's value is "Admin Login", a different string)
+  <p ...>Sie sind bereits angemeldet.</p>                -> {t("auth.already_logged_in_text")}
+      manifest de: "Sie sind bereits angemeldet."
+  button text `Zum Profil`                               -> {t("auth.go_to_profile_button")}
+      manifest de: "Zum Profil"
+
+=== B) artifacts/gaio-analyzer/src/views/admin/ForcePasswordChangeView.tsx ===
+The `if (!pendingChangeUsername)` branch (~lines 28-35):
+  <p ...>Keine aktive Passwort-Änderungssitzung. Bitte melden Sie sich zuerst an.</p>
+      -> {t("auth.no_active_session")}
+      manifest de: "Keine aktive Passwort-Änderungssitzung. Bitte melden Sie sich zuerst an."
+  button text `Zum Login`                                -> {t("auth.go_to_login_button")}
+      manifest de: "Zum Login"
+
+Add all five keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "auth", escaping special characters (ä, Ä) the same way existing entries in that file do. Do not translate to other languages — only the German source goes in the manifest.
+
+Do NOT change the guard conditions, the onClick handlers, or setActiveView(7) calls — only the visible text.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": visiting the login page while already logged in shows the "Sie sind bereits angemeldet." branch with its button, and opening the forced-password-change view without an active session shows the "Keine aktive Passwort-Änderungssitzung…" branch with its button. Under EN, both fall back to German — never blank, never a raw key.

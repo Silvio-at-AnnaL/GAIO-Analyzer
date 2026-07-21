@@ -28,8 +28,8 @@ export function ForcePasswordChangeView() {
   if (!pendingChangeUsername) {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
-        <p className="text-sm text-muted-foreground">Keine aktive Passwort-Änderungssitzung. Bitte melden Sie sich zuerst an.</p>
-        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>Zum Login</button>
+        <p className="text-sm text-muted-foreground">{t("auth.no_active_session")}</p>
+        <button className="text-sm underline text-primary" onClick={() => setActiveView(7)}>{t("auth.go_to_login_button")}</button>
       </div>
     );
   }

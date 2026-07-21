@@ -481,4 +481,9 @@ export const labelDefaults: Record<string, LabelDef> = {
   "auth.policy_lowercase":      { group: "auth", de: "Kleinbuchstabe (a\u2013z)" },
   "auth.policy_digit":          { group: "auth", de: "Ziffer (0\u20139)" },
   "auth.policy_special":        { group: "auth", de: "Sonderzeichen (!@#$%\u2026)" },
+  "auth.already_logged_in_title": { group: "auth", de: "Login" },
+  "auth.already_logged_in_text":  { group: "auth", de: "Sie sind bereits angemeldet." },
+  "auth.go_to_profile_button":    { group: "auth", de: "Zum Profil" },
+  "auth.no_active_session":       { group: "auth", de: "Keine aktive Passwort-\u00C4nderungssitzung. Bitte melden Sie sich zuerst an." },
+  "auth.go_to_login_button":      { group: "auth", de: "Zum Login" },
 };
