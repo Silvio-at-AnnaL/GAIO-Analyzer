@@ -1,0 +1,87 @@
+Migrate AiToolView.tsx — PART 2 of 2: everything from ~line 385 to the end of the file (the custom
+provider summary, the status block, and the "Weitere Anbieter" card). Part 1 is already done — do not
+redo it. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/AiToolView.tsx
+Key namespace: "ai"
+The component already calls useT() — reuse the existing `t`.
+
+=== CRITICAL — do NOT migrate these ===
+  - All placeholder attributes: "Mistral Large", "mistral-large-latest", "https://api.mistral.ai/v1",
+    "sk-...", "••••••••" — product-name examples, model ids, URLs, masking dots
+  - `saving === "custom-edit"` / `saving === "custom-add"` comparisons
+  - `cp.name`, `cp.base_url`, `cp.model`, `cp.api_key` — backend data
+  - The literal "POST /v1/chat/completions" INSIDE the hint sentence stays part of that label's value
+
+=== A) CUSTOM PROVIDER SUMMARY (~lines 393-395) ===
+  <span ...>Base-URL:</span>  -> {t("ai.base_url_colon")}   [NEW, de: "Base-URL:"]
+  <span ...>Modell:</span>    -> {t("ai.model_colon")}      [NEW, de: "Modell:"]
+      (do NOT reuse ai.model_label — that value is "Modell" without the colon)
+  <span ...>API-Key:</span>   -> {t("ai.api_key_colon")}    [NEW, de: "API-Key:"]
+      (do NOT reuse ai.api_key_label — that value is "API-Key" without the colon)
+  {cp.api_key ? "hinterlegt" : "nicht gesetzt"}
+      -> {cp.api_key ? t("ai.key_set") : t("ai.key_unset")}   [both NEW]
+
+=== B) EDIT BUTTON (~line 401) ===
+  `<Pencil className="w-3.5 h-3.5" /> Bearbeiten`
+      -> <Pencil className="w-3.5 h-3.5" /> {t("ai.edit_button")}   [NEW, de: "Bearbeiten"]
+  title="Bearbeiten" (~line 452)  -> title={t("ai.edit_button")}    <- REUSE the same key, identical text
+  title="Entfernen"  (~line 460)  -> title={t("ai.remove_title")}   [NEW, de: "Entfernen"]
+
+=== C) STATUS BLOCK (~lines 409-413) ===
+  <span ...>Aktiver Anbieter:</span>  -> {t("ai.active_provider_label")}   <- REUSE existing key
+  <span ...>Letzte Analyse:</span>    -> {t("ai.last_analysis")}           [NEW, de: "Letzte Analyse:"]
+
+  The same line hardcodes a German date format:
+      {new Date(status.lastCompletedAt).toLocaleString("de-DE")}
+  Make it follow the active UI locale, exactly as done in AnalysisLogView.tsx:
+    1. Import useLabelContext alongside useT (same import line and path).
+    2. In the AiToolView component body, right after `const t = useT();`, add:
+           const { locale } = useLabelContext();
+           const intlLocale = locale === "en" ? "en-US" : "de-DE";
+    3. Change the call to: {new Date(status.lastCompletedAt).toLocaleString(intlLocale)}
+  Do not change the Date construction itself.
+
+=== D) "WEITERE ANBIETER" CARD HEADER (~lines 422-424) ===
+  <h2>Weitere Anbieter</h2>  -> {t("ai.section_more")}   [NEW]
+  `Alle OpenAI-kompatiblen APIs können hier eingebunden werden (z. B. Mistral, DeepSeek, Together AI,
+   Groq, lokale Modelle via Ollama).`  -> {t("ai.more_providers_hint")}   [NEW]
+
+=== E) EDIT FORM (~lines 478-508) ===
+  <label>Bezeichnung</label> -> {t("ai.name_label")}      [NEW, de: "Bezeichnung"]
+  <label>Model-ID</label>    -> {t("ai.model_id_label")}  [NEW, de: "Model-ID"]
+  <label>Base-URL</label>    -> {t("ai.base_url_label")}  [NEW, de: "Base-URL"]
+  ~line 493: `<label ...>API-Key <span ...>(leer lassen = unverändert)</span></label>`
+      -> {t("ai.api_key_label")} <span ...>{t("ai.leave_empty_hint")}</span>
+      ai.api_key_label is REUSED from Part 1; ai.leave_empty_hint is NEW,
+      de: "(leer lassen = unverändert)" — keep the parentheses inside the value.
+      Preserve the single space between the label text and the <span> exactly as it renders today.
+  ~line 503: button text `Speichern`  -> {t("profile.save_button")}   <- REUSE existing key
+  ~line 508: `<X className="w-3.5 h-3.5" /> Abbrechen`
+      -> <X className="w-3.5 h-3.5" /> {t("domain.aria_cancel")}      <- REUSE existing key
+
+=== F) ADD FORM (~lines 517-567) ===
+  <h3>Neuen Anbieter hinzufügen</h3> (~517)  -> {t("ai.add_provider_heading")}   [NEW]
+  <label>Bezeichnung</label> (~520)  -> {t("ai.name_label")}      <- REUSE the key from section E
+  <label>Model-ID</label>    (~526)  -> {t("ai.model_id_label")}  <- REUSE
+  <label>Base-URL</label>    (~532)  -> {t("ai.base_url_label")}  <- REUSE
+  <label>API-Key</label>     (~538)  -> {t("ai.api_key_label")}   <- REUSE (from Part 1)
+  ~line 545: `Die API muss OpenAI-kompatibel sein (Chat Completions Endpoint: POST /v1/chat/completions).`
+      -> {t("ai.openai_compatible_hint")}   [NEW — keep the endpoint path inside the value]
+  ~line 554: button text `Hinzufügen`  -> {t("ai.add_button")}    [NEW]
+  ~line 559: `<X className="w-3.5 h-3.5" /> Abbrechen`
+      -> <X className="w-3.5 h-3.5" /> {t("domain.aria_cancel")}  <- REUSE
+  ~line 567: `<Plus ... /> Neuen Anbieter hinzufügen`  -> {t("ai.add_provider_heading")}   <- REUSE
+      the key created in this section; keep the <Plus> icon element unchanged.
+
+=== Manifest ===
+Add ONLY the NEW ai.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "ai",
+escaping special characters (ä, ö, ü, ß) the same way existing entries do. Add no profile.* or domain.*
+key — the reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the "Weitere Anbieter"
+card shows its heading and hint, an existing custom provider shows its Base-URL/Modell/API-Key summary
+lines with the correct "hinterlegt"/"nicht gesetzt" state, and both the edit and add forms show all four
+field labels plus their buttons. Add a custom provider and edit it — both flows must still work. Switch
+the UI to EN and confirm the "Letzte Analyse" timestamp switches to US format. Under EN everything else
+falls back to German — never blank, never a raw key.

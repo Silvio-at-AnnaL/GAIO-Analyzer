@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2, Plus, Trash2, Pencil, X } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
-import { useT } from "@/lib/LabelProvider";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 interface AiSettings {
   ai_provider: string;
@@ -63,6 +63,8 @@ const EMPTY_NEW_PROV = { name: "", api_key: "", base_url: "", model: "" };
 
 export function AiToolView() {
   const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [status, setStatus]     = useState<AiStatus | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -390,15 +392,15 @@ export function AiToolView() {
         {customProviders.filter(cp => cp.id === activeTab).map(cp => (
           <div key={cp.id} className="space-y-3">
             <div className="rounded-md p-3 text-sm space-y-1" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-              <p><span className="font-medium text-foreground">Base-URL:</span> <span className="font-mono">{cp.base_url}</span></p>
-              <p><span className="font-medium text-foreground">Modell:</span> <span className="font-mono">{cp.model}</span></p>
-              <p><span className="font-medium text-foreground">API-Key:</span> {cp.api_key ? "hinterlegt" : "nicht gesetzt"}</p>
+              <p><span className="font-medium text-foreground">{t("ai.base_url_colon")}</span> <span className="font-mono">{cp.base_url}</span></p>
+              <p><span className="font-medium text-foreground">{t("ai.model_colon")}</span> <span className="font-mono">{cp.model}</span></p>
+              <p><span className="font-medium text-foreground">{t("ai.api_key_colon")}</span> {cp.api_key ? t("ai.key_set") : t("ai.key_unset")}</p>
             </div>
             <button
               onClick={() => { setEditingId(cp.id); setEditProv({ ...cp }); }}
               className="flex items-center gap-2 px-3 py-1.5 rounded text-sm"
               style={{ border: "1px solid hsl(var(--border))" }}>
-              <Pencil className="w-3.5 h-3.5" /> Bearbeiten
+              <Pencil className="w-3.5 h-3.5" /> {t("ai.edit_button")}
             </button>
           </div>
         ))}
@@ -406,11 +408,11 @@ export function AiToolView() {
         {status && (
           <div className="rounded-md p-3 text-sm space-y-1" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
             <p>
-              <span className="font-medium">Aktiver Anbieter:</span>{" "}
+              {t("ai.active_provider_label")}{" "}
               {allProviderOptions.find(p => p.id === currentProvider)?.label ?? currentProvider}
             </p>
             {status.lastCompletedAt && (
-              <p><span className="font-medium">Letzte Analyse:</span>{" "}{new Date(status.lastCompletedAt).toLocaleString("de-DE")}</p>
+              <p><span className="font-medium">{t("ai.last_analysis")}</span>{" "}{new Date(status.lastCompletedAt).toLocaleString(intlLocale)}</p>
             )}
           </div>
         )}
@@ -419,9 +421,9 @@ export function AiToolView() {
       {/* ── SECTION 3: Custom providers ──────────────────────────────────── */}
       <div className="rounded-lg border p-5 space-y-4" style={cardStyle}>
         <div>
-          <h2 className="text-base font-semibold">Weitere Anbieter</h2>
+          <h2 className="text-base font-semibold">{t("ai.section_more")}</h2>
           <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Alle OpenAI-kompatiblen APIs können hier eingebunden werden (z. B. Mistral, DeepSeek, Together AI, Groq, lokale Modelle via Ollama).
+            {t("ai.more_providers_hint")}
           </p>
         </div>
 
@@ -449,7 +451,7 @@ export function AiToolView() {
                           onClick={() => { setEditingId(cp.id); setEditProv({ ...cp }); setActiveTab(cp.id); }}
                           className="p-1 rounded transition-colors hover:text-blue-400 hover:bg-blue-500/10"
                           style={{ color: "hsl(var(--muted-foreground))" }}
-                          title="Bearbeiten">
+                          title={t("ai.edit_button")}>
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
@@ -457,7 +459,7 @@ export function AiToolView() {
                           disabled={saving === `custom-del-${cp.id}`}
                           className="p-1 rounded transition-colors hover:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40"
                           style={{ color: "hsl(var(--muted-foreground))" }}
-                          title="Entfernen">
+                          title={t("ai.remove_title")}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -475,22 +477,22 @@ export function AiToolView() {
             <p className="text-sm font-medium">Anbieter bearbeiten: {editProv.name}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium">Bezeichnung</label>
+                <label className="text-xs font-medium">{t("ai.name_label")}</label>
                 <input type="text" value={editProv.name} onChange={e => setEditProv({ ...editProv, name: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Model-ID</label>
+                <label className="text-xs font-medium">{t("ai.model_id_label")}</label>
                 <input type="text" value={editProv.model} onChange={e => setEditProv({ ...editProv, model: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
               <div className="space-y-1 col-span-2">
-                <label className="text-xs font-medium">Base-URL</label>
+                <label className="text-xs font-medium">{t("ai.base_url_label")}</label>
                 <input type="text" value={editProv.base_url} onChange={e => setEditProv({ ...editProv, base_url: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border font-mono" style={inputStyle} />
               </div>
               <div className="space-y-1 col-span-2">
-                <label className="text-xs font-medium">API-Key <span style={{ color: "hsl(var(--muted-foreground))" }}>(leer lassen = unverändert)</span></label>
+                <label className="text-xs font-medium">{t("ai.api_key_label")} <span style={{ color: "hsl(var(--muted-foreground))" }}>{t("ai.leave_empty_hint")}</span></label>
                 <input type="password" value={editProv.api_key} onChange={e => setEditProv({ ...editProv, api_key: e.target.value })}
                   placeholder="••••••••" className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
@@ -500,12 +502,12 @@ export function AiToolView() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
                 style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                 {saving === "custom-edit" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Speichern
+                {t("profile.save_button")}
               </button>
               <button onClick={() => { setEditingId(null); setEditProv(null); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm"
                 style={{ border: "1px solid hsl(var(--border))" }}>
-                <X className="w-3.5 h-3.5" /> Abbrechen
+                <X className="w-3.5 h-3.5" /> {t("domain.aria_cancel")}
               </button>
             </div>
           </div>
@@ -514,35 +516,35 @@ export function AiToolView() {
         {/* Inline add form */}
         {showAddForm ? (
           <div className="rounded-md border p-4 space-y-3" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted) / 0.3)" }}>
-            <p className="text-sm font-medium">Neuen Anbieter hinzufügen</p>
+            <p className="text-sm font-medium">{t("ai.add_provider_heading")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium">Bezeichnung <span style={{ color: "#d97706" }}>*</span></label>
+                <label className="text-xs font-medium">{t("ai.name_label")} <span style={{ color: "#d97706" }}>*</span></label>
                 <input type="text" placeholder="Mistral Large" value={newProv.name}
                   onChange={e => setNewProv({ ...newProv, name: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Model-ID <span style={{ color: "#d97706" }}>*</span></label>
+                <label className="text-xs font-medium">{t("ai.model_id_label")} <span style={{ color: "#d97706" }}>*</span></label>
                 <input type="text" placeholder="mistral-large-latest" value={newProv.model}
                   onChange={e => setNewProv({ ...newProv, model: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
               <div className="space-y-1 col-span-2">
-                <label className="text-xs font-medium">Base-URL <span style={{ color: "#d97706" }}>*</span></label>
+                <label className="text-xs font-medium">{t("ai.base_url_label")} <span style={{ color: "#d97706" }}>*</span></label>
                 <input type="text" placeholder="https://api.mistral.ai/v1" value={newProv.base_url}
                   onChange={e => setNewProv({ ...newProv, base_url: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border font-mono" style={inputStyle} />
               </div>
               <div className="space-y-1 col-span-2">
-                <label className="text-xs font-medium">API-Key</label>
+                <label className="text-xs font-medium">{t("ai.api_key_label")}</label>
                 <input type="password" placeholder="sk-..." value={newProv.api_key}
                   onChange={e => setNewProv({ ...newProv, api_key: e.target.value })}
                   className="w-full px-2.5 py-1.5 rounded text-sm border" style={inputStyle} />
               </div>
             </div>
             <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Die API muss OpenAI-kompatibel sein (Chat Completions Endpoint: POST /v1/chat/completions).
+              {t("ai.openai_compatible_hint")}
             </p>
             <div className="flex gap-2">
               <button
@@ -551,12 +553,12 @@ export function AiToolView() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
                 style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                 {saving === "custom-add" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                Hinzufügen
+                {t("ai.add_button")}
               </button>
               <button onClick={() => { setShowAddForm(false); setNewProv({ ...EMPTY_NEW_PROV }); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm"
                 style={{ border: "1px solid hsl(var(--border))" }}>
-                <X className="w-3.5 h-3.5" /> Abbrechen
+                <X className="w-3.5 h-3.5" /> {t("domain.aria_cancel")}
               </button>
             </div>
           </div>
@@ -564,7 +566,7 @@ export function AiToolView() {
           <button onClick={() => setShowAddForm(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded text-sm"
             style={{ border: "1px solid hsl(var(--border))" }}>
-            <Plus className="w-3.5 h-3.5" /> Neuen Anbieter hinzufügen
+            <Plus className="w-3.5 h-3.5" /> {t("ai.add_provider_heading")}
           </button>
         )}
 
