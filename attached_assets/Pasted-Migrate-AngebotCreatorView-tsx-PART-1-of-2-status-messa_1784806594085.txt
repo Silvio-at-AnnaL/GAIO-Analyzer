@@ -1,0 +1,88 @@
+Migrate AngebotCreatorView.tsx — PART 1 of 2: status messages, header, and Step 1 (analysis selection
+and HTML upload, up to ~line 535). Do NOT touch anything from ~line 540 onwards (the generate step,
+editor toolbar and export bar) — that is Part 2. Do not touch report-export.ts. Do not touch any
+image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/AngebotCreatorView.tsx
+Key namespace: "offer"
+
+Add `import { useT } from "@/lib/LabelProvider";` once at the top, and `const t = useT();` as the FIRST
+line inside the AngebotCreatorView component body, before any early return.
+
+=== CRITICAL — do NOT touch ===
+  - The InputMode type union ("protocol" | "upload") and every comparison against those values
+  - The ScoreRow and ToolBtn helper components themselves — both receive their text as props, so t() is
+    called at the CALL SITES below
+  - Any parsing logic, file-type checks, or the `.slice(0, 10)` date handling
+
+=== A) STATUS MESSAGES (~lines 195-323) ===
+  ~195: "Nur HTML-Dateien werden akzeptiert."                        -> t("offer.err_html_only")    [NEW]
+  ~214: "Die Analysedaten in dieser Datei konnten nicht gelesen werden."
+                                                                     -> t("offer.err_unreadable")   [NEW]
+  ~220: "Die Analysedaten in dieser Datei sind unvollständig."       -> t("offer.err_incomplete")   [NEW]
+  ~287: confirm("Änderungen verwerfen und neu generieren?")          -> confirm(t("offer.confirm_regenerate"))  [NEW]
+  ~320 and ~323 (two identical occurrences):
+        "Angebot konnte nicht erstellt werden. Bitte prüfen Sie die KI-Tool-Einstellungen."
+                                                                     -> t("offer.err_generate")     [NEW — ONE key, two call sites]
+
+=== B) HEADER (~lines 349-352) ===
+  <h1>Angebots-Creator</h1>  -> {t("nav.admin_angebots_creator")}   <- REUSE existing key
+  `KI-gestützte Angebotserstellung aus einer bestehenden Analyse` (~352, on its own line)
+                             -> {t("offer.subtitle")}                [NEW]
+
+=== C) MODE TABS ===
+  `Analyse auswählen` (~388)      -> {t("offer.mode_select")}   [NEW]
+  `HTML-Export hochladen` (~450)  -> {t("offer.mode_upload")}   [NEW]
+
+=== D) PROTOCOL MODE (~lines 392-440) ===
+  `Noch keine abgeschlossenen Analysen im Protokoll. Führen Sie zunächst eine Analyse durch.` (~392)
+                              -> {t("offer.no_analyses")}        [NEW]
+  <label>Analyse</label> (~397)  -> {t("offer.analysis_label")}  [NEW]
+  `— Analyse auswählen —` (~408, the empty <option>)
+                              -> {t("offer.select_placeholder")} [NEW; both characters are em-dashes —,
+                                 preserve them exactly]
+  ~412: {a.companyName ? ` · ${a.companyName}` : ""}
+      -> {a.companyName ? t("offer.option_company", { company: a.companyName }) : ""}
+      manifest: "offer.option_company": de: " · {company}"   (WITH the leading space and bullet)
+  ~414: {a.gaioScore !== null ? ` · GAIO: ${a.gaioScore}/100` : ""}
+      -> {a.gaioScore !== null ? t("offer.option_score", { score: a.gaioScore }) : ""}
+      manifest: "offer.option_score": de: " · GAIO: {score}/100"   (WITH the leading space and bullet)
+      Leave the `!== null` conditions themselves unchanged.
+
+  The seven <ScoreRow label="..."> call sites (~429-435) — REUSE where the text already exists:
+      label="GAIO-Score"  -> label={t("offer.score_gaio")}                 [NEW — note the HYPHEN;
+                             do NOT reuse log.col_score, whose value is "GAIO Score" with a SPACE]
+      label="Techn. SEO"  -> label={t("results.chart_dim_technical")}      <- REUSE (exact match)
+      label="Schema.org"  -> label={t("results.chart_dim_schema")}         <- REUSE (exact match)
+      label="Headings"    -> label={t("results.chart_dim_headings")}       <- REUSE (exact match)
+      label="Inhalt"      -> label={t("results.chart_dim_content")}        <- REUSE (exact match)
+      label="FAQ"         -> label={t("offer.score_faq")}                  [NEW, de: "FAQ"]
+      label="LLM"         -> label={t("offer.score_llm")}                  [NEW, de: "LLM"]
+      Leave every `value={...}` prop untouched.
+
+  `Bitte prüfen Sie, ob dies die korrekte Analyse ist.` (~438)
+                              -> {t("offer.check_correct")}      [NEW]
+
+=== E) UPLOAD MODE (~lines 467-530) ===
+  `GAIO-Analyse-HTML hier ablegen` (~467)                -> {t("offer.drop_hint")}         [NEW]
+  `oder klicken zum Auswählen` (~468)                    -> {t("offer.drop_or_click")}     [NEW]
+  `Nur HTML-Exporte des GAIO Analyzers werden unterstützt.` (~469)
+                                                         -> {t("offer.upload_note")}       [NEW]
+  title="Datei entfernen" (~503)                         -> title={t("offer.remove_file_title")}  [NEW]
+  The second set of seven <ScoreRow label="..."> call sites (~510-516) uses the SAME seven labels as in
+  section D — REUSE exactly the same keys, do NOT create duplicates.
+  `Andere Datei auswählen` (~528, on its own line)       -> {t("offer.choose_other_file")}  [NEW]
+  Leave the `{uploadData.exportDate ? \` · ${...slice(0, 10)}\` : ""}` expression at ~498 unchanged —
+  it contains only a separator and a date value, no translatable text.
+
+=== Manifest ===
+Add ONLY the NEW offer.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "offer",
+escaping special characters (ä, ö, ü, ß, —, ·, …) the same way existing entries do. Add no nav.* or
+results.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the page shows its
+heading and subtitle, both mode tabs, the analysis dropdown with its placeholder option and the company
+name plus GAIO score appended to each entry, the seven score rows for a selected analysis, and the
+upload zone with all three hint lines. Switch to upload mode, drop a GAIO HTML export, and confirm the
+same seven score rows plus the "Andere Datei auswählen" button appear. Under EN, everything falls back
+to German — never blank, never a raw key.

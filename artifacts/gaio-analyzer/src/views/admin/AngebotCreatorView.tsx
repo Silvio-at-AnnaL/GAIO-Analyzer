@@ -7,6 +7,7 @@ import {
   Bold, Italic, UnderlineIcon, List, Minus, UploadCloud, X,
 } from "lucide-react";
 import { adminFetch, canAccess, useAuth } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ function ToolBtn({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AngebotCreatorView() {
+  const t = useT();
   const { user, permissions } = useAuth();
   const canProtocol = canAccess("analyseprotokoll", user?.role ?? "", permissions);
 
@@ -192,7 +194,7 @@ export function AngebotCreatorView() {
     setGenError("");
 
     if (!file.name.toLowerCase().endsWith(".html")) {
-      setUploadError("Nur HTML-Dateien werden akzeptiert.");
+      setUploadError(t("offer.err_html_only"));
       return;
     }
 
@@ -211,13 +213,13 @@ export function AngebotCreatorView() {
     try {
       data = JSON.parse(match[1]) as Record<string, unknown>;
     } catch {
-      setUploadError("Die Analysedaten in dieser Datei konnten nicht gelesen werden.");
+      setUploadError(t("offer.err_unreadable"));
       return;
     }
 
     // Validate required fields
     if (!data.domain || data.gaioScore === undefined || !data.scores || typeof data.scores !== "object") {
-      setUploadError("Die Analysedaten in dieser Datei sind unvollständig.");
+      setUploadError(t("offer.err_incomplete"));
       return;
     }
 
@@ -284,7 +286,7 @@ export function AngebotCreatorView() {
   async function generate(force = false) {
     if (!canGenerate) return;
     if (force && generated) {
-      if (!window.confirm("Änderungen verwerfen und neu generieren?")) return;
+      if (!window.confirm(t("offer.confirm_regenerate"))) return;
     }
     setGenerating(true);
     setGenError("");
@@ -317,7 +319,7 @@ export function AngebotCreatorView() {
         setGenerated(d);
         editor?.commands.setContent(d.html);
       } else {
-        setGenError("Angebot konnte nicht erstellt werden. Bitte prüfen Sie die KI-Tool-Einstellungen.");
+        setGenError(t("offer.err_generate"));
       }
     } catch {
       setGenError("Angebot konnte nicht erstellt werden. Bitte prüfen Sie die KI-Tool-Einstellungen.");
@@ -346,10 +348,10 @@ export function AngebotCreatorView() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <FileText className="w-5 h-5" style={{ color: "#3b82f6" }} />
-          <h1 className="text-2xl font-bold tracking-tight">Angebots-Creator</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_angebots_creator")}</h1>
         </div>
         <p className="text-muted-foreground text-sm">
-          KI-gestützte Angebotserstellung aus einer bestehenden Analyse
+          {t("offer.subtitle")}
         </p>
       </div>
 
@@ -385,16 +387,16 @@ export function AngebotCreatorView() {
         {/* ── MODE A: Aus Protokoll ─────────────────────────────────────────── */}
         {inputMode === "protocol" && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold">Analyse auswählen</h2>
+            <h2 className="text-base font-semibold">{t("offer.mode_select")}</h2>
 
             {!loadingList && analyses.length === 0 ? (
               <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground text-center" style={{ background: "hsl(var(--muted)/0.3)" }}>
-                Noch keine abgeschlossenen Analysen im Protokoll. Führen Sie zunächst eine Analyse durch.
+                {t("offer.no_analyses")}
               </div>
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1.5">Analyse</label>
+                  <label className="block text-sm font-medium mb-1.5">{t("offer.analysis_label")}</label>
                   <select
                     value={selectedId}
                     onChange={(e) => {
@@ -409,9 +411,9 @@ export function AngebotCreatorView() {
                     {analyses.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.domain}
-                        {a.companyName ? ` · ${a.companyName}` : ""}
+                        {a.companyName ? t("offer.option_company", { company: a.companyName }) : ""}
                         {" · "}{formatDateTime(a.completedAt)}
-                        {a.gaioScore !== null ? ` · GAIO: ${a.gaioScore}/100` : ""}
+                        {a.gaioScore !== null ? t("offer.option_score", { score: a.gaioScore }) : ""}
                       </option>
                     ))}
                   </select>
@@ -426,16 +428,16 @@ export function AngebotCreatorView() {
                       Ausgewählte Analyse · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt)}
                     </p>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
-                      <ScoreRow label="GAIO-Score"  value={selectedAnalysis.gaioScore} />
-                      <ScoreRow label="Techn. SEO"  value={parsedScores?.technicalSeo       ?? null} />
-                      <ScoreRow label="Schema.org"  value={parsedScores?.schemaOrg           ?? null} />
-                      <ScoreRow label="Headings"    value={parsedScores?.headingStructure    ?? null} />
-                      <ScoreRow label="Inhalt"      value={parsedScores?.contentRelevance    ?? null} />
-                      <ScoreRow label="FAQ"         value={parsedScores?.faqQuality          ?? null} />
-                      <ScoreRow label="LLM"         value={parsedScores?.llmDiscoverability  ?? null} />
+                      <ScoreRow label={t("offer.score_gaio")}                  value={selectedAnalysis.gaioScore} />
+                      <ScoreRow label={t("results.chart_dim_technical")}      value={parsedScores?.technicalSeo       ?? null} />
+                      <ScoreRow label={t("results.chart_dim_schema")}         value={parsedScores?.schemaOrg           ?? null} />
+                      <ScoreRow label={t("results.chart_dim_headings")}       value={parsedScores?.headingStructure    ?? null} />
+                      <ScoreRow label={t("results.chart_dim_content")}        value={parsedScores?.contentRelevance    ?? null} />
+                      <ScoreRow label={t("offer.score_faq")}                  value={parsedScores?.faqQuality          ?? null} />
+                      <ScoreRow label={t("offer.score_llm")}                  value={parsedScores?.llmDiscoverability  ?? null} />
                     </div>
                     <p className="text-xs text-muted-foreground italic">
-                      Bitte prüfen Sie, ob dies die korrekte Analyse ist.
+                      {t("offer.check_correct")}
                     </p>
                   </div>
                 )}
@@ -447,7 +449,7 @@ export function AngebotCreatorView() {
         {/* ── MODE B: HTML hochladen ───────────────────────────────────────── */}
         {inputMode === "upload" && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold">HTML-Export hochladen</h2>
+            <h2 className="text-base font-semibold">{t("offer.mode_upload")}</h2>
 
             {/* Drop zone */}
             {!uploadData && (
@@ -500,20 +502,20 @@ export function AngebotCreatorView() {
                     <button
                       onClick={() => { setUploadData(null); setUploadError(""); setGenerated(null); }}
                       className="text-muted-foreground hover:text-foreground transition-colors"
-                      title="Datei entfernen"
+                      title={t("offer.remove_file_title")}
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                   <p className="text-xs font-medium">{uploadData.domain}{uploadData.companyName !== uploadData.domain ? ` · ${uploadData.companyName}` : ""}</p>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
-                    <ScoreRow label="GAIO-Score"  value={uploadData.gaioScore} />
-                    <ScoreRow label="Techn. SEO"  value={uploadData.scores.technicalSeo} />
-                    <ScoreRow label="Schema.org"  value={uploadData.scores.schemaOrg} />
-                    <ScoreRow label="Headings"    value={uploadData.scores.headingStructure} />
-                    <ScoreRow label="Inhalt"      value={uploadData.scores.contentRelevance} />
-                    <ScoreRow label="FAQ"         value={uploadData.scores.faqQuality} />
-                    <ScoreRow label="LLM"         value={uploadData.scores.llmDiscoverability} />
+                    <ScoreRow label={t("offer.score_gaio")}                  value={uploadData.gaioScore} />
+                    <ScoreRow label={t("results.chart_dim_technical")}      value={uploadData.scores.technicalSeo} />
+                    <ScoreRow label={t("results.chart_dim_schema")}         value={uploadData.scores.schemaOrg} />
+                    <ScoreRow label={t("results.chart_dim_headings")}       value={uploadData.scores.headingStructure} />
+                    <ScoreRow label={t("results.chart_dim_content")}        value={uploadData.scores.contentRelevance} />
+                    <ScoreRow label={t("offer.score_faq")}                  value={uploadData.scores.faqQuality} />
+                    <ScoreRow label={t("offer.score_llm")}                  value={uploadData.scores.llmDiscoverability} />
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {uploadData.kritisch.length} kritisch · {uploadData.hoherHebel.length} hoher Hebel · {uploadData.nachgeordnet.length} nachgeordnet
@@ -525,7 +527,7 @@ export function AngebotCreatorView() {
                   onClick={() => fileInputRef.current?.click()}
                   className="text-xs text-muted-foreground underline"
                 >
-                  Andere Datei auswählen
+                  {t("offer.choose_other_file")}
                 </button>
               </div>
             )}
