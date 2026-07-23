@@ -301,16 +301,16 @@ export function BrandingView() {
       });
       if (res.ok) {
         setThemeStatus("ok");
-        setThemeMsg("Farbschema gespeichert.");
+        setThemeMsg(t("brand.theme_saved"));
         applyThemeToDocument({ primary, sidebarBg, sidebarText, accent, colorblindMode: colorblind });
         window.dispatchEvent(new Event("theme-updated"));
       } else {
         setThemeStatus("error");
-        setThemeMsg("Fehler beim Speichern.");
+        setThemeMsg(t("perm.save_error"));
       }
     } catch {
       setThemeStatus("error");
-      setThemeMsg("Netzwerkfehler.");
+      setThemeMsg(t("perm.network_error"));
     }
   }
 
@@ -436,40 +436,40 @@ export function BrandingView() {
       <div className="rounded-xl border border-border bg-card p-6 space-y-5">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-base font-semibold">Farbschema</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Farben für Buttons, Sidebar, Highlights und Status-Anzeigen.</p>
+            <h2 className="text-base font-semibold">{t("brand.section_theme")}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("brand.theme_desc")}</p>
           </div>
           <button
             onClick={resetTheme}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
           >
             <RotateCcw className="w-3 h-3" />
-            Auf Standard zurücksetzen
+            {t("brand.reset_default_button")}
           </button>
         </div>
 
         <div className="space-y-1 divide-y" style={{ borderColor: "hsl(var(--border))" }}>
           <ColorField
-            label="Primärfarbe"
-            desc="Buttons, aktiver Nav-Eintrag, Links, Focus-Ringe"
+            label={t("brand.color_primary_label")}
+            desc={t("brand.color_primary_desc")}
             value={primary}
             onChange={setPrimary}
           />
           <ColorField
-            label="Akzentfarbe"
-            desc="Score-Highlights, Badges, aktiver Tab-Unterstrich"
+            label={t("brand.color_accent_label")}
+            desc={t("brand.color_accent_desc")}
             value={accent}
             onChange={setAccent}
           />
           <ColorField
-            label="Sidebar-Hintergrund"
-            desc="Hintergrundfarbe der Navigation"
+            label={t("brand.color_sidebar_bg_label")}
+            desc={t("brand.color_sidebar_bg_desc")}
             value={sidebarBg}
             onChange={setSidebarBg}
           />
           <ColorField
-            label="Sidebar-Text"
-            desc="Textfarbe der Nav-Einträge"
+            label={t("brand.color_sidebar_text_label")}
+            desc={t("brand.color_sidebar_text_desc")}
             value={sidebarText}
             onChange={setSidebarText}
           />
@@ -480,16 +480,15 @@ export function BrandingView() {
           <div className="flex items-center gap-3">
             <Toggle checked={colorblind} onChange={setColorblind} />
             <div>
-              <div className="text-sm font-medium">Farbenblinden-Modus</div>
-              <div className="text-xs text-muted-foreground">Barrierefreie Farbgebung (Rot-Grün-sicher)</div>
+              <div className="text-sm font-medium">{t("brand.colorblind_label")}</div>
+              <div className="text-xs text-muted-foreground">{t("brand.colorblind_desc")}</div>
             </div>
           </div>
           {colorblind && (
             <div className="flex items-start gap-2 rounded-lg border p-3 text-xs" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted)/0.4)" }}>
               <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#3b82f6" }} />
               <span className="text-muted-foreground">
-                Im Farbenblinden-Modus werden Rot- und Grün-Töne durch Blau und Amber ersetzt.
-                Alle Status-Anzeigen bleiben durch Icons zusätzlich unterscheidbar.
+                {t("brand.colorblind_hint")}
               </span>
             </div>
           )}
@@ -497,7 +496,7 @@ export function BrandingView() {
 
         {/* Live preview */}
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vorschau</div>
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("contactedit.preview")}</div>
           <ThemePreview
             primary={primary}
             accent={accent}
@@ -515,7 +514,7 @@ export function BrandingView() {
             style={{ background: "#3b82f6" }}
           >
             <Save className="w-4 h-4" />
-            {themeStatus === "saving" ? "Speichern…" : "Farbschema speichern"}
+            {themeStatus === "saving" ? t("auth.saving_loading") : t("brand.save_theme_button")}
           </button>
           {themeMsg && (
             <span className="flex items-center gap-1.5 text-sm" style={{ color: themeStatus === "ok" ? "#3b82f6" : "#d97706" }}>

@@ -1,0 +1,69 @@
+Migrate BrandingView.tsx — PART 2 of 2: the "Farbschema" card and its three status messages. Part 1 is
+done — do not redo it. Work ONLY on this file. Do not touch report-export.ts. Do not touch any
+image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/BrandingView.tsx
+Key namespace: "brand"
+The component already calls useT() — reuse the existing `t`.
+
+=== CRITICAL — do NOT touch ===
+  - `themeStatus === "saving"` comparisons
+  - Any hex colour value or the `colorblind` boolean state
+  - The ColorField and Toggle helper components themselves — ColorField receives label/desc as props,
+    so t() is called at the CALL SITES below, not inside the component
+
+=== A) STATUS MESSAGES (~lines 304-313) ===
+  ~304: "Farbschema gespeichert."   -> t("brand.theme_saved")     [NEW]
+  ~309: "Fehler beim Speichern."    -> t("perm.save_error")       <- REUSE (exact, with period)
+  ~313: "Netzwerkfehler."           -> t("perm.network_error")    <- REUSE (exact)
+  Leave the two setThemeMsg("") calls (~290, ~324) alone — they clear the message, no text.
+
+=== B) CARD HEADER (~lines 439-447) ===
+  <h2>Farbschema</h2>  -> {t("brand.section_theme")}   [NEW]
+  `Farben für Buttons, Sidebar, Highlights und Status-Anzeigen.` (~440)
+                       -> {t("brand.theme_desc")}      [NEW]
+  `Auf Standard zurücksetzen` (~447, on its own line after the icon)
+                       -> {t("brand.reset_default_button")}   <- REUSE the key created in Part 1
+
+=== C) FOUR ColorField CALL SITES (~lines 452-473) ===
+Replace each label/desc string attribute with a t() call — the props stay named label and desc:
+  ~453 label="Primärfarbe"        -> label={t("brand.color_primary_label")}        [NEW]
+  ~454 desc="Buttons, aktiver Nav-Eintrag, Links, Focus-Ringe"
+                                  -> desc={t("brand.color_primary_desc")}          [NEW]
+  ~459 label="Akzentfarbe"        -> label={t("brand.color_accent_label")}         [NEW]
+  ~460 desc="Score-Highlights, Badges, aktiver Tab-Unterstrich"
+                                  -> desc={t("brand.color_accent_desc")}           [NEW]
+  ~465 label="Sidebar-Hintergrund" -> label={t("brand.color_sidebar_bg_label")}    [NEW]
+  ~466 desc="Hintergrundfarbe der Navigation"
+                                  -> desc={t("brand.color_sidebar_bg_desc")}       [NEW]
+  ~471 label="Sidebar-Text"       -> label={t("brand.color_sidebar_text_label")}   [NEW]
+  ~472 desc="Textfarbe der Nav-Einträge"
+                                  -> desc={t("brand.color_sidebar_text_desc")}     [NEW]
+  Leave the `value={...}` and `onChange={...}` props of all four untouched.
+
+=== D) COLORBLIND TOGGLE (~lines 483-492) ===
+  `Farbenblinden-Modus`                          -> {t("brand.colorblind_label")}   [NEW]
+  `Barrierefreie Farbgebung (Rot-Grün-sicher)`   -> {t("brand.colorblind_desc")}    [NEW]
+  The two-line hint at ~491-492 renders as one block:
+      `Im Farbenblinden-Modus werden Rot- und Grün-Töne durch Blau und Amber ersetzt.
+       Alle Status-Anzeigen bleiben durch Icons zusätzlich unterscheidbar.`
+      -> {t("brand.colorblind_hint")}   [NEW]
+      manifest de: ONE line, single space where the source had a line break.
+
+=== E) PREVIEW + SAVE (~lines 500-518) ===
+  `Vorschau` (~500)  -> {t("contactedit.preview")}   <- REUSE existing key (exact match)
+  {themeStatus === "saving" ? "Speichern…" : "Farbschema speichern"} (~518)
+      -> {themeStatus === "saving" ? t("auth.saving_loading") : t("brand.save_theme_button")}
+      auth.saving_loading is REUSED; brand.save_theme_button is NEW.
+
+=== Manifest ===
+Add ONLY the NEW brand.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "brand",
+escaping special characters (ä, ö, ü, ß, …) the same way existing entries do. Add no perm.*, auth.* or
+contactedit.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the Farbschema card
+shows its heading and description, all four colour fields with their labels AND their description lines,
+the colorblind toggle with its label, description and hint, the preview box, and the save button.
+Toggle colorblind mode on — the preview badges must switch from red/green to blue/amber. Save the theme
+and confirm the success message. Under EN, everything falls back to German — never blank, never a raw
+key.
