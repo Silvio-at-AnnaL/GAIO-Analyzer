@@ -433,8 +433,8 @@ export function AiToolView() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--muted) / 0.5)" }}>
-                  {["Bezeichnung", "Base-URL", "Modell", "Status", "Aktionen"].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
+                  {["ai.name_label", "ai.base_url_label", "ai.model_label", "users.col_status", "users.col_actions"].map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-left text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{t(h)}</th>
                   ))}
                 </tr>
               </thead>
