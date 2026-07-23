@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Palette, UploadCloud, RotateCcw, Save, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { useBranding, applyThemeToDocument } from "@/store/brandingStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface BrandingSettings {
   branding_logo_base64:   string;
@@ -105,6 +106,7 @@ function ThemePreview({
 }: {
   primary: string; accent: string; sidebarBg: string; sidebarText: string; colorblind: boolean;
 }) {
+  const t = useT();
   const successBg    = colorblind ? "#eff6ff" : "#dcfce7";
   const successColor = colorblind ? "#2563eb" : "#16a34a";
   const errorBg      = colorblind ? "#fffbeb" : "#fee2e2";
@@ -129,11 +131,11 @@ function ThemePreview({
           <button
             style={{ background: primary, color: "#fff", fontSize: 11, padding: "4px 10px", borderRadius: 6, fontWeight: 600, border: "none", cursor: "default", display: "block" }}
           >
-            Primäre Aktion
+            {t("brand.preview_primary_action")}
           </button>
           <div className="flex gap-2">
-            <span style={{ background: successBg, color: successColor, fontSize: 10, padding: "2px 7px", borderRadius: 999, fontWeight: 600 }}>Erfolg</span>
-            <span style={{ background: errorBg, color: errorColor, fontSize: 10, padding: "2px 7px", borderRadius: 999, fontWeight: 600 }}>Fehler</span>
+            <span style={{ background: successBg, color: successColor, fontSize: 10, padding: "2px 7px", borderRadius: 999, fontWeight: 600 }}>{t("brand.preview_success")}</span>
+            <span style={{ background: errorBg, color: errorColor, fontSize: 10, padding: "2px 7px", borderRadius: 999, fontWeight: 600 }}>{t("brand.preview_error")}</span>
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: accent, lineHeight: 1 }}>
             76<span style={{ fontSize: 11, fontWeight: 400, color: "hsl(var(--muted-foreground))" }}>/100</span>
@@ -145,6 +147,7 @@ function ThemePreview({
 }
 
 export function BrandingView() {
+  const t = useT();
   const branding = useBranding();
 
   const [logoPreview, setLogoPreview]     = useState<string>("");
@@ -197,7 +200,7 @@ export function BrandingView() {
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
       if (!sizeOk(dataUrl)) {
-        setLogoMsg("Datei zu groß. Maximal 500 KB erlaubt.");
+        setLogoMsg(t("contactedit.file_too_large"));
         setLogoStatus("error");
         return;
       }
@@ -222,17 +225,17 @@ export function BrandingView() {
       });
       if (res.ok) {
         setLogoStatus("ok");
-        setLogoMsg("Logo gespeichert.");
+        setLogoMsg(t("brand.logo_saved"));
         setLogoChanged(false);
         window.dispatchEvent(new Event("branding-updated"));
       } else {
         const d = (await res.json()) as { error?: string };
         setLogoStatus("error");
-        setLogoMsg(d.error ?? "Fehler beim Speichern.");
+        setLogoMsg(d.error ?? t("perm.save_error"));
       }
     } catch {
       setLogoStatus("error");
-      setLogoMsg("Netzwerkfehler.");
+      setLogoMsg(t("perm.network_error"));
     }
   }
 
@@ -248,15 +251,15 @@ export function BrandingView() {
         setLogoPreview("");
         setLogoChanged(false);
         setLogoStatus("ok");
-        setLogoMsg("Logo auf Standard zurückgesetzt.");
+        setLogoMsg(t("brand.logo_reset"));
         window.dispatchEvent(new Event("branding-updated"));
       } else {
         setLogoStatus("error");
-        setLogoMsg("Fehler beim Zurücksetzen.");
+        setLogoMsg(t("brand.reset_error"));
       }
     } catch {
       setLogoStatus("error");
-      setLogoMsg("Netzwerkfehler.");
+      setLogoMsg(t("perm.network_error"));
     }
   }
 
@@ -270,15 +273,15 @@ export function BrandingView() {
       });
       if (res.ok) {
         setFooterStatus("ok");
-        setFooterMsg("Footer gespeichert.");
+        setFooterMsg(t("brand.footer_saved"));
         window.dispatchEvent(new Event("branding-updated"));
       } else {
         setFooterStatus("error");
-        setFooterMsg("Fehler beim Speichern.");
+        setFooterMsg(t("perm.save_error"));
       }
     } catch {
       setFooterStatus("error");
-      setFooterMsg("Netzwerkfehler.");
+      setFooterMsg(t("perm.network_error"));
     }
   }
 
@@ -328,22 +331,22 @@ export function BrandingView() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Palette className="w-5 h-5" style={{ color: "#3b82f6" }} />
-          <h1 className="text-2xl font-bold tracking-tight">Erscheinungsbild</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_erscheinungsbild")}</h1>
         </div>
-        <p className="text-muted-foreground text-sm">Logo, Footer-Branding und Farbschema der Anwendung anpassen.</p>
+        <p className="text-muted-foreground text-sm">{t("brand.subtitle")}</p>
       </div>
 
       {/* Card: Logo */}
       <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-        <h2 className="text-base font-semibold">Logo</h2>
+        <h2 className="text-base font-semibold">{t("brand.section_logo")}</h2>
         <div className="flex items-center justify-center rounded-lg border border-border bg-background" style={{ minHeight: 96, padding: 16 }}>
           {effectiveLogo ? (
-            <img src={effectiveLogo} alt="Logo-Vorschau" style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain" }} />
+            <img src={effectiveLogo} alt={t("brand.alt_logo_preview")} style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain" }} />
           ) : (
             <div style={{ height: 48, display: "flex", alignItems: "center" }}>
               <img
                 src="/brand-logo.png"
-                alt="Standard-Logo"
+                alt={t("brand.alt_default_logo")}
                 style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain" }}
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
               />
@@ -357,14 +360,14 @@ export function BrandingView() {
             className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium border border-border bg-background hover:bg-muted transition-colors"
           >
             <UploadCloud className="w-4 h-4" />
-            Logo hochladen
+            {t("brand.upload_button")}
           </button>
           <button
             onClick={resetLogo}
             className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium border border-border bg-background hover:bg-muted transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
-            Auf Standard zurücksetzen
+            {t("brand.reset_default_button")}
           </button>
           <button
             onClick={saveLogo}
@@ -373,10 +376,10 @@ export function BrandingView() {
             style={{ background: "#3b82f6" }}
           >
             <Save className="w-4 h-4" />
-            {logoStatus === "saving" ? "Speichern…" : "Speichern"}
+            {logoStatus === "saving" ? t("auth.saving_loading") : t("profile.save_button")}
           </button>
         </div>
-        <p className="text-xs text-muted-foreground">Empfohlenes Format: PNG mit transparentem Hintergrund, min. 300 px Breite. Maximal 500 KB.</p>
+        <p className="text-xs text-muted-foreground">{t("brand.logo_format_hint")}</p>
         {logoMsg && (
           <div className="flex items-center gap-2 text-sm" style={{ color: logoStatus === "ok" ? "#3b82f6" : "#d97706" }}>
             {logoStatus === "ok" ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
@@ -387,10 +390,10 @@ export function BrandingView() {
 
       {/* Card: Footer */}
       <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-        <h2 className="text-base font-semibold">Footer</h2>
+        <h2 className="text-base font-semibold">{t("brand.section_footer")}</h2>
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Footer-Text</label>
+            <label className="block text-sm font-medium mb-1">{t("brand.footer_text_label")}</label>
             <input
               type="text"
               value={footerText}
@@ -400,7 +403,7 @@ export function BrandingView() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Footer-URL</label>
+            <label className="block text-sm font-medium mb-1">{t("brand.footer_url_label")}</label>
             <input
               type="url"
               value={footerUrl}
@@ -409,7 +412,7 @@ export function BrandingView() {
             />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Wird im Footer der App sowie in PDF- und HTML-Exporten angezeigt.</p>
+        <p className="text-xs text-muted-foreground">{t("brand.footer_hint")}</p>
         <div className="flex items-center gap-3">
           <button
             onClick={saveFooter}
@@ -418,7 +421,7 @@ export function BrandingView() {
             style={{ background: "#3b82f6" }}
           >
             <Save className="w-4 h-4" />
-            {footerStatus === "saving" ? "Speichern…" : "Speichern"}
+            {footerStatus === "saving" ? t("auth.saving_loading") : t("profile.save_button")}
           </button>
           {footerMsg && (
             <span className="flex items-center gap-1.5 text-sm" style={{ color: footerStatus === "ok" ? "#3b82f6" : "#d97706" }}>

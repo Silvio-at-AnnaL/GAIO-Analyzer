@@ -1,0 +1,77 @@
+Migrate BrandingView.tsx — PART 1 of 2: the ThemePreview helper component, all status messages, the
+header, and the "Logo" and "Footer" cards (up to ~line 430). Do NOT touch the "Farbschema" card from
+~line 434 onwards — that is Part 2. Do not touch report-export.ts. Do not touch any image/binary asset
+files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/BrandingView.tsx
+Key namespace: "brand"
+
+Add `import { useT } from "@/lib/LabelProvider";` once at the top, and `const t = useT();` as the FIRST
+line inside the BrandingView component body, before any early return.
+
+=== CRITICAL — do NOT touch ===
+  - THEME_DEFAULTS (~line 21) — hex colour values and a boolean, no text
+  - MAX_B64_BYTES and all file-size arithmetic
+  - `?? "IndustryStock.com"` (~line 175) — brand name seeded as a default value, not UI text
+  - The `logoStatus === "saving"` / `footerStatus === "saving"` comparisons
+  - The demo numbers "76" and "/100" inside ThemePreview
+
+=== A) ThemePreview HELPER COMPONENT (~lines 103-140) ===
+This is a separate component and does NOT see the outer `t`. Add `const t = useT();` as the first line
+inside ThemePreview, then migrate its three demo labels:
+  `Primäre Aktion` (~line 132, on its own line inside the button)  -> {t("brand.preview_primary_action")}
+  `Erfolg` (~line 135)  -> {t("brand.preview_success")}
+  `Fehler` (~line 136)  -> {t("brand.preview_error")}
+  All three NEW. Do NOT reuse profile.error_generic for "Fehler" — that key is a real error message,
+  while this is illustrative preview content; coupling them would make editing one change the other.
+Leave the ColorField (~line 40) and Toggle (~line 86) helpers alone — ColorField receives its text as
+props (handled in Part 2), Toggle has no text.
+
+=== B) STATUS MESSAGES (~lines 200-310) ===
+  ~200: "Datei zu groß. Maximal 500 KB erlaubt."  -> t("contactedit.file_too_large")  <- REUSE (exact match)
+  ~225: "Logo gespeichert."                        -> t("brand.logo_saved")            [NEW]
+  ~251: "Logo auf Standard zurückgesetzt."         -> t("brand.logo_reset")            [NEW]
+  ~255: "Fehler beim Zurücksetzen."                -> t("brand.reset_error")           [NEW]
+        (do NOT reuse texts.reset_error — its value has NO trailing period)
+  ~273: "Footer gespeichert."                      -> t("brand.footer_saved")          [NEW]
+  ~231, ~277: d.error ?? "Fehler beim Speichern."  -> d.error ?? t("perm.save_error")  <- REUSE (exact,
+        with trailing period). Keep d.error priority.
+  ~235, ~259, ~281: "Netzwerkfehler."              -> t("perm.network_error")          <- REUSE (exact)
+  Leave the setThemeMsg(...) calls at ~301/~306/~310 alone — those belong to Part 2.
+
+=== C) HEADER (~lines 331-333) ===
+  <h1>Erscheinungsbild</h1>  -> {t("nav.admin_erscheinungsbild")}   <- REUSE existing key
+  `Logo, Footer-Branding und Farbschema der Anwendung anpassen.`  -> {t("brand.subtitle")}   [NEW]
+
+=== D) LOGO CARD (~lines 338-380) ===
+  <h2>Logo</h2>                  -> {t("brand.section_logo")}        [NEW, de: "Logo"]
+  alt="Logo-Vorschau" (~341)     -> alt={t("brand.alt_logo_preview")} [NEW]
+  alt="Standard-Logo" (~346)     -> alt={t("brand.alt_default_logo")} [NEW]
+  `Logo hochladen` (~360, on its own line after the icon)
+                                 -> {t("brand.upload_button")}        [NEW]
+  `Auf Standard zurücksetzen` (~367, on its own line after the icon)
+                                 -> {t("brand.reset_default_button")} [NEW]
+  {logoStatus === "saving" ? "Speichern…" : "Speichern"} (~376)
+      -> {logoStatus === "saving" ? t("auth.saving_loading") : t("profile.save_button")}  <- both REUSE
+  `Empfohlenes Format: PNG mit transparentem Hintergrund, min. 300 px Breite. Maximal 500 KB.` (~379)
+                                 -> {t("brand.logo_format_hint")}     [NEW]
+
+=== E) FOOTER CARD (~lines 390-425) ===
+  <h2>Footer</h2>                -> {t("brand.section_footer")}       [NEW, de: "Footer"]
+  <label>Footer-Text</label>     -> {t("brand.footer_text_label")}    [NEW]
+  <label>Footer-URL</label>      -> {t("brand.footer_url_label")}     [NEW]
+  `Wird im Footer der App sowie in PDF- und HTML-Exporten angezeigt.` (~412)
+                                 -> {t("brand.footer_hint")}          [NEW]
+  {footerStatus === "saving" ? "Speichern…" : "Speichern"} (~421)
+      -> {footerStatus === "saving" ? t("auth.saving_loading") : t("profile.save_button")}  <- both REUSE
+
+=== Manifest ===
+Add ONLY the NEW brand.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "brand",
+escaping special characters (ä, ö, ü, ß, …) the same way existing entries do. Add no nav.*, auth.*,
+profile.*, perm.* or contactedit.* key — all reused ones already exist.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the page shows its
+heading and subtitle, the Logo card with both buttons and the format hint, and the Footer card with both
+field labels and its hint. Upload a logo and reset it — the success and reset messages must appear.
+Save the footer text — its message must appear. The theme preview box must still show its three demo
+labels. Under EN, everything falls back to German — never blank, never a raw key.
