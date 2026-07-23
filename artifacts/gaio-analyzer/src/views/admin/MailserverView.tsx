@@ -195,7 +195,7 @@ export function MailserverView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Server</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.server")}</h1>
         <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
           {t("mail.subtitle")}
         </p>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2, Plus, Trash2, Pencil, X } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
+import { useT } from "@/lib/LabelProvider";
 
 interface AiSettings {
   ai_provider: string;
@@ -33,17 +34,18 @@ interface CustomProvider {
 type BuiltinId = "claude" | "openai" | "perplexity" | "gemini";
 
 const BUILTINS: { id: BuiltinId; label: string; defaultModel: string; hint: string; hintUrl: string }[] = [
-  { id: "claude",     label: "Claude (Anthropic)", defaultModel: "claude-sonnet-4-20250514",           hint: "API-Key erhalten bei", hintUrl: "https://console.anthropic.com/" },
-  { id: "openai",     label: "ChatGPT / OpenAI",   defaultModel: "gpt-4o",                            hint: "API-Key erhalten bei", hintUrl: "https://platform.openai.com/api-keys" },
-  { id: "perplexity", label: "Perplexity",          defaultModel: "llama-3.1-sonar-large-128k-online", hint: "API-Key erhalten bei", hintUrl: "https://www.perplexity.ai/settings/api" },
-  { id: "gemini",     label: "Google Gemini",       defaultModel: "gemini-1.5-pro",                    hint: "API-Key erhalten bei", hintUrl: "https://aistudio.google.com/app/apikey" },
+  { id: "claude",     label: "Claude (Anthropic)", defaultModel: "claude-sonnet-4-20250514",           hint: "ai.hint_key_from", hintUrl: "https://console.anthropic.com/" },
+  { id: "openai",     label: "ChatGPT / OpenAI",   defaultModel: "gpt-4o",                            hint: "ai.hint_key_from", hintUrl: "https://platform.openai.com/api-keys" },
+  { id: "perplexity", label: "Perplexity",          defaultModel: "llama-3.1-sonar-large-128k-online", hint: "ai.hint_key_from", hintUrl: "https://www.perplexity.ai/settings/api" },
+  { id: "gemini",     label: "Google Gemini",       defaultModel: "gemini-1.5-pro",                    hint: "ai.hint_key_from", hintUrl: "https://aistudio.google.com/app/apikey" },
 ];
 
 function StatusDot({ has }: { has: boolean }) {
+  const t = useT();
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
       <span className="inline-block w-2 h-2 rounded-full" style={{ background: has ? "#3b82f6" : "#6b7280" }} />
-      <span style={{ color: has ? "#3b82f6" : "#6b7280" }}>{has ? "API-Key hinterlegt" : "Kein API-Key"}</span>
+      <span style={{ color: has ? "#3b82f6" : "#6b7280" }}>{has ? t("ai.key_present") : t("ai.key_missing")}</span>
     </span>
   );
 }
@@ -60,6 +62,7 @@ function FeedbackLine({ type, msg }: { type: "ok" | "err"; msg: string }) {
 const EMPTY_NEW_PROV = { name: "", api_key: "", base_url: "", model: "" };
 
 export function AiToolView() {
+  const t = useT();
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [status, setStatus]     = useState<AiStatus | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -137,9 +140,9 @@ export function AiToolView() {
     if (res.ok) {
       setStatus(s => s ? { ...s, provider: selectedProvider } : s);
       const label = allProviderOptions.find(p => p.id === selectedProvider)?.label ?? selectedProvider;
-      showFeedback("provider", "ok", `${label} ist jetzt der aktive Analyse-Anbieter.`);
+      showFeedback("provider", "ok", t("ai.provider_activated", { name: label }));
     } else {
-      showFeedback("provider", "err", "Fehler beim Speichern");
+      showFeedback("provider", "err", t("delivery.save_error"));
     }
   }
 
@@ -158,9 +161,9 @@ export function AiToolView() {
       await load();
       setEditedKeys(e   => { const n = { ...e }; delete n[id]; return n; });
       setEditedModels(e => { const n = { ...e }; delete n[id]; return n; });
-      showFeedback(id, "ok", "Zugangsdaten gespeichert");
+      showFeedback(id, "ok", t("ai.credentials_saved"));
     } else {
-      showFeedback(id, "err", "Fehler beim Speichern");
+      showFeedback(id, "err", t("delivery.save_error"));
     }
   }
 
@@ -186,9 +189,9 @@ export function AiToolView() {
       setCustomProviders(updated);
       setNewProv({ ...EMPTY_NEW_PROV });
       setShowAddForm(false);
-      showFeedback("custom", "ok", `${cp.name} hinzugefügt`);
+      showFeedback("custom", "ok", t("ai.provider_added", { name: cp.name }));
     } else {
-      showFeedback("custom", "err", "Fehler beim Speichern");
+      showFeedback("custom", "err", t("delivery.save_error"));
     }
   }
 
@@ -202,9 +205,9 @@ export function AiToolView() {
       await load();
       setEditingId(null);
       setEditProv(null);
-      showFeedback("custom", "ok", "Anbieter aktualisiert");
+      showFeedback("custom", "ok", t("ai.provider_updated"));
     } else {
-      showFeedback("custom", "err", "Fehler beim Speichern");
+      showFeedback("custom", "err", t("delivery.save_error"));
     }
   }
 
@@ -216,9 +219,9 @@ export function AiToolView() {
     if (ok) {
       setCustomProviders(updated);
       if (activeTab === id) setActiveTab("claude");
-      showFeedback("custom", "ok", "Anbieter entfernt");
+      showFeedback("custom", "ok", t("ai.provider_removed"));
     } else {
-      showFeedback("custom", "err", "Fehler beim Löschen");
+      showFeedback("custom", "err", t("users.delete_error"));
     }
   }
 
@@ -236,23 +239,23 @@ export function AiToolView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">KI-Tool</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.admin_ki_tool")}</h1>
         <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          KI-Anbieter und API-Zugangsdaten für die Analyse konfigurieren
+          {t("ai.subtitle")}
         </p>
       </div>
 
       {/* ── SECTION 1: Active provider selection ─────────────────────────── */}
       <div className="rounded-lg border p-5 space-y-4" style={cardStyle}>
-        <h2 className="text-base font-semibold">Aktiver KI-Anbieter</h2>
+        <h2 className="text-base font-semibold">{t("ai.section_active")}</h2>
 
         {totalWithKeys < 2 ? (
           <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Aktiver Anbieter:{" "}
+            {t("ai.active_provider_label")}{" "}
             <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>
               {allProviderOptions.find(p => p.id === currentProvider)?.label ?? currentProvider}
             </span>
-            {" "}— nur ein API-Key konfiguriert.
+            {" "}{t("ai.only_one_key")}
           </p>
         ) : (
           <div className="space-y-2">
@@ -279,10 +282,10 @@ export function AiToolView() {
                   <span className="flex-1 text-sm" style={{ fontWeight: isActive ? 600 : 400 }}>
                     {prov.label}
                     {prov.isCustom && (
-                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>Custom</span>
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>{t("ai.badge_custom")}</span>
                     )}
                     {isActive && (
-                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "rgba(37,99,235,0.2)", color: "#3b82f6" }}>Aktiv</span>
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "rgba(37,99,235,0.2)", color: "#3b82f6" }}>{t("users.status_active")}</span>
                     )}
                   </span>
                   <StatusDot has={prov.hasKey} />
@@ -309,7 +312,7 @@ export function AiToolView() {
 
       {/* ── SECTION 2: API credentials ────────────────────────────────────── */}
       <div className="rounded-lg border p-5 space-y-4" style={cardStyle}>
-        <h2 className="text-base font-semibold">API-Zugangsdaten</h2>
+        <h2 className="text-base font-semibold">{t("ai.section_credentials")}</h2>
 
         <div className="flex gap-1 flex-wrap border-b" style={{ borderColor: "hsl(var(--border))" }}>
           {BUILTINS.map(b => (
@@ -344,7 +347,7 @@ export function AiToolView() {
           return (
             <div key={b.id} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">API-Key</label>
+                <label className="text-sm font-medium">{t("ai.api_key_label")}</label>
                 <input
                   type="password"
                   value={editedKeys[b.id] ?? currentKey}
@@ -355,12 +358,12 @@ export function AiToolView() {
                   style={inputStyle}
                 />
                 <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  {b.hint}{" "}
+                  {t(b.hint)}{" "}
                   <a href={b.hintUrl} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">{b.hintUrl}</a>
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Modell</label>
+                <label className="text-sm font-medium">{t("ai.model_label")}</label>
                 <input
                   type="text"
                   value={currentModel}
@@ -376,7 +379,7 @@ export function AiToolView() {
                 style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
               >
                 {saving === b.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Zugangsdaten speichern
+                {t("ai.save_credentials_button")}
               </button>
               {feedback?.key === b.id && <FeedbackLine type={feedback.type} msg={feedback.msg} />}
             </div>

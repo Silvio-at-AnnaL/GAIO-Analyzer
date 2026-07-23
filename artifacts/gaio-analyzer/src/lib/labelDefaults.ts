@@ -712,4 +712,23 @@ export const labelDefaults: Record<string, LabelDef> = {
   "mail.db_saved":                 { group: "mail", de: "Gespeichert." },
   "mail.db_platform_hint_replit":  { group: "mail", de: "Auf Replit: DATABASE_URL in den Replit Secrets eintragen \u2014 hat automatisch Vorrang und bleibt nach Neustarts erhalten." },
   "mail.db_platform_hint_own":     { group: "mail", de: "Auf eigenem Server: dieses Formular oder Umgebungsvariable DATABASE_URL." },
+
+  // ai.*
+  "ai.hint_key_from":            { group: "ai", de: "API-Key erhalten bei" },
+  "ai.key_present":              { group: "ai", de: "API-Key hinterlegt" },
+  "ai.key_missing":              { group: "ai", de: "Kein API-Key" },
+  "ai.provider_activated":       { group: "ai", de: "{name} ist jetzt der aktive Analyse-Anbieter." },
+  "ai.credentials_saved":        { group: "ai", de: "Zugangsdaten gespeichert" },
+  "ai.provider_added":           { group: "ai", de: "{name} hinzugef\u00FCgt" },
+  "ai.provider_updated":         { group: "ai", de: "Anbieter aktualisiert" },
+  "ai.provider_removed":         { group: "ai", de: "Anbieter entfernt" },
+  "ai.subtitle":                 { group: "ai", de: "KI-Anbieter und API-Zugangsdaten f\u00FCr die Analyse konfigurieren" },
+  "ai.section_active":           { group: "ai", de: "Aktiver KI-Anbieter" },
+  "ai.active_provider_label":    { group: "ai", de: "Aktiver Anbieter:" },
+  "ai.only_one_key":             { group: "ai", de: "\u2014 nur ein API-Key konfiguriert." },
+  "ai.badge_custom":             { group: "ai", de: "Custom" },
+  "ai.section_credentials":      { group: "ai", de: "API-Zugangsdaten" },
+  "ai.api_key_label":            { group: "ai", de: "API-Key" },
+  "ai.model_label":              { group: "ai", de: "Modell" },
+  "ai.save_credentials_button":  { group: "ai", de: "Zugangsdaten speichern" },
 };

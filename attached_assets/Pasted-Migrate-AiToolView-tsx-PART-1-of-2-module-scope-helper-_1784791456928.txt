@@ -1,0 +1,94 @@
+Migrate AiToolView.tsx — PART 1 of 2: module scope, helper component, status messages, header, and the
+first two cards ("Aktiver KI-Anbieter" and "API-Zugangsdaten", up to ~line 382). Do NOT touch anything
+from ~line 385 onwards — that is Part 2. Do not touch report-export.ts. Do not touch any image/binary
+asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/AiToolView.tsx
+Key namespace: "ai"
+
+Add `import { useT } from "@/lib/LabelProvider";` once at the top, and `const t = useT();` as the FIRST
+line inside the AiToolView component body, before any early return.
+
+=== CRITICAL — do NOT migrate these, they are product names or technical values ===
+  - BUILTINS `label:` values: "Claude (Anthropic)", "ChatGPT / OpenAI", "Perplexity", "Google Gemini"
+  - BUILTINS `id:`, `defaultModel:`, `hintUrl:` fields
+  - The BuiltinId type union ("claude" | "openai" | "perplexity" | "gemini")
+  - All placeholder attributes: "sk-...", "••••••••••••", "••••••••", "Mistral Large",
+    "mistral-large-latest", "https://api.mistral.ai/v1" — API-key formats, model ids, URLs, masking dots
+  - The `type: "ok" | "err"` values and the `key`/`id` first argument of showFeedback(...)
+  - `saving === b.id` / `saving === "custom-add"` comparisons
+
+=== A) MODULE-SCOPE HOOK TRAP (~lines 35-40) ===
+BUILTINS sits at module level. All four entries carry the SAME hint text. Replace only the `hint:`
+value with one shared key string, leaving every other field untouched:
+    hint: "ai.hint_key_from"    (all four entries get this identical key string)
+    [NEW key, de: "API-Key erhalten bei"]
+Then at the render site (~line 358) change `{b.hint}` to `{t(b.hint)}`. Leave the `{" "}` separator and
+the following <a href={b.hintUrl}> element exactly as they are.
+
+=== B) StatusDot HELPER COMPONENT (~lines 42-49) ===
+This is a separate component and does NOT have access to the outer `t`. Add `const t = useT();` as the
+first line inside StatusDot, then:
+    {has ? "API-Key hinterlegt" : "Kein API-Key"}
+    -> {has ? t("ai.key_present") : t("ai.key_missing")}   [both NEW]
+Leave the FeedbackLine component (~lines 51-58) completely alone — it receives its text as a prop.
+
+=== C) STATUS MESSAGES (~lines 140-221) ===
+  ~140: showFeedback("provider", "ok", `${label} ist jetzt der aktive Analyse-Anbieter.`)
+      -> showFeedback("provider", "ok", t("ai.provider_activated", { name: label }))
+      manifest: "ai.provider_activated": de: "{name} ist jetzt der aktive Analyse-Anbieter."
+  ~161: "Zugangsdaten gespeichert"  -> t("ai.credentials_saved")   [NEW]
+  ~189: showFeedback("custom", "ok", `${cp.name} hinzugefügt`)
+      -> t("ai.provider_added", { name: cp.name })
+      manifest: "ai.provider_added": de: "{name} hinzugefügt"
+  ~205: "Anbieter aktualisiert"     -> t("ai.provider_updated")    [NEW]
+  ~219: "Anbieter entfernt"         -> t("ai.provider_removed")    [NEW]
+  ~142, ~163, ~191, ~207: "Fehler beim Speichern" (four identical occurrences)
+      -> t("delivery.save_error")   <- REUSE existing key, identical text, no trailing period
+  ~221: "Fehler beim Löschen"       -> t("users.delete_error")     <- REUSE existing key
+
+=== D) HEADER (~lines 239-241) ===
+  <h1>KI-Tool</h1>  -> {t("nav.admin_ki_tool")}   <- REUSE existing key (same text as sidebar entry)
+  `KI-Anbieter und API-Zugangsdaten für die Analyse konfigurieren`  -> {t("ai.subtitle")}   [NEW]
+
+=== E) CARD 1 — "Aktiver KI-Anbieter" (~lines 247-310) ===
+  <h2>Aktiver KI-Anbieter</h2>  -> {t("ai.section_active")}   [NEW]
+  The conditional paragraph at ~lines 251-255 wraps a <span> and ends with a dash clause. Split it:
+      {t("ai.active_provider_label")}{" "}
+      <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>
+        {allProviderOptions.find(p => p.id === currentProvider)?.label ?? currentProvider}
+      </span>
+      {" "}{t("ai.only_one_key")}
+  manifest:
+      "ai.active_provider_label": de: "Aktiver Anbieter:"
+      "ai.only_one_key":          de: "— nur ein API-Key konfiguriert."
+      (the leading character of only_one_key is an em-dash —, preserve it exactly)
+  `Custom` badge (~line 282)  -> {t("ai.badge_custom")}   [NEW, de: "Custom"]
+  `Aktiv` badge (~line 285)   -> {t("users.status_active")}   <- REUSE existing key
+
+=== F) CARD 2 — "API-Zugangsdaten" (~lines 312-382) ===
+  <h2>API-Zugangsdaten</h2>       -> {t("ai.section_credentials")}       [NEW]
+  <label>API-Key</label> (~347)   -> {t("ai.api_key_label")}             [NEW]
+  <label>Modell</label> (~363)    -> {t("ai.model_label")}               [NEW]
+  button text `Zugangsdaten speichern` (~379, on its own line after the icon)
+                                  -> {t("ai.save_credentials_button")}   [NEW]
+
+=== Manifest ===
+Add ONLY the NEW ai.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group: "ai",
+escaping special characters (ä, ö, ü, ß, —) the same way existing entries do. Add no nav.*, users.* or
+delivery.* key — all reused ones already exist.
+
+=== APPENDIX — one missed line in a different file ===
+File: artifacts/gaio-analyzer/src/views/admin/MailserverView.tsx
+~line 198: <h1 className="text-2xl font-bold tracking-tight">Server</h1>
+    -> <h1 className="text-2xl font-bold tracking-tight">{t("nav.server")}</h1>
+That component already calls useT() — reuse its existing `t`. REUSE the existing nav.server key
+(value is already exactly "Server"). Add no new key for this.
+
+After the change: confirm TS compiles and the dev server starts. Verify in "de": the KI-Tool page shows
+its heading and subtitle, the active-provider card with the correct provider name still displayed as its
+product name (Claude/OpenAI/etc., NOT translated), the API-Zugangsdaten card with all field labels and
+the key-status dots ("API-Key hinterlegt" / "Kein API-Key"), and the "API-Key erhalten bei" hint with
+its working link. Save credentials for one provider and switch the active provider — both feedback
+messages must appear with the provider name interpolated correctly. Also confirm the Server page heading
+still reads "Server". Under EN, everything falls back to German — never blank, never a raw key.
