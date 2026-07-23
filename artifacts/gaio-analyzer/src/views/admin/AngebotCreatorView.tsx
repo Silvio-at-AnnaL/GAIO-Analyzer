@@ -322,7 +322,7 @@ export function AngebotCreatorView() {
         setGenError(t("offer.err_generate"));
       }
     } catch {
-      setGenError("Angebot konnte nicht erstellt werden. Bitte prüfen Sie die KI-Tool-Einstellungen.");
+      setGenError(t("offer.err_generate"));
     } finally {
       setGenerating(false);
     }
@@ -407,7 +407,7 @@ export function AngebotCreatorView() {
                     disabled={loadingList || generating}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
                   >
-                    <option value="">— Analyse auswählen —</option>
+                    <option value="">{t("offer.select_placeholder")}</option>
                     {analyses.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.domain}
@@ -466,9 +466,9 @@ export function AngebotCreatorView() {
                 }}
               >
                 <UploadCloud className="w-8 h-8" style={{ color: isDragging ? "#3b82f6" : "hsl(var(--muted-foreground))" }} />
-                <span className="text-sm font-medium">GAIO-Analyse-HTML hier ablegen</span>
-                <span className="text-xs text-muted-foreground">oder klicken zum Auswählen</span>
-                <span className="text-xs text-muted-foreground">Nur HTML-Exporte des GAIO Analyzers werden unterstützt.</span>
+                <span className="text-sm font-medium">{t("offer.drop_hint")}</span>
+                <span className="text-xs text-muted-foreground">{t("offer.drop_or_click")}</span>
+                <span className="text-xs text-muted-foreground">{t("offer.upload_note")}</span>
               </div>
             )}
             <input
