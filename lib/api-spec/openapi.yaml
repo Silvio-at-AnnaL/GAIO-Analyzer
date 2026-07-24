@@ -165,11 +165,14 @@ components:
           type: ["string", "null"]
         crawl_failed:
           type: boolean
+        crawl_fail_reason:
+          type: ["string", "null"]
       required:
         - personas
         - competitors
         - content_summary
         - crawl_failed
+        - crawl_fail_reason
 
     HealthStatus:
       type: object

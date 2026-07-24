@@ -22,6 +22,8 @@ export interface PrefillResponse {
   /** @nullable */
   content_summary: string | null;
   crawl_failed: boolean;
+  /** @nullable */
+  crawl_fail_reason: string | null;
 }
 
 export interface HealthStatus {

@@ -1,0 +1,193 @@
+Make the prefill crawl failure report WHY it failed instead of a generic message. Currently
+fetchHtml() in prefill.ts swallows every error with a bare `catch { return null; }`, so a TLS problem,
+a DNS problem and a timeout are indistinguishable — the user only ever sees "Website konnte nicht
+gecrawlt werden". Do not touch report-export.ts. Do not touch any image/binary asset files.
+Do not publish.
+
+This touches five places. Follow them in order.
+
+=== 1) NEW FILE: artifacts/api-server/src/lib/fetch-diagnostics.ts ===
+Create a small shared helper (it will later also be used by crawler.ts, so keep it standalone):
+
+    /**
+     * Classifies why a fetch() call failed, so the UI can report something
+     * more useful than "could not be crawled".
+     *
+     * Node's fetch (undici) wraps the underlying network/TLS error in `.cause`,
+     * so the real error code usually lives there, not on the top-level error.
+     */
+    export type CrawlFailReason =
+      | "tls_chain"
+      | "tls_other"
+      | "dns"
+      | "refused"
+      | "timeout"
+      | "unknown";
+
+    export function classifyFetchError(err: unknown): CrawlFailReason {
+      const e = err as { name?: string; code?: string; cause?: { code?: string } } | null;
+      if (e?.name === "AbortError") return "timeout";
+
+      const code = e?.cause?.code ?? e?.code;
+      switch (code) {
+        // Server sent the leaf certificate but not the intermediate(s).
+        // Browsers paper over this (cached intermediates / AIA fetching), Node does not.
+        case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
+        case "UNABLE_TO_GET_ISSUER_CERT":
+        case "UNABLE_TO_GET_ISSUER_CERT_LOCALLY":
+          return "tls_chain";
+        case "CERT_HAS_EXPIRED":
+        case "ERR_TLS_CERT_ALTNAME_INVALID":
+        case "DEPTH_ZERO_SELF_SIGNED_CERT":
+        case "SELF_SIGNED_CERT_IN_CHAIN":
+          return "tls_other";
+        case "ENOTFOUND":
+        case "EAI_AGAIN":
+          return "dns";
+        case "ECONNREFUSED":
+        case "ECONNRESET":
+          return "refused";
+        case "UND_ERR_CONNECT_TIMEOUT":
+        case "UND_ERR_HEADERS_TIMEOUT":
+        case "UND_ERR_BODY_TIMEOUT":
+        case "ETIMEDOUT":
+          return "timeout";
+        default:
+          return "unknown";
+      }
+    }
+
+=== 2) artifacts/api-server/src/routes/prefill.ts ===
+
+2a. Import the helper:
+    import { classifyFetchError, type CrawlFailReason } from "../lib/fetch-diagnostics";
+
+2b. fetchHtml (~line 78) — stop swallowing the error. Add an optional callback parameter and log the
+    reason. Keep the return type `Promise<string | null>` and every existing behaviour identical:
+
+    async function fetchHtml(
+      url: string,
+      timeoutMs = 8000,
+      onError?: (reason: CrawlFailReason) => void,
+    ): Promise<string | null> {
+      ... unchanged ...
+      } catch (err) {
+        const reason = classifyFetchError(err);
+        logger.warn({ url, reason, err }, "Prefill: fetch failed");
+        onError?.(reason);
+        return null;
+      } finally { ... unchanged ... }
+    }
+
+    Do NOT change the `if (!resp.ok) return null;` line — an HTTP error status is not a fetch failure.
+
+2c. miniCrawl (~line 321) — return the reason of the HOMEPAGE fetch alongside the pages. Change its
+    signature and the homepage call only; leave the sub-page loop untouched (a single failing sub-page
+    should not determine the overall reason):
+
+    async function miniCrawl(
+      inputUrl: string,
+      maxPages = 8,
+    ): Promise<{ pages: PageContent[]; failReason: CrawlFailReason | null }> {
+      ...
+      let failReason: CrawlFailReason | null = null;
+      const homepageHtml = await fetchHtml(inputUrl, 10000, (r) => { failReason = r; });
+      if (!homepageHtml) return { pages: results, failReason: failReason ?? "unknown" };
+      ...
+      return { pages: results, failReason: null };
+    }
+
+    Every `return results;` inside this function must become the object form. Do not change the
+    link-scoring, sorting or Promise.allSettled logic.
+
+2d. The route (~line 444-455) — adapt to the new return shape and keep the reason:
+
+    let pages: PageContent[] = [];
+    let crawlFailed = false;
+    let crawlFailReason: CrawlFailReason | null = null;
+
+    try {
+      const outcome = await miniCrawl(url, 8);
+      pages = outcome.pages;
+      crawlFailed = pages.length === 0;
+      crawlFailReason = crawlFailed ? (outcome.failReason ?? "unknown") : null;
+      logger.info({ url, pageCount: pages.length, crawlFailed, crawlFailReason }, "Prefill: crawl complete");
+    } catch (err) {
+      crawlFailReason = classifyFetchError(err);
+      logger.warn({ url, err, crawlFailReason }, "Prefill: crawl error — proceeding without content");
+      crawlFailed = true;
+    }
+
+    Leave the buildPrompt(...) call and everything after it unchanged.
+
+2e. The response (~line 533) — add the field:
+    res.json({
+      personas,
+      competitors: validatedCompetitors,
+      content_summary,
+      crawl_failed: crawlFailed,
+      crawl_fail_reason: crawlFailReason,
+    });
+
+=== 3) lib/api-spec/openapi.yaml ===
+In the prefill response schema (the one that already has `crawl_failed`, ~line 166), add a sibling
+property and list it as required so the generated type is not optional:
+
+        crawl_fail_reason:
+          type: ["string", "null"]
+
+    required:
+      - personas
+      - competitors
+      - content_summary
+      - crawl_failed
+      - crawl_fail_reason
+
+Do NOT add an `enum` — orval renders nullable enums awkwardly and the frontend compares against plain
+strings anyway.
+
+=== 4) REGENERATE THE API CLIENT ===
+lib/api-client-react/src/generated/api.schemas.ts is generated ("Do not edit manually"). Do NOT
+hand-edit it. Run the codegen instead:
+
+    pnpm --filter @workspace/api-spec run codegen
+
+Then confirm that `crawl_fail_reason` now appears in lib/api-client-react/src/generated/api.schemas.ts.
+Commit the regenerated files together with the rest.
+
+=== 5) artifacts/gaio-analyzer/src/views/DomainAnalyseView.tsx (~line 532) ===
+Replace the single generic message with a reason-specific one, falling back to the existing key:
+
+    {prefillMutation.data?.crawl_failed && (
+      <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed pl-5">
+        {t(
+          prefillMutation.data.crawl_fail_reason === "tls_chain" ? "domain.prefill_crawl_failed_tls_chain" :
+          prefillMutation.data.crawl_fail_reason === "tls_other" ? "domain.prefill_crawl_failed_tls_other" :
+          prefillMutation.data.crawl_fail_reason === "dns"       ? "domain.prefill_crawl_failed_dns"       :
+          prefillMutation.data.crawl_fail_reason === "refused"   ? "domain.prefill_crawl_failed_refused"   :
+          prefillMutation.data.crawl_fail_reason === "timeout"   ? "domain.prefill_crawl_failed_timeout"   :
+          "domain.prefill_crawl_failed"
+        )}
+      </p>
+    )}
+
+Keep the existing className and the surrounding conditional exactly as they are.
+
+=== 6) artifacts/gaio-analyzer/src/lib/labelDefaults.ts ===
+Add five NEW keys with group: "domain". Keep the existing domain.prefill_crawl_failed unchanged — it
+stays the fallback for "unknown". Escape special characters (ä, ö, ü, ß, —, ⚠) the same way the
+existing entries in that file do:
+
+  "domain.prefill_crawl_failed_tls_chain": de: "⚠ Website nicht erreichbar: unvollständige TLS-Zertifikatskette (Zwischenzertifikat fehlt). Browser gleichen das aus, automatisierte Crawler nicht. Vorschläge basieren nur auf dem Unternehmensnamen."
+  "domain.prefill_crawl_failed_tls_other": de: "⚠ Website nicht erreichbar: TLS-Zertifikatsfehler (abgelaufen, falscher Hostname oder selbst signiert). Vorschläge basieren nur auf dem Unternehmensnamen."
+  "domain.prefill_crawl_failed_dns":       de: "⚠ Website nicht erreichbar: Domain konnte nicht aufgelöst werden (DNS). Vorschläge basieren nur auf dem Unternehmensnamen."
+  "domain.prefill_crawl_failed_refused":   de: "⚠ Website nicht erreichbar: Der Server hat die Verbindung abgelehnt. Vorschläge basieren nur auf dem Unternehmensnamen."
+  "domain.prefill_crawl_failed_timeout":   de: "⚠ Website nicht erreichbar: Zeitüberschreitung beim Abruf. Vorschläge basieren nur auf dem Unternehmensnamen."
+
+=== Verification ===
+Confirm TS compiles (pnpm run typecheck) and the dev server starts. Then test against a real case:
+run "Mit KI vorausfüllen" for https://www.affinis.de — that domain has a verifiably incomplete TLS
+chain (SSL Labs reports chain issues, the intermediate GoDaddy certificate is not sent), so it must now
+show the tls_chain message instead of the generic one. Also confirm a normal, working domain still
+prefills without any warning, and that a nonexistent domain (e.g. https://www.this-domain-does-not-exist-12345.de)
+shows the DNS message. Under EN, all five new labels fall back to German — never blank, never a raw key.

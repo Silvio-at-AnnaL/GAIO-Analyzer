@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { logger } from "../lib/logger";
+import { classifyFetchError, type CrawlFailReason } from "../lib/fetch-diagnostics";
 
 const router: IRouter = Router();
 
@@ -75,7 +76,11 @@ function extractInternalLinks(html: string, baseUrl: string, baseDomain: string)
 
 const CRAWLER_UA = "GAIOAnalyzer/1.0 (Website Audit Tool)";
 
-async function fetchHtml(url: string, timeoutMs = 8000): Promise<string | null> {
+async function fetchHtml(
+  url: string,
+  timeoutMs = 8000,
+  onError?: (reason: CrawlFailReason) => void,
+): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -86,7 +91,10 @@ async function fetchHtml(url: string, timeoutMs = 8000): Promise<string | null> 
     });
     if (!resp.ok) return null;
     return await resp.text();
-  } catch {
+  } catch (err) {
+    const reason = classifyFetchError(err);
+    logger.warn({ url, reason, err }, "Prefill: fetch failed");
+    onError?.(reason);
     return null;
   } finally {
     clearTimeout(timer);
@@ -318,13 +326,17 @@ interface PageContent {
   text: string;
 }
 
-async function miniCrawl(inputUrl: string, maxPages = 8): Promise<PageContent[]> {
+async function miniCrawl(
+  inputUrl: string,
+  maxPages = 8,
+): Promise<{ pages: PageContent[]; failReason: CrawlFailReason | null }> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
   const results: PageContent[] = [];
 
-  const homepageHtml = await fetchHtml(inputUrl, 10000);
-  if (!homepageHtml) return results;
+  let failReason: CrawlFailReason | null = null;
+  const homepageHtml = await fetchHtml(inputUrl, 10000, (r) => { failReason = r; });
+  if (!homepageHtml) return { pages: results, failReason: failReason ?? "unknown" };
 
   const homepageText = extractText(homepageHtml);
   if (homepageText) results.push({ url: inputUrl, text: homepageText });
@@ -353,7 +365,7 @@ async function miniCrawl(inputUrl: string, maxPages = 8): Promise<PageContent[]>
     }
   }
 
-  return results;
+  return { pages: results, failReason: null };
 }
 
 // ── Build content summary ─────────────────────────────────────────────────────
@@ -444,13 +456,17 @@ router.post("/prefill", async (req, res): Promise<void> => {
   logger.info({ url }, "Prefill: starting mini-crawl");
   let pages: PageContent[] = [];
   let crawlFailed = false;
+  let crawlFailReason: CrawlFailReason | null = null;
 
   try {
-    pages = await miniCrawl(url, 8);
+    const outcome = await miniCrawl(url, 8);
+    pages = outcome.pages;
     crawlFailed = pages.length === 0;
-    logger.info({ url, pageCount: pages.length, crawlFailed }, "Prefill: crawl complete");
+    crawlFailReason = crawlFailed ? (outcome.failReason ?? "unknown") : null;
+    logger.info({ url, pageCount: pages.length, crawlFailed, crawlFailReason }, "Prefill: crawl complete");
   } catch (err) {
-    logger.warn({ url, err }, "Prefill: crawl error — proceeding without content");
+    crawlFailReason = classifyFetchError(err);
+    logger.warn({ url, err, crawlFailReason }, "Prefill: crawl error — proceeding without content");
     crawlFailed = true;
   }
 
@@ -535,6 +551,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     competitors: validatedCompetitors,
     content_summary,
     crawl_failed: crawlFailed,
+    crawl_fail_reason: crawlFailReason,
   });
 });
 

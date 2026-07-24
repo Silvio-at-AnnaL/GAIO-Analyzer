@@ -531,7 +531,14 @@ export function DomainAnalyseView() {
 
               {prefillMutation.data?.crawl_failed && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed pl-5">
-                  {t("domain.prefill_crawl_failed")}
+                  {t(
+                    prefillMutation.data.crawl_fail_reason === "tls_chain" ? "domain.prefill_crawl_failed_tls_chain" :
+                    prefillMutation.data.crawl_fail_reason === "tls_other" ? "domain.prefill_crawl_failed_tls_other" :
+                    prefillMutation.data.crawl_fail_reason === "dns"       ? "domain.prefill_crawl_failed_dns"       :
+                    prefillMutation.data.crawl_fail_reason === "refused"   ? "domain.prefill_crawl_failed_refused"   :
+                    prefillMutation.data.crawl_fail_reason === "timeout"   ? "domain.prefill_crawl_failed_timeout"   :
+                    "domain.prefill_crawl_failed"
+                  )}
                 </p>
               )}
 
