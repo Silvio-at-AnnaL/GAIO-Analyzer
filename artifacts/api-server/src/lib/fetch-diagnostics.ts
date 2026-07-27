@@ -11,7 +11,13 @@ export type CrawlFailReason =
   | "dns"
   | "refused"
   | "timeout"
+  | "http_error"
   | "unknown";
+
+/** Server responded, but with a non-OK HTTP status (4xx/5xx). */
+export function classifyHttpStatus(_status: number): CrawlFailReason {
+  return "http_error";
+}
 
 export function classifyFetchError(err: unknown): CrawlFailReason {
   const e = err as { name?: string; code?: string; cause?: { code?: string } } | null;

@@ -86,6 +86,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "domain.prefill_crawl_failed_dns":         { group: "domain", de: "⚠ Website nicht erreichbar: Domain konnte nicht aufgel\u00f6st werden (DNS). Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
   "domain.prefill_crawl_failed_refused":     { group: "domain", de: "⚠ Website nicht erreichbar: Der Server hat die Verbindung abgelehnt. Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
   "domain.prefill_crawl_failed_timeout":     { group: "domain", de: "⚠ Website nicht erreichbar: Zeit\u00fcberschreitung beim Abruf. Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
+  "domain.prefill_crawl_failed_http_error":  { group: "domain", de: "⚠ Website nicht erreichbar: Der Server hat mit einem Fehlercode geantwortet (HTTP-Fehler). Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
   "domain.prefill_products_label": { group: "domain", de: "Erkannte Produkte / Leistungen:" },
   "domain.section_competitors":    { group: "domain", de: "Wettbewerber-Domains" },
   "domain.tooltip_competitors":    { group: "domain", de: "Die Website-Adresse/n Ihrer wichtigsten Wettbewerber" },

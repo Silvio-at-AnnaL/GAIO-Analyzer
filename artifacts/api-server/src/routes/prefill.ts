@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { logger } from "../lib/logger";
-import { classifyFetchError, type CrawlFailReason } from "../lib/fetch-diagnostics";
+import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "../lib/fetch-diagnostics";
 
 const router: IRouter = Router();
 
@@ -89,11 +89,31 @@ async function fetchHtml(
       headers: { "User-Agent": CRAWLER_UA, Accept: "text/html,application/xhtml+xml,*/*;q=0.8" },
       redirect: "follow",
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const reason = classifyHttpStatus(resp.status);
+      // TEMP DIAGNOSTIC — remove once affinis.de is confirmed working
+      logger.warn({ url, status: resp.status, reason, kind: "status" }, "Prefill: fetch non-OK status");
+      onError?.(reason);
+      return null;
+    }
     return await resp.text();
   } catch (err) {
     const reason = classifyFetchError(err);
-    logger.warn({ url, reason, err }, "Prefill: fetch failed");
+    // TEMP DIAGNOSTIC — dump the full shape so we can see what Replit's Node actually throws
+    const e = err as { name?: string; code?: string; message?: string; cause?: { code?: string; message?: string } };
+    logger.warn(
+      {
+        url,
+        reason,
+        kind: "throw",
+        errName: e?.name,
+        errCode: e?.code,
+        errMessage: e?.message,
+        causeCode: e?.cause?.code,
+        causeMessage: e?.cause?.message,
+      },
+      "Prefill: fetch threw",
+    );
     onError?.(reason);
     return null;
   } finally {

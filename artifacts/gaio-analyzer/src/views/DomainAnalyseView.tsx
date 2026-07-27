@@ -536,7 +536,8 @@ export function DomainAnalyseView() {
                     prefillMutation.data.crawl_fail_reason === "tls_other" ? "domain.prefill_crawl_failed_tls_other" :
                     prefillMutation.data.crawl_fail_reason === "dns"       ? "domain.prefill_crawl_failed_dns"       :
                     prefillMutation.data.crawl_fail_reason === "refused"   ? "domain.prefill_crawl_failed_refused"   :
-                    prefillMutation.data.crawl_fail_reason === "timeout"   ? "domain.prefill_crawl_failed_timeout"   :
+                    prefillMutation.data.crawl_fail_reason === "timeout"    ? "domain.prefill_crawl_failed_timeout"    :
+                    prefillMutation.data.crawl_fail_reason === "http_error" ? "domain.prefill_crawl_failed_http_error" :
                     "domain.prefill_crawl_failed"
                   )}
                 </p>
