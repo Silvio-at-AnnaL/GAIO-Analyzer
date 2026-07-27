@@ -91,29 +91,13 @@ async function fetchHtml(
     });
     if (!resp.ok) {
       const reason = classifyHttpStatus(resp.status);
-      // TEMP DIAGNOSTIC — remove once affinis.de is confirmed working
-      logger.warn({ url, status: resp.status, reason, kind: "status" }, "Prefill: fetch non-OK status");
       onError?.(reason);
       return null;
     }
     return await resp.text();
   } catch (err) {
     const reason = classifyFetchError(err);
-    // TEMP DIAGNOSTIC — dump the full shape so we can see what Replit's Node actually throws
-    const e = err as { name?: string; code?: string; message?: string; cause?: { code?: string; message?: string } };
-    logger.warn(
-      {
-        url,
-        reason,
-        kind: "throw",
-        errName: e?.name,
-        errCode: e?.code,
-        errMessage: e?.message,
-        causeCode: e?.cause?.code,
-        causeMessage: e?.cause?.message,
-      },
-      "Prefill: fetch threw",
-    );
+    logger.warn({ url, reason }, "Prefill: fetch failed");
     onError?.(reason);
     return null;
   } finally {
