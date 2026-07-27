@@ -1,0 +1,107 @@
+Two things. (1) SharesView.tsx was never migrated — it was confused with SharedAnalysisView.tsx (the
+public "shared" group already exists, but that is a DIFFERENT file). Migrate it fully. (2) Fix a handful
+of hardcoded-locale and one alt-attribute leftover found in a final full-file scan of already-migrated
+files. Do not touch report-export.ts. Do not touch any image/binary asset files. Do not publish.
+
+═══════════════════════════════════════════════════════════════════════
+PART 1 — artifacts/gaio-analyzer/src/views/admin/SharesView.tsx  (namespace "shares")
+═══════════════════════════════════════════════════════════════════════
+NOTE the namespace is "shares" (this admin management view), NOT "shared" (which belongs to the public
+SharedAnalysisView and must not be touched).
+
+This file has NO LabelProvider import yet. Add `import { useT, useLabelContext } from "@/lib/LabelProvider";`
+It contains THREE components plus the main one — each needs its own `const t = useT();` as its first line:
+  - ShareUrlRow (~line 43)
+  - AccessLogDrawer (~line 61)
+  - CreateShareDialog (~line 119)
+  - SharesView (the default export)
+For the two components that format dates (AccessLogDrawer, CreateShareDialog and the main list), also add
+`const { locale } = useLabelContext();` and `const intlLocale = locale === "en" ? "en-US" : "de-DE";` in
+each component that has a toLocaleString/toLocaleDateString call.
+
+CRITICAL — do NOT touch: `variant: "destructive"`, the `res.ok` checks, `share.token`/`share.id`,
+`item.gaioScore` values, the `Math.max(1, Math.min(365, …))` clamp, `<option value={item.id}>` value attrs.
+
+--- ShareUrlRow ---
+  title="Kopieren" (~51)  -> title={t("shares.copy_title")}       [NEW, de: "Kopieren"]
+  title="Öffnen"   (~54)  -> title={t("shares.open_title")}       [NEW, de: "Öffnen"]
+  toast({ title: "URL kopiert" }) (~46)  -> toast({ title: t("shares.toast_url_copied") })   [NEW]
+
+--- AccessLogDrawer ---
+  `Zugriffslog` (~84)                 -> {t("shares.access_log")}      [NEW]
+  `Lade...` (~90)                     -> {t("shares.loading")}         [NEW, de: "Lade..."]
+  `Noch keine Zugriffe.` (~92)        -> {t("shares.no_access")}       [NEW]
+  <th>Zeitpunkt</th> (~97)           -> {t("shares.col_time")}        [NEW]
+  <th>IP-Hash</th>   (~98)           -> {t("shares.col_iphash")}      [NEW]
+  <th>User-Agent</th>(~99)           -> {t("shares.col_useragent")}   [NEW]
+  ~105: {new Date(l.accessedAt).toLocaleString("de-DE")}
+        -> {new Date(l.accessedAt).toLocaleString(intlLocale)}
+
+--- CreateShareDialog ---
+  `Analyse teilen` (~173)                          -> {t("shares.dialog_title")}      [NEW]
+  <label>Analyse</label> (~176)                    -> {t("shares.analysis_label")}    [NEW]
+  `Lade Analysen...` (~191)                        -> {t("shares.loading_analyses")}  [NEW, de: "Lade Analysen..."]
+  `Keine Analysen mit HTML-Export gefunden.` (~193)-> {t("shares.no_analyses")}       [NEW]
+  ~187, the <option> content:
+     {item.domain} · {new Date(item.startedAt).toLocaleDateString("de-DE")} · Score: {item.gaioScore ?? "n/a"}
+     -> keep the two " · " bullets and the interpolations, migrate only "Score:" and localize the date:
+        {item.domain} · {new Date(item.startedAt).toLocaleDateString(intlLocale)} · {t("shares.score_label")} {item.gaioScore ?? "n/a"}
+     manifest "shares.score_label" de: "Score:"
+  <label>Titel (optional)</label> (~198)           -> {t("shares.title_optional_label")}  [NEW]
+  <label>Gültig für (Tage)</label> (~209)          -> {t("shares.validity_days_label")}   [NEW]
+  `Abbrechen` (~222)                               -> {t("domain.aria_cancel")}       <- REUSE existing
+  `Freigabe erstellen` (~225, button, on its own line after the spinner)
+                                                   -> {t("shares.create_button")}     [NEW]
+  toast "Fehler beim Erstellen" (~152)   -> toast({ title: t("shares.toast_create_error"), variant: "destructive" })  [NEW]
+  toast "Freigabe erstellt"     (~153)   -> toast({ title: t("shares.toast_created") })         [NEW]
+
+--- SharesView (main) ---
+  <h1>Geteilte Analysen</h1> (~267)  -> {t("nav.admin_geteilte_analysen")}   <- REUSE existing key
+  `Erstelle und verwalte öffentliche Links zu gespeicherten Analysen.` (~268)
+                                     -> {t("shares.subtitle")}        [NEW]
+  title="Aktualisieren" (~272)       -> title={t("users.refresh_title")}     <- REUSE existing
+  `Neue Freigabe` (~165 area / create-button)  -> {t("shares.new_share")}    [NEW]
+  `Lade...` (~295)                   -> {t("shares.loading")}         <- REUSE the key from AccessLogDrawer
+  `Noch keine Freigaben erstellt.` (~298)  -> {t("shares.no_shares")}  [NEW]
+  title="Deaktivieren" (~323)        -> title={t("shares.deactivate_title")}  [NEW]
+  `Erstellt: {date}` (~331)  -> {t("shares.created_at")} {new Date(share.createdAt).toLocaleDateString(intlLocale)}
+        manifest "shares.created_at" de: "Erstellt:"
+  `Gültig bis: {date}` (~332) -> {t("shares.valid_until")} {new Date(share.expiresAt).toLocaleDateString(intlLocale)}
+        manifest "shares.valid_until" de: "Gültig bis:"
+  toast "Freigabe deaktiviert" (~252) -> toast({ title: t("shares.toast_deactivated") })   [NEW]
+  If there is a share-access counter rendered (e.g. `{share.accessCount} Zugriffe`), migrate the word:
+     -> {t("shares.access_count", { count: share.accessCount })}   manifest de: "{count} Zugriffe"
+     (only if such a line exists; skip if not present)
+
+═══════════════════════════════════════════════════════════════════════
+PART 2 — leftovers in already-migrated files
+═══════════════════════════════════════════════════════════════════════
+
+2a. artifacts/gaio-analyzer/src/views/KontaktView.tsx (~line 69)
+    alt="Brand-Logo"  ->  alt={t("contactedit.photo_label")}
+    REUSE the existing key (value "Profilbild")? NO — that would be wrong text. Instead add a NEW key:
+    alt={t("kontakt.logo_alt")}   manifest group "kontakt", de: "Brand-Logo"
+    (KontaktView already calls useT — reuse its t.)
+
+2b. artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx — two hardcoded "de-DE" date locales that were
+    missed. ErgebnisseView already has `const { locale } = useLabelContext()` (used for charts) — find the
+    existing intl-locale variable it uses (search the file for `"de-DE"` and for how locale is mapped) and
+    reuse that same variable. There are two spots:
+      ~1932: new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day:"2-digit", month:"2-digit", year:"numeric" })
+      and one more toLocaleDateString("de-DE") if present in the same share-result block.
+    Replace only the "de-DE" literal with the existing mapped locale variable. Do NOT add a new
+    useLabelContext call if one already exists — reuse it. If the mapped variable is not in scope at that
+    point, derive it locally the same way the rest of the codebase does
+    (`const intlLocale = locale === "en" ? "en-US" : "de-DE"`).
+    The visible <strong>Domainanalyse</strong>, <strong>HTML-Analyse</strong>, <strong>Geteilte Analysen</strong>
+    in that same area are ALREADY migrated (they sit between t() calls) — do NOT touch them.
+
+═══════════════════════════════════════════════════════════════════════
+Manifest: add the NEW shares.* and kontakt.* keys to labelDefaults.ts with the right group, escaping
+ä/ö/ü/ß/… as existing entries do. Reused keys (nav.admin_geteilte_analysen, users.refresh_title,
+domain.aria_cancel) already exist — do not re-add.
+
+Verification: pnpm run typecheck clean, dev server starts. In "de", open Geteilte Analysen: the list, the
+"Neue Freigabe" dialog (analysis dropdown with score, title, validity fields, both buttons), and the
+access-log drawer must all render in German. Create and deactivate a share — all three toasts appear.
+Switch to EN: dates switch to US format, all labels fall back to German. Confirm no shares.* key is unused.

@@ -66,7 +66,7 @@ export function KontaktView() {
           {logoSrc ? (
             <img
               src={logoSrc}
-              alt="Brand-Logo"
+              alt={t("kontakt.logo_alt")}
               className="h-14 w-auto object-contain"
             />
           ) : (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 import { adminFetch } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,17 +42,18 @@ function isExpired(expiresAt: string) {
 }
 
 function ShareUrlRow({ url }: { url: string }) {
+  const t = useT();
   const { toast } = useToast();
   const copy = () => {
-    navigator.clipboard.writeText(url).then(() => toast({ title: "URL kopiert" }));
+    navigator.clipboard.writeText(url).then(() => toast({ title: t("shares.toast_url_copied") }));
   };
   return (
     <div className="flex items-center gap-2 mt-1">
       <span className="text-xs text-muted-foreground font-mono truncate max-w-xs">{url}</span>
-      <button onClick={copy} className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" title="Kopieren">
+      <button onClick={copy} className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" title={t("shares.copy_title")}>
         <Copy style={{ width: 12, height: 12, color: "#3b82f6" }} />
       </button>
-      <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" title="Öffnen">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" title={t("shares.open_title")}>
         <ExternalLink style={{ width: 12, height: 12, color: "#3b82f6" }} />
       </a>
     </div>
@@ -59,6 +61,9 @@ function ShareUrlRow({ url }: { url: string }) {
 }
 
 function AccessLogDrawer({ shareId, shareToken }: { shareId: number; shareToken: string }) {
+  const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<AccessLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -81,28 +86,28 @@ function AccessLogDrawer({ shareId, shareToken }: { shareId: number; shareToken:
     <div>
       <button onClick={toggle} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
         <Eye style={{ width: 11, height: 11 }} />
-        Zugriffslog
+        {t("shares.access_log")}
         {open ? <ChevronUp style={{ width: 11, height: 11 }} /> : <ChevronDown style={{ width: 11, height: 11 }} />}
       </button>
       {open && (
         <div className="mt-2 rounded border text-xs" style={{ borderColor: "hsl(var(--border))" }}>
           {loading ? (
-            <div className="px-3 py-2 text-muted-foreground">Lade...</div>
+            <div className="px-3 py-2 text-muted-foreground">{t("shares.loading")}</div>
           ) : logs.length === 0 ? (
-            <div className="px-3 py-2 text-muted-foreground">Noch keine Zugriffe.</div>
+            <div className="px-3 py-2 text-muted-foreground">{t("shares.no_access")}</div>
           ) : (
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--muted))" }}>
-                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Zeitpunkt</th>
-                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">IP-Hash</th>
-                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">User-Agent</th>
+                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">{t("shares.col_time")}</th>
+                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">{t("shares.col_iphash")}</th>
+                  <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">{t("shares.col_useragent")}</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((l, i) => (
                   <tr key={l.id} style={{ borderBottom: i < logs.length - 1 ? "1px solid hsl(var(--border))" : undefined }}>
-                    <td className="px-3 py-1.5">{new Date(l.accessedAt).toLocaleString("de-DE")}</td>
+                    <td className="px-3 py-1.5">{new Date(l.accessedAt).toLocaleString(intlLocale)}</td>
                     <td className="px-3 py-1.5 font-mono text-muted-foreground">{l.ipHash ?? "—"}</td>
                     <td className="px-3 py-1.5 text-muted-foreground max-w-xs truncate">{l.userAgent ?? "—"}</td>
                   </tr>
@@ -117,6 +122,9 @@ function AccessLogDrawer({ shareId, shareToken }: { shareId: number; shareToken:
 }
 
 function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
+  const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
@@ -149,8 +157,8 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ analysisId: selectedId, expiryDays, title: title.trim() || null }),
       });
-      if (!res.ok) { toast({ title: "Fehler beim Erstellen", variant: "destructive" }); return; }
-      toast({ title: "Freigabe erstellt" });
+      if (!res.ok) { toast({ title: t("shares.toast_create_error"), variant: "destructive" }); return; }
+      toast({ title: t("shares.toast_created") });
       setOpen(false);
       setSelectedId("");
       setTitle("");
@@ -162,7 +170,7 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
     return (
       <Button size="sm" onClick={handleOpen}>
         <Plus className="w-3 h-3 mr-1.5" />
-        Neue Freigabe
+        {t("shares.new_share")}
       </Button>
     );
   }
@@ -170,10 +178,10 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-xl border p-6 shadow-xl space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-        <h2 className="text-base font-bold">Analyse teilen</h2>
+        <h2 className="text-base font-bold">{t("shares.dialog_title")}</h2>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Analyse</label>
+          <label className="text-xs font-medium text-muted-foreground">{t("shares.analysis_label")}</label>
           <select
             className="w-full rounded border bg-background px-3 py-2 text-sm"
             style={{ borderColor: "hsl(var(--border))" }}
@@ -184,18 +192,18 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
             <option value="">— Analyse auswählen —</option>
             {logItems.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.domain} · {new Date(item.startedAt).toLocaleDateString("de-DE")} · Score: {item.gaioScore ?? "n/a"}
+                {item.domain} · {new Date(item.startedAt).toLocaleDateString(intlLocale)} · {t("shares.score_label")} {item.gaioScore ?? "n/a"}
               </option>
             ))}
           </select>
-          {logLoading && <div className="text-xs text-muted-foreground">Lade Analysen...</div>}
+          {logLoading && <div className="text-xs text-muted-foreground">{t("shares.loading_analyses")}</div>}
           {!logLoading && logItems.length === 0 && (
-            <div className="text-xs" style={{ color: "#d97706" }}>Keine Analysen mit HTML-Export gefunden.</div>
+            <div className="text-xs" style={{ color: "#d97706" }}>{t("shares.no_analyses")}</div>
           )}
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Titel (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">{t("shares.title_optional_label")}</label>
           <input
             className="w-full rounded border bg-background px-3 py-2 text-sm"
             style={{ borderColor: "hsl(var(--border))" }}
@@ -206,7 +214,7 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Gültig für (Tage)</label>
+          <label className="text-xs font-medium text-muted-foreground">{t("shares.validity_days_label")}</label>
           <input
             type="number"
             min={1}
@@ -219,10 +227,10 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
         </div>
 
         <div className="flex gap-2 justify-end pt-2">
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Abbrechen</Button>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>{t("domain.aria_cancel")}</Button>
           <Button size="sm" onClick={handleCreate} disabled={!selectedId || creating}>
             {creating ? <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> : null}
-            Freigabe erstellen
+            {t("shares.create_button")}
           </Button>
         </div>
       </div>
@@ -231,6 +239,9 @@ function CreateShareDialog({ onCreated }: { onCreated: () => void }) {
 }
 
 export function SharesView() {
+  const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { toast } = useToast();
   const [shares, setShares] = useState<ShareItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -249,7 +260,7 @@ export function SharesView() {
   const deactivate = async (id: number) => {
     const res = await adminFetch(`/api/admin/shares/${id}`, { method: "DELETE" });
     if (res.ok) {
-      toast({ title: "Freigabe deaktiviert" });
+      toast({ title: t("shares.toast_deactivated") });
       load();
     }
   };
@@ -264,12 +275,12 @@ export function SharesView() {
         <div className="flex items-center gap-3">
           <Share2 className="shrink-0" style={{ width: 20, height: 20, color: "#3b82f6" }} />
           <div>
-            <h1 className="text-xl font-bold">Geteilte Analysen</h1>
-            <p className="text-sm text-muted-foreground">Erstelle und verwalte öffentliche Links zu gespeicherten Analysen.</p>
+            <h1 className="text-xl font-bold">{t("nav.admin_geteilte_analysen")}</h1>
+            <p className="text-sm text-muted-foreground">{t("shares.subtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button onClick={load} disabled={loading} className="p-1.5 rounded hover:bg-muted transition-colors" title="Aktualisieren">
+          <button onClick={load} disabled={loading} className="p-1.5 rounded hover:bg-muted transition-colors" title={t("users.refresh_title")}>
             <RefreshCw style={{ width: 14, height: 14, color: "hsl(var(--muted-foreground))" }} className={loading ? "animate-spin" : ""} />
           </button>
           <CreateShareDialog onCreated={load} />
@@ -292,10 +303,10 @@ export function SharesView() {
 
       {/* Shares list */}
       {loading && shares.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Lade...</div>
+        <div className="text-sm text-muted-foreground py-8 text-center">{t("shares.loading")}</div>
       ) : shares.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground" style={{ borderColor: "hsl(var(--border))" }}>
-          Noch keine Freigaben erstellt.
+          {t("shares.no_shares")}
         </div>
       ) : (
         <div className="space-y-3">
@@ -320,7 +331,7 @@ export function SharesView() {
                     <button
                       onClick={() => deactivate(share.id)}
                       className="shrink-0 p-1.5 rounded hover:bg-muted transition-colors"
-                      title="Deaktivieren"
+                      title={t("shares.deactivate_title")}
                     >
                       <Trash2 style={{ width: 14, height: 14, color: "#d97706" }} />
                     </button>
@@ -328,11 +339,11 @@ export function SharesView() {
                 </div>
 
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>Erstellt: {new Date(share.createdAt).toLocaleDateString("de-DE")}</span>
-                  <span>Gültig bis: {new Date(share.expiresAt).toLocaleDateString("de-DE")}</span>
+                  <span>{t("shares.created_at")} {new Date(share.createdAt).toLocaleDateString(intlLocale)}</span>
+                  <span>{t("shares.valid_until")} {new Date(share.expiresAt).toLocaleDateString(intlLocale)}</span>
                   <span className="flex items-center gap-1">
                     <Eye style={{ width: 11, height: 11 }} />
-                    {share.viewCount} Aufrufe
+                    {t("shares.access_count", { count: share.viewCount })}
                   </span>
                 </div>
 

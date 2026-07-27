@@ -690,6 +690,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [shareCopied, setShareCopied] = useState(false);
   const t = useT();
   const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -1928,7 +1929,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {t("results.share_valid_until", { date: new Date(shareResult.expiresAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) })}{" "}
+                  {t("results.share_valid_until", { date: new Date(shareResult.expiresAt).toLocaleDateString(intlLocale, { day: "2-digit", month: "2-digit", year: "numeric" }) })}{" "}
                   {t("results.share_manage_prefix")}<strong>Geteilte Analysen</strong>{t("results.share_manage_suffix")}
                 </p>
                 <div className="flex justify-end">
