@@ -1,0 +1,103 @@
+The prefill crawl-failure diagnostics still report the generic message for www.affinis.de even though
+that domain fails with an incomplete TLS chain. Root cause: in fetchHtml() the line
+`if (!resp.ok) return null;` handles HTTP error statuses WITHOUT calling onError, and the classifier only
+runs in the catch block (i.e. only when fetch THROWS). So any failure that arrives as a status rather than
+a thrown error falls through to "unknown". This fix (a) also classifies HTTP-status failures, and
+(b) adds temporary diagnostic logging so we can see, on Replit's actual runtime, whether the TLS error
+arrives as a thrown exception or as a status. Do not touch report-export.ts. Do not touch any
+image/binary asset files. Do not publish.
+
+=== 1) artifacts/api-server/src/lib/fetch-diagnostics.ts ===
+Add a new reason for HTTP error statuses to the union and a helper to classify a status code. Keep the
+existing classifyFetchError() exactly as it is; ADD to the file:
+
+    export type CrawlFailReason =
+      | "tls_chain"
+      | "tls_other"
+      | "dns"
+      | "refused"
+      | "timeout"
+      | "http_error"      // <-- NEW
+      | "unknown";
+
+    /** Server responded, but with a non-OK HTTP status (4xx/5xx). */
+    export function classifyHttpStatus(status: number): CrawlFailReason {
+      return "http_error";
+    }
+
+(Keep it a function rather than inlining, so we can refine per-status later if needed.)
+
+=== 2) artifacts/api-server/src/routes/prefill.ts ===
+
+2a. Update the import to include the new helper:
+    import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "../lib/fetch-diagnostics";
+
+2b. fetchHtml — handle the !resp.ok branch through onError, and add diagnostic logging in BOTH branches.
+    Replace the current body from the fetch call through the catch block with:
+
+      try {
+        const resp = await fetch(url, {
+          signal: controller.signal,
+          headers: { "User-Agent": CRAWLER_UA, Accept: "text/html,application/xhtml+xml,*/*;q=0.8" },
+          redirect: "follow",
+        });
+        if (!resp.ok) {
+          const reason = classifyHttpStatus(resp.status);
+          // TEMP DIAGNOSTIC — remove once affinis.de is confirmed working
+          logger.warn({ url, status: resp.status, reason, kind: "status" }, "Prefill: fetch non-OK status");
+          onError?.(reason);
+          return null;
+        }
+        return await resp.text();
+      } catch (err) {
+        const reason = classifyFetchError(err);
+        // TEMP DIAGNOSTIC — dump the full shape so we can see what Replit's Node actually throws
+        const e = err as { name?: string; code?: string; message?: string; cause?: { code?: string; message?: string } };
+        logger.warn(
+          {
+            url,
+            reason,
+            kind: "throw",
+            errName: e?.name,
+            errCode: e?.code,
+            errMessage: e?.message,
+            causeCode: e?.cause?.code,
+            causeMessage: e?.cause?.message,
+          },
+          "Prefill: fetch threw",
+        );
+        onError?.(reason);
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+
+    Do NOT change the function signature, the AbortController/timer setup, or anything else.
+
+=== 3) artifacts/gaio-analyzer/src/views/DomainAnalyseView.tsx ===
+Add the http_error branch to the existing ternary (~line 532), before the final fallback:
+
+      prefillMutation.data.crawl_fail_reason === "timeout"    ? "domain.prefill_crawl_failed_timeout"    :
+      prefillMutation.data.crawl_fail_reason === "http_error" ? "domain.prefill_crawl_failed_http_error" :
+      "domain.prefill_crawl_failed"
+
+Leave every other branch and the surrounding markup unchanged.
+
+=== 4) artifacts/gaio-analyzer/src/lib/labelDefaults.ts ===
+Add ONE new key with group: "domain" (escape ä/ö/ü/ß/— the same way existing entries do). Leave all
+existing domain.* keys untouched:
+
+  "domain.prefill_crawl_failed_http_error": de: "⚠ Website nicht erreichbar: Der Server hat mit einem Fehlercode geantwortet (HTTP-Fehler). Vorschläge basieren nur auf dem Unternehmensnamen."
+
+=== 5) NOTE: the API contract does not change ===
+crawl_fail_reason is already typed as `string | null` in openapi.yaml, so the new "http_error" value
+needs NO schema change and NO codegen run. Do not regenerate the client for this.
+
+=== Verification ===
+Confirm TS compiles (pnpm run typecheck) and the dev server starts. Then, ON REPLIT, run
+"Mit KI vorausfüllen" for https://www.affinis.de and immediately check the server logs for the
+"Prefill: fetch threw" or "Prefill: fetch non-OK status" line. Report back what it shows — specifically
+the `kind`, `reason`, `errCode`, `causeCode` and `status` fields. That tells us definitively whether
+affinis.de surfaces as a thrown TLS error (in which case reason should now be "tls_chain") or as an HTTP
+status (reason "http_error"). Either way the user must now see a specific message rather than the generic
+one. Also confirm a normal working domain still prefills with no warning.
