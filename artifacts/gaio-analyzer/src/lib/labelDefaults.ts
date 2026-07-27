@@ -865,4 +865,8 @@ export const labelDefaults: Record<string, LabelDef> = {
 
   // ── kontakt ──────────────────────────────────────────────────────────────────
   "kontakt.logo_alt":             { group: "kontakt", de: "Brand-Logo" },
+
+  // ── notfound ─────────────────────────────────────────────────────────────────
+  "notfound.title":               { group: "notfound", de: "404 \u2013 Seite nicht gefunden" },
+  "notfound.hint":                { group: "notfound", de: "Diese Seite existiert nicht. Bitte pr\u00fcfen Sie die Adresse oder kehren Sie zur Startseite zur\u00fcck." },
 };
