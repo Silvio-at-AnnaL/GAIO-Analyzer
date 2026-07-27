@@ -7,7 +7,7 @@ import {
   Bold, Italic, UnderlineIcon, List, Minus, UploadCloud, X,
 } from "lucide-react";
 import { adminFetch, canAccess, useAuth } from "@/store/authStore";
-import { useT } from "@/lib/LabelProvider";
+import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,10 +54,10 @@ type InputMode = "protocol" | "upload";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDateTime(iso: string | null): string {
+function formatDateTime(iso: string | null, locale: string): string {
   if (!iso) return "–";
   try {
-    return new Date(iso).toLocaleString("de-DE", {
+    return new Date(iso).toLocaleString(locale, {
       day: "2-digit", month: "2-digit", year: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
@@ -113,6 +113,8 @@ function ToolBtn({
 
 export function AngebotCreatorView() {
   const t = useT();
+  const { locale } = useLabelContext();
+  const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { user, permissions } = useAuth();
   const canProtocol = canAccess("analyseprotokoll", user?.role ?? "", permissions);
 
@@ -203,9 +205,7 @@ export function AngebotCreatorView() {
     // Extract embedded JSON
     const match = text.match(/<script[^>]*id=["']gaio-analysis-data["'][^>]*>([\s\S]*?)<\/script>/i);
     if (!match) {
-      setUploadError(
-        "Diese HTML-Datei enthält keine maschinenlesbaren Analysedaten. Bitte verwenden Sie einen aktuellen HTML-Export des GAIO Analyzers."
-      );
+      setUploadError(t("offer.err_no_data"));
       return;
     }
 
@@ -369,7 +369,7 @@ export function AngebotCreatorView() {
                 color:      inputMode === "protocol" ? "#fff"    : "hsl(var(--foreground))",
               }}
             >
-              📋 Aus Protokoll
+              📋 {t("offer.mode_from_protocol")}
             </button>
             <button
               onClick={() => switchMode("upload")}
@@ -379,7 +379,7 @@ export function AngebotCreatorView() {
                 color:      inputMode === "upload" ? "#fff"    : "hsl(var(--foreground))",
               }}
             >
-              📄 HTML hochladen
+              📄 {t("offer.mode_from_upload")}
             </button>
           </div>
         )}
@@ -412,7 +412,7 @@ export function AngebotCreatorView() {
                       <option key={a.id} value={a.id}>
                         {a.domain}
                         {a.companyName ? t("offer.option_company", { company: a.companyName }) : ""}
-                        {" · "}{formatDateTime(a.completedAt)}
+                        {" · "}{formatDateTime(a.completedAt, intlLocale)}
                         {a.gaioScore !== null ? t("offer.option_score", { score: a.gaioScore }) : ""}
                       </option>
                     ))}
@@ -425,7 +425,7 @@ export function AngebotCreatorView() {
                     style={{ background: "hsl(var(--muted)/0.25)" }}
                   >
                     <p className="text-xs text-muted-foreground">
-                      Ausgewählte Analyse · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt)}
+                      {t("offer.selected_analysis")} · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt, intlLocale)}
                     </p>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
                       <ScoreRow label={t("offer.score_gaio")}                  value={selectedAnalysis.gaioScore} />
@@ -496,7 +496,7 @@ export function AngebotCreatorView() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
-                      Analyse aus Datei: <strong>{uploadData.fileName}</strong>
+                      {t("offer.analysis_from_file")} <strong>{uploadData.fileName}</strong>
                       {uploadData.exportDate ? ` · ${uploadData.exportDate.slice(0, 10)}` : ""}
                     </p>
                     <button
@@ -518,7 +518,7 @@ export function AngebotCreatorView() {
                     <ScoreRow label={t("offer.score_llm")}                  value={uploadData.scores.llmDiscoverability} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {uploadData.kritisch.length} kritisch · {uploadData.hoherHebel.length} hoher Hebel · {uploadData.nachgeordnet.length} nachgeordnet
+                    {t("offer.rec_counts", { kritisch: uploadData.kritisch.length, hoherHebel: uploadData.hoherHebel.length, nachgeordnet: uploadData.nachgeordnet.length })}
                   </p>
                 </div>
 
@@ -545,20 +545,19 @@ export function AngebotCreatorView() {
             {generating ? (
               <>
                 <span className="inline-block animate-spin text-base leading-none">⏳</span>
-                Angebot wird erstellt…
+                {t("offer.generating")}
               </>
             ) : (
               <>
                 <FileText className="w-4 h-4" />
-                Angebot generieren
+                {t("offer.generate_button")}
               </>
             )}
           </button>
 
           {generating && (
             <p className="text-sm text-muted-foreground">
-              Die KI analysiert die Empfehlungen und erstellt Ihren Angebotstext.
-              Das dauert ca. 30–60 Sekunden…
+              {t("offer.generate_hint")}
             </p>
           )}
 
@@ -578,28 +577,28 @@ export function AngebotCreatorView() {
             className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border"
             style={{ background: "hsl(var(--muted)/0.4)" }}
           >
-            <ToolBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Fett">
+            <ToolBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title={t("offer.tool_bold")}>
               <Bold className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Kursiv">
+            <ToolBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title={t("offer.tool_italic")}>
               <Italic className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Unterstrichen">
+            <ToolBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title={t("offer.tool_underline")}>
               <UnderlineIcon className="w-3.5 h-3.5" />
             </ToolBtn>
 
             <div style={{ width: 1, height: 20, background: "hsl(var(--border))", margin: "0 2px" }} />
 
-            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title="Überschrift 1">H1</ToolBtn>
-            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title="Überschrift 2">H2</ToolBtn>
-            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title="Überschrift 3">H3</ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title={t("offer.tool_h1")}>H1</ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title={t("offer.tool_h2")}>H2</ToolBtn>
+            <ToolBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title={t("offer.tool_h3")}>H3</ToolBtn>
 
             <div style={{ width: 1, height: 20, background: "hsl(var(--border))", margin: "0 2px" }} />
 
-            <ToolBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title="Aufzählungsliste">
+            <ToolBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title={t("offer.tool_bullets")}>
               <List className="w-3.5 h-3.5" />
             </ToolBtn>
-            <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title="Trennlinie">
+            <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title={t("offer.tool_divider")}>
               <Minus className="w-3.5 h-3.5" />
             </ToolBtn>
           </div>
@@ -617,7 +616,7 @@ export function AngebotCreatorView() {
       {generated && editor && (
         <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
           <span className="text-xs text-muted-foreground">
-            {charCount.toLocaleString("de-DE")} Zeichen
+            {t("prompts.char_count", { count: charCount.toLocaleString(intlLocale) })}
           </span>
           <div className="flex gap-2">
             <button
@@ -626,7 +625,7 @@ export function AngebotCreatorView() {
               className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-border bg-background hover:bg-muted transition-colors disabled:opacity-50"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              Neu generieren
+              {t("offer.regenerate_button")}
             </button>
             <button
               onClick={copyAsHtml}
@@ -634,9 +633,9 @@ export function AngebotCreatorView() {
               style={{ background: copied ? "#16a34a" : "#3b82f6" }}
             >
               {copied ? (
-                <><CheckCircle className="w-3.5 h-3.5" />HTML kopiert!</>
+                <><CheckCircle className="w-3.5 h-3.5" />{t("offer.copied")}</>
               ) : (
-                <><Clipboard className="w-3.5 h-3.5" />Als HTML kopieren</>
+                <><Clipboard className="w-3.5 h-3.5" />{t("offer.copy_button")}</>
               )}
             </button>
           </div>

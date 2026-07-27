@@ -1,0 +1,102 @@
+Complete the migration of AngebotCreatorView.tsx — this covers ALL remaining hardcoded German strings in
+the file (several were missed in the earlier passes because the file was scanned section by section). The
+component already calls useT() at line 115 — reuse the existing `t`. Do not touch report-export.ts. Do
+not touch any image/binary asset files. Do not publish.
+
+File:          artifacts/gaio-analyzer/src/views/admin/AngebotCreatorView.tsx
+Key namespace: "offer"
+
+=== CRITICAL — do NOT touch ===
+  - Every TipTap API string: editor.isActive("bold"|"italic"|"underline"|"heading"|"bulletList"),
+    toggleBold/Italic/Underline/Heading/BulletList(), setHorizontalRule()
+  - The visible button contents "H1", "H2", "H3" — universal heading notation, unchanged in every language
+  - All emojis (⏳ 📋 📄) and lucide icon components — keep them as literals
+  - `inputMode === "protocol" | "upload"` comparisons, the InputMode type, all `.slice(0, 10)` calls,
+    DOMParser tier matching ("KRITISCH", "HOHER HEBEL", "NACHGEORDNET", "SEKUNDÄR" — these match parsed
+    HTML class content, NOT UI text)
+  - "POST" and the /api/admin/angebot/generate path
+
+=== A) LOCALE-AWARE SETUP ===
+Import useLabelContext alongside useT (same import line, same path), and add right after
+`const t = useT();` (~line 115):
+    const { locale } = useLabelContext();
+    const intlLocale = locale === "en" ? "en-US" : "de-DE";
+
+=== B) formatDateTime helper (~line 57) — module-level, has no `t` ===
+It hardcodes "de-DE". Give it a locale parameter (same pattern as AnalysisLogView.tsx):
+    function formatDateTime(iso: string | null, locale: string): string {
+      ...
+      return new Date(iso).toLocaleString(locale, { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+      ...
+    }
+Keep the null guard (returns "–") and the catch fallback (iso.slice(0,10)) unchanged.
+Update BOTH call sites to pass intlLocale:
+  ~line 415: {" · "}{formatDateTime(a.completedAt, intlLocale)}
+  ~line 428: ... {formatDateTime(selectedAnalysis.completedAt, intlLocale)}
+
+=== C) UPLOAD PARSE ERROR missed in an earlier pass (~line 206) ===
+  setUploadError("Diese HTML-Datei enthält keine maschinenlesbaren Analysedaten. Bitte verwenden Sie einen aktuellen HTML-Export des GAIO Analyzers.")
+    -> setUploadError(t("offer.err_no_data"))
+  manifest "offer.err_no_data" de: "Diese HTML-Datei enthält keine maschinenlesbaren Analysedaten. Bitte verwenden Sie einen aktuellen HTML-Export des GAIO Analyzers."
+
+=== D) MODE SWITCHER BUTTONS (~lines 372, 382) ===
+  `📋 Aus Protokoll`  -> keep the 📋 as a literal, migrate the words:
+      📋 {t("offer.mode_from_protocol")}   [NEW, de: "Aus Protokoll"]
+  `📄 HTML hochladen` -> 📄 {t("offer.mode_from_upload")}   [NEW, de: "HTML hochladen"]
+  (These are the tab labels; do NOT confuse them with offer.mode_select / offer.mode_upload, which are
+  the <h2> section headings and stay as they are.)
+
+=== E) SELECTED-ANALYSIS INFO BOX (~line 428) ===
+The line reads: `Ausgewählte Analyse · <strong>{domain}</strong> · {formatDateTime(...)}`
+Split the static text, keep the <strong> and the interpolated date:
+    {t("offer.selected_analysis")} · <strong>{selectedAnalysis.domain}</strong> · {formatDateTime(selectedAnalysis.completedAt, intlLocale)}
+  manifest "offer.selected_analysis" de: "Ausgewählte Analyse"
+  (keep the two " · " bullet separators as literals in the JSX exactly where they are)
+
+=== F) UPLOAD PREVIEW (~lines 499, 521) ===
+  ~499: `Analyse aus Datei: <strong>{fileName}</strong>`
+      -> {t("offer.analysis_from_file")} <strong>{uploadData.fileName}</strong>
+      manifest "offer.analysis_from_file" de: "Analyse aus Datei:"
+      (preserve the single trailing space so "Datei: <name>" keeps its spacing — put the space inside the
+       JSX between the label and <strong>, as it is today)
+  ~521: `{n} kritisch · {n} hoher Hebel · {n} nachgeordnet` — three counts on one line:
+      -> {t("offer.rec_counts", { kritisch: uploadData.kritisch.length, hoherHebel: uploadData.hoherHebel.length, nachgeordnet: uploadData.nachgeordnet.length })}
+      manifest "offer.rec_counts" de: "{kritisch} kritisch · {hoherHebel} hoher Hebel · {nachgeordnet} nachgeordnet"
+
+=== G) GENERATE BUTTON + HINT (~lines 548-561) ===
+  ~548 `Angebot wird erstellt…`  -> {t("offer.generating")}        [NEW]
+  ~553 `Angebot generieren`      -> {t("offer.generate_button")}   [NEW]
+  ~560-561 two source lines rendering as ONE paragraph:
+      "Die KI analysiert die Empfehlungen und erstellt Ihren Angebotstext." + "Das dauert ca. 30–60 Sekunden…"
+      -> {t("offer.generate_hint")}   [NEW]
+      manifest de (ONE line, single space at the line break, en-dash between 30 and 60):
+      "Die KI analysiert die Empfehlungen und erstellt Ihren Angebotstext. Das dauert ca. 30–60 Sekunden…"
+
+=== H) EDITOR TOOLBAR — eight title attributes (~lines 581-602) ===
+Replace ONLY the title="..." of each ToolBtn; leave onClick, active and children unchanged:
+  "Fett"→title={t("offer.tool_bold")}  "Kursiv"→{t("offer.tool_italic")}  "Unterstrichen"→{t("offer.tool_underline")}
+  "Überschrift 1"→{t("offer.tool_h1")}  "Überschrift 2"→{t("offer.tool_h2")}  "Überschrift 3"→{t("offer.tool_h3")}
+  "Aufzählungsliste"→{t("offer.tool_bullets")}  "Trennlinie"→{t("offer.tool_divider")}   [all NEW]
+
+=== I) EXPORT BAR (~lines 620-639) ===
+  ~620: {charCount.toLocaleString("de-DE")} Zeichen
+      -> {t("prompts.char_count", { count: charCount.toLocaleString(intlLocale) })}
+      REUSE prompts.char_count (value already "{count} Zeichen"); do NOT create a new key.
+  ~629 `Neu generieren`  -> {t("offer.regenerate_button")}   [NEW]
+  ~637 `HTML kopiert!` (after <CheckCircle/>)   -> {t("offer.copied")}       [NEW]
+  ~639 `Als HTML kopieren` (after <Clipboard/>) -> {t("offer.copy_button")}  [NEW]
+  Keep both icon elements unchanged.
+
+=== Manifest ===
+Add ONLY the NEW offer.* keys to artifacts/gaio-analyzer/src/lib/labelDefaults.ts, group "offer",
+escaping special characters (ä, ö, ü, ß, –, …, ·) the same way existing entries do. Add no prompts.* key.
+
+=== Verification ===
+Confirm TS compiles (pnpm run typecheck) and the dev server starts. Verify in "de": both mode-switcher
+tabs, the selected-analysis info box with domain and date, the upload preview with filename/counts, the
+generate button (idle + generating + hint), all eight toolbar tooltips, the character counter, and the
+regenerate/copy buttons — clicking copy must switch the label to "HTML kopiert!". Confirm the toolbar
+buttons still WORK (proves TipTap strings untouched) and that uploading a non-GAIO HTML file shows the
+"keine maschinenlesbaren Analysedaten" message. Switch to EN: dates and the character count switch to
+US formatting, all labels fall back to German. Finally, confirm no offer.* key in labelDefaults.ts is
+unused — every one must appear at least once in this file.
