@@ -1,0 +1,120 @@
+Rewrite the Schema.org scoring logic in schema-org.ts. The current model penalizes INCOMPLETE schema as
+if it were BROKEN schema, scales error deductions with page count, and produces 0/100 for sites that have
+rich schema with one repeated template gap (e.g. attenberger.de). Replace the scoring with a
+substance-based model. Keep the function signature and all existing return fields intact — only the
+computation changes and NEW fields are added. Do NOT touch report-export.ts. Do NOT touch any other
+analyzer. Do NOT publish.
+
+File: artifacts/api-server/src/lib/analyzers/schema-org.ts
+
+═══════════════════════════════════════════════════════════════════
+CONSTRAINTS — do not break existing consumers
+═══════════════════════════════════════════════════════════════════
+The SchemaOrgResult interface is consumed in 5 places (analysis-engine, competitors.ts, ReportDashboard,
+ErgebnisseView, report-export). You MUST keep these fields present and populated with sensible values:
+  score: number            (0-100, now from the new model)
+  detectedTypes: string[]  (unchanged meaning)
+  missingHighValue: string[] (unchanged meaning — keep HIGH_VALUE_TYPES list for this)
+  productSchemaDetails: Record<string, boolean>  (keep populating as today)
+  validationErrors: string[]  (keep the field; now it lists only HARD errors — see below)
+Keep the function signature `analyzeSchemaOrg(pages: CrawledPage[]): SchemaOrgResult` unchanged.
+Keep extractJsonLd, extractMicrodata, getSchemaType, flattenGraph as they are.
+
+═══════════════════════════════════════════════════════════════════
+ADD these NEW fields to SchemaOrgResult (for the report's later transparency display)
+═══════════════════════════════════════════════════════════════════
+  breadthScore: number      (0-40, the breadth component)
+  substanceScore: number    (0-60, the substance component before the correctness factor)
+  correctnessFactor: number  (0.4-1.0, the multiplier)
+  typeBreakdown: Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>
+      (per detected+weighted type, for showing WHY the score is what it is)
+
+═══════════════════════════════════════════════════════════════════
+PARAMETERS — bundle ALL of these as named consts at the TOP of the file
+═══════════════════════════════════════════════════════════════════
+(They live in code for now; a later task will make them DB-overridable. Grouping them here is the point.)
+
+  const TYPE_WEIGHTS: Record<string, number> = {
+    Organization: 3, Product: 3, FAQPage: 3,
+    LocalBusiness: 2, WebSite: 2, Article: 2, Service: 2, BlogPosting: 2, NewsArticle: 2,
+    BreadcrumbList: 1, WebPage: 1, SiteNavigationElement: 1, Blog: 1,
+  };
+  // Types not in this map get weight 0 (structural/noise: WPHeader, ImageObject, ItemList, etc.)
+
+  const BREADTH_MAX = 40;
+  const SUBSTANCE_MAX = 60;
+  const BREADTH_SATURATION = 14;    // weighted coverage sum at which breadth is "full"
+  const SUBSTANCE_SATURATION = 22;  // weighted substance sum at which substance is "full"
+  const SUBSTANCE_K = 0.5;          // steepness of the diminishing-returns curve
+  const MALUS_PER_HARD_ERROR = 0.20;
+  const MALUS_FLOOR = 0.40;
+
+  // Types whose mere presence counts as full substance (they are structural and have
+  // few properties by design). NOTE: FAQPage is deliberately NOT here — see substance rule.
+  const STRUCTURAL_TYPES = new Set(["BreadcrumbList", "SiteNavigationElement", "WebPage"]);
+
+  const TRIVIAL_KEYS = new Set(["@type", "@id", "@context"]);
+
+═══════════════════════════════════════════════════════════════════
+SUBSTANCE of a single JSON-LD object — Option A (nesting counts as 1)
+═══════════════════════════════════════════════════════════════════
+Write `function objectSubstance(obj, type): number` returning the count of non-trivial FILLED properties:
+  - Skip keys in TRIVIAL_KEYS.
+  - A property counts as filled if its value is not null, not "", not [], not {}.
+  - A NESTED OBJECT counts as exactly 1 (do NOT recurse into it and count sub-fields) — this prevents
+    gaming the score by artificially deep nesting.
+  - SPECIAL CASE FAQPage: its substance is the NUMBER OF QUESTIONS, i.e. the length of its `mainEntity`
+    array (if mainEntity is a single object, count 1; if absent/empty, count 0). Do not count its other
+    properties. An empty FAQPage (no mainEntity) must score 0 substance — it is a hollow shell.
+
+═══════════════════════════════════════════════════════════════════
+HARD ERRORS (the ONLY things that dent the correctness factor)
+═══════════════════════════════════════════════════════════════════
+Missing name/url/description are NOT hard errors — they are incompleteness, not falsehood. Count a hard
+error ONLY for these actively-wrong cases, deduplicated per conceptual issue (count each rule at most
+once per object type, NOT once per page):
+  1. An object with `aggregateRating` or `review` present but WITHOUT a `ratingValue` inside it
+     (fabricated/broken rating).
+  2. An `Offer` (or object with an `offers` sub-object) that has `price` but no `priceCurrency`
+     (a price with no currency is a broken/misleading claim).
+Do NOT implement an "unknown @type" check (Schema.org's vocabulary grows; a valid new type would be
+wrongly flagged). Put the resulting messages into the existing `validationErrors` array so the field
+stays populated, but its meaning is now "hard errors only".
+
+═══════════════════════════════════════════════════════════════════
+SCORING — replace the entire scoring block at the end of analyzeSchemaOrg
+═══════════════════════════════════════════════════════════════════
+1. Group all flattened JSON-LD objects by their @type. For each type, collect the list of
+   objectSubstance() values (one per object of that type).
+2. BREADTH:
+     coveredWeight = sum of TYPE_WEIGHTS[type] over DISTINCT detected types (JSON-LD + microdata)
+     breadthScore = BREADTH_MAX * min(1, coveredWeight / BREADTH_SATURATION)
+3. SUBSTANCE:
+     For each detected type with weight > 0:
+       if type in STRUCTURAL_TYPES: avgSubstance = 1.0
+       else: avgSubstance = average over its objects of (1 - exp(-SUBSTANCE_K * substanceCount))
+             (a type detected only via microdata, with no JSON-LD object, gets avgSubstance 0.5 —
+              present but unmeasurable; keep it simple)
+       weightedSubstance += TYPE_WEIGHTS[type] * avgSubstance
+     substanceScore = SUBSTANCE_MAX * min(1, weightedSubstance / SUBSTANCE_SATURATION)
+4. CORRECTNESS:
+     correctnessFactor = max(MALUS_FLOOR, 1 - MALUS_PER_HARD_ERROR * hardErrorCount)
+5. FINAL:
+     if detectedTypes.length === 0 → score 0, breadthScore 0, substanceScore 0, correctnessFactor 1
+     else score = clamp(round((breadthScore + substanceScore) * correctnessFactor), 0, 100)
+   Populate breakdown/new fields. Round breadthScore/substanceScore to 1 decimal.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+Confirm `pnpm run typecheck` passes. Then add a TEMP scratch test (a standalone .ts run via tsx, or
+inline console.logs you remove afterward) that feeds these synthetic cases and prints the score — so we
+can sanity-check before wiring anything else:
+  A) 6 types incl. Organization(2 props), Product(5 props), LocalBusiness(3), BreadcrumbList, WebPage,
+     SiteNav → expect roughly 55-75 (this is the attenberger shape; must NOT be 0).
+  B) no schema at all → must be exactly 0.
+  C) a single FAQPage with empty mainEntity → substance 0, very low score (hollow shell).
+  D) Organization with 9 filled props + LocalBusiness(7) + WebSite(4) + NewsArticle(8) across pages →
+     expect high (~85-95) (this is the steinbach shape).
+Report the four scores back to me. Remove the scratch test after reporting. Do not modify the DB, the
+frontend, or any other file in this task.
