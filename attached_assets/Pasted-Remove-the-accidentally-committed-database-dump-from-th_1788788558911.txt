@@ -1,0 +1,40 @@
+Remove the accidentally committed database dump from the repository and prevent SQL dumps from ever
+being committed again. The file contains a (now-rotated) SMTP password, personal email addresses, and a
+user password hash — it must not stay in the working tree. Do NOT publish anything. Do NOT rewrite git
+history (no filter-repo, no force-push, no rebase) — that is a separate manual decision.
+
+=== 1) Delete the file ===
+Remove gaio-full.sql from the repository root:
+    git rm gaio-full.sql
+Confirm it is a plain dump with no code references (it is imported by nothing) — deleting it must not
+break any build, script, or import. Verify with a repo-wide search that no source file, package.json
+script, or config references "gaio-full" before finalizing.
+
+=== 2) Add a .gitignore rule ===
+In the repository-root .gitignore, add a section so no SQL dump can be committed again:
+
+    # Database dumps — never commit (may contain secrets / personal data)
+    *.sql
+    *.dump
+
+If .gitignore does not exist at the repo root, create it with that section. If it already exists, append
+the section — do not remove or reorder existing entries.
+
+=== 3) Guard against a legitimate future need ===
+If the project genuinely needs to keep SQL SCHEMA files under version control (structure only, never
+data), those would now be blocked by *.sql. Check whether any *.sql file OTHER than gaio-full.sql is
+currently tracked by git:
+    git ls-files '*.sql'
+- If gaio-full.sql is the ONLY one: nothing more to do.
+- If other .sql files exist and are legitimate schema-only files: report their names back to me and do
+  NOT delete them — we will decide per file whether to whitelist them in .gitignore (e.g. via
+  `!schema.sql`). Do not guess.
+
+=== Verification ===
+After the change:
+- `git status` shows gaio-full.sql as deleted and .gitignore as modified/created.
+- `git ls-files '*.sql'` returns nothing (or only explicitly whitelisted schema files).
+- The dev server and the typecheck (pnpm run typecheck) still pass — deleting the dump changed no code.
+- Report back the final `git status` so I can review before you push.
+
+Do not push automatically — show me the staged result first.
