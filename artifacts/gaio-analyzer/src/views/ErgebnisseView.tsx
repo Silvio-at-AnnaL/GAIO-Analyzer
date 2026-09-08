@@ -2372,6 +2372,68 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </div>
                   </div>
                 )}
+                {typeof schemaOrg.breadthScore === "number" && (
+                  <div className="pt-2 border-t border-border/30 space-y-2">
+                    <p className="text-xs text-muted-foreground mb-1">{t("results.schema_breakdown_label")}</p>
+                    {[
+                      {
+                        label: t("results.schema_breadth_label"),
+                        value: schemaOrg.breadthScore as number,
+                        max: 40,
+                        display: `${(schemaOrg.breadthScore as number).toFixed(1)} / 40`,
+                      },
+                      {
+                        label: t("results.schema_substance_label"),
+                        value: schemaOrg.substanceScore as number,
+                        max: 60,
+                        display: `${(schemaOrg.substanceScore as number).toFixed(1)} / 60`,
+                      },
+                      {
+                        label: t("results.schema_correctness_label"),
+                        value: (schemaOrg.correctnessFactor as number) * 100,
+                        max: 100,
+                        display: `\u00d7${(schemaOrg.correctnessFactor as number).toFixed(2)}`,
+                      },
+                    ].map((row) => (
+                      <div key={row.label} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-muted-foreground">{row.label}</span>
+                          <span className="font-mono font-medium">{row.display}</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${Math.max(0, Math.min(100, (row.value / row.max) * 100))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {(schemaOrg.correctnessFactor as number) < 1 && (
+                      <p className="text-xs text-muted-foreground">{t("results.schema_correctness_note")}</p>
+                    )}
+                  </div>
+                )}
+                {((schemaOrg.typeBreakdown as Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>) || []).length > 0 && (
+                  <div className="pt-2 border-t border-border/30 space-y-1.5">
+                    <p className="text-xs text-muted-foreground mb-1">{t("results.schema_types_table_label")}</p>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 gap-y-1.5 items-center text-xs">
+                      <span className="text-muted-foreground">{t("results.schema_col_type")}</span>
+                      <span className="text-right text-muted-foreground">{t("results.schema_col_weight")}</span>
+                      <span className="text-right text-muted-foreground">{t("results.schema_col_count")}</span>
+                      <span className="text-right text-muted-foreground">{t("results.schema_col_substance")}</span>
+                      {[...((schemaOrg.typeBreakdown as Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>) || [])]
+                        .sort((a, b) => b.weight - a.weight || b.avgSubstance - a.avgSubstance)
+                        .map((entry) => (
+                          <div key={entry.type} className="contents">
+                            <Badge variant="secondary" className="w-fit max-w-full truncate font-mono text-xs">{entry.type}</Badge>
+                            <span className="text-right font-mono">{entry.weight}</span>
+                            <span className="text-right font-mono">{entry.objectCount}</span>
+                            <span className="text-right font-mono">{Math.round(entry.avgSubstance * 100)}%</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

@@ -1,0 +1,71 @@
+Add a transparency breakdown to the Schema.org card in the analysis report, so the reader sees WHY the
+score is what it is: the three components (breadth / substance / correctness) and the per-type substance
+breakdown. All new UI text MUST go through the i18n label system (this is a standing rule — every new
+frontend/admin string is fully translatable). Do NOT touch the backend. Do NOT publish.
+
+File: artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+The Schema.org card is at ~line 2350 (`{schemaOrg && ( <Card> … )}`). It already reads schemaOrg as
+`Record<string, unknown>` and renders detected + missing types with keys under the "results" group and
+`useT()` as `t`. Reuse that same `t` and casting style. The backend already populates these fields on
+schemaOrg: breadthScore (0-40), substanceScore (0-60), correctnessFactor (0.4-1.0), and
+typeBreakdown: Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>.
+
+=== What to ADD (inside the existing schema Card's CardContent, AFTER the missing-types block) ===
+
+1) A component breakdown — three labelled bars/rows showing the split. Render only when breadthScore is
+   present (guard: `typeof schemaOrg.breadthScore === "number"`), so old reports without these fields
+   don't render an empty section:
+
+   {typeof schemaOrg.breadthScore === "number" && (
+     <div className="pt-2 border-t border-border/30 space-y-2">
+       <p className="text-xs text-muted-foreground mb-1">{t("results.schema_breakdown_label")}</p>
+       // three rows: Breite, Substanz, Korrektheit
+       // Breite:   value {(schemaOrg.breadthScore as number).toFixed(1)} / 40
+       // Substanz: value {(schemaOrg.substanceScore as number).toFixed(1)} / 60
+       // Korrektheit: shown as a factor, e.g. "×0.80" — {"×" + (schemaOrg.correctnessFactor as number).toFixed(2)}
+       //   plus, only if correctnessFactor < 1, a short note that active errors were found
+     </div>
+   )}
+
+   Use these NEW keys (group "results"):
+     results.schema_breakdown_label   de: "Aufschlüsselung des Scores"
+     results.schema_breadth_label     de: "Typen-Breite"
+     results.schema_substance_label   de: "Substanz der Objekte"
+     results.schema_correctness_label de: "Korrektheit"
+     results.schema_correctness_note  de: "Aktiv fehlerhafte Angaben gefunden — Score gedämpft."
+
+2) A per-type substance table from typeBreakdown, so the reader sees which types are rich vs. hollow.
+   Render only when the array is non-empty. For each entry show: the type name (mono badge), its weight,
+   how many objects were found, and the avgSubstance as a percentage (avgSubstance is 0-1 → show
+   Math.round(avgSubstance*100) + "%"). Sort by weight desc, then avgSubstance desc.
+
+   NEW keys (group "results"):
+     results.schema_types_table_label de: "Substanz je Typ"
+     results.schema_col_type          de: "Typ"
+     results.schema_col_weight        de: "Gewicht"
+     results.schema_col_count         de: "Objekte"
+     results.schema_col_substance     de: "Substanz"
+
+   Keep it compact and consistent with the existing card styling (text-xs, muted labels, mono for
+   type names). Do NOT invent a heavy table component — a simple flex/grid rows layout matching the
+   surrounding code is right.
+
+=== i18n ===
+Add ALL new keys above to artifacts/gaio-analyzer/src/lib/labelDefaults.ts with group "results",
+escaping ä/ö/ü/ß/× the same way existing entries do. Every visible string must be a t() call — no
+hardcoded German or English text in the JSX.
+
+=== Do NOT ===
+- Do not change the score value or any scoring logic.
+- Do not touch the detected-types / missing-types blocks that already work.
+- Do not add the fields to any backend type (they already exist on schemaOrg at runtime).
+
+=== Verification (report back, do NOT push) ===
+- pnpm run typecheck passes.
+- Re-open a fresh analysis of steinbach-kugellager.de: the Schema.org card now shows the three-component
+  breakdown (breadth ~37, substance ~34, correctness ×1.00) AND a per-type table listing Organization,
+  LocalBusiness, WebSite, NewsArticle, BreadcrumbList, FAQPage with their weight/count/substance%.
+  THIS is what will finally explain the 71: report back the substance% per type so we can see which
+  type the live crawler measures as thinner than my curl did.
+- An OLD report (or a run where these fields are absent) must still render the card without the new
+  section (the typeof guard). Confirm no raw label keys appear under EN fallback.
