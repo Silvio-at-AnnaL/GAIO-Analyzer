@@ -10,11 +10,13 @@ export const ADMIN_FEATURES = [
   { id: "prompt_verwaltung", label: "nav.admin_prompt_verwaltung",  icon: "MessageSquareCode", defaultRoles: ["admin"] },
   { id: "ki_tool",           label: "nav.admin_ki_tool",            icon: "Cpu",               defaultRoles: ["admin"] },
   { id: "textverwaltung",    label: "nav.admin_textverwaltung",     icon: "Languages",         defaultRoles: ["admin"] },
+  { id: "score_einstellungen", label: "nav.admin_score_einstellungen", icon: "SlidersHorizontal", defaultRoles: ["admin"] },
   { id: "mailserver",        label: "nav.server",                   icon: "Server",            defaultRoles: ["admin"] },
   { id: "user",        label: "nav.admin_feat_group_user",       icon: "Users",        defaultRoles: ["admin"], isGroup: true },
   { id: "analysen",    label: "nav.admin_feat_group_analysen",   icon: "BarChart2",    defaultRoles: ["admin"], isGroup: true },
   { id: "darstellung", label: "nav.admin_feat_group_darstellung",icon: "Palette",      defaultRoles: ["admin"], isGroup: true },
   { id: "llm",         label: "nav.admin_feat_group_llm",        icon: "BrainCircuit", defaultRoles: ["admin"], isGroup: true },
+  { id: "system",      label: "nav.admin_feat_group_system",     icon: "SlidersHorizontal", defaultRoles: ["admin"], isGroup: true },
 ] as const;
 
 export const ADMIN_NAV_GROUPS = [
@@ -41,6 +43,12 @@ export const ADMIN_NAV_GROUPS = [
     label: "nav.admin_grp_llm",
     icon: "BrainCircuit",
     items: ["prompt_verwaltung", "ki_tool"] as const,
+  },
+  {
+    id: "system",
+    label: "nav.admin_grp_system",
+    icon: "SlidersHorizontal",
+    items: ["score_einstellungen"] as const,
   },
 ] as const;
 

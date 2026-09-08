@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, User, Users, Server, ArrowLeftRight,
-  BrainCircuit, BarChart2, Palette, ChevronDown,
+  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess, type Permissions } from "@/store/authStore";
@@ -31,6 +31,7 @@ const FEATURE_VIEW: Record<string, ActiveView> = {
   prompt_verwaltung: 19,
   ki_tool: 10,
   textverwaltung: 20,
+  score_einstellungen: 21,
 };
 
 const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
@@ -38,7 +39,7 @@ const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 const GROUP_ICON: Record<string, React.ElementType> = {
-  Users, BarChart2, Palette, BrainCircuit,
+  Users, BarChart2, Palette, BrainCircuit, SlidersHorizontal,
 };
 
 function NavButton({

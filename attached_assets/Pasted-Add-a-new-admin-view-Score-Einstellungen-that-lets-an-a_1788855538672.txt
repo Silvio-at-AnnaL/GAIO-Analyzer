@@ -1,0 +1,88 @@
+Add a new admin view "Score-Einstellungen" that lets an admin tune the Schema.org score parameters via
+sliders, using the three admin routes already built in the previous task (GET /api/admin/score-profiles,
+PATCH /api/admin/score-profiles/:slug, POST /api/admin/score-profiles/:slug/reset). It must be its own
+top-level admin menu item (not nested under an existing group), because it will grow to hold more scores
+later. ALL text is fully translatable via the i18n label system (standing rule). Do NOT touch the
+backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+1) NEW VIEW: artifacts/gaio-analyzer/src/views/admin/ScoreSettingsView.tsx
+═══════════════════════════════════════════════════════════════════
+Pattern it after PromptVerwaltungView.tsx (same imports: useT from "@/lib/LabelProvider", adminFetch
+from the same place PromptVerwaltungView imports it, useState/useEffect). Call `const t = useT();` as the
+first line inside the component.
+
+Behaviour:
+- On mount, GET /api/admin/score-profiles → array of profiles, each:
+    { slug, label, params: [{ key, label, default, min, max, step, help, current }] }
+  (label on profile and on each param is already a HUMAN STRING from the backend, NOT a label key — the
+   backend SCORE_PROFILES defined them as plain German text. Render them directly. Do NOT wrap the
+   backend-provided profile/param labels in t(); only the view's OWN chrome text uses t().)
+- Render each profile as a section with its label as heading. Under it, one row per param:
+    * the param.label + a small help text (param.help) shown muted/small
+    * a range slider (<input type="range" min={param.min} max={param.max} step={param.step}
+      value={liveValue}) plus the numeric current value shown next to it
+    * on change (debounced or on release — onMouseUp/onChange is fine, keep it simple), PATCH
+      /api/admin/score-profiles/{slug} with body { key, value }, then update local state from the
+      response's effective values
+- A "Reset auf Standard" button per profile → POST …/reset, then refresh values from the response.
+- A short status line after save/reset ("Gespeichert." / error), following the existing
+  msg.startsWith("Fehler") colour convention used in other admin views (reuse an existing key if the
+  exact text exists; otherwise create new ones under a new "score" group).
+- Loading + empty states like the other admin views.
+
+The view's OWN chrome text — create NEW keys under a new group "score":
+  score.title              de: "Score-Einstellungen"
+  score.subtitle           de: "Parameter der Bewertungslogik justieren. Änderungen wirken auf neue Analysen."
+  score.loading            de: "Lädt…"
+  score.reset_button       de: "Auf Standard zurücksetzen"
+  score.saved_msg          de: "Gespeichert."
+  score.save_error         de: "Fehler beim Speichern."
+  score.current_value_label de: "Aktueller Wert"
+  score.intro_note         de: "Höhere Sättigungswerte machen die Bewertung strenger. Der Malus greift nur bei aktiv fehlerhaften Angaben, nicht bei fehlenden Feldern."
+(Do not hardcode any of these — every visible chrome string is a t() call. The backend-sent
+profile.label / param.label / param.help are the exception: they are already localized German content
+from the backend and are rendered as-is.)
+
+NOTE on backend label language: the backend currently sends German param labels/help. That is acceptable
+for now (admin area, German-first). Do NOT try to translate backend-sent strings in the frontend — if
+full multilingual admin labels are wanted later, that is a separate backend task. Just render them.
+
+═══════════════════════════════════════════════════════════════════
+2) REGISTER the menu item — four coordinated edits
+═══════════════════════════════════════════════════════════════════
+a) artifacts/gaio-analyzer/src/config/adminFeatures.ts
+   - Add to ADMIN_FEATURES:
+       { id: "score_einstellungen", label: "nav.admin_score_einstellungen", icon: "SlidersHorizontal", defaultRoles: ["admin"] },
+   - It should be its OWN item. Add a NEW group to ADMIN_NAV_GROUPS so it stands alone:
+       { id: "system", label: "nav.admin_grp_system", icon: "SlidersHorizontal", items: ["score_einstellungen"] as const },
+     (If a suitable standalone/system group already exists, add it there instead of creating a duplicate —
+      check first. If you create the group, also add its group-marker entry to ADMIN_FEATURES with
+      isGroup:true, exactly like the existing group markers, id "system", label "nav.admin_feat_group_system".)
+
+b) artifacts/gaio-analyzer/src/components/layout/Sidebar.tsx
+   - Add to the id→number map: `score_einstellungen: 21,`  (21 is the next free number; verify 21 is unused)
+
+c) artifacts/gaio-analyzer/src/pages/Home.tsx
+   - import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
+   - add the switch line: `{activeView === 21 && <ScoreSettingsView />}`
+
+d) i18n nav keys in labelDefaults.ts (group "nav"):
+     nav.admin_score_einstellungen   de: "Score-Einstellungen"
+     nav.admin_grp_system            de: "System"          (only if you created the group)
+     nav.admin_feat_group_system     de: "System (Gruppe)" (only if you created the group-marker entry)
+
+Use the icon name "SlidersHorizontal" (lucide-react) — verify it exists in the version used; if not,
+pick an existing lucide icon already imported in Sidebar's icon set and use that instead.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- pnpm run typecheck passes.
+- Logged in as admin, a new sidebar item "Score-Einstellungen" appears and opens the view.
+- The view lists the "Schema.org / Strukturierte Daten" profile with 5 sliders at their current values
+  (14, 14, 0.5, 0.2, 0.4).
+- Moving a slider persists (PATCH) and the shown value updates; reload keeps the new value.
+- "Auf Standard zurücksetzen" restores 14/14/0.5/0.2/0.4.
+- Under EN, all view chrome falls back to German; no raw label keys visible.
+Report back the final list of changed files.

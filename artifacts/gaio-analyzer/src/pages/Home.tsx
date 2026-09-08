@@ -26,6 +26,7 @@ import { SharesView } from "@/views/admin/SharesView";
 import { AngebotCreatorView } from "@/views/admin/AngebotCreatorView";
 import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 import { TextverwaltungView } from "@/views/admin/TextverwaltungView";
+import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -71,6 +72,7 @@ function AppContent() {
                 {activeView === 18                  && <AngebotCreatorView />}
                 {activeView === 19                  && <PromptVerwaltungView />}
                 {activeView === 20                  && <TextverwaltungView />}
+                {activeView === 21                  && <ScoreSettingsView />}
               </>
             )}
           </div>
