@@ -253,6 +253,87 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
   return html;
 }
 
+function renderCrawlReliabilityHtml(
+  reliability: Record<string, unknown> | null | undefined,
+): string {
+  const T = {
+    heading: "Crawl-Zuverlässigkeit",
+    intro: "Auf welcher Datengrundlage diese Analyse durchgeführt wurde.",
+    attempted: "Seiten versucht",
+    succeeded: "Erfolgreich analysiert",
+    failed: "Fehlgeschlagen",
+    failuresTitle: "Fehlgeschlagene Seiten",
+    colUrl: "URL",
+    colReason: "Grund",
+    colStatus: "Status",
+    reason_tls_chain: "TLS-Zertifikatskette unvollständig",
+    reason_tls_other: "TLS-Zertifikatsfehler",
+    reason_dns: "DNS nicht auflösbar",
+    reason_refused: "Verbindung abgelehnt",
+    reason_timeout: "Zeitüberschreitung",
+    reason_http_error: "HTTP-Fehler",
+    reason_unknown: "Unbekannt",
+    allOk: "Alle abgerufenen Seiten waren erfolgreich.",
+    first25Only: "Es werden nur die ersten 25 fehlgeschlagenen Seiten angezeigt.",
+  } as const;
+
+  const attempted = Number(reliability?.attempted ?? 0);
+  if (!reliability || attempted === 0) return "";
+
+  const succeeded = Number(reliability.succeeded ?? 0);
+  const failed = Number(reliability.failed ?? 0);
+  const failures = Array.isArray(reliability.failures)
+    ? reliability.failures as Array<Record<string, unknown>>
+    : [];
+  const reasonLabels: Record<string, string> = {
+    tls_chain: T.reason_tls_chain,
+    tls_other: T.reason_tls_other,
+    dns: T.reason_dns,
+    refused: T.reason_refused,
+    timeout: T.reason_timeout,
+    http_error: T.reason_http_error,
+    unknown: T.reason_unknown,
+  };
+
+  let html = `
+    <h2>${T.heading}</h2>
+    <p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${T.intro}</p>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="label">${T.attempted}</div><div class="val">${attempted}</div></div>
+      <div class="detail-item"><div class="label">${T.succeeded}</div><div class="val" style="color:#22c55e;">✓ ${succeeded}</div></div>
+      <div class="detail-item"><div class="label">${T.failed}</div><div class="val"${failed > 0 ? ' style="color:#ef4444;"' : ""}>${failed > 0 ? "✗ " : ""}${failed}</div></div>
+    </div>`;
+
+  if (failed === 0) {
+    html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
+    return html;
+  }
+
+  html += `
+    <h3>${T.failuresTitle}</h3>
+    <table class="data-table">
+      <thead><tr><th>${T.colUrl}</th><th>${T.colReason}</th><th>${T.colStatus}</th></tr></thead>
+      <tbody>
+        ${failures.map((failure) => {
+          const reason = String(failure.reason ?? "unknown");
+          const reasonLabel = reasonLabels[reason] ?? T.reason_unknown;
+          const status = failure.statusCode === undefined ? "—" : String(failure.statusCode);
+          return `<tr>
+            <td style="font-family:monospace;font-size:11px;word-break:break-all;">${esc(String(failure.url ?? ""))}</td>
+            <td>${esc(reasonLabel)}</td>
+            <td>${esc(status)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+
+  if (failures.length >= 25) {
+    html += `<p style="font-size:11px;color:${C.textMuted};margin:4px 0 16px;">${T.first25Only}</p>`;
+  }
+
+  return html;
+}
+
 // ─── Section renderers ────────────────────────────────────────────────────────
 
 function renderDetailsSection(report: Record<string, unknown>): string {
@@ -302,6 +383,10 @@ function renderDetailsSection(report: Record<string, unknown>): string {
 
     html += renderTechnischeDateienHtml(technicalSeo);
   }
+
+  html += renderCrawlReliabilityHtml(
+    report.crawlReliability as Record<string, unknown> | null | undefined,
+  );
 
   if (schemaOrg) {
     const types = (schemaOrg.detectedTypes as string[] | undefined) ?? [];

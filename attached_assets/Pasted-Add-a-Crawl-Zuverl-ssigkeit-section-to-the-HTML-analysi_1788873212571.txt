@@ -1,0 +1,83 @@
+Add a "Crawl-Zuverlässigkeit" section to the HTML analysis report, showing how the analysis's data basis
+was gathered: pages attempted / succeeded / failed, plus a list of failures with URL, reason, and (for
+HTTP errors) status code. Build it CONSISTENT with the existing German HTML report (this file is
+currently all hardcoded German — a full i18n pass on report-export.ts is a SEPARATE upcoming task).
+BUT: put every new German user-facing string into named constants at the top of the new section function,
+NOT inline in the HTML, so the later i18n migration can lift them out cleanly. Do NOT touch the backend
+crawler/analysis-engine. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT — the data
+═══════════════════════════════════════════════════════════════════
+The backend now stores crawlReliability on the analysis result:
+  { attempted: number, succeeded: number, failed: number,
+    failures: Array<{ url: string, reason: string, statusCode?: number }> }
+where reason ∈ "tls_chain" | "tls_other" | "dns" | "refused" | "timeout" | "http_error" | "unknown".
+It arrives inside the `report` object passed to generateHtmlReport as report.crawlReliability.
+
+FIRST verify the field actually reaches the report object at runtime. Check the chain: analysis-engine
+state.crawlReliability → how the stored analysis result is assembled → what generateHtmlReport receives.
+If crawlReliability is NOT yet part of the persisted/returned report object, add it to that assembly
+(the same place technicalSeo, schemaOrg etc. are attached). Report which file/line you had to touch. If
+it IS already there, note that and touch nothing extra.
+
+═══════════════════════════════════════════════════════════════════
+File: artifacts/gaio-analyzer/src/lib/report-export.ts
+═══════════════════════════════════════════════════════════════════
+
+1) Add a new render function `renderCrawlReliabilityHtml(reliability)` near the other render helpers
+   (e.g. after renderTechnischeDateienHtml). Signature:
+     function renderCrawlReliabilityHtml(reliability: Record<string, unknown> | null | undefined): string
+   Guard: if reliability is null/undefined OR attempted === 0, return "" (older reports without the field
+   simply show no section — no error, no empty box).
+
+2) At the TOP of that function, define the German strings as named local constants (this is the i18n
+   preparation), e.g.:
+     const T = {
+       heading:        "Crawl-Zuverlässigkeit",
+       intro:          "Auf welcher Datengrundlage diese Analyse durchgeführt wurde.",
+       attempted:      "Seiten versucht",
+       succeeded:      "Erfolgreich analysiert",
+       failed:         "Fehlgeschlagen",
+       failuresTitle:  "Fehlgeschlagene Seiten",
+       colUrl:         "URL",
+       colReason:      "Grund",
+       colStatus:      "Status",
+       reason_tls_chain:  "TLS-Zertifikatskette unvollständig",
+       reason_tls_other:  "TLS-Zertifikatsfehler",
+       reason_dns:        "DNS nicht auflösbar",
+       reason_refused:    "Verbindung abgelehnt",
+       reason_timeout:    "Zeitüberschreitung",
+       reason_http_error: "HTTP-Fehler",
+       reason_unknown:    "Unbekannt",
+       allOk:          "Alle abgerufenen Seiten waren erfolgreich.",
+     };
+   Map a reason code to its German label via a small lookup on T (fallback to reason_unknown).
+
+3) Render, matching the existing visual style (reuse esc(), C.textSec/C.textMuted, the data-table and
+   detail-grid classes, the ✓/✗ and colour conventions already used in this file):
+     - `<h2>${T.heading}</h2>` + a muted intro paragraph (T.intro)
+     - a detail-grid (or small table) with three figures: attempted, succeeded, failed
+       (colour "failed" red only when > 0, otherwise neutral — follow how the file colours other values)
+     - if failed === 0: a short green-ish confirmation line (T.allOk) and no failure table
+     - if failed > 0: a data-table listing each failure — URL (esc'd), the mapped German reason,
+       and the status code when present (else "—"). Cap already done server-side at 25; if the list is
+       at 25, add a muted note that only the first 25 are shown (define that note as another T.* constant).
+
+4) Call the new function from generateHtmlReport at the right place — AFTER the "Technische Analyse"
+   section block (it belongs near the technical/quality data, not at the very top). Insert:
+     html += renderCrawlReliabilityHtml(report.crawlReliability as Record<string, unknown> | null | undefined);
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate the GAIO frontend package; the api-zod duplicate export is a known
+  pre-existing root-typecheck issue — do not touch it).
+- Generate a report for steinbach-kugellager.de (14/14 succeeded): the section shows
+  "14 versucht / 14 erfolgreich / 0 fehlgeschlagen" and the green all-OK line, no failure table.
+- Confirm behaviour for the failure case: describe (or test) what the section renders when
+  failures contains e.g. one http_error/404 entry — URL, "HTTP-Fehler", "404".
+- Confirm an OLD report object without crawlReliability renders WITHOUT this section (guard works).
+- Confirm all new strings live in the T constant block, not inline — so the later report-export i18n
+  task can lift them out in one place. Report which consumers/assembly points you touched for the
+  data plumbing (step 1).
