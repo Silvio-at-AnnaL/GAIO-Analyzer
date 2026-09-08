@@ -1,4 +1,4 @@
-import { crawlSite, fetchPage, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchPage, type CrawlFailure, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings } from "./analyzers/headings";
@@ -31,6 +31,7 @@ export interface AnalysisState {
   errors: string[];
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
+  crawlReliability: CrawlReliability;
 }
 
 interface AnalysisEntry {
@@ -172,6 +173,7 @@ export async function runAnalysis(
     errors: [],
     crawledPages: [],
     hreflangVariants: [],
+    crawlReliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
   };
 
   const startedAt = new Date().toISOString();
@@ -211,6 +213,24 @@ export async function runAnalysis(
           sitemapXmlExists: false,
           llmsTxtExists: false,
           hreflangVariants: [],
+          reliability: {
+            attempted: explicitUrls.length,
+            succeeded: pages.filter((page) => page.statusCode < 400).length,
+            failed: explicitUrls.length - pages.filter((page) => page.statusCode < 400).length,
+            failures: fetchedPages.flatMap<CrawlFailure>((fetchResult, index) => {
+              if (fetchResult.status !== "fulfilled" || fetchResult.value === null) {
+                return [{ url: explicitUrls[index], reason: "unknown" as const }];
+              }
+              if (fetchResult.value.statusCode >= 400) {
+                return [{
+                  url: explicitUrls[index],
+                  reason: "http_error" as const,
+                  statusCode: fetchResult.value.statusCode,
+                }];
+              }
+              return [];
+            }).slice(0, 25),
+          },
         };
       } else {
         crawlResult = await crawlSite(url, 16);
@@ -218,6 +238,7 @@ export async function runAnalysis(
       }
       state.crawledPages = pages.map((p) => p.url);
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
+      state.crawlReliability = crawlResult.reliability;
 
       if (pages.length === 0) {
         state.status = "failed";
@@ -247,8 +268,10 @@ export async function runAnalysis(
         sitemapXmlExists: false,
         llmsTxtExists: false,
         hreflangVariants: [],
+        reliability: { attempted: 1, succeeded: 1, failed: 0, failures: [] },
       };
       state.crawledPages = ["uploaded-page"];
+      state.crawlReliability = crawlResult.reliability;
     } else {
       state.status = "failed";
       state.errors.push("Invalid input: provide URL or HTML");

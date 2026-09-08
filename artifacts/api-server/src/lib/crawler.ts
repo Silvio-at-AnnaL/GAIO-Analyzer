@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
+import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "./fetch-diagnostics";
 
 export interface CrawledPage {
   url: string;
@@ -14,6 +15,19 @@ export interface HreflangVariant {
   url: string;
 }
 
+export interface CrawlFailure {
+  url: string;
+  reason: CrawlFailReason;
+  statusCode?: number;
+}
+
+export interface CrawlReliability {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  failures: CrawlFailure[];
+}
+
 export interface CrawlResult {
   pages: CrawledPage[];
   robotsTxt: string | null;
@@ -26,6 +40,7 @@ export interface CrawlResult {
   sitemapXmlExists: boolean;
   llmsTxtExists: boolean;
   hreflangVariants: HreflangVariant[];
+  reliability: CrawlReliability;
 }
 
 // ─── Priority scoring (unchanged from before) ─────────────────────────────────
@@ -495,7 +510,19 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     sitemapXmlExists: false,
     llmsTxtExists: false,
     hreflangVariants: [],
+    reliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
   };
+
+  function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
+    result.reliability.failed++;
+    if (result.reliability.failures.length < 25) {
+      result.reliability.failures.push({
+        url,
+        reason,
+        ...(statusCode !== undefined ? { statusCode } : {}),
+      });
+    }
+  }
 
   // ── robots.txt ────────────────────────────────────────────────────────────
   try {
@@ -569,6 +596,7 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
   visited.add(homepageUrl);
 
   let homepageHtml = "";
+  result.reliability.attempted++;
   try {
     const homePage = await fetchWithTiming(homepageUrl);
     homepageHtml = homePage.html;
@@ -579,6 +607,15 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
       responseTime: homePage.responseTime,
       ttfb: homePage.ttfb,
     });
+    if (homePage.statusCode < 400) {
+      result.reliability.succeeded++;
+    } else {
+      recordFailure(
+        homepageUrl,
+        classifyHttpStatus(homePage.statusCode),
+        homePage.statusCode,
+      );
+    }
 
     // Quarantine hreflang variants found on homepage
     quarantineHreflang(extractHreflangVariants(homepageHtml, homepageUrl));
@@ -586,7 +623,9 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     // Count homepage in __root__ category
     categoryCounts.set("__root__", 1);
   } catch (err) {
-    logger.warn({ url: homepageUrl, err }, "Failed to fetch homepage");
+    const reason = classifyFetchError(err);
+    recordFailure(homepageUrl, reason);
+    logger.warn({ url: homepageUrl, reason, err }, "Failed to fetch homepage");
   }
 
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
@@ -690,38 +729,46 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     const url = bestEntry.url;
     visited.add(url);
 
+    result.reliability.attempted++;
     try {
       const page = await fetchWithTiming(url);
-      result.pages.push({
-        url,
-        html: page.html,
-        statusCode: page.statusCode,
-        responseTime: page.responseTime,
-        ttfb: page.ttfb,
-      });
-      pagesLeft--;
+      if (page.statusCode < 400) {
+        result.pages.push({
+          url,
+          html: page.html,
+          statusCode: page.statusCode,
+          responseTime: page.responseTime,
+          ttfb: page.ttfb,
+        });
+        result.reliability.succeeded++;
+        pagesLeft--;
 
-      // Update category count immediately after successful crawl
-      const prevCount = categoryCounts.get(bestCat) ?? 0;
-      categoryCounts.set(bestCat, prevCount + 1);
+        // Update category count immediately after successful crawl
+        const prevCount = categoryCounts.get(bestCat) ?? 0;
+        categoryCounts.set(bestCat, prevCount + 1);
 
-      logger.debug(
-        { category: bestCat, count: prevCount + 1, maxPerCat, numCats, url },
-        "crawled page",
-      );
+        logger.debug(
+          { category: bestCat, count: prevCount + 1, maxPerCat, numCats, url },
+          "crawled page",
+        );
 
-      // Quarantine hreflang variants from this page
-      quarantineHreflang(extractHreflangVariants(page.html, url));
+        // Quarantine hreflang variants from this page
+        quarantineHreflang(extractHreflangVariants(page.html, url));
 
-      // Discover new links and add to per-category queues (Rule 5 Step 5)
-      if (pagesLeft > 0) {
-        const links = extractInternalLinks(page.html, url, baseDomain, startPath, hreflangUrlSet);
-        for (const { url: linkUrl } of links) {
-          addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet);
+        // Discover new links and add to per-category queues (Rule 5 Step 5)
+        if (pagesLeft > 0) {
+          const links = extractInternalLinks(page.html, url, baseDomain, startPath, hreflangUrlSet);
+          for (const { url: linkUrl } of links) {
+            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet);
+          }
         }
+      } else {
+        recordFailure(url, classifyHttpStatus(page.statusCode), page.statusCode);
       }
     } catch (err) {
-      logger.warn({ url, err }, "Failed to crawl page");
+      const reason = classifyFetchError(err);
+      recordFailure(url, reason);
+      logger.warn({ url, reason, err }, "Failed to crawl page");
     }
   }
 

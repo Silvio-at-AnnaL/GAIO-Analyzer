@@ -1,0 +1,93 @@
+Make the crawler record and return crawl RELIABILITY data, so the report can later show on what basis an
+analysis ran: how many pages were attempted, how many succeeded, how many failed, and why. This is
+BACKEND ONLY — no report/UI changes in this step. Reuse the existing fetch-diagnostics.ts classifiers
+(built for the prefill TLS fix) so failure reasons are consistent across both crawl paths. Do NOT touch
+report-export logic. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+1) artifacts/api-server/src/lib/crawler.ts — collect reliability data
+═══════════════════════════════════════════════════════════════════
+
+1a. Import the existing classifiers at the top:
+    import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "./fetch-diagnostics";
+
+1b. Add a reliability record type and extend CrawlResult. Add these fields to the CrawlResult interface
+    (do NOT remove or reorder existing fields):
+
+    export interface CrawlFailure {
+      url: string;
+      reason: CrawlFailReason;   // tls_chain | tls_other | dns | refused | timeout | http_error | unknown
+      statusCode?: number;       // present when reason === "http_error"
+    }
+    export interface CrawlReliability {
+      attempted: number;         // distinct URLs we tried to fetch (homepage + queue pops)
+      succeeded: number;         // fetched with a 2xx/3xx status and usable html
+      failed: number;            // attempted - succeeded
+      failures: CrawlFailure[];  // capped list (see below) of what went wrong and why
+    }
+    // in CrawlResult, add:
+    reliability: CrawlReliability;
+
+1c. Initialise it in the `result` object literal:
+    reliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
+
+1d. Add a small local helper inside crawlSite to record a failure (cap the list to avoid unbounded
+    growth on huge broken sites — keep at most the first 25):
+        function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
+          result.reliability.failed++;
+          if (result.reliability.failures.length < 25) {
+            result.reliability.failures.push({ url, reason, ...(statusCode !== undefined ? { statusCode } : {}) });
+          }
+        }
+
+1e. HOMEPAGE fetch (~line 571): wrap so it counts.
+    - increment result.reliability.attempted BEFORE the try
+    - on success: if homePage.statusCode < 400 → push page as today AND result.reliability.succeeded++
+                  else → do NOT treat as a good page for reliability: still push if the existing code
+                         relies on it, but call recordFailure(homepageUrl, classifyHttpStatus(homePage.statusCode), homePage.statusCode)
+                         and do NOT increment succeeded.
+    - in the catch: recordFailure(homepageUrl, classifyFetchError(err))
+    Keep the existing homepageHtml / categoryCounts logic intact.
+
+1f. MAIN LOOP per-page fetch (~line 693, the `try { const page = await fetchWithTiming(url); … } catch`):
+    - increment result.reliability.attempted right before the try
+    - on success:
+        if (page.statusCode < 400) {
+          push page as today; pagesLeft--; result.reliability.succeeded++; categoryCounts update as today; link discovery as today
+        } else {
+          recordFailure(url, classifyHttpStatus(page.statusCode), page.statusCode);
+          // do NOT push a 4xx/5xx as a usable page, do NOT decrement pagesLeft, do NOT discover links from it
+        }
+    - in the catch: replace the current bare `logger.warn({ url, err }, "Failed to crawl page")` with:
+        recordFailure(url, classifyFetchError(err));
+        logger.warn({ url, reason: result.reliability.failures.at(-1)?.reason, err }, "Failed to crawl page");
+
+    IMPORTANT: today the code pushes EVERY fetched page including 4xx/5xx into result.pages. Changing that
+    (only pushing <400) is the correct fix, but VERIFY no downstream analyzer depends on 4xx pages being
+    present. Search for where result.pages is consumed; if any analyzer counts pages or reads statusCode
+    for its own purposes, keep that behaviour working. If in doubt, still exclude 4xx/5xx from the pages
+    array (they are not analysable content) but note in your report which consumers you checked.
+
+1g. robots.txt / llms.txt / sitemap fetches: do NOT count these toward attempted/succeeded — they are
+    infrastructure probes, not content pages. Leave them as they are.
+
+═══════════════════════════════════════════════════════════════════
+2) analysis-engine.ts — pass reliability through to the stored result
+═══════════════════════════════════════════════════════════════════
+Find where crawlSite's result is used (state.* assignment after `crawlResult = await crawlSite(...)`).
+Store the reliability object on the analysis state/result so it is persisted and available to the report
+layer later, e.g. `state.crawlReliability = crawlResult.reliability;`. Match the existing pattern for how
+other crawl-derived data (sitemap flags etc.) is stored. Do NOT compute or display anything yet.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push, NO UI work)
+═══════════════════════════════════════════════════════════════════
+- pnpm typecheck for the api package passes.
+- Run a real analysis of a site with known issues in its link graph, or a synthetic case, and log the
+  resulting reliability object. Report back: attempted / succeeded / failed and a sample of failures with
+  their reason values.
+- Specifically run steinbach-kugellager.de and report its reliability numbers — we want to see whether
+  the 13 pages all succeed (which would confirm the earlier 90 was on a complete crawl) or whether some
+  fail (which would finally explain the 71 vs 90 discrepancy from before).
+- Confirm you checked which consumers read result.pages and that excluding 4xx/5xx pages broke none of
+  them. List the consumers you verified.
