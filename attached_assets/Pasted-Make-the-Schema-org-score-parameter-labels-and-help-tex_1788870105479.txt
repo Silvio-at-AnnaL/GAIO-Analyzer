@@ -1,0 +1,69 @@
+Make the Schema.org score parameter labels and help texts fully translatable through the i18n label
+system (standing rule: every user-visible string must be editable in the translation manager). Currently
+score-config.ts hard-codes German label/help strings; the fix is to have the backend emit LABEL KEYS
+(like adminFeatures.ts does for nav) and let the frontend resolve them with t(). Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+1) artifacts/api-server/src/lib/score-config.ts — labels become KEYS
+═══════════════════════════════════════════════════════════════════
+Replace every plaintext `label:` and `help:` value in SCORE_PROFILES with a label-key STRING (the key
+itself, not translated text). Keep key/default/min/max/step untouched. Also change the profile-level
+`label`. Use this exact mapping:
+
+  profile.label:                    "score.profile_schema_org"
+
+  breadth_saturation   label:       "score.param_breadth_saturation_label"
+                       help:        "score.param_breadth_saturation_help"
+  substance_saturation label:       "score.param_substance_saturation_label"
+                       help:        "score.param_substance_saturation_help"
+  substance_k          label:       "score.param_substance_k_label"
+                       help:        "score.param_substance_k_help"
+  malus_per_hard_error label:       "score.param_malus_per_hard_error_label"
+                       help:        "score.param_malus_per_hard_error_help"
+  malus_floor          label:       "score.param_malus_floor_label"
+                       help:        "score.param_malus_floor_help"
+
+The ScoreParamDef / ScoreProfile interfaces already type label/help as string — no type change needed.
+Nothing else in score-config.ts changes (the GET route already spreads these through to the frontend
+unchanged, so the keys arrive verbatim).
+
+═══════════════════════════════════════════════════════════════════
+2) artifacts/gaio-analyzer/src/views/admin/ScoreSettingsView.tsx — resolve with t()
+═══════════════════════════════════════════════════════════════════
+The view currently renders profile.label / param.label / param.help DIRECTLY. Wrap each in t():
+  {profile.label}  →  {t(profile.label)}
+  {param.label}    →  {t(param.label)}   (also in the aria-label={param.label} → aria-label={t(param.label)})
+  {param.help}     →  {t(param.help)}
+Because t() returns the key unchanged if no entry exists, this is safe even if a key is ever missing.
+Do not change anything else in the view.
+
+═══════════════════════════════════════════════════════════════════
+3) artifacts/gaio-analyzer/src/lib/labelDefaults.ts — the actual German source text
+═══════════════════════════════════════════════════════════════════
+Add these NEW keys, group "score", with the German values that were previously hard-coded in the backend
+(escape ä/ö/ü/ß exactly as existing entries do):
+
+  score.profile_schema_org                    "Schema.org / Strukturierte Daten"
+  score.param_breadth_saturation_label        "Sättigung Breite"
+  score.param_breadth_saturation_help         "Gewichtssumme der Typen, ab der die Breite als voll gilt."
+  score.param_substance_saturation_label      "Sättigung Substanz"
+  score.param_substance_saturation_help       "Gewichtete Substanz, ab der die Substanz als voll gilt."
+  score.param_substance_k_label               "Substanzkurve (Steilheit)"
+  score.param_substance_k_help                "Höher = schon wenige Properties gelten als reichhaltig."
+  score.param_malus_per_hard_error_label      "Malus je harter Fehler"
+  score.param_malus_per_hard_error_help       "Dämpfung pro aktiv falscher Angabe (nicht: fehlende Felder)."
+  score.param_malus_floor_label               "Malus-Untergrenze"
+  score.param_malus_floor_help                "Der Korrektheitsfaktor fällt nie unter diesen Wert."
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate the GAIO frontend package if the pre-existing api-zod duplicate
+  export still blocks the root typecheck — that is a separate known issue, do not touch it here).
+- As admin, the Score-Einstellungen view still shows the same German labels/help as before — but now they
+  resolve through t(), so they appear in the translation manager under the "score" group and can be
+  edited there.
+- Confirm the 11 new score.* keys exist in labelDefaults.ts and that score-config.ts no longer contains
+  any German plaintext in its label/help fields (only keys).
+- Under EN, labels fall back to the German source (never a raw key, never blank).
+Report back the changed files.

@@ -20,13 +20,13 @@ export interface ScoreProfile {
 export const SCORE_PROFILES: ScoreProfile[] = [
   {
     slug: "schema-org",
-    label: "Schema.org / Strukturierte Daten",
+    label: "score.profile_schema_org",
     params: [
-      { key: "breadth_saturation", label: "Sättigung Breite", default: 14, min: 4, max: 30, step: 1, help: "Gewichtssumme der Typen, ab der die Breite als voll gilt." },
-      { key: "substance_saturation", label: "Sättigung Substanz", default: 14, min: 4, max: 30, step: 1, help: "Gewichtete Substanz, ab der die Substanz als voll gilt." },
-      { key: "substance_k", label: "Substanzkurve (Steilheit)", default: 0.5, min: 0.1, max: 1.5, step: 0.05, help: "Höher = schon wenige Properties gelten als reichhaltig." },
-      { key: "malus_per_hard_error", label: "Malus je harter Fehler", default: 0.20, min: 0, max: 0.5, step: 0.05, help: "Dämpfung pro aktiv falscher Angabe (nicht: fehlende Felder)." },
-      { key: "malus_floor", label: "Malus-Untergrenze", default: 0.40, min: 0.1, max: 1, step: 0.05, help: "Der Korrektheitsfaktor fällt nie unter diesen Wert." },
+      { key: "breadth_saturation", label: "score.param_breadth_saturation_label", default: 14, min: 4, max: 30, step: 1, help: "score.param_breadth_saturation_help" },
+      { key: "substance_saturation", label: "score.param_substance_saturation_label", default: 14, min: 4, max: 30, step: 1, help: "score.param_substance_saturation_help" },
+      { key: "substance_k", label: "score.param_substance_k_label", default: 0.5, min: 0.1, max: 1.5, step: 0.05, help: "score.param_substance_k_help" },
+      { key: "malus_per_hard_error", label: "score.param_malus_per_hard_error_label", default: 0.20, min: 0, max: 0.5, step: 0.05, help: "score.param_malus_per_hard_error_help" },
+      { key: "malus_floor", label: "score.param_malus_floor_label", default: 0.40, min: 0.1, max: 1, step: 0.05, help: "score.param_malus_floor_help" },
     ],
   },
 ];

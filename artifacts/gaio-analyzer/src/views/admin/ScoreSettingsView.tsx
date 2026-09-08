@@ -139,7 +139,7 @@ export function ScoreSettingsView() {
         return (
           <section key={profile.slug} className="rounded-lg border border-border bg-card shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-              <h2 className="text-lg font-semibold text-foreground">{profile.label}</h2>
+              <h2 className="text-lg font-semibold text-foreground">{t(profile.label)}</h2>
               <button
                 type="button"
                 onClick={() => void handleReset(profile.slug)}
@@ -155,8 +155,8 @@ export function ScoreSettingsView() {
               {profile.params.map((param) => (
                 <div key={param.key} className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)] md:items-center">
                   <div>
-                    <div className="font-medium text-foreground">{param.label}</div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{param.help}</p>
+                    <div className="font-medium text-foreground">{t(param.label)}</div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(param.help)}</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <input
@@ -169,7 +169,7 @@ export function ScoreSettingsView() {
                         handleValueChange(profile.slug, param.key, Number(event.target.value))
                       }
                       className="h-2 min-w-0 flex-1 cursor-pointer accent-primary"
-                      aria-label={param.label}
+                      aria-label={t(param.label)}
                     />
                     <div className="w-24 text-right">
                       <div className="text-[11px] text-muted-foreground">
