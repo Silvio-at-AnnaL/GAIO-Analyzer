@@ -1,6 +1,6 @@
 import { crawlSite, fetchPage, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
-import { analyzeSchemaOrg } from "./analyzers/schema-org";
+import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings } from "./analyzers/headings";
 import { analyzeContentRelevance } from "./analyzers/content-relevance";
 import { analyzeFaq } from "./analyzers/faq";
@@ -9,6 +9,7 @@ import { analyzeCompetitors } from "./analyzers/competitors";
 import { generateRecommendations } from "./analyzers/recommendations";
 import { logger } from "./logger";
 import { createAnalysisLog, updateAnalysisLogComplete, updateAnalysisLogFailed } from "./admin-db.js";
+import { getScoreParams } from "./score-config.js";
 
 export interface AnalysisState {
   id: string;
@@ -274,7 +275,8 @@ export async function runAnalysis(
       state.progress = 25;
       save();
       await new Promise((r) => setTimeout(r, 600));
-      state.schemaOrg = analyzeSchemaOrg(pages);
+      const schemaParams = await getScoreParams("schema-org");
+      state.schemaOrg = analyzeSchemaOrg(pages, schemaParams as unknown as SchemaScoreParams);
       await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "Schema.org analysis failed");

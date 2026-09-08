@@ -14,6 +14,7 @@ import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
 import { getPrompt, fillTemplate, clearPromptCache } from "../lib/prompt-manager.js";
 import { PROMPT_DEFAULTS_MAP } from "../lib/prompt-defaults.js";
+import { SCORE_PROFILES, getScoreParams, setScoreParam, resetScoreParams } from "../lib/score-config.js";
 import { randomUUID } from "node:crypto";
 
 declare module "express" {
@@ -1245,6 +1246,43 @@ adminRouter.get("/shares/:id/access-log", requireAuth, async (req: Request, res:
     LIMIT 100
   `, [id])).rows;
   res.json({ items: items.map((r) => ({ id: r.id, accessedAt: r.accessed_at, ipHash: r.ip_hash, userAgent: r.user_agent })) });
+});
+
+// ── Score-Profile ──────────────────────────────────────────────────────────────
+
+async function scoreProfileWithCurrent(profile: (typeof SCORE_PROFILES)[number]) {
+  const current = await getScoreParams(profile.slug);
+  return {
+    ...profile,
+    params: profile.params.map((param) => ({ ...param, current: current[param.key] })),
+  };
+}
+
+adminRouter.get("/score-profiles", requireAuth, requireAdmin, async (_req, res) => {
+  res.json(await Promise.all(SCORE_PROFILES.map(scoreProfileWithCurrent)));
+});
+
+adminRouter.patch("/score-profiles/:slug", requireAuth, requireAdmin, async (req, res) => {
+  const slug = req.params.slug as string;
+  const { key, value } = req.body as { key?: string; value?: number };
+  const profile = SCORE_PROFILES.find((item) => item.slug === slug);
+  if (!profile) { res.status(404).json({ error: "Score-Profil nicht gefunden" }); return; }
+  if (typeof key !== "string" || typeof value !== "number" || !Number.isFinite(value)) {
+    res.status(400).json({ error: "key und numerischer value sind erforderlich" }); return;
+  }
+  if (!profile.params.some((param) => param.key === key)) {
+    res.status(400).json({ error: "Score-Parameter nicht gefunden" }); return;
+  }
+  await setScoreParam(slug, key, value);
+  res.json(await scoreProfileWithCurrent(profile));
+});
+
+adminRouter.post("/score-profiles/:slug/reset", requireAuth, requireAdmin, async (req, res) => {
+  const slug = req.params.slug as string;
+  const profile = SCORE_PROFILES.find((item) => item.slug === slug);
+  if (!profile) { res.status(404).json({ error: "Score-Profil nicht gefunden" }); return; }
+  await resetScoreParams(slug);
+  res.json(await scoreProfileWithCurrent(profile));
 });
 
 // ── Prompt-Verwaltung ─────────────────────────────────────────────────────────

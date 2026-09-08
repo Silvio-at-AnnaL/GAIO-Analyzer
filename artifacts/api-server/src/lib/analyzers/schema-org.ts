@@ -13,6 +13,14 @@ export interface SchemaOrgResult {
   typeBreakdown: Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>;
 }
 
+export interface SchemaScoreParams {
+  breadth_saturation: number;
+  substance_saturation: number;
+  substance_k: number;
+  malus_per_hard_error: number;
+  malus_floor: number;
+}
+
 const TYPE_WEIGHTS: Record<string, number> = {
   Organization: 3,
   Product: 3,
@@ -137,7 +145,14 @@ function flattenGraph(items: Array<Record<string, unknown>>): Array<Record<strin
   return result;
 }
 
-export function analyzeSchemaOrg(pages: CrawledPage[]): SchemaOrgResult {
+export function analyzeSchemaOrg(pages: CrawledPage[], params?: SchemaScoreParams): SchemaOrgResult {
+  const p = params ?? {
+    breadth_saturation: BREADTH_SATURATION,
+    substance_saturation: SUBSTANCE_SATURATION,
+    substance_k: SUBSTANCE_K,
+    malus_per_hard_error: MALUS_PER_HARD_ERROR,
+    malus_floor: MALUS_FLOOR,
+  };
   const allTypes = new Set<string>();
   const allJsonLdItems: Array<Record<string, unknown>> = [];
 
@@ -204,7 +219,7 @@ export function analyzeSchemaOrg(pages: CrawledPage[]): SchemaOrgResult {
   }
 
   const coveredWeight = detectedTypes.reduce((sum, type) => sum + (TYPE_WEIGHTS[type] ?? 0), 0);
-  const rawBreadthScore = BREADTH_MAX * Math.min(1, coveredWeight / BREADTH_SATURATION);
+  const rawBreadthScore = BREADTH_MAX * Math.min(1, coveredWeight / p.breadth_saturation);
 
   let weightedSubstance = 0;
   const typeBreakdown = detectedTypes
@@ -221,7 +236,7 @@ export function analyzeSchemaOrg(pages: CrawledPage[]): SchemaOrgResult {
       } else {
         avgSubstance =
           objects.reduce(
-            (sum, object) => sum + (1 - Math.exp(-SUBSTANCE_K * objectSubstance(object, type))),
+            (sum, object) => sum + (1 - Math.exp(-p.substance_k * objectSubstance(object, type))),
             0,
           ) / objects.length;
       }
@@ -230,10 +245,10 @@ export function analyzeSchemaOrg(pages: CrawledPage[]): SchemaOrgResult {
       return { type, weight, objectCount: objects.length, avgSubstance };
     });
 
-  const rawSubstanceScore = SUBSTANCE_MAX * Math.min(1, weightedSubstance / SUBSTANCE_SATURATION);
+  const rawSubstanceScore = SUBSTANCE_MAX * Math.min(1, weightedSubstance / p.substance_saturation);
   const correctnessFactor = Math.max(
-    MALUS_FLOOR,
-    1 - MALUS_PER_HARD_ERROR * validationErrors.length,
+    p.malus_floor,
+    1 - p.malus_per_hard_error * validationErrors.length,
   );
   const breadthScore = Math.round(rawBreadthScore * 10) / 10;
   const substanceScore = Math.round(rawSubstanceScore * 10) / 10;

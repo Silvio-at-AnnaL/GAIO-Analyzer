@@ -1,0 +1,149 @@
+Make the Schema.org scoring parameters DB-overridable, following the EXACT pattern of the existing
+prompt-manager.ts (cache + DB lookup + default fallback + clearCache). The analyzer must STAY synchronous
+— load the params ONCE before calling it and pass them in. Do NOT touch report-export.ts. Do NOT change
+the scoring math. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+1) NEW FILE: artifacts/api-server/src/lib/score-config.ts
+═══════════════════════════════════════════════════════════════════
+This mirrors prompt-manager.ts. It manages tunable scoring parameters, starting with the schema-org
+score but structured so other scores can be added later (each score = one "profile" keyed by a slug).
+
+    import { getSetting, setSetting } from "./admin-db.js";
+
+    // Each tunable score registers a profile: a flat set of numeric params with defaults.
+    export interface ScoreParamDef {
+      key: string;          // e.g. "breadth_saturation"
+      label: string;        // human label for the admin UI, e.g. "Sättigung Breite"
+      default: number;
+      min: number;
+      max: number;
+      step: number;
+      help: string;         // one-sentence explanation for the admin UI
+    }
+    export interface ScoreProfile {
+      slug: string;         // e.g. "schema-org"
+      label: string;        // e.g. "Schema.org / Strukturierte Daten"
+      params: ScoreParamDef[];
+    }
+
+    // The schema-org profile. Defaults MUST equal the constants currently in schema-org.ts.
+    export const SCORE_PROFILES: ScoreProfile[] = [
+      {
+        slug: "schema-org",
+        label: "Schema.org / Strukturierte Daten",
+        params: [
+          { key: "breadth_saturation",   label: "Sättigung Breite",        default: 14,   min: 4,  max: 30,  step: 1,    help: "Gewichtssumme der Typen, ab der die Breite als voll gilt." },
+          { key: "substance_saturation", label: "Sättigung Substanz",      default: 14,   min: 4,  max: 30,  step: 1,    help: "Gewichtete Substanz, ab der die Substanz als voll gilt." },
+          { key: "substance_k",          label: "Substanzkurve (Steilheit)", default: 0.5, min: 0.1, max: 1.5, step: 0.05, help: "Höher = schon wenige Properties gelten als reichhaltig." },
+          { key: "malus_per_hard_error", label: "Malus je harter Fehler",  default: 0.20, min: 0,  max: 0.5, step: 0.05, help: "Dämpfung pro aktiv falscher Angabe (nicht: fehlende Felder)." },
+          { key: "malus_floor",          label: "Malus-Untergrenze",       default: 0.40, min: 0.1, max: 1,  step: 0.05, help: "Der Korrektheitsfaktor fällt nie unter diesen Wert." },
+        ],
+      },
+    ];
+
+    // Settings key convention: "score_param:<slug>:<key>"  → reuses the existing settings table.
+    const cache = new Map<string, number>();
+
+    function settingKey(slug: string, key: string): string {
+      return `score_param:${slug}:${key}`;
+    }
+
+    // Returns all params for a profile as a flat {key: number}, DB value ?? default.
+    export async function getScoreParams(slug: string): Promise<Record<string, number>> {
+      const profile = SCORE_PROFILES.find((p) => p.slug === slug);
+      if (!profile) throw new Error(`Unbekanntes Score-Profil: ${slug}`);
+      const out: Record<string, number> = {};
+      for (const def of profile.params) {
+        const ck = settingKey(slug, def.key);
+        if (cache.has(ck)) { out[def.key] = cache.get(ck)!; continue; }
+        const raw = await getSetting(ck);
+        const val = raw !== null && raw !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : def.default;
+        cache.set(ck, val);
+        out[def.key] = val;
+      }
+      return out;
+    }
+
+    export async function setScoreParam(slug: string, key: string, value: number): Promise<void> {
+      const profile = SCORE_PROFILES.find((p) => p.slug === slug);
+      const def = profile?.params.find((d) => d.key === key);
+      if (!def) throw new Error(`Unbekannter Score-Parameter: ${slug}/${key}`);
+      const clamped = Math.max(def.min, Math.min(def.max, value));
+      await setSetting(settingKey(slug, key), String(clamped));
+      cache.delete(settingKey(slug, key));
+    }
+
+    export async function resetScoreParams(slug: string): Promise<void> {
+      const profile = SCORE_PROFILES.find((p) => p.slug === slug);
+      if (!profile) return;
+      for (const def of profile.params) {
+        // Reset = remove the override so the default applies again.
+        await setSetting(settingKey(slug, def.key), "");
+        cache.delete(settingKey(slug, def.key));
+      }
+    }
+
+═══════════════════════════════════════════════════════════════════
+2) schema-org.ts — accept params, keep defaults, stay in sync
+═══════════════════════════════════════════════════════════════════
+Change analyzeSchemaOrg to accept an OPTIONAL params object; when absent, use today's constants (so any
+other caller and all tests keep working unchanged):
+
+    export interface SchemaScoreParams {
+      breadth_saturation: number;
+      substance_saturation: number;
+      substance_k: number;
+      malus_per_hard_error: number;
+      malus_floor: number;
+    }
+
+    export function analyzeSchemaOrg(pages: CrawledPage[], params?: SchemaScoreParams): SchemaOrgResult {
+
+Inside, replace the five module-level consts USAGE with values from `params ?? defaults`:
+    const p = params ?? {
+      breadth_saturation: BREADTH_SATURATION,
+      substance_saturation: SUBSTANCE_SATURATION,
+      substance_k: SUBSTANCE_K,
+      malus_per_hard_error: MALUS_PER_HARD_ERROR,
+      malus_floor: MALUS_FLOOR,
+    };
+Keep the existing `const BREADTH_SATURATION = 14;` etc. as the default source — do NOT delete them. Use
+p.breadth_saturation / p.substance_saturation / p.substance_k / p.malus_per_hard_error / p.malus_floor
+in the formulas. BREADTH_MAX (40) and SUBSTANCE_MAX (60) stay hard constants (not tunable). TYPE_WEIGHTS
+and STRUCTURAL_TYPES stay as they are (not part of this task).
+
+═══════════════════════════════════════════════════════════════════
+3) analysis-engine.ts — load params once, pass them in (stays the only await added)
+═══════════════════════════════════════════════════════════════════
+At ~line 277, currently: `state.schemaOrg = analyzeSchemaOrg(pages);`
+Change to load the params just before and pass them:
+    const schemaParams = await getScoreParams("schema-org");
+    state.schemaOrg = analyzeSchemaOrg(pages, schemaParams as unknown as SchemaScoreParams);
+Add the imports for getScoreParams and the SchemaScoreParams type. The surrounding function is already
+async (it awaits elsewhere), so adding one await is safe — verify that.
+
+═══════════════════════════════════════════════════════════════════
+4) admin.ts — three routes, copied from the /prompts pattern
+═══════════════════════════════════════════════════════════════════
+    GET   /api/admin/score-profiles
+        → returns SCORE_PROFILES together with each param's CURRENT effective value
+          (default or DB override), so the UI can render sliders with real current values.
+          Shape: [{ slug, label, params: [{ ...ScoreParamDef, current: number }] }]
+    PATCH /api/admin/score-profiles/:slug
+        → body { key: string, value: number }; calls setScoreParam; returns the updated effective values.
+    POST  /api/admin/score-profiles/:slug/reset
+        → calls resetScoreParams; returns the (now default) effective values.
+    All three: requireAuth + requireAdmin, exactly like the /prompts routes.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push, do NOT build the UI yet)
+═══════════════════════════════════════════════════════════════════
+- `pnpm run typecheck` passes for the api package.
+- With NO DB overrides set, a schema-org analysis produces the SAME score as before this change
+  (defaults must exactly reproduce current behaviour). Re-run the steinbach analysis or a synthetic case
+  and confirm the score is unchanged (71 in the real pipeline / 90 on full curl data).
+- GET /api/admin/score-profiles returns the schema-org profile with 5 params at their defaults.
+- Setting substance_saturation to 12 via PATCH, then re-running, yields a HIGHER score (looser
+  saturation) — proving the override path works end to end. Then reset.
+Report the before/after scores. Do not touch the frontend in this task.
