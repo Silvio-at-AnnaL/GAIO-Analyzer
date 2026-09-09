@@ -865,6 +865,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
+  const crawlReliability = report.crawlReliability as Record<string, unknown> | null;
   const headingStructure = report.headingStructure as Record<string, unknown> | null;
   const contentRelevance = report.contentRelevance as Record<string, unknown> | null;
   const faqQuality = report.faqQuality as Record<string, unknown> | null;
@@ -2437,6 +2438,84 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               </CardContent>
             </Card>
           )}
+
+          {crawlReliability && Number(crawlReliability.attempted) > 0 && (() => {
+            const attempted = Number(crawlReliability.attempted);
+            const succeeded = Number(crawlReliability.succeeded ?? 0);
+            const failed = Number(crawlReliability.failed ?? 0);
+            const failures = (crawlReliability.failures as Array<{
+              url: string;
+              reason: string;
+              statusCode?: number;
+            }> | undefined) || [];
+            const reasonLabels: Record<string, string> = {
+              tls_chain: "results.crawl_reason_tls_chain",
+              tls_other: "results.crawl_reason_tls_other",
+              dns: "results.crawl_reason_dns",
+              refused: "results.crawl_reason_refused",
+              timeout: "results.crawl_reason_timeout",
+              http_error: "results.crawl_reason_http_error",
+              unknown: "results.crawl_reason_unknown",
+            };
+
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("results.crawl_reliability_title")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">{t("results.crawl_reliability_intro")}</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-md border border-border/50 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">{t("results.crawl_attempted")}</p>
+                      <p className="mt-1 font-mono text-lg font-semibold">{attempted}</p>
+                    </div>
+                    <div className="rounded-md border border-border/50 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">{t("results.crawl_succeeded")}</p>
+                      <p className="mt-1 font-mono text-lg font-semibold">{succeeded}</p>
+                    </div>
+                    <div className="rounded-md border border-border/50 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">{t("results.crawl_failed")}</p>
+                      <p className={`mt-1 font-mono text-lg font-semibold ${failed > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                        {failed}
+                      </p>
+                    </div>
+                  </div>
+
+                  {failed === 0 ? (
+                    <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      {t("results.crawl_all_ok")}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 border-t border-border/30 pt-2">
+                      <p className="text-xs text-muted-foreground mb-1">{t("results.crawl_failures_title")}</p>
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto] items-center gap-x-3 gap-y-1.5 text-xs">
+                        <span className="text-muted-foreground">{t("results.crawl_col_url")}</span>
+                        <span className="text-muted-foreground">{t("results.crawl_col_reason")}</span>
+                        <span className="text-right text-muted-foreground">{t("results.crawl_col_status")}</span>
+                        {failures.map((failure, index) => (
+                          <div key={`${failure.url}-${index}`} className="contents">
+                            <span className="min-w-0 break-all font-mono" title={failure.url}>{failure.url}</span>
+                            <span className="text-muted-foreground">
+                              {t(reasonLabels[failure.reason] ?? reasonLabels.unknown)}
+                            </span>
+                            <span className="text-right font-mono">{failure.statusCode ?? "\u2014"}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {failures.length === 25 && (
+                        <p className="pt-1 text-xs text-muted-foreground">{t("results.crawl_capped_note")}</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {contentRelevance && (
             <Card>

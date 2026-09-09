@@ -1,0 +1,89 @@
+Add a "Crawl-Zuverlässigkeit" section to the LIVE results view (ErgebnisseView.tsx), so the Live view
+and the PDF (which is rendered from this view) show the same crawl-reliability data that the downloadable
+HTML report already shows. This closes one of three drift gaps between the two renderers. ALL new text
+goes through the i18n label system (standing rule). Do NOT touch report-export.ts. Do NOT touch the
+backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+ErgebnisseView reads the analysis result as `report`. The backend already puts crawl reliability on it:
+  report.crawlReliability = { attempted: number, succeeded: number, failed: number,
+    failures: Array<{ url: string, reason: string, statusCode?: number }> }
+  reason ∈ "tls_chain" | "tls_other" | "dns" | "refused" | "timeout" | "http_error" | "unknown"
+The Schema.org card ends at ~line 2438 (`</Card>` then `)}` at 2439). The next card (content relevance)
+starts ~line 2442. Insert the new card BETWEEN them.
+
+The existing Schema card (from ~line 2350) is your STYLE TEMPLATE: it uses <Card>/<CardHeader>/
+<CardTitle> with `text-xs font-semibold uppercase tracking-wider text-muted-foreground`, then
+<CardContent>, small muted labels, mono values, and the same grid/badge conventions. Match it.
+
+═══════════════════════════════════════════════════════════════════
+1) Read the field (near line 867 where schemaOrg/technicalSeo are read)
+═══════════════════════════════════════════════════════════════════
+  const crawlReliability = report.crawlReliability as Record<string, unknown> | null;
+
+═══════════════════════════════════════════════════════════════════
+2) New card, inserted after the Schema card's closing `)}` (~line 2439)
+═══════════════════════════════════════════════════════════════════
+Guard exactly like other optional sections: render only when crawlReliability exists AND
+Number(crawlReliability.attempted) > 0 — old reports without the field show nothing.
+
+Structure (match Schema card styling):
+  <Card>
+    <CardHeader><CardTitle …>{t("results.crawl_reliability_title")}</CardTitle></CardHeader>
+    <CardContent className="space-y-...">
+      - a short muted intro paragraph {t("results.crawl_reliability_intro")}
+      - three figures in a row/grid (reuse the layout the Schema breakdown uses):
+          {t("results.crawl_attempted")}  → attempted
+          {t("results.crawl_succeeded")}  → succeeded
+          {t("results.crawl_failed")}     → failed   (colour the number red only when failed > 0,
+                                                       else neutral — follow the existing colour usage)
+      - if failed === 0: a short success line {t("results.crawl_all_ok")}
+      - if failed > 0: a compact table of failures (cols via keys
+          results.crawl_col_url / results.crawl_col_reason / results.crawl_col_status),
+          each row: url (mono, truncate/break), the reason mapped to a German label, statusCode or "—".
+          Map reason→label with a small lookup on t() keys (see key list). Cap is already 25 server-side;
+          if failures.length === 25 show a muted note {t("results.crawl_capped_note")}.
+    </CardContent>
+  </Card>
+
+Type the failures array inline like the typeBreakdown array is typed in the Schema card:
+  (crawlReliability.failures as Array<{ url: string; reason: string; statusCode?: number }> | undefined) || []
+
+═══════════════════════════════════════════════════════════════════
+3) i18n — add these NEW keys to labelDefaults.ts, group "results"
+═══════════════════════════════════════════════════════════════════
+  results.crawl_reliability_title   "Crawl-Zuverlässigkeit"
+  results.crawl_reliability_intro   "Auf welcher Datengrundlage diese Analyse durchgeführt wurde."
+  results.crawl_attempted           "Seiten versucht"
+  results.crawl_succeeded           "Erfolgreich analysiert"
+  results.crawl_failed              "Fehlgeschlagen"
+  results.crawl_all_ok              "Alle abgerufenen Seiten waren erfolgreich."
+  results.crawl_failures_title      "Fehlgeschlagene Seiten"
+  results.crawl_col_url             "URL"
+  results.crawl_col_reason          "Grund"
+  results.crawl_col_status          "Status"
+  results.crawl_capped_note         "Es werden nur die ersten 25 Fehler angezeigt."
+  results.crawl_reason_tls_chain    "TLS-Zertifikatskette unvollständig"
+  results.crawl_reason_tls_other    "TLS-Zertifikatsfehler"
+  results.crawl_reason_dns          "DNS nicht auflösbar"
+  results.crawl_reason_refused      "Verbindung abgelehnt"
+  results.crawl_reason_timeout      "Zeitüberschreitung"
+  results.crawl_reason_http_error   "HTTP-Fehler"
+  results.crawl_reason_unknown      "Unbekannt"
+Map a reason code to its label via `t("results.crawl_reason_" + reason)` with a safe fallback to
+results.crawl_reason_unknown for any unexpected value.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate the GAIO frontend; the api-zod root-typecheck issue is pre-existing).
+- Open a completed steinbach-kugellager.de analysis in the Live view: the new "Crawl-Zuverlässigkeit"
+  card appears after the Schema.org card, shows 14 attempted / 14 succeeded / 0 failed and the green
+  all-OK line, no failure table.
+- Confirm it also renders in PDF mode (the view has a pdfMode flag — the card must not be hidden in PDF;
+  it should appear there too since the PDF is this view).
+- Confirm an old report without crawlReliability shows no card (guard works), and no raw label keys
+  appear under EN fallback.
+- Report which lines you inserted and confirm report-export.ts and backend were untouched.
