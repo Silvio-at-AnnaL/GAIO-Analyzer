@@ -865,7 +865,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
-  const crawlReliability = report.crawlReliability as Record<string, unknown> | null;
+  const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
   const headingStructure = report.headingStructure as Record<string, unknown> | null;
   const contentRelevance = report.contentRelevance as Record<string, unknown> | null;
   const faqQuality = report.faqQuality as Record<string, unknown> | null;
