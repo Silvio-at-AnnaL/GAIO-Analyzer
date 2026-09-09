@@ -389,6 +389,18 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   );
 
   if (schemaOrg) {
+    const ST = {
+      breakdownTitle: "Aufschlüsselung des Scores",
+      breadth: "Typen-Breite",
+      substance: "Substanz der Objekte",
+      correctness: "Korrektheit",
+      correctnessNote: "Aktiv fehlerhafte Angaben gefunden — Score gedämpft.",
+      typesTitle: "Substanz je Typ",
+      colType: "Typ",
+      colWeight: "Gewicht",
+      colCount: "Objekte",
+      colSubstance: "Substanz",
+    };
     const types = (schemaOrg.detectedTypes as string[] | undefined) ?? [];
     const RECOMMENDED_SCHEMA_TYPES = ["Organization", "WebSite", "FAQPage", "Product", "BreadcrumbList", "Article", "LocalBusiness"];
     const missingTypes = RECOMMENDED_SCHEMA_TYPES.filter((t) => !types.includes(t));
@@ -400,6 +412,42 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     </div>
     ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}
     ${missingTypes.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">Fehlende wichtige Typen: ${missingTypes.map((t) => `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px;">${esc(t)}</span>`).join("")}</p>` : ""}`;
+
+    if (typeof schemaOrg.breadthScore === "number") {
+      html += `
+      <h3>${ST.breakdownTitle}</h3>
+      <div class="detail-grid">
+        <div class="detail-item"><div class="label">${ST.breadth}</div><div class="val">${(schemaOrg.breadthScore as number).toFixed(1)} / 40</div></div>
+        <div class="detail-item"><div class="label">${ST.substance}</div><div class="val">${(schemaOrg.substanceScore as number).toFixed(1)} / 60</div></div>
+        <div class="detail-item"><div class="label">${ST.correctness}</div><div class="val">×${(schemaOrg.correctnessFactor as number).toFixed(2)}</div></div>
+      </div>
+      ${(schemaOrg.correctnessFactor as number) < 1 ? `<p style="font-size:11px;color:${C.textMuted};margin:4px 0 12px;">${ST.correctnessNote}</p>` : ""}`;
+    }
+
+    const typeBreakdown = (schemaOrg.typeBreakdown as Array<{
+      type: string;
+      weight: number;
+      objectCount: number;
+      avgSubstance: number;
+    }> | undefined) ?? [];
+    if (typeBreakdown.length > 0) {
+      html += `
+      <h3>${ST.typesTitle}</h3>
+      <table class="data-table">
+        <thead><tr><th>${ST.colType}</th><th>${ST.colWeight}</th><th>${ST.colCount}</th><th>${ST.colSubstance}</th></tr></thead>
+        <tbody>
+          ${[...typeBreakdown]
+            .sort((a, b) => b.weight - a.weight || b.avgSubstance - a.avgSubstance)
+            .map((entry) => `<tr>
+              <td style="font-family:monospace;">${esc(entry.type)}</td>
+              <td>${entry.weight}</td>
+              <td>${entry.objectCount}</td>
+              <td>${Math.round(entry.avgSubstance * 100)}%</td>
+            </tr>`)
+            .join("")}
+        </tbody>
+      </table>`;
+    }
   }
 
   if (headings) {

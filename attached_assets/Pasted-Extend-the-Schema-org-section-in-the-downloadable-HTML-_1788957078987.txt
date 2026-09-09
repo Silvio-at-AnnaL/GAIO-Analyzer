@@ -1,0 +1,66 @@
+Extend the Schema.org section in the downloadable HTML report (report-export.ts) so it shows the SAME
+score breakdown the Live view already shows: the three components (breadth / substance / correctness)
+and the per-type substance table. This closes the second of three drift gaps between the two renderers.
+Keep it CONSISTENT with the existing German HTML report styling. New German strings go into a named
+constant block at the top of the section (i18n preparation, same pattern as the crawl-reliability
+section). Do NOT touch ErgebnisseView or the backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+File: artifacts/gaio-analyzer/src/lib/report-export.ts
+The current Schema.org block is at ~lines 391-402 (inside `if (schemaOrg) { … }`). It renders only:
+Score, "Typen erkannt", detected types list, missing types badges. The backend already provides these
+additional fields on schemaOrg (same object, already read at line 341):
+  breadthScore: number (0-40), substanceScore: number (0-60), correctnessFactor: number (0.4-1.0),
+  typeBreakdown: Array<{ type: string; weight: number; objectCount: number; avgSubstance: number }>
+The Live view renders them (ErgebnisseView ~line 2377/2418) — mirror that content here in HTML form.
+
+The existing block uses: `<h3>`, `detail-grid`/`detail-item` with `.label`/`.val`, `esc()`, the colour
+helpers `C.textSec`/`C.textMuted`/`scoreColor()`, and inline styles. Match this exactly.
+
+═══════════════════════════════════════════════════════════════════
+What to ADD inside the `if (schemaOrg) { … }` block, AFTER the existing missing-types line
+═══════════════════════════════════════════════════════════════════
+
+1) A local constant block for the new German strings (put it at the top of the if-block):
+     const ST = {
+       breakdownTitle:  "Aufschlüsselung des Scores",
+       breadth:         "Typen-Breite",
+       substance:       "Substanz der Objekte",
+       correctness:     "Korrektheit",
+       correctnessNote: "Aktiv fehlerhafte Angaben gefunden — Score gedämpft.",
+       typesTitle:      "Substanz je Typ",
+       colType:         "Typ",
+       colWeight:       "Gewicht",
+       colCount:        "Objekte",
+       colSubstance:    "Substanz",
+     };
+
+2) Component breakdown — render ONLY when breadthScore is a number (guard:
+   `typeof schemaOrg.breadthScore === "number"`), so old reports without these fields show nothing extra.
+   Show three figures in the existing detail-grid style:
+     - ${ST.breadth}:      ${(schemaOrg.breadthScore as number).toFixed(1)} / 40
+     - ${ST.substance}:    ${(schemaOrg.substanceScore as number).toFixed(1)} / 60
+     - ${ST.correctness}:  ×${(schemaOrg.correctnessFactor as number).toFixed(2)}
+   If correctnessFactor < 1, add a small muted line with ST.correctnessNote (mirrors the Live view).
+
+3) Per-type substance table from typeBreakdown — render only when the array is present and non-empty.
+   Use the report's existing table styling (look at how other tables in this file are built, e.g. the
+   data-table / detail rows used elsewhere; match whichever pattern the file already uses for tabular
+   data — do NOT invent a new table style). Columns: ST.colType (mono), ST.colWeight, ST.colCount,
+   ST.colSubstance shown as percent (Math.round(avgSubstance*100) + "%"). Sort by weight desc, then
+   avgSubstance desc — same order as the Live view. esc() the type names.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- Generate an HTML report for a completed steinbach-kugellager.de analysis: the Schema.org section now
+  shows the three-component breakdown (breadth ~37, substance ~53, correctness ×1.00) AND the per-type
+  table (Organization, LocalBusiness, WebSite, NewsArticle, BreadcrumbList, FAQPage with weight/count/
+  substance%). Confirm this matches what the Live view shows for the same analysis.
+- Confirm an old report without breadthScore/typeBreakdown renders WITHOUT the new parts (guards work),
+  i.e. the section degrades to today's short form.
+- Confirm all new German strings live in the ST constant block, not inline.
+- Confirm ErgebnisseView and backend were NOT touched. Report the lines you changed.
