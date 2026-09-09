@@ -312,7 +312,7 @@ function renderCrawlReliabilityHtml(
   };
 
   let html = `
-    <h2>${T.heading}</h2>
+    <div style="font-size:13px;font-weight:600;color:${C.textSec};margin:4px 0 2px;">${T.heading}</div>
     <p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${T.intro}</p>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">${T.attempted}</div><div class="val">${attempted}</div></div>
@@ -326,7 +326,7 @@ function renderCrawlReliabilityHtml(
   }
 
   html += `
-    <h3>${T.failuresTitle}</h3>
+    <div style="font-size:12px;font-weight:600;color:${C.textSec};margin:12px 0 6px;">${T.failuresTitle}</div>
     <table class="data-table">
       <thead><tr><th>${T.colUrl}</th><th>${T.colReason}</th><th>${T.colStatus}</th></tr></thead>
       <tbody>
@@ -353,6 +353,10 @@ function renderCrawlReliabilityHtml(
 // ─── Section renderers ────────────────────────────────────────────────────────
 
 function renderDetailsSection(report: Record<string, unknown>): string {
+  const DT = {
+    heading: "Analyse-Details",
+    technicalSeoHeading: "Technische SEO-Basis",
+  } as const;
   const technicalSeo   = report.technicalSeo   as Record<string, unknown> | null;
   const schemaOrg      = report.schemaOrg      as Record<string, unknown> | null;
   const headings       = report.headingStructure as Record<string, unknown> | null;
@@ -363,8 +367,10 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   const crawledCount   = (report.crawledPages as string[])?.length ?? 0;
 
   let html = divider("Details");
-  html += `<h2>Technische Analyse</h2>`;
-  html += `<p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${crawledCount} Seiten analysiert</p>`;
+  html += `<h2>${DT.heading}</h2>`;
+  html += renderCrawlReliabilityHtml(
+    report.crawlReliability as Record<string, unknown> | null | undefined,
+  );
 
   if (technicalSeo) {
     const metaTitlePct   = Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
@@ -376,7 +382,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     const rtMs   = (technicalSeo.responseTime as number) ?? 0;
     const ttfbMs = (technicalSeo.ttfb as number) ?? 0;
     html += `
-    <h3>SEO-Metriken Abdeckung</h3>
+    <h3>${DT.technicalSeoHeading}</h3>
     <table class="data-table">
       <thead><tr><th>Metrik</th><th>Wert</th></tr></thead>
       <tbody>
@@ -399,10 +405,6 @@ function renderDetailsSection(report: Record<string, unknown>): string {
 
     html += renderTechnischeDateienHtml(technicalSeo);
   }
-
-  html += renderCrawlReliabilityHtml(
-    report.crawlReliability as Record<string, unknown> | null | undefined,
-  );
 
   if (schemaOrg) {
     const ST = {

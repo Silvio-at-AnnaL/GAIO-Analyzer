@@ -1,0 +1,95 @@
+Restructure the report heading hierarchy for clearer, consistent semantics across the HTML export and
+the Live view (the PDF is the Live view, so fixing Live fixes PDF). Two coordinated changes:
+(A) In the HTML export, rename the misleading "Technische Analyse" H2 and move the crawl-reliability
+    block to a PREPENDED CONTEXT BLOCK at the very top of that section (before the modules), because
+    reliability is the BASIS of the analysis, not a peer module.
+(B) In the Live view, move the crawl-reliability card to the FIRST position in the Details tab (before
+    the technical-metrics card), for the same reason and to keep the two renderers conceptually aligned.
+All text stays i18n / in the existing constant blocks. Do NOT touch the backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+PART A — HTML export: artifacts/gaio-analyzer/src/lib/report-export.ts
+═══════════════════════════════════════════════════════════════════
+Current structure (~lines 366-451):
+  <h2>Technische Analyse</h2>
+  <p>${crawledCount} Seiten analysiert</p>        ← line 367, a weak one-liner
+  <h3>SEO-Metriken Abdeckung</h3>
+  ... (schema breakdown via renderCrawlReliabilityHtml call at ~403 is CURRENTLY placed after SEO metrics)
+  <h3>Schema.org / Strukturierte Daten</h3>
+  ...
+
+Target structure:
+  <h2>Analyse-Details</h2>                         ← renamed from "Technische Analyse" (honest umbrella:
+                                                     it contains content/FAQ too, not only technical)
+  [crawl-reliability CONTEXT BLOCK]                ← moved here, to the very top, BEFORE any module H3.
+                                                     It is a prepended context block, NOT an <h3> module.
+  <h3>Technische SEO-Basis</h3>                    ← renamed from "SEO-Metriken Abdeckung" for clarity
+  <h3>Schema.org / Strukturierte Daten</h3>
+  <h3>Heading-Struktur</h3>
+  <h3>Inhaltliche Relevanz</h3>
+  <h3>FAQ-Qualität</h3>
+  <h3>Erkannte Sprachvarianten (...)</h3>
+  <h3>Gecrawlte Seiten (...)</h3>
+
+Concrete steps:
+1. Change `<h2>Technische Analyse</h2>` → `<h2>Analyse-Details</h2>` (both the visible text; if there is
+   an anchor id nearby, leave it unchanged).
+2. REMOVE the weak `<p>${crawledCount} Seiten analysiert</p>` line (line ~367) — the context block
+   below replaces it with richer info.
+3. MOVE the `renderCrawlReliabilityHtml(...)` call (currently ~line 403, after the SEO metrics table)
+   to immediately AFTER the new `<h2>Analyse-Details</h2>` and BEFORE the first `<h3>`. So the crawl
+   block is the first thing in the section.
+4. Inside renderCrawlReliabilityHtml (the T constant block), change the heading so it reads as a context
+   block, not a peer module: keep the `<h2>${T.heading}</h2>`? NO — it must NOT be an <h2> here anymore.
+   Change the section's top element from `<h2>` to a styled context-block header that is visually
+   subordinate to the section H2 but clearly a lead-in — e.g. a `<div>` with a bold label styled like a
+   sub-lead (reuse C.textSec / existing small-heading inline style, NOT an <h2> or <h3>). The inner
+   "Fehlgeschlagene Seiten" sub-heading may stay an <h3> or become a plain bold line — match whatever
+   keeps it clearly below the block lead. Keep all T.* strings; only the wrapping element/level changes.
+   IMPORTANT: because this block is now ABOVE the modules and no longer an <h2>, verify it does not
+   create an empty-section look when attempted===0 (the existing guard returns "" — keep it; if it
+   returns "", the section simply starts with the first <h3>, which is fine).
+5. Rename the `<h3>SEO-Metriken Abdeckung</h3>` → `<h3>Technische SEO-Basis</h3>`.
+
+Do NOT change LLM-Auffindbarkeit / Wettbewerbsvergleich / Empfehlungen H2s — they already map cleanly to
+the Live view's tabs and are correct.
+
+═══════════════════════════════════════════════════════════════════
+PART B — Live view: artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+═══════════════════════════════════════════════════════════════════
+The Details tab (`<TabsContent value="details">`, ~line 2005) currently orders cards:
+  1. technical_metrics_title (~2008)  2. technical_details (~2035)  3. technical_files (~2096)
+  4. schema (~2353)  5. crawl_reliability (~2442, the card we added)  6. content_relevance (~2522) ...
+
+MOVE the entire crawl-reliability card (the whole `{crawlReliability && Number(...) > 0 && (() => { ...
+})()}` block, ~lines 2442-2520) to be the FIRST child inside `<TabsContent value="details">`, before the
+technical_metrics card. Do not change its internal content — only its position.
+
+Rationale to encode: reliability is the basis of everything below it, so it leads the Details tab —
+mirroring the HTML export's prepended context block. The card styling stays as-is (it already matches
+the other cards). This keeps Live and PDF (which is Live) consistent with the HTML export's new order.
+
+═══════════════════════════════════════════════════════════════════
+i18n
+═══════════════════════════════════════════════════════════════════
+"Analyse-Details" and "Technische SEO-Basis" are NEW visible strings in the HTML export — per the
+report-export i18n approach, they go into the ST/T-style constant handling of that file (the file is
+still German-hardcoded overall; a full i18n pass is a separate backlog item). Do NOT introduce new
+labelDefaults keys for the HTML export in this task; keep them as constants consistent with how the
+rest of report-export.ts holds its German strings. The Live view already uses t() keys for its card
+titles — no Live text changes needed (only the card MOVED).
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- HTML export for a completed steinbach analysis: section now titled "Analyse-Details"; the
+  crawl-reliability context block appears FIRST (before "Technische SEO-Basis"), styled as a lead-in
+  block, NOT as an <h2> and NOT as a peer <h3>; the old "N Seiten analysiert" one-liner is gone;
+  "SEO-Metriken Abdeckung" now reads "Technische SEO-Basis". Confirm the h2→h3 nesting is now sane
+  (one H2 "Analyse-Details" with module H3s under it; Schema.org is an H3 peer, not buried).
+- Live view Details tab: crawl-reliability card is now the FIRST card, before technical metrics.
+  Confirm it also renders first in PDF mode.
+- Confirm an old report without crawlReliability: HTML section still renders (starts at first H3, no
+  empty lead-in), Live tab still renders without the card.
+- Report the exact lines changed in each file and confirm the backend was untouched.
