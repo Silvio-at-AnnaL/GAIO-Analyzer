@@ -232,6 +232,10 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
   // ── llms.txt ────────────────────────────────────────────────────────────────
   html += subHead("llms.txt", llmsTxtFound);
   if (llmsTxtFound && llmsAnalysis) {
+    const LT = {
+      sectionsHeading: "Sektionen",
+      noLinks: "Keine Links in dieser Sektion",
+    };
     html += `<div class="detail-grid">
       <div class="detail-item"><div class="label">Titel</div><div class="val">${llmsAnalysis.title ? esc(llmsAnalysis.title) : "—"}</div></div>
       <div class="detail-item"><div class="label">Beschreibung</div><div class="val">${llmsAnalysis.hasDescription ? "✓ Ja" : "✗ Nein"}</div></div>
@@ -239,7 +243,19 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
       <div class="detail-item"><div class="label">Verlinkte Seiten</div><div class="val">${llmsAnalysis.linkedPageCount}</div></div>
     </div>`;
     if (llmsAnalysis.sections.length > 0) {
-      html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0 4px;"><strong>Sektionen:</strong> ${llmsAnalysis.sections.map((s) => esc(s.name)).join(", ")}</p>`;
+      html += `<p style="font-size:12px;color:${C.textSec};margin:8px 0 6px;"><strong>${LT.sectionsHeading}</strong></p>
+      ${llmsAnalysis.sections.map((section) => `
+        <div style="border:1px solid ${C.border};border-radius:6px;padding:8px 10px;margin:0 0 8px;">
+          <p style="font-size:12px;font-weight:600;color:${C.text};margin:0 0 4px;">${esc(section.name)}</p>
+          ${section.links.length > 0
+            ? `<ul style="font-size:12px;color:${C.textSec};margin:0;padding-left:18px;">
+                ${section.links.map((link) => `<li style="margin:0 0 4px;">
+                  <strong>${esc(link.title)}</strong>${link.description ? ` — ${esc(link.description)}` : ""}
+                  <span style="display:block;font-family:monospace;font-size:10px;color:${C.textMuted};word-break:break-all;">${esc(link.url)}</span>
+                </li>`).join("")}
+              </ul>`
+            : `<p style="font-size:12px;color:${C.textMuted};margin:0;">${LT.noLinks}</p>`}
+        </div>`).join("")}`;
     }
     html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(llmsAnalysis.summary)}</p>`;
     if (llmsTxtContent) html += rawBlock(llmsTxtContent);

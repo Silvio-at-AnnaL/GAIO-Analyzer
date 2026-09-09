@@ -1,0 +1,64 @@
+Upgrade the llms.txt section in the downloadable HTML report (report-export.ts) so it shows the sections
+WITH their links — the same structured detail the Live view shows — instead of only a comma-separated
+list of section names. This closes the third and final drift gap between the two renderers. Keep the
+existing German HTML styling; put any NEW German strings into a named constant block (i18n preparation,
+same pattern as the other sections). Do NOT touch ErgebnisseView or the backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+File: artifacts/gaio-analyzer/src/lib/report-export.ts
+Current llms.txt block: ~lines 232-252 (inside the `if (llmsTxtFound && llmsAnalysis)` branch).
+Today it shows: Titel, Beschreibung (Ja/Nein), Sektionen (count), Verlinkte Seiten, then the section
+NAMES as a comma-joined list (line ~242), the summary, and the raw block. That comma list is the gap.
+
+The type is already defined in this file (line 157):
+  type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
+So llmsAnalysis.sections[i].links is available — it is just not rendered structurally.
+
+The Live view (ErgebnisseView ~lines 2306-2328) renders each section as its own bordered block:
+  - section name (bold)
+  - a list of its links: link.title (bold) — link.description (if present) — link.url (mono, small)
+  - if a section has no links: a "no links in this section" note
+Mirror THAT structure in HTML.
+
+═══════════════════════════════════════════════════════════════════
+CHANGE
+═══════════════════════════════════════════════════════════════════
+Replace the single comma-joined section-names line (~line 242,
+`<strong>Sektionen:</strong> ${llmsAnalysis.sections.map((s) => esc(s.name)).join(", ")}`)
+with a structured render of each section and its links. Keep everything else in the block
+(detail-grid with Titel/Beschreibung/Sektionen/Verlinkte Seiten, the summary line, the rawBlock) exactly
+as it is.
+
+1) Add a small constant block for new German strings near the top of this branch:
+     const LT = {
+       sectionsHeading: "Sektionen",       // reuse if a suitable label already exists nearby; else new
+       noLinks:         "Keine Links in dieser Sektion",
+     };
+
+2) Render sections structurally, matching the file's existing inline-style conventions (bordered box per
+   section like other grouped items in this report; use C.textSec/C.textMuted, esc() everything, mono for
+   URLs). For each section in llmsAnalysis.sections:
+     - a heading line with the section name (bold, esc'd)
+     - if section.links.length > 0: a <ul> where each <li> shows
+         <strong>{esc(link.title)}</strong>{link.description ? " — " + esc(link.description) : ""}
+         then the url in small mono style (esc'd, word-break)
+     - else: a muted line with LT.noLinks
+   Keep it visually consistent with the surrounding report (do not invent a new component; reuse the
+   inline-style patterns already used for grouped detail items in this file).
+
+Guard: this only runs inside the existing `if (llmsTxtFound && llmsAnalysis)` branch, so no extra guard
+needed — but if sections is empty, render nothing for the sections part (as today).
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- Generate an HTML report for a site that HAS llms.txt with sections and links, and confirm each section
+  now renders with its name and its individual links (title/description/url) — matching the Live view for
+  the same analysis. If steinbach has no llms.txt, use whatever completed analysis does (the agent noted
+  a DESOI report earlier); otherwise construct a representative llmsAnalysis object to render.
+- Confirm a site WITHOUT llms.txt still shows the unchanged "Verpasste Chance" box.
+- Confirm the new German strings are in the LT block, not inline.
+- Confirm ErgebnisseView and backend were NOT touched. Report the lines you changed.
