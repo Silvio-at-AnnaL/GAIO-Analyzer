@@ -372,6 +372,14 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     report.crawlReliability as Record<string, unknown> | null | undefined,
   );
 
+  if (crawledPages.length > 0) {
+    html += `
+    <div style="font-size:13px;font-weight:600;color:${C.textSec};margin:4px 0 2px;">Gecrawlte Seiten (${crawledPages.length})</div>
+    <ul style="margin:4px 0;padding-left:16px;font-size:12px;color:${C.textSec};">
+      ${crawledPages.map((p) => `<li><a href="${esc(p)}" target="_blank" rel="noopener" style="color:${C.accent};">${esc(p)}</a></li>`).join("")}
+    </ul>`;
+  }
+
   if (technicalSeo) {
     const metaTitlePct   = Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
     const metaDescPct    = Math.round(((technicalSeo.metaDescriptions as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
@@ -515,14 +523,6 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       ${uniqueLangs.map((lang) => `<span style="background:${C.bg};border:1px solid ${C.border};border-radius:6px;padding:4px 10px;font-size:13px;">${langBadge(lang)}</span>`).join("")}
     </div>
     <p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${hreflang.length} Sprachvarianten-URLs gespeichert für spätere Mehrsprachenanalyse</p>`;
-  }
-
-  if (crawledPages.length > 0) {
-    html += `
-    <h3>Gecrawlte Seiten (${crawledPages.length})</h3>
-    <ul style="margin:4px 0;padding-left:16px;font-size:12px;color:${C.textSec};">
-      ${crawledPages.map((p) => `<li><a href="${esc(p)}" target="_blank" rel="noopener" style="color:${C.accent};">${esc(p)}</a></li>`).join("")}
-    </ul>`;
   }
 
   return html;

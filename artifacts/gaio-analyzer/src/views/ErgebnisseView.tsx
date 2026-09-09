@@ -2081,6 +2081,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             );
           })()}
 
+          {/* Gecrawlte Seiten collapsible panel */}
+          {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
+            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} pdfMode={pdfMode} />
+          )}
+
           {technicalBarData.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.technical_metrics_title")}</CardTitle></CardHeader>
@@ -2096,11 +2101,6 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-          )}
-
-          {/* Gecrawlte Seiten collapsible panel */}
-          {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
-            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} pdfMode={pdfMode} />
           )}
 
           {/* Hreflang variants panel — always shown, handles empty state internally */}

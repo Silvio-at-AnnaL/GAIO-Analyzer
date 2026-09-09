@@ -1,0 +1,59 @@
+Move the "Gecrawlte Seiten" (crawled pages list) block to sit right after the crawl-reliability block,
+so the two crawl-related items are together at the top of the details/analysis section (semantically:
+what was crawled belongs together). Two renderers, keep them consistent. No content changes to the list
+itself — only its POSITION. Do NOT touch the backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+PART A — HTML export: artifacts/gaio-analyzer/src/lib/report-export.ts
+═══════════════════════════════════════════════════════════════════
+Currently the "Gecrawlte Seiten" block is at ~lines 520-526 (the `if (crawledPages.length > 0) { ...
+<h3>Gecrawlte Seiten (N)</h3> ... }`), i.e. at the very END of the Analyse-Details section, after
+FAQ-Qualität.
+
+Move that ENTIRE block so it renders immediately AFTER the crawl-reliability block
+(renderCrawlReliabilityHtml call at ~line 371) and BEFORE the first module (`if (technicalSeo)` /
+"Technische SEO-Basis" H3). Do not change the block's markup or the crawledPages/crawledCount variable
+definitions (they are declared at ~lines 366-367, before the call — verify they are still in scope at
+the new position, which they are since they're defined above line 371).
+
+Result order in the section:
+  <h2>Analyse-Details</h2>
+  [crawl-reliability context block]
+  [Gecrawlte Seiten (N) list]        ← moved here
+  <h3>Technische SEO-Basis</h3>
+  <h3>Schema.org ...</h3>
+  ... (FAQ etc., no longer followed by the crawled-pages list)
+
+Keep "Gecrawlte Seiten" as an <h3>? NO — reconsider: it is now adjacent to the reliability CONTEXT block
+and is itself contextual ("what was crawled"), not a scored module. To stay consistent with the
+reliability block (which is a styled <div> lead-in, not an <h3>), render "Gecrawlte Seiten (N)" ALSO as
+a styled <div> lead-in in the SAME style as the reliability block's heading div (reuse that inline style:
+font-size:13px; font-weight:600; color:${C.textSec}), NOT as an <h3>. This keeps the "these are context,
+not modules" semantics you just established. Everything else about the list (the <ul>/<li> links) stays
+identical.
+
+═══════════════════════════════════════════════════════════════════
+PART B — Live view: artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+═══════════════════════════════════════════════════════════════════
+In the Details tab, the crawled-pages panel (`{report.crawledPages.filter(...).length > 0 && (
+<CrawledPagesPanel .../> )}`, ~line 2101) currently sits AFTER the technical_metrics card. Move it to
+sit immediately AFTER the crawl-reliability card (~line 2029 block, which is now the first card) and
+BEFORE the technical_metrics card (~line 2086), so the order is:
+  1. Crawl-reliability card
+  2. Crawled-pages panel      ← moved up
+  3. Technical metrics card
+  4. ...
+Move the whole `{report.crawledPages... && ( <CrawledPagesPanel .../> )}` block unchanged; only its
+position changes. Do not alter CrawledPagesPanel itself.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- HTML export for a completed steinbach analysis: order is now
+  Analyse-Details → crawl-reliability block → Gecrawlte Seiten list → Technische SEO-Basis → ...
+  and "Gecrawlte Seiten" renders as a styled div lead-in (not an <h3>), matching the reliability block.
+- Live Details tab: order is crawl-reliability card → crawled-pages panel → technical metrics → ...
+  Confirm it also renders in that order in PDF mode.
+- Confirm reports without crawledPages simply omit the list in both renderers (guards intact).
+- Report the exact line ranges moved in each file; confirm backend untouched.
