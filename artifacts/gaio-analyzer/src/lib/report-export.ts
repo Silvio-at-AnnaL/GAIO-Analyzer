@@ -506,13 +506,27 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   }
 
   if (faq) {
+    const FT = {
+      schema: "FAQ-Schema (FAQPage)",
+      htmlFaq: "HTML-FAQ erkannt",
+      entries: "FAQ-Einträge",
+      qualityAssessment: "KI-Qualitätseinschätzung",
+    } as const;
+    const qualityAssessment = typeof faq.qualityAssessment === "string"
+      ? faq.qualityAssessment.trim()
+      : "";
+    const displayedAssessment = qualityAssessment.length > 400
+      ? `${qualityAssessment.slice(0, 397)}…`
+      : qualityAssessment;
     html += `
     <h3>FAQ-Qualität</h3>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((faq.score as number) ?? 0)}">${faq.score}/100</div></div>
-      <div class="detail-item"><div class="label">FAQ gefunden</div><div class="val">${(faq.faqFound as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
-      ${(faq.questionCount as number | undefined) !== undefined ? `<div class="detail-item"><div class="label">Fragen</div><div class="val">${faq.questionCount}</div></div>` : ""}
-    </div>`;
+      <div class="detail-item"><div class="label">${FT.schema}</div><div class="val">${(faq.hasFaqSchema as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
+      <div class="detail-item"><div class="label">${FT.htmlFaq}</div><div class="val">${(faq.hasHtmlFaq as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
+      <div class="detail-item"><div class="label">${FT.entries}</div><div class="val">${(faq.faqItemsFound as number) ?? 0}</div></div>
+    </div>
+    ${displayedAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;"><strong>${FT.qualityAssessment}:</strong> ${esc(displayedAssessment)}</p>` : ""}`;
   }
 
   if (hreflang.length > 0) {

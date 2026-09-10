@@ -1,0 +1,62 @@
+Fix the broken FAQ display in the HTML report and make it transparent about WHAT was found. The report
+reads fields that don't exist on the FAQ result, so it always shows "FAQ gefunden: Nein" regardless of
+reality (e.g. steinbach has FAQPage schema and score 80 but still showed "Nein"). Replace the broken
+fields with the real ones AND show the differentiated signals, because the report itself states FAQPage
+schema is one of the strongest LLM-visibility levers — so the reader should see schema vs. HTML-FAQ
+separately. Do NOT change the FAQ SCORE logic (that is a separate later task). Do NOT touch the backend.
+Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT — the real data
+═══════════════════════════════════════════════════════════════════
+The backend analyzer (analyzeFaq) returns on report.faqQuality:
+  { score: number, faqItemsFound: number, hasFaqSchema: boolean, hasHtmlFaq: boolean,
+    qualityAssessment: string | null }
+There is NO `faqFound` and NO `questionCount` field. The HTML export currently (report-export.ts
+~lines 512-514) reads `faq.faqFound` (→ always undefined → always "Nein") and `faq.questionCount`
+(→ always undefined → line never shows). THAT is the bug.
+
+═══════════════════════════════════════════════════════════════════
+File: artifacts/gaio-analyzer/src/lib/report-export.ts
+═══════════════════════════════════════════════════════════════════
+`const faq = report.faqQuality as Record<string, unknown> | null;` at line 364 is correct — keep it.
+
+Replace the current detail-items (lines ~512-514):
+    Score ...
+    FAQ gefunden: ${faq.faqFound ? "Ja" : "Nein"}          ← BROKEN
+    ${faq.questionCount !== undefined ? "Fragen: ..." : ""}  ← BROKEN
+
+with these detail-items, using the REAL fields and showing the differentiated picture:
+    - Score (keep as is, line 512 unchanged)
+    - FAQ-Schema (FAQPage):   ${(faq.hasFaqSchema as boolean) ? "✓ Ja" : "✗ Nein"}
+    - HTML-FAQ erkannt:        ${(faq.hasHtmlFaq as boolean) ? "✓ Ja" : "✗ Nein"}
+    - FAQ-Einträge:            ${(faq.faqItemsFound as number) ?? 0}
+Use the same detail-item markup/classes as the surrounding items. Put the German labels into the local
+constant-block style already used in this file (or, if the FAQ block has no local constant object, inline
+them consistently with neighbouring items — do NOT introduce labelDefaults keys here; report-export i18n
+is a separate backlog task).
+
+Optional but recommended for the transparency goal: if faq.qualityAssessment is a non-empty string, show
+it as a short muted line below (label e.g. "KI-Qualitätseinschätzung"), truncated reasonably. Only render
+this line when qualityAssessment is a non-empty string. If it's null, render nothing extra.
+
+═══════════════════════════════════════════════════════════════════
+Live view — check only, likely no change
+═══════════════════════════════════════════════════════════════════
+The Live view (ErgebnisseView.tsx) uses report.faqQuality ONLY as a numeric score in the radar/score
+displays (faqScore). It has NO FAQ detail card with a "found/schema/entries" line, so there is nothing
+broken to fix there. VERIFY this is the case; if you find a FAQ detail display in the Live view that also
+reads faqFound/questionCount, fix it the same way. Otherwise leave the Live view untouched and say so.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- Generate an HTML report for a steinbach analysis (has FAQPage schema): the FAQ section now shows
+  "FAQ-Schema (FAQPage): ✓ Ja", an HTML-FAQ line, and the real FAQ-Einträge count — NOT "FAQ gefunden:
+  Nein". The score (80) and these signals are now CONSISTENT.
+- Generate/inspect a report for a site WITHOUT FAQ schema (e.g. the 2e-mechatronic report, score 0):
+  shows "FAQ-Schema: ✗ Nein" and entries 0 — consistent with score 0.
+- Confirm no "faqFound" or "questionCount" reference remains in report-export.ts.
+- Confirm the Live view was verified (and whether it needed a change).
+- Report exact lines changed; confirm backend untouched.
