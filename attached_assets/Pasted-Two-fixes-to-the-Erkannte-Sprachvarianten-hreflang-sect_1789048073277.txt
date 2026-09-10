@@ -1,0 +1,54 @@
+Two fixes to the "Erkannte Sprachvarianten" (hreflang) section in the HTML report, to make it consistent
+with the Live/PDF view. Do NOT touch the Live view or the backend. Do NOT publish.
+
+File: artifacts/gaio-analyzer/src/lib/report-export.ts
+
+═══════════════════════════════════════════════════════════════════
+FIX 1 (Punkt 2) — MOVE the hreflang section up to match Live/PDF order
+═══════════════════════════════════════════════════════════════════
+Currently the "Erkannte Sprachvarianten" block (~lines 532-540, the `if (hreflang.length > 0) { ... }`)
+sits at the very END of the Analyse-Details section, after FAQ-Qualität. In the Live/PDF view it appears
+right AFTER the technical metrics ("Technische SEO-Basis"), before Schema.org.
+
+Move the ENTIRE hreflang block so it renders immediately AFTER the "Technische SEO-Basis" H3 block
+(~line 393 block end) and BEFORE the "Schema.org / Strukturierte Daten" H3 (~line 434). Do not change
+the block's internal markup in this step beyond FIX 2 below. Keep the `hreflang`/`uniqueLangs` variable
+usage working at the new location (hreflang is defined at ~line 365, well before, so it stays in scope).
+
+Resulting Analyse-Details order (matching Live/PDF):
+  crawl-reliability → Gecrawlte Seiten → Technische SEO-Basis → Erkannte Sprachvarianten →
+  Schema.org → Heading-Struktur → Inhaltliche Relevanz → FAQ-Qualität
+
+═══════════════════════════════════════════════════════════════════
+FIX 2 (Punkt 3) — SHOW the section even when there are 0 variants
+═══════════════════════════════════════════════════════════════════
+Currently `if (hreflang.length > 0)` means: zero variants → section is silently omitted. The Live view
+ALWAYS shows the section (with an empty-state note). Make the HTML export do the same.
+
+Replace the `if (hreflang.length > 0) { ... }` guard so the section ALWAYS renders:
+  - Heading: keep `<h3>Erkannte Sprachvarianten (${uniqueLangs.length})</h3>` — with 0 it shows "(0)".
+    (uniqueLangs must be computed outside the old guard now; when hreflang is empty it's an empty array,
+    length 0.)
+  - If hreflang.length > 0: render the badges + the existing "N Sprachvarianten-URLs gespeichert…" note,
+    exactly as today.
+  - If hreflang.length === 0: render a muted empty-state line instead of badges, using the SAME wording
+    the Live view uses (labelDefaults key results.hreflang_empty = "Keine Sprachvarianten dieser Website
+    gefunden."). Since report-export.ts is German-hardcoded, inline that exact German string here (do NOT
+    add a labelDefaults key — report-export i18n is a separate backlog task).
+
+Make sure uniqueLangs is defined regardless of branch:
+  const uniqueLangs = [...new Set(hreflang.map((v) => v.lang))].sort();
+  html += `<h3>Erkannte Sprachvarianten (${uniqueLangs.length})</h3>`;
+  if (hreflang.length > 0) { ...badges + note... } else { ...muted "Keine Sprachvarianten…" line... }
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- HTML report for a site WITH hreflang (e.g. 2e-mechatronic, has 1 variant): "Erkannte Sprachvarianten (1)"
+  now appears right after "Technische SEO-Basis" and before "Schema.org", with the badge and the note.
+- HTML report for a site WITHOUT hreflang (e.g. steinbach, 0 variants): the section now DOES appear,
+  showing "Erkannte Sprachvarianten (0)" and the "Keine Sprachvarianten dieser Website gefunden." line —
+  no longer silently omitted.
+- Confirm the section no longer appears at the old position (after FAQ).
+- Report exact lines moved/changed; confirm Live view and backend untouched.

@@ -414,6 +414,18 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += renderTechnischeDateienHtml(technicalSeo);
   }
 
+  const uniqueLangs = [...new Set(hreflang.map((v) => v.lang))].sort();
+  html += `<h3>Erkannte Sprachvarianten (${uniqueLangs.length})</h3>`;
+  if (hreflang.length > 0) {
+    html += `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+      ${uniqueLangs.map((lang) => `<span style="background:${C.bg};border:1px solid ${C.border};border-radius:6px;padding:4px 10px;font-size:13px;">${langBadge(lang)}</span>`).join("")}
+    </div>
+    <p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${hreflang.length} Sprachvarianten-URLs gespeichert für spätere Mehrsprachenanalyse</p>`;
+  } else {
+    html += `<p style="font-size:12px;color:${C.textMuted};margin-top:6px;">Keine Sprachvarianten dieser Website gefunden.</p>`;
+  }
+
   if (schemaOrg) {
     const ST = {
       breakdownTitle: "Aufschlüsselung des Scores",
@@ -527,16 +539,6 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       <div class="detail-item"><div class="label">${FT.entries}</div><div class="val">${(faq.faqItemsFound as number) ?? 0}</div></div>
     </div>
     ${displayedAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;"><strong>${FT.qualityAssessment}:</strong> ${esc(displayedAssessment)}</p>` : ""}`;
-  }
-
-  if (hreflang.length > 0) {
-    const uniqueLangs = [...new Set(hreflang.map((v) => v.lang))].sort();
-    html += `
-    <h3>Erkannte Sprachvarianten (${uniqueLangs.length})</h3>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-      ${uniqueLangs.map((lang) => `<span style="background:${C.bg};border:1px solid ${C.border};border-radius:6px;padding:4px 10px;font-size:13px;">${langBadge(lang)}</span>`).join("")}
-    </div>
-    <p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${hreflang.length} Sprachvarianten-URLs gespeichert für spätere Mehrsprachenanalyse</p>`;
   }
 
   return html;
