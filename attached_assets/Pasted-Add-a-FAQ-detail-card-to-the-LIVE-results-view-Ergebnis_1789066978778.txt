@@ -1,0 +1,67 @@
+Add a FAQ detail card to the LIVE results view (ErgebnisseView.tsx), so the Live view and the PDF show
+the same FAQ signals the HTML report already shows (FAQ-Schema / HTML-FAQ / entries / quality
+assessment). Today the Live view only uses faqQuality as a radar score — there is no FAQ detail card, so
+the PDF (which is the Live view) shows no FAQ detail. This closes the last renderer gap. ALL new text via
+the i18n label system (standing rule). Do NOT change the FAQ score logic. Do NOT touch report-export.ts
+or the backend. Do NOT publish.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+faqQuality is already read at line 871: `const faqQuality = report.faqQuality as Record<string, unknown> | null;`
+Backend provides on it: { score:number, faqItemsFound:number, hasFaqSchema:boolean, hasHtmlFaq:boolean,
+qualityAssessment:string|null }.
+The Schema.org card (~line 2429, `{schemaOrg && ( <Card>...</Card> )}`) is the STYLE TEMPLATE: <Card>/
+<CardHeader>/<CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">,
+then <CardContent className="space-y-3">, muted labels, Badges, etc. Match it.
+The scoreColor helper at ~line 291 (returns an hsl string by score) is available for colouring the score.
+
+═══════════════════════════════════════════════════════════════════
+1) Insert a new FAQ card in the Details tab, AFTER the content-relevance card
+═══════════════════════════════════════════════════════════════════
+The content-relevance card ends at ~line 2562 (`</Card>` then `)}` at 2563). Insert the FAQ card
+immediately after it (so order is: ... Content-Relevanz → FAQ-Qualität → [tab continues]).
+This mirrors the HTML export order (FAQ after Inhaltliche Relevanz).
+
+Guard: render only when faqQuality is present: `{faqQuality && ( <Card> ... </Card> )}`.
+
+Card content (match Schema-card styling; use small muted labels + values in a simple grid/rows like the
+other cards):
+  - CardTitle: {t("results.faq_card_title")}
+  - Score line: show `{faqQuality.score}/100`, coloured via scoreColor(faqQuality.score as number ?? 0)
+    (mirror how other cards show their score if they do; if unsure, a coloured number is fine)
+  - {t("results.faq_schema_label")}:   {(faqQuality.hasFaqSchema as boolean) ? t("results.faq_yes") : t("results.faq_no")}
+  - {t("results.faq_html_label")}:     {(faqQuality.hasHtmlFaq as boolean)   ? t("results.faq_yes") : t("results.faq_no")}
+  - {t("results.faq_entries_label")}:  {(faqQuality.faqItemsFound as number) ?? 0}
+  - If faqQuality.qualityAssessment is a non-empty string, show it as a muted paragraph below, prefixed
+    with a bold {t("results.faq_assessment_label")}: — truncate to a reasonable length (e.g. 400 chars)
+    the same way the HTML export does. If null/empty, render nothing extra.
+
+Use ✓/✗ prefixes on the yes/no values to match the HTML report's style if it's easy (e.g. faq_yes =
+"✓ Ja", faq_no = "✗ Nein") — put the ✓/✗ INSIDE the label value strings.
+
+═══════════════════════════════════════════════════════════════════
+2) i18n — NEW keys in labelDefaults.ts, group "results"
+═══════════════════════════════════════════════════════════════════
+  results.faq_card_title        "FAQ-Qualität"
+  results.faq_schema_label      "FAQ-Schema (FAQPage)"
+  results.faq_html_label        "HTML-FAQ erkannt"
+  results.faq_entries_label     "FAQ-Einträge"
+  results.faq_assessment_label  "KI-Qualitätseinschätzung"
+  results.faq_yes               "✓ Ja"
+  results.faq_no                "✗ Nein"
+  results.faq_score_label       "Score"   (only if you render a labelled score row; else skip)
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes (isolate GAIO frontend; api-zod root issue is pre-existing).
+- Live Details tab for a steinbach analysis (has FAQPage schema): a "FAQ-Qualität" card now appears
+  after "Inhaltliche Relevanz", showing score, "FAQ-Schema (FAQPage): ✓ Ja", "HTML-FAQ erkannt", the real
+  entry count, and (if present) the assessment.
+- Confirm it ALSO renders in PDF mode (no pdfMode exclusion) — this is the whole point.
+- Live view for a site without FAQ schema (2e-mechatronic, score 0): shows "✗ Nein" and 0 entries,
+  consistent with score 0.
+- Old report without faqQuality: no card (guard).
+- Under EN: labels fall back to German, never raw keys.
+- Report exact lines added; confirm report-export.ts and backend untouched.

@@ -2561,6 +2561,48 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               </CardContent>
             </Card>
           )}
+
+          {faqQuality && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("results.faq_card_title")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("results.faq_score_label")}</p>
+                    <p className="font-mono font-bold" style={{ color: scoreBadgeColor((faqQuality.score as number) ?? 0) }}>
+                      {(faqQuality.score as number) ?? 0}/100
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("results.faq_schema_label")}</p>
+                    <p className="font-medium">
+                      {(faqQuality.hasFaqSchema as boolean) ? t("results.faq_yes") : t("results.faq_no")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("results.faq_html_label")}</p>
+                    <p className="font-medium">
+                      {(faqQuality.hasHtmlFaq as boolean) ? t("results.faq_yes") : t("results.faq_no")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("results.faq_entries_label")}</p>
+                    <p className="font-mono font-medium">{(faqQuality.faqItemsFound as number) ?? 0}</p>
+                  </div>
+                </div>
+                {typeof faqQuality.qualityAssessment === "string" && faqQuality.qualityAssessment.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    <strong>{t("results.faq_assessment_label")}:</strong>{" "}
+                    {faqQuality.qualityAssessment.trim().slice(0, 400)}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* LLM Tab */}
