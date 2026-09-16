@@ -1,14 +1,3 @@
-import { defineConfig } from "drizzle-kit";
-import path from "path";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
-
-export default defineConfig({
-  schema: path.join(__dirname, "./src/schema/index.ts"),
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL,
-  },
-});
+// Disabled intentionally: lib/db is an unused template and must not be used as a schema source.
+throw new Error("drizzle-kit is disabled in this project: lib/db is an unused template. Running push would drop all GAIO production tables.");
+export {};

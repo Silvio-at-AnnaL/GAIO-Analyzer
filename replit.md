@@ -15,7 +15,7 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - **Charts**: Recharts (radar, donut, bar charts)
 - **HTML parsing**: cheerio (Node.js)
 - **AI/LLM**: Anthropic via Replit AI Integrations (claude-sonnet-4-6)
-- **Database**: PostgreSQL + Drizzle ORM (not currently used for analysis storage)
+- **Database**: PostgreSQL (Neon), accessed via raw SQL in artifacts/api-server/src/lib/db*. lib/db is an unused Drizzle template.
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -75,6 +75,10 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - `AI_INTEGRATIONS_ANTHROPIC_API_KEY` — Auto-configured by Replit AI Integrations
 - `SESSION_SECRET` — Session secret
 - `DATABASE_URL` — PostgreSQL connection (auto-configured)
+
+## Database safety
+
+Never run drizzle-kit push / push-force / db push against this project's database; lib/db must not be used as schema source.
 
 ## LLM Discoverability — Two-Part Question Structure
 
