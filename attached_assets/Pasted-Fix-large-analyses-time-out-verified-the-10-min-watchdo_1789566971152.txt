@@ -1,0 +1,66 @@
+Fix "large analyses time out" — verified: the 10-min watchdog limits the WHOLE analysis, and Module 7
+(competitor comparison, analysis-engine.ts ~line 452) runs LAST and unbounded. In competitors.ts the loop
+(~line 119) crawls EACH competitor with crawlSite(url, 5) WITHOUT a deadline, plus an LLM call
+(generateFindings) — sequentially, with NO cap on the number of competitors. On a Wirthwein-style run with
+several big competitor sites this pushes total runtime past 10 min, so the watchdog aborts even though the
+main crawl (16 pages) succeeded. Two coordinated fixes: bound Module 7, and raise the watchdog moderately.
+Do NOT touch the frontend or report renderers. Do NOT publish. Report back before pushing.
+
+═══════════════════════════════════════════════════════════════════
+1) competitors.ts — bound the competitor loop (the root cause)
+═══════════════════════════════════════════════════════════════════
+a) Cap the number of competitors actually processed. At the top of analyzeCompetitors, before the loop:
+     const MAX_COMPETITORS = 5;
+     const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
+   Loop over urlsToProcess instead of competitorUrls. (5 is generous; the report's own note already says
+   competitor scores are a sample. If more than 5 were given, the extra ones are simply not crawled — the
+   analysis still completes.)
+
+b) Give each competitor crawl a hard deadline. Change (~line 126):
+     const crawlResult = await crawlSite(normalizedUrl, 5);
+   to pass a per-competitor deadline via the options crawlSite already supports (added earlier today):
+     const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: 45_000 });
+   45s per competitor crawl is plenty for 5 pages and caps the worst case.
+
+c) Bound the generateFindings LLM call with a timeout so one slow LLM response can't stall the loop. The
+   anthropic.messages.create call (~line 93) has no explicit timeout. Wrap the generateFindings call
+   (~line 184) in a Promise.race against a timeout (e.g. 30s); on timeout, set findings to null and
+   continue (the competitor still gets its scores, just no AI findings text). Keep the existing try/catch
+   and `continue` behaviour for hard failures.
+   Pattern:
+     let findings = null;
+     try {
+       findings = await Promise.race([
+         generateFindings("Ihre Website", mainSiteScores, competitorDomain, competitorScores),
+         new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
+       ]);
+     } catch { findings = null; }
+
+d) OPTIONAL but recommended: also add an overall Module-7 budget. Track a start time at the top of
+   analyzeCompetitors; inside the loop, before processing the next competitor, if elapsed > e.g. 5 minutes,
+   stop processing further competitors (break) and return what was gathered. This guarantees Module 7
+   cannot itself consume the whole watchdog budget even with 5 slow competitors.
+
+═══════════════════════════════════════════════════════════════════
+2) analysis-engine.ts — raise the watchdog moderately
+═══════════════════════════════════════════════════════════════════
+Change ANALYSIS_MAX_MS (~line 47) from 10 minutes to 15 minutes:
+     const ANALYSIS_MAX_MS = 15 * 60 * 1000;
+Update the German timeout message text (~line 48) accordingly:
+     "Analyse abgebrochen: Zeitlimit überschritten (15 Min.)"
+Rationale to encode as a comment: with Module 7 now bounded (max 5 competitors × 45s crawl + 30s LLM ≈
+6-7 min worst case, plus main crawl ≤90s and other modules), 15 min gives comfortable headroom while still
+catching genuinely stuck analyses. Do NOT raise it further — the point of the watchdog is to catch hangs.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- API typecheck passes.
+- Explain the new worst-case timing math: main crawl (≤90s) + other modules + Module 7 (≤ ~6-7 min with
+  the caps) stays comfortably under 15 min.
+- Re-run the Wirthwein analysis (the one that intermittently aborted) WITH its competitor URLs: it must now
+  complete reliably, not abort. Report elapsed time and final status.
+- Confirm a normal analysis WITHOUT competitors is unaffected (Module 7 is skipped when competitorUrls is
+  empty).
+- Confirm that if >5 competitors are given, only 5 are processed and the analysis still completes.
+- Backend only; no frontend/report changes.

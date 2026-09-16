@@ -113,17 +113,20 @@ export async function analyzeCompetitors(
   competitorUrls: string[],
   mainSiteScores?: MainSiteScores,
 ): Promise<CompetitorResult> {
+  const MAX_COMPETITORS = 5;
+  const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
   const competitors: CompetitorScore[] = [];
 
-  // B1: Process ALL entered competitor URLs — no silent skipping
-  for (const url of competitorUrls) {
+  // Competitor scoring is a sample; cap the work so this module cannot grow
+  // without bound when many URLs are submitted.
+  for (const url of urlsToProcess) {
     const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
     const competitorDomain = extractDomainName(normalizedUrl);
 
     try {
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
-      const crawlResult = await crawlSite(normalizedUrl, 5);
+      const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: 45_000 });
 
       if (crawlResult.pages.length === 0) {
         logger.warn({ url }, "Competitor crawl returned no pages — including with zero scores");
@@ -181,7 +184,14 @@ export async function analyzeCompetitors(
 
       let findings: CompetitorFindings | null = null;
       if (mainSiteScores) {
-        findings = await generateFindings("Ihre Website", mainSiteScores, competitorDomain, competitorScores);
+        try {
+          findings = await Promise.race([
+            generateFindings("Ihre Website", mainSiteScores, competitorDomain, competitorScores),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
+          ]);
+        } catch {
+          findings = null;
+        }
       }
 
       competitors.push({

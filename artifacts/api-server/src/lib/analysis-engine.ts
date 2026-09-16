@@ -44,8 +44,10 @@ interface AnalysisEntry {
 }
 
 const analysisStore = new Map<string, AnalysisEntry>();
-const ANALYSIS_MAX_MS = 10 * 60 * 1000;
-const ANALYSIS_TIMEOUT_ERROR = "Analyse abgebrochen: Zeitlimit überschritten (10 Min.)";
+// Module 7 is bounded to five competitors with 45s crawls and 30s findings;
+// 15 minutes leaves headroom for the 90s main crawl and the other modules.
+const ANALYSIS_MAX_MS = 15 * 60 * 1000;
+const ANALYSIS_TIMEOUT_ERROR = "Analyse abgebrochen: Zeitlimit überschritten (15 Min.)";
 const watchdogExpiredAnalyses = new Set<string>();
 
 const analysisWatchdog = setInterval(() => {
