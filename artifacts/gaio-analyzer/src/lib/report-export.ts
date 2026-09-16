@@ -1267,6 +1267,64 @@ export function buildKontaktDocumentHtml(logoSrc: string, profileSrc: string, co
 
 // ─── Main export function ─────────────────────────────────────────────────────
 
+type ReportDocumentShell = (
+  titleTarget: string,
+  documentBody: string,
+  analysisDataScript?: string,
+) => string;
+
+function buildFailedReportShell(
+  report: Record<string, unknown>,
+  logoHtml: string,
+  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData },
+  reportDocumentShell: ReportDocumentShell,
+): string {
+  const url = String(report.url ?? "Unbekannte URL");
+  const companyName = opts.inputParams?.companyName?.trim() ?? "";
+  const titleTarget = companyName || url;
+  const errors = Array.isArray(report.errors) ? report.errors : [];
+  const failureReason = String(errors.at(-1) ?? "Die Website konnte nicht automatisiert analysiert werden.");
+  const reliability = report.crawlReliability as Record<string, unknown> | null | undefined;
+  const limitedReliability = reliability
+    ? {
+        ...reliability,
+        failures: Array.isArray(reliability.failures)
+          ? reliability.failures.slice(0, 25)
+          : [],
+      }
+    : null;
+
+  const failedBodyContent = `  <header style="margin-bottom:28px;">
+    ${logoHtml ? `<div style="margin-bottom:20px;">${logoHtml}</div>` : ""}
+    <h1>GAIO Analysebericht – ${esc(titleTarget)}</h1>
+    <p class="subtitle">${esc(url)} · ${new Date().toLocaleDateString("de-DE")}</p>
+  </header>
+
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #ef4444;border-radius:8px;padding:20px 22px;margin:20px 0 28px;">
+    <h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">Analyse nicht möglich</h2>
+    <p style="font-size:14px;color:${C.text};margin-bottom:10px;">Die Website von <strong>${esc(titleTarget)}</strong> konnte nicht automatisiert analysiert werden.</p>
+    <p style="font-size:13px;color:${C.textSec};margin-bottom:14px;"><strong>Grund:</strong> ${esc(failureReason)}</p>
+    <p style="font-size:13px;color:${C.textSec};"><strong>Was bedeutet das?</strong> KI-Systeme wie ChatGPT, Perplexity oder Google-KI greifen auf Websites über automatisierte Crawler zu — dieselbe Technik, die hier scheiterte. Eine Website, die für unseren Analyse-Crawler nicht zuverlässig erreichbar ist, ist mit hoher Wahrscheinlichkeit auch für KI-Crawler schlecht oder gar nicht sichtbar. Das ist ein unmittelbares Risiko für die Auffindbarkeit in KI-Antworten.</p>
+  </div>
+
+  ${divider("Crawl-Zuverlässigkeit")}
+  <h2>Crawl-Zuverlässigkeit</h2>
+  ${renderCrawlReliabilityHtml(limitedReliability)}
+
+  ${divider("Nächste Schritte")}
+  <h2>Nächste Schritte</h2>
+  <ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:${C.textSec};line-height:1.8;">
+    <li>Erreichbarkeit und Antwortzeiten der Website prüfen.</li>
+    <li>Fehlerhafte oder nicht erreichbare URLs bereinigen.</li>
+    <li>Nach der Behebung eine erneute GAIO-Analyse durchführen.</li>
+  </ul>
+
+  ${renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData)}
+`;
+
+  return reportDocumentShell(titleTarget, failedBodyContent);
+}
+
 export async function generateHtmlReport(
   report: Record<string, unknown>,
   opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
@@ -1284,6 +1342,10 @@ export async function generateHtmlReport(
       }
     }
   } catch { /* ignore */ }
+
+  if (report.status === "failed") {
+    return buildFailedReportShell(report, logoHtml, opts, reportDocumentShell);
+  }
 
   const overallScore = (report.overallScore as number) ?? 0;
   const url          = String(report.url ?? "HTML-Upload");
@@ -1308,12 +1370,17 @@ export async function generateHtmlReport(
     renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData),
   ].filter(Boolean).join("\n");
 
-  return `<!DOCTYPE html>
+  function reportDocumentShell(
+    titleTarget: string,
+    documentBody: string,
+    analysisDataScript = "",
+  ): string {
+    return `<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GAIO Analysebericht – ${esc(opts.inputParams?.companyName?.trim() ? opts.inputParams.companyName.trim() : url)}</title>
+<title>GAIO Analysebericht – ${esc(titleTarget)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -1450,7 +1517,14 @@ export async function generateHtmlReport(
 </head>
 <body>
 <div class="container">
-  <h1>GAIO Analysebericht${opts.inputParams?.companyName?.trim() ? ` – ${esc(opts.inputParams.companyName.trim())}` : ""}</h1>
+${documentBody}
+</div>
+${analysisDataScript}
+</body>
+</html>`;
+  }
+
+  const successDocumentBody = `  <h1>GAIO Analysebericht${opts.inputParams?.companyName?.trim() ? ` – ${esc(opts.inputParams.companyName.trim())}` : ""}</h1>
   <p class="subtitle">${esc(url)} · ${crawledCount} Seiten · ${new Date().toLocaleDateString("de-DE")}</p>
 
   <div class="overall">
@@ -1467,9 +1541,11 @@ export async function generateHtmlReport(
   </table>
 
   ${bodyContent}
+`;
+  const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? 0, schema: scoreDefs[1]?.score ?? 0, headings: scoreDefs[2]?.score ?? 0, content: scoreDefs[3]?.score ?? 0, faq: scoreDefs[4]?.score ?? 0, llm: scoreDefs[5]?.score ?? 0 } })}</script>`;
+  const titleTarget = opts.inputParams?.companyName?.trim()
+    ? opts.inputParams.companyName.trim()
+    : url;
 
-</div>
-<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? 0, schema: scoreDefs[1]?.score ?? 0, headings: scoreDefs[2]?.score ?? 0, content: scoreDefs[3]?.score ?? 0, faq: scoreDefs[4]?.score ?? 0, llm: scoreDefs[5]?.score ?? 0 } })}</script>
-</body>
-</html>`;
+  return reportDocumentShell(titleTarget, successDocumentBody, analysisDataScript);
 }

@@ -1,0 +1,103 @@
+Add a FAILED-report variant inside generateHtmlReport (report-export.ts), Weg X: a branch that renders a
+sales-usable error report using the SAME document shell (DOCTYPE/head/CSS/body wrapper) as the success
+report, so branding, header logo, styling and the Kontakt block are guaranteed identical. The success
+path stays completely untouched. All new German strings inline consistently with the file's existing
+hardcoded-German approach (report-export i18n is a separate backlog item). Do NOT touch the backend.
+Do NOT publish. Report back before pushing.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+generateHtmlReport starts at ~line 1270. It fetches the branding logo (~1275-1283, into logoHtml), then
+builds the success result from ~1288 onward, assembles `bodyContent` from the success sections (~1301),
+and returns the full document shell (DOCTYPE/head/<style>/<body>) at ~1311.
+
+On report.status === "failed", the report has NO scores/modules — only:
+  report.status === "failed"
+  report.errors: string[]                          (the differentiated German failure message is the last entry)
+  report.crawlReliability: { attempted, succeeded, failed, failures: [{url, reason, statusCode?}] }
+  report.url, and opts.inputParams?.companyName / opts.contactData for branding + Kontakt.
+
+Reusable building blocks already in this file: renderKontaktSection(logoHtml, profileSrc, contact),
+divider(...), esc(...), the C.* colour tokens, and the shared <style> in the return shell.
+
+═══════════════════════════════════════════════════════════════════
+THE CHANGE — branch AFTER the logo fetch, BEFORE the success result build
+═══════════════════════════════════════════════════════════════════
+Right after logoHtml is set (~line 1284, before `const overallScore = ...` at 1288), add:
+
+    if (report.status === "failed") {
+      return buildFailedReportShell(report, logoHtml, opts);
+    }
+
+Then add a new module-level function `buildFailedReportShell(report, logoHtml, opts)` that returns a FULL
+`<!DOCTYPE html>...` document. CRITICAL: it must reuse the EXACT SAME <head>/<style>/<body>/.container
+wrapper as the success return (~lines 1311+). The cleanest way: factor the shared shell so both paths use
+it — but since you chose Weg X (single entry, guaranteed same frame), the simplest safe approach is:
+copy the exact same document-shell template (the `<!DOCTYPE html>...<style>...</style>...<body><div
+class="container">${BODY}</div></body></html>` wrapper) and only swap the inner BODY. To avoid the shell
+drifting, extract the shell into a small helper used by BOTH returns:
+
+    function reportDocumentShell(titleTarget: string, bodyContent: string): string {
+      return `<!DOCTYPE html>\n<html lang="de">\n<head>...<style>...(the existing full CSS)...</style>...
+      </head>\n<body>\n<div class="container">\n${bodyContent}\n</div>\n</body>\n</html>`;
+    }
+  - Move the existing success return's shell into reportDocumentShell WITHOUT changing a single CSS rule
+    or wrapper element (verify byte-for-byte that the success output is unchanged — this is the one place
+    that touches the success path, so it must be a pure extraction).
+  - Success path becomes: `return reportDocumentShell(<existing title target>, bodyContent);`
+  - Failed path: `return reportDocumentShell(<company or url>, failedBodyContent);`
+
+═══════════════════════════════════════════════════════════════════
+FAILED BODY CONTENT — the sales report
+═══════════════════════════════════════════════════════════════════
+Build failedBodyContent as a string with these blocks, in this order, styled with the existing tokens/
+classes (h1/h2/h3, C.*, the warning-box style used elsewhere in the file):
+
+1. HEADER: the logo (logoHtml) + an h1 "GAIO Analysebericht – ${company or url}" and a subtitle line, so
+   it opens exactly like a normal report (branding first). Reuse the same header markup the success shell
+   uses at the top if there is one; otherwise a simple logo + h1 + subtitle.
+
+2. A PROMINENT ERROR BLOCK (the core sales message). Use a strong, clearly-styled box (red/amber accent
+   like the existing `background:#fef2f2;border-left:4px solid #ef4444` style):
+     h2: "Analyse nicht möglich"
+     A clear paragraph naming the company/URL and the reason, e.g.:
+       "Die Website von <strong>${company or url}</strong> konnte nicht automatisiert analysiert werden."
+       then the differentiated reason from report.errors (last entry), esc'd.
+     A short sales-oriented interpretation paragraph (this is the point of the whole feature). Vary it by
+     reason if easy, else a generic one:
+       "Was bedeutet das? KI-Systeme wie ChatGPT, Perplexity oder Google-KI greifen auf Websites über
+        automatisierte Crawler zu — dieselbe Technik, die hier scheiterte. Eine Website, die für unseren
+        Analyse-Crawler nicht zuverlässig erreichbar ist, ist mit hoher Wahrscheinlichkeit auch für
+        KI-Crawler schlecht oder gar nicht sichtbar. Das ist ein unmittelbares Risiko für die
+        Auffindbarkeit in KI-Antworten."
+
+3. CRAWL-ZUVERLÄSSIGKEIT als Beweis (reuse the same style as the crawl-reliability section in the success
+   report — a context block, not a scored module):
+     "Seiten versucht: N · Erfolgreich: M · Fehlgeschlagen: K"
+     If failures.length > 0: a table/list of up to 25 failed URLs with their reason (map reason→German
+     label: tls_chain→"TLS-Zertifikatskette unvollständig", tls_other→"TLS-Zertifikatsfehler",
+     dns→"DNS nicht auflösbar", refused→"Verbindung abgelehnt", timeout→"Zeitüberschreitung",
+     http_error→"HTTP-Fehler", unknown→"Unbekannt") and statusCode if present. esc all URLs.
+     This is the concrete evidence the salesperson shows the customer ("your site produced N dead/failing
+     URLs").
+
+4. A SHORT "NÄCHSTE SCHRITTE" block: 2-3 bullet suggestions (generic, e.g. "Erreichbarkeit und
+   Antwortzeiten der Website prüfen", "Fehlerhafte/tote URLs bereinigen", "Nach Behebung erneute Analyse").
+
+5. The KONTAKT block: renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData) — identical
+   to the success report, so the salesperson's contact details are on it.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- Frontend typecheck passes.
+- Prove the success path is byte-for-byte unchanged: generate a report for a COMPLETED analysis
+  (e.g. steinbach data) before and after — the HTML output must be identical (the shell extraction was
+  pure). Describe how you verified this.
+- Generate a failed report from a failed report object (status:"failed", with a crawlReliability that has
+  some failures and an errors array): confirm the output is a full branded document with the logo, the
+  prominent error block, the sales interpretation, the crawl-reliability evidence with the failed-URL
+  list, next-steps, and the Kontakt block — all in the SAME visual style as a normal report.
+- Confirm all dynamic values (company, url, failed URLs, error message) are esc'd.
+- Report exact lines changed; confirm backend untouched.
