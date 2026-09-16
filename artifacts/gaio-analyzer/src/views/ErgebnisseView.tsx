@@ -71,7 +71,10 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
   const t = useT();
   const [completedModules, setCompletedModules] = useState<string[]>([]);
   const [currentModuleName, setCurrentModuleName] = useState<string | null>(null);
+  const [exportingFailedHtml, setExportingFailedHtml] = useState(false);
   const { domainForm } = useAppStore();
+  const { footerText: brandingFooterText } = useBranding();
+  const failedAutoSavedRef = useRef(false);
 
   const { data: report } = useGetAnalysisReport(analysisId, {
     query: {
@@ -97,6 +100,88 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
 
   const progress = report?.progress ?? 0;
   const isFailed = report?.status === "failed";
+
+  const buildFailedHtml = async () => {
+    if (!report || report.status !== "failed") return "";
+
+    const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const [brandingResponse, contactResponse] = await Promise.all([
+      fetch(`${apiBase}/api/admin/public/branding`).then((response) => response.ok ? response.json() : {}).catch(() => ({})),
+      fetch(`${apiBase}/api/admin/public/contact`).then((response) => response.ok ? response.json() : {}).catch(() => ({})),
+    ]);
+    const contactData: ContactData = {
+      name:       (contactResponse as Record<string, string>).name       ?? "",
+      title:      (contactResponse as Record<string, string>).title      ?? "",
+      company:    (contactResponse as Record<string, string>).company    ?? "",
+      email:      (contactResponse as Record<string, string>).email      ?? "",
+      photoSrc:   (contactResponse as Record<string, string>).photoSrc   ?? "",
+      ctaText:    (contactResponse as Record<string, string>).ctaText    ?? "",
+      ctaSubtext: (contactResponse as Record<string, string>).ctaSubtext ?? "",
+    };
+    const inputParams: InputParams = {
+      domainUrl: String(report.url ?? ""),
+      companyName: domainForm.companyName.trim() || null,
+      targetAudience: domainForm.personas.trim() || null,
+      competitors: domainForm.competitors.filter((competitor) => competitor.trim()),
+      analysisDate: new Date().toLocaleString("de-DE"),
+      crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
+    };
+
+    return generateHtmlReport(report as unknown as Record<string, unknown>, {
+      profileSrc: contactData.photoSrc,
+      inputParams,
+      contactData,
+      footerText: (brandingResponse as Record<string, string>).footerText ?? brandingFooterText,
+    });
+  };
+
+  useEffect(() => {
+    if (report?.status !== "failed" || failedAutoSavedRef.current) return;
+    failedAutoSavedRef.current = true;
+
+    void (async () => {
+      try {
+        const htmlContent = await buildFailedHtml();
+        if (!htmlContent) return;
+
+        const reportRecord = report as unknown as Record<string, unknown>;
+        const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+        await fetch(`${basePrefix}/api/admin/analysis-log/auto-export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            htmlContent,
+            logId: (reportRecord.logId as number | null | undefined) ?? null,
+            domain: String(report.url ?? ""),
+            companyName: domainForm.companyName.trim() || "",
+            gaioScore: null,
+            scoresJson: null,
+            pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+          }),
+        });
+      } catch {
+        // Silent — must never affect user experience
+      }
+    })();
+  }, [report?.status]);
+
+  const downloadFailedHtml = async () => {
+    setExportingFailedHtml(true);
+    try {
+      const htmlContent = await buildFailedHtml();
+      if (!htmlContent) return;
+
+      const blob = new Blob([htmlContent], { type: "text/html" });
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = `GAIO-Analyse-${formatDomainForFilename(report?.url)}-${buildExportTimestamp()}.html`;
+      anchor.click();
+      URL.revokeObjectURL(downloadUrl);
+    } finally {
+      setExportingFailedHtml(false);
+    }
+  };
 
   return (
     <div className="max-w-xl space-y-6">
@@ -178,6 +263,22 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
           {report.errors.map((e, i) => (
             <p key={i} className="text-xs text-muted-foreground">– {e}</p>
           ))}
+        </div>
+      )}
+
+      {isFailed && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">{t("progress.failed_download_hint")}</p>
+          <Button onClick={downloadFailedHtml} disabled={exportingFailedHtml}>
+            {exportingFailedHtml ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <FileText className="w-4 h-4 mr-2" />
+            )}
+            {exportingFailedHtml
+              ? t("progress.failed_download_loading")
+              : t("progress.failed_download_button")}
+          </Button>
         </div>
       )}
     </div>

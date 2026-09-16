@@ -278,6 +278,9 @@ export const labelDefaults: Record<string, LabelDef> = {
   "progress.para_dont_close_prefix":  { group: "progress", de: "Wichtig:" },
   "progress.para_dont_close_body":    { group: "progress", de: " Bitte schließen Sie diesen Tab oder dieses Fenster auf keinen Fall, da ich sonst ebenfalls gehe … und dann müssten wir noch einmal von vorne anfangen." },
   "progress.hints_label":             { group: "progress", de: "Hinweise:" },
+  "progress.failed_download_button":  { group: "progress", de: "Analyse-Ergebnis herunterladen" },
+  "progress.failed_download_hint":    { group: "progress", de: "Sie können dieses Ergebnis als Nachweis an das untersuchte Unternehmen weitergeben." },
+  "progress.failed_download_loading": { group: "progress", de: "Wird erstellt…" },
 
   "results.traffic_good":               { group: "results", de: "Gut" },
   "results.traffic_acceptable":         { group: "results", de: "Akzeptabel" },
