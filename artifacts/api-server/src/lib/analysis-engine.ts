@@ -8,7 +8,12 @@ import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
 import { analyzeCompetitors } from "./analyzers/competitors";
 import { generateRecommendations } from "./analyzers/recommendations";
 import { logger } from "./logger";
-import { createAnalysisLog, updateAnalysisLogComplete, updateAnalysisLogFailed } from "./admin-db.js";
+import {
+  createAnalysisLog,
+  saveAnalysisExport,
+  updateAnalysisLogComplete,
+  updateAnalysisLogFailed,
+} from "./admin-db.js";
 import { getScoreParams } from "./score-config.js";
 
 export interface AnalysisState {
@@ -160,6 +165,65 @@ function extractBrandTerms(q?: QuestionnaireInput | null): string[] {
     terms.push(...q.brandVariants.split(/[,;]+/).map((s) => s.trim()).filter(Boolean));
   }
   return terms;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function buildFailedCrawlHtml(
+  state: AnalysisState,
+  companyName: string | null,
+  errorMessage: string,
+): string {
+  const reliability = state.crawlReliability;
+  const analysedUrl = state.url ?? "Unbekannte URL";
+  const titleTarget = companyName || analysedUrl;
+  const failures = reliability.failures.slice(0, 25);
+  const failureRows = failures.length > 0
+    ? failures.map((failure) => {
+        const detail = failure.statusCode
+          ? `${failure.reason} (HTTP ${failure.statusCode})`
+          : failure.reason;
+        return `<li><span>${escapeHtml(failure.url)}</span><strong>${escapeHtml(detail)}</strong></li>`;
+      }).join("")
+    : "<li>Keine einzelnen fehlgeschlagenen URLs verfügbar.</li>";
+  const analysisDate = new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date());
+
+  return `<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyse nicht möglich – ${escapeHtml(titleTarget)}</title>
+  <style>
+    body{margin:0;background:#f4f6fa;color:#182033;font:16px/1.55 Arial,sans-serif}
+    main{max-width:900px;margin:48px auto;padding:36px;background:#fff;border:1px solid #dce1ea;border-radius:12px}
+    h1{margin-top:0;font-size:30px}h2{margin-top:32px;font-size:20px}
+    .reason{padding:16px;border-left:4px solid #c53030;background:#fff5f5}
+    .summary{font-weight:700}.meta{color:#566076}ul{padding-left:22px}
+    li{margin:10px 0;overflow-wrap:anywhere}li strong{display:block;color:#566076;font-size:14px}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Analyse nicht möglich – ${escapeHtml(titleTarget)}</h1>
+    <p class="reason">${escapeHtml(errorMessage)}</p>
+    <p class="summary">Seiten versucht: ${reliability.attempted} · Erfolgreich: ${reliability.succeeded} · Fehlgeschlagen: ${reliability.failed}</p>
+    <p class="meta">Analysierte URL: ${escapeHtml(analysedUrl)}<br>Analysedatum: ${escapeHtml(analysisDate)}</p>
+    <h2>Fehlgeschlagene URLs</h2>
+    <ul>${failureRows}</ul>
+  </main>
+</body>
+</html>`;
 }
 
 export async function runAnalysis(
@@ -315,13 +379,24 @@ export async function runAnalysis(
 
       if (pages.length === 0) {
         state.status = "failed";
-        state.errors.push(
-          crawlResult.timedOut
-            ? "Crawl abgebrochen: Die Website antwortet zu langsam für eine automatisierte Analyse (Zeitlimit überschritten)."
-            : (explicitUrls && explicitUrls.length > 0
-                ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
-                : "Crawl fehlgeschlagen: Die Website konnte nicht abgerufen werden (nicht erreichbar oder blockiert automatisierte Zugriffe)."),
-        );
+        const crawlError = crawlResult.timedOut
+          ? "Crawl abgebrochen: Die Website antwortet zu langsam für eine automatisierte Analyse (Zeitlimit überschritten)."
+          : (explicitUrls && explicitUrls.length > 0
+              ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
+              : "Crawl fehlgeschlagen: Die Website konnte nicht abgerufen werden (nicht erreichbar oder blockiert automatisierte Zugriffe).");
+        state.errors.push(crawlError);
+        if (logId !== null) {
+          try {
+            await updateAnalysisLogFailed(logId, crawlError);
+          } catch (dbErr) {
+            logger.error({ dbErr }, "Failed to update analysis_log for failed crawl");
+          }
+          try {
+            await saveAnalysisExport(logId, buildFailedCrawlHtml(state, companyName, crawlError));
+          } catch (dbErr) {
+            logger.error({ dbErr }, "Failed to save error HTML export for failed crawl");
+          }
+        }
         save();
         return;
       }
