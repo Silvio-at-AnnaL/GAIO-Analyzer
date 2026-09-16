@@ -180,22 +180,33 @@ async function fetchWithTiming(
   const start = Date.now();
   let ttfb = 0;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout>;
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "GAIOAnalyzer/1.0 (Website Audit Tool)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      redirect: "follow",
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("fetch-timeout"));
+      }, timeoutMs);
     });
-    ttfb = Date.now() - start;
-    const html = await response.text();
-    return { html, statusCode: response.status, responseTime: Date.now() - start, ttfb };
+
+    const work = (async () => {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "GAIOAnalyzer/1.0 (Website Audit Tool)",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        redirect: "follow",
+      });
+      ttfb = Date.now() - start;
+      const html = await response.text();
+      return { html, statusCode: response.status, responseTime: Date.now() - start, ttfb };
+    })();
+
+    return await Promise.race([work, timeoutPromise]);
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timer!);
   }
 }
 

@@ -40,6 +40,34 @@ interface AnalysisEntry {
 }
 
 const analysisStore = new Map<string, AnalysisEntry>();
+const ANALYSIS_MAX_MS = 10 * 60 * 1000;
+const ANALYSIS_TIMEOUT_ERROR = "Analyse abgebrochen: Zeitlimit überschritten (10 Min.)";
+const watchdogExpiredAnalyses = new Set<string>();
+
+const analysisWatchdog = setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of analysisStore.entries()) {
+    if (
+      entry.state.status !== "running" ||
+      now - Date.parse(entry.startedAt) <= ANALYSIS_MAX_MS
+    ) {
+      continue;
+    }
+
+    watchdogExpiredAnalyses.add(id);
+    const state: AnalysisState = {
+      ...entry.state,
+      status: "failed",
+      currentModule: null,
+      errors: entry.state.errors.includes(ANALYSIS_TIMEOUT_ERROR)
+        ? entry.state.errors
+        : [...entry.state.errors, ANALYSIS_TIMEOUT_ERROR],
+    };
+    analysisStore.set(id, { ...entry, state });
+    logger.warn({ id }, "Analysis stopped by global watchdog");
+  }
+}, 30_000);
+analysisWatchdog.unref?.();
 
 export function getAnalysis(id: string): AnalysisState | undefined {
   return analysisStore.get(id)?.state;
@@ -177,7 +205,16 @@ export async function runAnalysis(
   };
 
   const startedAt = new Date().toISOString();
-  const save = () => analysisStore.set(id, { state: { ...state }, startedAt });
+  const save = () => {
+    if (watchdogExpiredAnalyses.has(id)) {
+      state.status = "failed";
+      state.currentModule = null;
+      if (!state.errors.includes(ANALYSIS_TIMEOUT_ERROR)) {
+        state.errors.push(ANALYSIS_TIMEOUT_ERROR);
+      }
+    }
+    analysisStore.set(id, { state: { ...state }, startedAt });
+  };
   save();
 
   const questionnaireContext = buildQuestionnaireContext(questionnaire);
@@ -195,12 +232,37 @@ export async function runAnalysis(
 
       if (explicitUrls && explicitUrls.length > 0) {
         // Use pre-selected pages, fetch them individually without re-crawling
-        const fetchedPages = await Promise.allSettled(
-          explicitUrls.map((pageUrl) => fetchPage(pageUrl)),
+        const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20_000, 180_000);
+        const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
+        const completed = new Array<boolean>(explicitUrls.length).fill(false);
+        let settled = 0;
+        let batchOpen = true;
+        let deadlineTimer: ReturnType<typeof setTimeout>;
+
+        const deadline = new Promise<void>((resolve) => {
+          deadlineTimer = setTimeout(resolve, BATCH_DEADLINE_MS);
+        });
+        const all = Promise.allSettled(
+          explicitUrls.map(async (pageUrl, index) => {
+            const page = await fetchPage(pageUrl);
+            results[index] = page;
+            completed[index] = true;
+            settled++;
+            if (batchOpen) {
+              state.progress = 5 + Math.round((settled / explicitUrls.length) * 15);
+              state.currentModule = "Crawling Website";
+              save();
+            }
+          }),
         );
-        pages = fetchedPages
-          .filter((r): r is PromiseFulfilledResult<CrawledPage> => r.status === "fulfilled" && r.value !== null)
-          .map((r) => r.value);
+
+        await Promise.race([all, deadline]);
+        batchOpen = false;
+        clearTimeout(deadlineTimer!);
+
+        pages = results.filter(
+          (page): page is CrawledPage => page !== null && page.statusCode < 400,
+        );
         crawlResult = {
           pages,
           robotsTxt: null,
@@ -215,17 +277,20 @@ export async function runAnalysis(
           hreflangVariants: [],
           reliability: {
             attempted: explicitUrls.length,
-            succeeded: pages.filter((page) => page.statusCode < 400).length,
-            failed: explicitUrls.length - pages.filter((page) => page.statusCode < 400).length,
-            failures: fetchedPages.flatMap<CrawlFailure>((fetchResult, index) => {
-              if (fetchResult.status !== "fulfilled" || fetchResult.value === null) {
+            succeeded: pages.length,
+            failed: explicitUrls.length - pages.length,
+            failures: results.flatMap<CrawlFailure>((page, index) => {
+              if (!completed[index]) {
+                return [{ url: explicitUrls[index], reason: "timeout" as const }];
+              }
+              if (page === null) {
                 return [{ url: explicitUrls[index], reason: "unknown" as const }];
               }
-              if (fetchResult.value.statusCode >= 400) {
+              if (page.statusCode >= 400) {
                 return [{
                   url: explicitUrls[index],
                   reason: "http_error" as const,
-                  statusCode: fetchResult.value.statusCode,
+                  statusCode: page.statusCode,
                 }];
               }
               return [];
@@ -242,7 +307,11 @@ export async function runAnalysis(
 
       if (pages.length === 0) {
         state.status = "failed";
-        state.errors.push("Could not crawl any pages from the provided URL");
+        state.errors.push(
+          explicitUrls && explicitUrls.length > 0
+            ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
+            : "Could not crawl any pages from the provided URL",
+        );
         save();
         return;
       }
@@ -428,6 +497,8 @@ export async function runAnalysis(
     state.progress = 100;
     state.currentModule = null;
     save();
+
+    if (watchdogExpiredAnalyses.has(id)) return;
 
     if (logId !== null) {
       try {

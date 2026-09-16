@@ -1,0 +1,100 @@
+Fix the hanging crawl bug (production issue: analyses of certain sites like inden-gmbh.de get stuck at
+5% forever) with THREE independent protection layers, so no single failure can freeze an analysis again.
+Do NOT touch the frontend or report renderers. Do NOT publish. Report back before pushing.
+
+Root cause (verified): In the explicit-URL crawl path (analysis-engine.ts ~196-234), the engine does
+`await Promise.allSettled(explicitUrls.map(fetchPage))` with NO batch deadline and NO progress updates.
+fetchWithTiming (crawler.ts ~176) has a 15s AbortController on `fetch()`, but the subsequent
+`await response.text()` can still hang on slow/malicious bodies even when the signal fires, so one URL
+can block the whole batch indefinitely.
+
+═══════════════════════════════════════════════════════════════════
+LAYER 1 — crawler.ts: make the body read respect the timeout
+═══════════════════════════════════════════════════════════════════
+In fetchWithTiming (~line 176-199), the timeout currently guards `fetch()` but the body read
+(`await response.text()`) is only indirectly covered. Make the abort reliably interrupt the body read too:
+- Keep the AbortController + `signal` on fetch() as is.
+- Ensure `clearTimeout(timer)` stays in the finally (it does).
+- The abort signal SHOULD abort response.text() in undici, but to be certain a genuinely stalled body
+  cannot outlive the deadline, wrap the whole fetch+read in a hard race against the timeout. Concretely,
+  replace the try body so that BOTH the fetch and the text read are bounded by the same deadline:
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { controller.abort(); reject(new Error("fetch-timeout")); }, timeoutMs);
+    });
+    const work = (async () => {
+      const response = await fetch(url, { signal: controller.signal, headers: {...}, redirect: "follow" });
+      const ttfbLocal = Date.now() - start;
+      const html = await response.text();
+      return { html, statusCode: response.status, responseTime: Date.now() - start, ttfb: ttfbLocal };
+    })();
+    return await Promise.race([work, timeoutPromise]);
+
+  Keep the `finally { clearTimeout(timer); }`. Keep the return shape { html, statusCode, responseTime,
+  ttfb } identical. `timer` and `ttfb` must be declared so both closures can use them. This guarantees
+  fetchWithTiming rejects after timeoutMs no matter what — so fetchPage's catch returns null on time.
+
+═══════════════════════════════════════════════════════════════════
+LAYER 2 — analysis-engine.ts: batch deadline + progress + proceed-with-what-you-have
+═══════════════════════════════════════════════════════════════════
+Replace the explicit-URL fetch (~lines 196-200, the `Promise.allSettled(explicitUrls.map(fetchPage))`)
+with a bounded, progress-reporting version:
+- Add an overall batch deadline (e.g. const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20000,
+  180000); — i.e. 20s per URL, capped at 3 minutes total, so even many URLs can't run unbounded).
+- Fetch the URLs but race the WHOLE batch against the deadline. After the deadline, proceed with whatever
+  pages have settled; treat unsettled URLs as failed with reason "timeout".
+- Update progress as pages settle so the UI doesn't sit frozen at 5%. Use the existing `state.progress`
+  and `save()` mechanism (save is defined at ~line 180). E.g. bump progress from 5% toward ~20% across
+  the crawl as pages come in.
+- Implementation approach (keep it readable):
+    const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
+    let settled = 0;
+    const deadline = new Promise<void>((resolve) => setTimeout(resolve, BATCH_DEADLINE_MS));
+    const all = Promise.allSettled(explicitUrls.map(async (pageUrl, i) => {
+      const page = await fetchPage(pageUrl);   // fetchPage already returns null on error/timeout (Layer 1)
+      results[i] = page;
+      settled++;
+      state.progress = 5 + Math.round((settled / explicitUrls.length) * 15); // 5→20%
+      state.currentModule = "Crawling Website";
+      save();
+    }));
+    await Promise.race([all, deadline]);       // whichever finishes first
+    pages = results.filter((p): p is CrawledPage => p !== null && p.statusCode < 400);
+- Build crawlResult.reliability from `results` (not from a separate allSettled var): attempted =
+  explicitUrls.length; succeeded = pages.length; failed = attempted - succeeded; failures = map the
+  null/≥400 entries to {url, reason}. For a null entry that was never set because the deadline hit,
+  reason should be "timeout"; for a null from an error, "unknown" is acceptable; for statusCode≥400,
+  "http_error" with the code. Keep the .slice(0, 25) cap.
+- If pages.length === 0 after the deadline, set state.status = "failed" with a clear error message
+  (e.g. "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"), save(), and
+  return early — do NOT proceed into the analysis modules with zero pages.
+
+═══════════════════════════════════════════════════════════════════
+LAYER 3 — analysis-engine.ts: a global watchdog for ANY stuck analysis
+═══════════════════════════════════════════════════════════════════
+Add a module-level watchdog that fails any analysis running too long, regardless of where it's stuck.
+- Add a constant: const ANALYSIS_MAX_MS = 10 * 60 * 1000; // 10 minutes hard ceiling
+- Add a single setInterval (module scope, started once when the module loads) that iterates
+  analysisStore entries and, for each entry with state.status === "running" whose startedAt is older
+  than ANALYSIS_MAX_MS, sets state.status = "failed", pushes an error like "Analyse abgebrochen:
+  Zeitlimit überschritten (10 Min.)", and writes it back to the store. Run the interval every 30s.
+  Guard against double-processing (an already-failed/completed entry is skipped).
+- Make sure the interval does not prevent the process from exiting in tests: call `.unref()` on the
+  interval handle if available.
+- This is the safety net: even if Layers 1+2 miss some novel hang, no analysis stays "running" beyond
+  10 minutes.
+
+═══════════════════════════════════════════════════════════════════
+Verification (report back, do NOT push)
+═══════════════════════════════════════════════════════════════════
+- API package typecheck passes.
+- Explain (or test if feasible) that fetchWithTiming now rejects within timeoutMs even if response.text()
+  stalls (Layer 1).
+- Run an analysis of https://inden-gmbh.de (the site that hangs): it must now EITHER complete with the
+  reachable pages OR fail cleanly with the "keine Seite … Zeitlimit" message — it must NOT sit at 5%.
+  Report attempted/succeeded/failed and the final status.
+- Confirm progress moves past 5% during the explicit-URL crawl (Layer 2).
+- Describe the watchdog: confirm the interval is registered once, uses startedAt + ANALYSIS_MAX_MS, and
+  flips stuck "running" analyses to "failed" (Layer 3). If you can, simulate by temporarily lowering
+  ANALYSIS_MAX_MS in a scratch check, then restore it to 10 minutes.
+- Confirm no frontend/report files changed; backend only.
