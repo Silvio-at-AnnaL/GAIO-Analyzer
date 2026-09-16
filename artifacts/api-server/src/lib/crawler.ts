@@ -30,6 +30,7 @@ export interface CrawlReliability {
 
 export interface CrawlResult {
   pages: CrawledPage[];
+  timedOut: boolean;
   robotsTxt: string | null;
   sitemapXml: string | null;
   llmsTxt: string | null;
@@ -503,14 +504,21 @@ async function discoverSitemap(
   return none;
 }
 
-export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlResult> {
+export async function crawlSite(
+  inputUrl: string,
+  maxPages = 16,
+  opts?: { deadlineMs?: number; onProgress?: (done: number, total: number) => void },
+): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
+  const CRAWL_DEADLINE_MS = opts?.deadlineMs ?? 90_000;
+  const crawlStart = Date.now();
   // Rule 4: path ceiling — normalise to no trailing slash
   const startPath = base.pathname.replace(/\/+$/, "") || "/";
 
   const result: CrawlResult = {
     pages: [],
+    timedOut: false,
     robotsTxt: null,
     sitemapXml: null,
     llmsTxt: null,
@@ -620,6 +628,7 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
     });
     if (homePage.statusCode < 400) {
       result.reliability.succeeded++;
+      opts?.onProgress?.(result.pages.length, maxPages);
     } else {
       recordFailure(
         homepageUrl,
@@ -699,6 +708,11 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
   let pagesLeft = maxPages - result.pages.length; // homepage already in result
 
   while (pagesLeft > 0) {
+    if (Date.now() - crawlStart > CRAWL_DEADLINE_MS) {
+      result.timedOut = true;
+      break;
+    }
+
     // Recompute cap using all known category keys
     const allCats = new Set([...categoryQueues.keys(), ...categoryCounts.keys()]);
     const numCats = Math.max(1, allCats.size);
@@ -753,6 +767,7 @@ export async function crawlSite(inputUrl: string, maxPages = 16): Promise<CrawlR
         });
         result.reliability.succeeded++;
         pagesLeft--;
+        opts?.onProgress?.(result.pages.length, maxPages);
 
         // Update category count immediately after successful crawl
         const prevCount = categoryCounts.get(bestCat) ?? 0;

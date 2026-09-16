@@ -265,6 +265,7 @@ export async function runAnalysis(
         );
         crawlResult = {
           pages,
+          timedOut: false,
           robotsTxt: null,
           sitemapXml: null,
           llmsTxt: null,
@@ -298,7 +299,14 @@ export async function runAnalysis(
           },
         };
       } else {
-        crawlResult = await crawlSite(url, 16);
+        crawlResult = await crawlSite(url, 16, {
+          deadlineMs: 90_000,
+          onProgress: (done, total) => {
+            state.progress = 5 + Math.round((done / Math.max(1, total)) * 15);
+            state.currentModule = "Crawling Website";
+            save();
+          },
+        });
         pages = crawlResult.pages;
       }
       state.crawledPages = pages.map((p) => p.url);
@@ -308,9 +316,11 @@ export async function runAnalysis(
       if (pages.length === 0) {
         state.status = "failed";
         state.errors.push(
-          explicitUrls && explicitUrls.length > 0
-            ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
-            : "Could not crawl any pages from the provided URL",
+          crawlResult.timedOut
+            ? "Crawl abgebrochen: Die Website antwortet zu langsam für eine automatisierte Analyse (Zeitlimit überschritten)."
+            : (explicitUrls && explicitUrls.length > 0
+                ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
+                : "Crawl fehlgeschlagen: Die Website konnte nicht abgerufen werden (nicht erreichbar oder blockiert automatisierte Zugriffe)."),
         );
         save();
         return;
@@ -327,6 +337,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
+        timedOut: false,
         robotsTxt: null,
         sitemapXml: null,
         llmsTxt: null,
