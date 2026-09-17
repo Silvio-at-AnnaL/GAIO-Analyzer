@@ -177,7 +177,7 @@ function sortCategoryQueue(q: QueueEntry[]): void {
 async function fetchWithTiming(
   url: string,
   timeoutMs = 15000,
-): Promise<{ html: string; statusCode: number; responseTime: number; ttfb: number }> {
+): Promise<{ html: string; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
   const start = Date.now();
   let ttfb = 0;
   const controller = new AbortController();
@@ -202,7 +202,13 @@ async function fetchWithTiming(
       });
       ttfb = Date.now() - start;
       const html = await response.text();
-      return { html, statusCode: response.status, responseTime: Date.now() - start, ttfb };
+      return {
+        html,
+        statusCode: response.status,
+        responseTime: Date.now() - start,
+        ttfb,
+        finalUrl: response.url || url,
+      };
     })();
 
     return await Promise.race([work, timeoutPromise]);
@@ -236,7 +242,8 @@ function extractHreflangVariants(html: string, baseUrl: string): HreflangVariant
 function extractInternalLinks(
   html: string,
   baseUrl: string,
-  baseDomain: string,
+  siteKey: string,
+  canon: (url: string) => string,
   startPath: string,
   excludedUrls: Set<string>,
 ): Array<{ url: string }> {
@@ -249,10 +256,10 @@ function extractInternalLinks(
     if (!href) return;
     try {
       const resolved = new URL(href, baseUrl);
-      if (resolved.hostname !== baseDomain) return;
+      if (hostKey(resolved.hostname) !== siteKey) return;
       if (!resolved.protocol.startsWith("http")) return;
 
-      const url = normalizeUrl(resolved.href);
+      const url = canon(resolved.href);
 
       if (seen.has(url)) return;
       seen.add(url);
@@ -274,14 +281,18 @@ function extractInternalLinks(
   return results;
 }
 
-function parseSitemapUrls(xml: string, hostname: string): string[] {
+function parseSitemapUrls(
+  xml: string,
+  siteKey: string,
+  canon: (url: string) => string,
+): string[] {
   const urls: string[] = [];
   const locRegex = /<loc>(.*?)<\/loc>/gi;
   let match: RegExpExecArray | null;
   while ((match = locRegex.exec(xml)) !== null) {
     try {
       const url = new URL(match[1].trim());
-      if (url.hostname === hostname) urls.push(url.href);
+      if (hostKey(url.hostname) === siteKey) urls.push(canon(url.href));
     } catch {
       // skip
     }
@@ -301,6 +312,10 @@ function normalizeUrl(urlStr: string): string {
   } catch {
     return urlStr;
   }
+}
+
+function hostKey(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, "");
 }
 
 function addToQueue(
@@ -511,6 +526,21 @@ export async function crawlSite(
 ): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
+  const siteKey = hostKey(base.hostname);
+  let canonicalProtocol = base.protocol;
+  let canonicalHost = base.host;
+  const canon = (url: string): string => {
+    try {
+      const normalized = new URL(normalizeUrl(url));
+      if (hostKey(normalized.hostname) === siteKey) {
+        normalized.protocol = canonicalProtocol;
+        normalized.host = canonicalHost;
+      }
+      return normalized.href;
+    } catch {
+      return url;
+    }
+  };
   const CRAWL_DEADLINE_MS = opts?.deadlineMs ?? 90_000;
   const crawlStart = Date.now();
   // Rule 4: path ceiling — normalise to no trailing slash
@@ -588,19 +618,20 @@ export async function crawlSite(
         result.hreflangVariants.push(v);
       }
       // Only block URLs that fall outside our crawl scope
+      const canonicalVariantUrl = canon(v.url);
       if (startPathHasLangPrefix) {
         // Crawl scope = startPath; block only URLs outside it
         try {
-          const vPath = new URL(v.url).pathname;
+          const vPath = new URL(canonicalVariantUrl).pathname;
           if (!isWithinStartPath(vPath, startPath)) {
-            hreflangUrlSet.add(v.url);
+            hreflangUrlSet.add(canonicalVariantUrl);
           }
         } catch {
-          hreflangUrlSet.add(v.url);
+          hreflangUrlSet.add(canonicalVariantUrl);
         }
       } else {
         // Root-level crawl: block all hreflang alternates to avoid language sprawl
-        hreflangUrlSet.add(v.url);
+        hreflangUrlSet.add(canonicalVariantUrl);
       }
     }
   }
@@ -612,15 +643,27 @@ export async function crawlSite(
 
   // ── Step 1: Fetch homepage first (special — always crawl it) ──────────────
   const homepageUrl = inputUrl;
-  visited.add(homepageUrl);
+  visited.add(canon(homepageUrl));
 
   let homepageHtml = "";
+  let canonicalHomepageUrl = canon(homepageUrl);
   result.reliability.attempted++;
   try {
     const homePage = await fetchWithTiming(homepageUrl);
+    try {
+      const finalUrl = new URL(homePage.finalUrl);
+      if (hostKey(finalUrl.hostname) === siteKey) {
+        canonicalProtocol = finalUrl.protocol;
+        canonicalHost = finalUrl.host;
+      }
+    } catch {
+      // Keep the input origin.
+    }
+    canonicalHomepageUrl = canon(homePage.finalUrl);
+    visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
     result.pages.push({
-      url: homepageUrl,
+      url: canonicalHomepageUrl,
       html: homepageHtml,
       statusCode: homePage.statusCode,
       responseTime: homePage.responseTime,
@@ -631,27 +674,28 @@ export async function crawlSite(
       opts?.onProgress?.(result.pages.length, maxPages);
     } else {
       recordFailure(
-        homepageUrl,
+        canonicalHomepageUrl,
         classifyHttpStatus(homePage.statusCode),
         homePage.statusCode,
       );
     }
 
     // Quarantine hreflang variants found on homepage
-    quarantineHreflang(extractHreflangVariants(homepageHtml, homepageUrl));
+    quarantineHreflang(extractHreflangVariants(homepageHtml, canonicalHomepageUrl));
 
     // Count homepage in __root__ category
     categoryCounts.set("__root__", 1);
   } catch (err) {
     const reason = classifyFetchError(err);
-    recordFailure(homepageUrl, reason);
-    logger.warn({ url: homepageUrl, reason, err }, "Failed to fetch homepage");
+    canonicalHomepageUrl = canon(homepageUrl);
+    recordFailure(canonicalHomepageUrl, reason);
+    logger.warn({ url: canonicalHomepageUrl, reason, err }, "Failed to fetch homepage");
   }
 
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
   {
-    const origin = `${base.protocol}//${baseDomain}`;
-    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, homepageUrl);
+    const origin = `${canonicalProtocol}//${canonicalHost}`;
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl);
     result.sitemapXml = sd.sitemapXml;
     result.sitemapXmlExists = sd.sitemapXmlExists;
     result.htmlSitemapHtml = sd.htmlSitemapHtml;
@@ -666,8 +710,9 @@ export async function crawlSite(
   if (homepageHtml) {
     const links = extractInternalLinks(
       homepageHtml,
-      homepageUrl,
-      baseDomain,
+      canonicalHomepageUrl,
+      siteKey,
+      canon,
       startPath,
       hreflangUrlSet,
     );
@@ -678,7 +723,7 @@ export async function crawlSite(
 
   // Sitemap URLs — apply same filtering
   if (result.sitemapXml) {
-    const sitemapUrls = parseSitemapUrls(result.sitemapXml, baseDomain);
+    const sitemapUrls = parseSitemapUrls(result.sitemapXml, siteKey, canon);
     for (const u of sitemapUrls) {
       try {
         const parsed = new URL(u);
@@ -783,7 +828,7 @@ export async function crawlSite(
 
         // Discover new links and add to per-category queues (Rule 5 Step 5)
         if (pagesLeft > 0) {
-          const links = extractInternalLinks(page.html, url, baseDomain, startPath, hreflangUrlSet);
+          const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet);
           for (const { url: linkUrl } of links) {
             addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet);
           }
