@@ -482,6 +482,7 @@ export async function runAnalysis(
       save();
 
       const moduleResults = {
+        crawlReliability: state.crawlReliability,
         technicalSeo: state.technicalSeo,
         schemaOrg: state.schemaOrg,
         headingStructure: state.headingStructure,

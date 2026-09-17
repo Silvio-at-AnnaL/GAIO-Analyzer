@@ -1,0 +1,117 @@
+FIX — AI recommendations, Part 1: complete compact input, language guard, time budget.
+Backend only.
+
+Context (verified):
+recommendations.ts builds the AI input with
+`JSON.stringify(moduleResults, null, 2).slice(0, 12000)`.
+Measured for steinbach: headingStructure ≈ 25,000 chars, technicalSeo ≈ 12,100 chars.
+So the AI regularly never sees schemaOrg / contentRelevance / faqQuality / llmDiscoverability,
+and invents findings ("Strukturierte Daten vollständig fehlend" while schema score = 90).
+Also, containsEnglish() matches substrings like "site " / "page " / "is ", which occur in German
+words ("Website ", "Homepage ", "Hinweis "). This probably triggers a full second AI call almost
+every time.
+The prompt template lives in the DB (seeded with ON CONFLICT DO NOTHING), so the placeholder
+{{RESULTS_JSON}} must stay. Only its CONTENT changes.
+
+Files in scope:
+- NEW artifacts/api-server/src/lib/analyzers/recommendation-input.ts
+- artifacts/api-server/src/lib/analyzers/recommendations.ts
+- artifacts/api-server/src/lib/analysis-engine.ts (only: add crawlReliability to moduleResults)
+
+1. recommendation-input.ts: export `buildRecommendationInput(moduleResults: Record<string, unknown>): { text: string; size: number; modules: Record<string, "ok" | "missing">; trimLevel: number }`.
+   Output = a short German header line followed by COMPACT JSON (JSON.stringify without indentation).
+   Header, verbatim:
+   "VERBINDLICHE MESSWERTE DER ANALYSE (vollständig, alle Module enthalten). Leite Befunde ausschließlich aus diesen Daten ab. Behaupte nie, etwas fehle, wenn die Daten es als vorhanden ausweisen. Module mit status \"nicht_verfuegbar\" wurden nicht gemessen – daraus keine Befunde ableiten."
+
+   JSON object with exactly these top-level keys, in this order. Any module that is null/absent
+   becomes { status: "nicht_verfuegbar" }.
+   - crawl: { pagesAttempted, pagesSucceeded, pagesFailed } from moduleResults.crawlReliability
+     (attempted/succeeded/failed)
+   - technicalSeo:
+     { score, httpsEnforced, mobileViewport, responseTimeMs, ttfbMs, canonicalTags, hreflang,
+       metaTitles, metaDescriptions, imageAltCoverage, robotsTxt, sitemapXml, sitemapType, llmsTxt,
+       robots: { summary, llmCrawlers (name+status), siteBlockedAgents } | null,
+       sitemap: { summary, totalUrls, crawledPageCoverage } | null,
+       llmsTxtInfo: { present, hasDescription, linkedPageCount, sectionCount, summary } }
+     Do NOT include robotsTxtContent, sitemapXmlContent, llmsTxtContent, or llmsTxt sections/links.
+   - schemaOrg:
+     { score, detectedTypes, missingHighValue,
+       typeBreakdown: [{ type, objectCount, substancePercent }],
+       breadthScore, substanceScore, correctnessFactor, productSchemaDetails,
+       validationErrors: first 5, each cut to 200 chars }
+   - headingStructure:
+     { score, pagesAnalysed, scoredPageCount,
+       breakdown: { h1, hierarchy, structure, quality } each as { points, weight } rounded to 1 decimal
+         (omit if absent),
+       pagesWithoutH1, pagesWithMultipleH1, pagesWithHierarchyIssues
+         (all three counted over pages with excludedAsLegal !== true),
+       problemPages: max 10 [{ url, reasons }] where reasons ⊂
+         ["keine H1", "mehrere H1", "H1 nicht erste Inhaltsüberschrift", "Ebene übersprungen", "H1 doppelt"],
+       sampleH1: max 10 [{ url, h1 }] with the first H1 per page, cut to 120 chars,
+       keywordInHeadings }
+     Never include the full headings arrays.
+   - contentRelevance: { score, dimensions: [{ name, score, findings: max 4, each cut to 300 chars }] }
+   - faqQuality: { score, hasFaqSchema, hasHtmlFaq, faqItemsFound, qualityAssessment cut to 800 chars }
+   - llmDiscoverability:
+     { score, avgRating,
+       partA: { label, score, avgRating }, partB: { label, score, avgRating },
+       questions: max 12, lowest rating first,
+         [{ question (≤200 chars), rating, gap (≤250 chars), sourceUrl }] }
+   Size control: MAX_INPUT_CHARS = 30000 (named constant). If the text exceeds it, apply these
+   trim levels one by one until it fits:
+     1) drop sampleH1
+     2) questions → max 6
+     3) findings → max 2 per dimension, qualityAssessment → 400 chars
+     4) problemPages → max 5, validationErrors → max 2
+   NEVER drop a module and NEVER slice the final string. Return the trimLevel that was applied.
+   All accessors must be defensive: unknown types → skip the field, never throw.
+
+2. recommendations.ts
+   a) Replace the `.slice(0, 12000)` input with buildRecommendationInput(moduleResults).text.
+      Log once (info):
+      { inputChars, trimLevel, modules } with message "recommendations input built".
+   b) Language guard: replace containsEnglish/hasEnglishContent.
+      - Check ONLY `finding` and `whyItMatters` (fixInstruction may contain code).
+      - Lowercase, then find whole-word matches (regex \b...\b) of:
+        the, is, are, this, that, with, your, should, and, of, to, missing, ensure, improve
+      - A recommendation counts as English if it has >= 3 DISTINCT matched words.
+      - Retry only if at least one recommendation counts as English.
+      - Log a warn with the offending finding (first 120 chars) when a retry is triggered.
+   c) Time budget: RECS_BUDGET_MS = 150_000 and MIN_RETRY_REMAINING_MS = 60_000 (named constants).
+      Each AI call gets the remaining budget as timeout:
+      - pass { timeout: remaining, signal } as request options to anthropic.messages.create
+      - AND wrap it in Promise.race with a timer that aborts the AbortController
+      - clear the timer in finally
+      Skip the language retry if less than MIN_RETRY_REMAINING_MS remains; keep the first result then.
+      On timeout or any error: log warn ("AI recommendations skipped: <reason>") and return the
+      rule-based recommendations only (current fallback behaviour).
+      Log the total duration (info) at the end.
+   d) Keep: model, max_tokens, parseRecommendations, rule-based recommendations, return order
+      (rule-based first), the Recommendation interface.
+
+3. analysis-engine.ts: add `crawlReliability: state.crawlReliability` to the moduleResults object
+   passed to generateRecommendations. Nothing else.
+
+Do NOT:
+- change prompt-defaults.ts or any DB prompt
+- change any analyzer's scoring or result shape
+- touch the frontend or lib/*
+- run pnpm install or codegen
+
+Verification (report the output):
+- full `git diff` (including the new file) and `pnpm --filter @workspace/api-server run typecheck`
+- Throwaway script, NOT committed (esbuild CJS approach, NODE_ENV=production) testing the language
+  guard. Print the result for each string:
+    "Die Website nutzt keine Hinweise auf der Homepage"   → not English
+    "Software-Basis ist gut, Preise sind klar"            → not English
+    "The page is missing a canonical tag for this site"  → English
+- Full dev analysis for https://www.steinbach-kugellager.de. Report:
+  - the "recommendations input built" log line (inputChars, trimLevel, modules)
+  - whether a language retry happened
+  - the total recommendation duration
+  - the complete list of recommendation findings (tier + finding text)
+  Confirm: no recommendation claims structured data / Schema.org is missing entirely.
+  Also save the built input text to /tmp (not the repo) and report its per-top-level-key char counts.
+- Same for https://www.wirthwein.de (only: log line, retry yes/no, duration, number of recommendations).
+
+Do not push or publish. Report back first.

@@ -1,6 +1,10 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
+import { buildRecommendationInput } from "./recommendation-input.js";
+
+const RECS_BUDGET_MS = 150_000;
+const MIN_RETRY_REMAINING_MS = 60_000;
 
 export interface Recommendation {
   tier: "critical" | "high_leverage" | "secondary";
@@ -190,23 +194,21 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
 
 // ─── Language guard ───────────────────────────────────────────────────────────
 
-const ENGLISH_MARKERS = [
-  "the ", "is ", "are ", "this ", "that ", "with ", "for ",
-  "page ", "site ", "missing ", "add ", "use ", "ensure ", "improve ",
-];
+const ENGLISH_WORDS = [
+  "the", "is", "are", "this", "that", "with", "your", "should",
+  "and", "of", "to", "missing", "ensure", "improve",
+] as const;
 
-function containsEnglish(text: string): boolean {
-  const lower = text.toLowerCase();
-  return ENGLISH_MARKERS.some((m) => lower.includes(m));
+export function isEnglishRecommendation(rec: Pick<Recommendation, "finding" | "whyItMatters">): boolean {
+  const text = `${rec.finding} ${rec.whyItMatters}`.toLowerCase();
+  const matched = new Set(
+    ENGLISH_WORDS.filter((word) => new RegExp(`\\b${word}\\b`).test(text)),
+  );
+  return matched.size >= 3;
 }
 
-function hasEnglishContent(recs: Recommendation[]): boolean {
-  return recs.some(
-    (r) =>
-      containsEnglish(r.finding) ||
-      containsEnglish(r.whyItMatters) ||
-      containsEnglish(r.fixInstruction),
-  );
+function firstEnglishRecommendation(recs: Recommendation[]): Recommendation | undefined {
+  return recs.find(isEnglishRecommendation);
 }
 
 function parseRecommendations(text: string): Recommendation[] | null {
@@ -232,44 +234,80 @@ async function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""):
 export async function generateRecommendations(
   moduleResults: Record<string, unknown>,
 ): Promise<Recommendation[]> {
+  const startedAt = Date.now();
+  const deadline = startedAt + RECS_BUDGET_MS;
   const ruleBasedRecs = generateRuleBasedRecommendations(moduleResults);
 
   let aiRecs: Recommendation[] = [];
   try {
-    const resultsStr = JSON.stringify(moduleResults, null, 2).slice(0, 12000);
+    const input = buildRecommendationInput(moduleResults);
+    logger.info(
+      { inputChars: input.size, trimLevel: input.trimLevel, modules: input.modules },
+      "recommendations input built",
+    );
 
     const callApi = async (content: string) => {
-      const msg = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        messages: [{ role: "user", content }],
-      });
-      const block = msg.content[0];
-      return block.type === "text" ? block.text : "";
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error("time budget exhausted");
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error("time budget exhausted"));
+          }, remaining);
+        });
+        const request = anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 8192,
+          messages: [{ role: "user", content }],
+        }, { timeout: remaining, signal: controller.signal });
+        const msg = await Promise.race([request, timeout]);
+        const block = msg.content[0];
+        return block.type === "text" ? block.text : "";
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     };
 
-    const firstText = await callApi(await buildRecommendationsPrompt(resultsStr));
+    const firstText = await callApi(await buildRecommendationsPrompt(input.text));
     const firstParsed = parseRecommendations(firstText);
 
     if (firstParsed && firstParsed.length > 0) {
-      if (hasEnglishContent(firstParsed)) {
-        logger.warn("English detected in recommendations — retrying");
-        const retryText = await callApi(
-          await buildRecommendationsPrompt(
-            resultsStr,
-            "FEHLER: Deine letzte Antwort enthielt englische Texte. " +
-            "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",
-          ),
-        );
-        const retryParsed = parseRecommendations(retryText);
-        if (retryParsed && retryParsed.length > 0) aiRecs = retryParsed;
-        else aiRecs = firstParsed;
+      const offending = firstEnglishRecommendation(firstParsed);
+      if (offending) {
+        const remaining = deadline - Date.now();
+        if (remaining >= MIN_RETRY_REMAINING_MS) {
+          logger.warn(
+            { finding: offending.finding.slice(0, 120) },
+            "English detected in recommendations — retrying",
+          );
+          const retryText = await callApi(
+            await buildRecommendationsPrompt(
+              input.text,
+              "FEHLER: Deine letzte Antwort enthielt englische Texte. " +
+              "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",
+            ),
+          );
+          const retryParsed = parseRecommendations(retryText);
+          if (retryParsed && retryParsed.length > 0) aiRecs = retryParsed;
+          else aiRecs = firstParsed;
+        } else {
+          aiRecs = firstParsed;
+        }
       } else {
         aiRecs = firstParsed;
       }
     }
   } catch (err) {
-    logger.warn({ err }, "AI recommendation generation failed");
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn({ err }, `AI recommendations skipped: ${reason}`);
+  } finally {
+    logger.info(
+      { durationMs: Date.now() - startedAt },
+      "recommendations generation finished",
+    );
   }
 
   return [...ruleBasedRecs, ...aiRecs];
