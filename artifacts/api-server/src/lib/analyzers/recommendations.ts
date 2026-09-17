@@ -3,7 +3,7 @@ import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { buildRecommendationInput } from "./recommendation-input.js";
 
-const RECS_BUDGET_MS = 150_000;
+const RECS_BUDGET_MS = 240_000;
 const MIN_RETRY_REMAINING_MS = 60_000;
 
 export interface Recommendation {
