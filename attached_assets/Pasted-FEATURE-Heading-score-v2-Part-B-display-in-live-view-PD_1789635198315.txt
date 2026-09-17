@@ -1,0 +1,92 @@
+FEATURE — Heading score v2, Part B: display in live view/PDF and HTML export.
+Backend is done (commit 4ced62e). Do not touch artifacts/api-server.
+
+New backend fields on headingStructure (they may be ABSENT in older stored analyses):
+- scoredPageCount
+- breakdown.{h1,hierarchy,structure,quality}.{avg,weight,points}
+- pages[].hierarchyIssue ("h1_not_first" | "level_skip" | null)
+- pages[].excludedAsLegal, pages[].duplicateH1, pages[].h2Count, pages[].descriptiveShare
+
+1. artifacts/gaio-analyzer/src/lib/heading-summary.ts — extend getHeadingSummary. Stay backward compatible.
+   - Read per page: excludedAsLegal (default false), hierarchyIssue (default: undefined = legacy),
+     duplicateH1 (default false).
+   - "Scored pages" = pages with excludedAsLegal !== true. If none remain, use all pages.
+   - totalPages = all valid pages (as today).
+   - Add scoredPages = number of scored pages.
+   - Add legalPages = number of pages with excludedAsLegal === true.
+   - pagesWithSingleH1 / pagesWithoutH1 / pagesWithMultipleH1 / pagesWithHierarchyIssues are now
+     counted over SCORED pages only.
+   - problemPages: scored pages only, where h1Count !== 1 OR hasHierarchyIssues OR duplicateH1.
+     Each entry carries url, h1Count, hasHierarchyIssues, hierarchyIssue, duplicateH1.
+   - Add `breakdown`: null unless headingStructure.breakdown has all 4 components with numeric
+     avg/weight/points. Otherwise an ordered array of
+     { key: "h1"|"hierarchy"|"structure"|"quality", points, maxPoints, avg }, where
+     maxPoints = weight / (sum of the 4 weights) × 100.
+     Round points and maxPoints to 1 decimal. If the weight sum is 0, return null.
+   - Reason mapping, used by both renderers (return reason KEYS, not texts):
+       h1Count === 0                   → "no_h1"
+       h1Count > 1                     → "multi_h1"
+       hierarchyIssue === "h1_not_first" → "h1_not_first"
+       hierarchyIssue === "level_skip"   → "level_skip"
+       hierarchyIssue undefined AND hasHierarchyIssues → "legacy_hierarchy"
+       duplicateH1                     → "duplicate_h1"
+     Put these into problemPages[].reasons: string[].
+
+2. labelDefaults.ts, group "results":
+   CHANGE "results.headings_hierarchy" to "Seiten mit Hierarchiefehler"
+   CHANGE "results.headings_all_ok" to "Keine Auffälligkeiten auf den bewerteten Seiten."
+   KEEP "results.headings_reason_hierarchy" ("H3 vor erster H2") — used only for legacy analyses.
+   ADD:
+   "results.headings_scored_pages":        "Davon bewertet"
+   "results.headings_legal_note":          "{n} Rechtsseite(n) (Impressum, Datenschutz, AGB …) werden angezeigt, aber nicht bewertet."
+   "results.headings_reason_h1_not_first": "H1 ist nicht die erste Inhaltsüberschrift"
+   "results.headings_reason_level_skip":   "Überschriften-Ebene übersprungen"
+   "results.headings_reason_duplicate_h1": "H1 identisch mit anderer Seite"
+   "results.headings_breakdown_label":     "Aufschlüsselung des Scores"
+   "results.headings_comp_h1":             "H1 (genau eine pro Seite)"
+   "results.headings_comp_hierarchy":      "Hierarchie (H1 zuerst, keine Sprünge)"
+   "results.headings_comp_structure":      "Gliederung (H2-Abschnitte)"
+   "results.headings_comp_quality":        "Qualität (beschreibende Überschriften)"
+   "results.headings_breakdown_note":      "Kopf-, Menü- und Fußbereiche werden bei Hierarchie, Gliederung und Qualität nicht berücksichtigt."
+   Group "faq" — CHANGE "faq.mod3_check" to:
+   "H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften"
+
+3. ErgebnisseView.tsx — Heading card:
+   - Counts grid: total, scored (new), single H1, no H1, multiple H1, hierarchy.
+   - If legalPages > 0, show the legal_note line.
+   - If summary.breakdown exists, add a block after the counts, copying the Schema card's breakdown
+     markup exactly (label row + font-mono value + bar):
+     label = t("results.headings_comp_<key>"), display = `${points.toFixed(1)} / ${maxPoints.toFixed(1)}`,
+     bar width = points / maxPoints.
+     Then the breakdown_note.
+   - Problem list: reasons mapped via t(). "multi_h1" uses headings_reason_multi_h1 with {n} = h1Count;
+     "legacy_hierarchy" uses headings_reason_hierarchy. Keep the max 10 + "more" logic.
+
+4. report-export.ts:
+   - Heading block: update the HT constant block to mirror the new/changed texts (German, same wording).
+     Render the same counts, the legal note, the breakdown (same pattern as the Schema breakdown:
+     heading + detail-grid with "points / maxPoints") plus the note, and the problem list with the
+     same reason mapping.
+   - Methodology texts: replace "H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler" at all
+     3 occurrences (~lines 760, 1007, 1115) with
+     "H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften".
+     Do not change the third column or any other row.
+
+Do NOT:
+- touch artifacts/api-server, lib/*
+- change score values or add new score logic in the frontend (display only)
+- run pnpm install or codegen
+
+Verification (report the output):
+- `git diff --stat` (including new/untracked files) and the full diff
+- `pnpm --filter @workspace/gaio-analyzer run typecheck`
+- `git grep -n "H1/H2/H3-Hierarchie" -- artifacts` → expected: no matches
+- Labels key count before/after (expected: +11 added, 3 changed)
+- Run a new dev analysis for https://www.steinbach-kugellager.de. Report the heading card values
+  (counts, legal note, breakdown rows, problem list) from the live view AND the downloaded HTML report.
+  They must be identical.
+  Expected, roughly: score mid-80s; 3 legal pages excluded; /news listed with "Überschriften-Ebene übersprungen".
+- Open one OLD stored analysis (created before commit 4ced62e) in the live view. Confirm the heading card
+  renders without errors: no breakdown, legacy reason text, no crash.
+
+Do not push or publish. Report back first.

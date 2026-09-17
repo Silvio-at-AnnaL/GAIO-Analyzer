@@ -495,16 +495,29 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       title: "Heading-Struktur",
       score: "Score",
       totalPages: "Analysierte Seiten",
+      scoredPages: "Davon bewertet",
+      legalNote: (n: number) => `${n} Rechtsseite(n) (Impressum, Datenschutz, AGB …) werden angezeigt, aber nicht bewertet.`,
       singleH1: "Seiten mit genau einer H1",
       noH1: "Seiten ohne H1",
       multipleH1: "Seiten mit mehreren H1",
-      hierarchy: "Seiten mit Hierarchiefehler (H3 vor erster H2)",
+      hierarchy: "Seiten mit Hierarchiefehler",
       problemLabel: "Seiten mit Auffälligkeiten",
       reasonNoH1: "keine H1",
       reasonMultipleH1: (n: number) => `${n} H1-Überschriften`,
       reasonHierarchy: "H3 vor erster H2",
+      reasonH1NotFirst: "H1 ist nicht die erste Inhaltsüberschrift",
+      reasonLevelSkip: "Überschriften-Ebene übersprungen",
+      reasonDuplicateH1: "H1 identisch mit anderer Seite",
+      breakdownLabel: "Aufschlüsselung des Scores",
+      componentLabels: {
+        h1: "H1 (genau eine pro Seite)",
+        hierarchy: "Hierarchie (H1 zuerst, keine Sprünge)",
+        structure: "Gliederung (H2-Abschnitte)",
+        quality: "Qualität (beschreibende Überschriften)",
+      },
+      breakdownNote: "Kopf-, Menü- und Fußbereiche werden bei Hierarchie, Gliederung und Qualität nicht berücksichtigt.",
       more: (n: number) => `… und ${n} weitere`,
-      allOk: "Keine Auffälligkeiten auf den analysierten Seiten.",
+      allOk: "Keine Auffälligkeiten auf den bewerteten Seiten.",
     } as const;
     const summary = getHeadingSummary(headings);
     html += `
@@ -513,21 +526,33 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       <div class="detail-item"><div class="label">${HT.score} ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
       ${summary ? `
       <div class="detail-item"><div class="label">${HT.totalPages}</div><div class="val">${summary.totalPages}</div></div>
+      <div class="detail-item"><div class="label">${HT.scoredPages}</div><div class="val">${summary.scoredPages}</div></div>
       <div class="detail-item"><div class="label">${HT.singleH1}</div><div class="val">${summary.pagesWithSingleH1}</div></div>
       <div class="detail-item"><div class="label">${HT.noH1}</div><div class="val">${summary.pagesWithoutH1}</div></div>
       <div class="detail-item"><div class="label">${HT.multipleH1}</div><div class="val">${summary.pagesWithMultipleH1}</div></div>
       <div class="detail-item"><div class="label">${HT.hierarchy}</div><div class="val">${summary.pagesWithHierarchyIssues}</div></div>
       ` : ""}
     </div>
+    ${summary && summary.legalPages > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${HT.legalNote(summary.legalPages)}</p>` : ""}
+    ${summary?.breakdown ? `
+      <h3>${HT.breakdownLabel}</h3>
+      <div class="detail-grid">
+        ${summary.breakdown.map((row) => `<div class="detail-item"><div class="label">${HT.componentLabels[row.key]}</div><div class="val">${row.points.toFixed(1)} / ${row.maxPoints.toFixed(1)}</div></div>`).join("")}
+      </div>
+      <p style="font-size:11px;color:${C.textMuted};margin:4px 0 12px;">${HT.breakdownNote}</p>
+    ` : ""}
     ${summary ? (
       summary.problemPages.length > 0
         ? `<p style="font-size:12px;font-weight:600;color:${C.textSec};margin:6px 0 2px;">${HT.problemLabel}</p>
           <ul style="font-size:12px;color:${C.textSec};margin:6px 0;padding-left:16px;">${summary.problemPages.slice(0, 10).map((page) => {
-            const reasons = [
-              page.h1Count === 0 ? HT.reasonNoH1 : null,
-              page.h1Count > 1 ? HT.reasonMultipleH1(page.h1Count) : null,
-              page.hasHierarchyIssues ? HT.reasonHierarchy : null,
-            ].filter((reason): reason is string => reason !== null);
+            const reasons = page.reasons.map((reason) => {
+              if (reason === "no_h1") return HT.reasonNoH1;
+              if (reason === "multi_h1") return HT.reasonMultipleH1(page.h1Count);
+              if (reason === "h1_not_first") return HT.reasonH1NotFirst;
+              if (reason === "level_skip") return HT.reasonLevelSkip;
+              if (reason === "duplicate_h1") return HT.reasonDuplicateH1;
+              return HT.reasonHierarchy;
+            });
             return `<li><span style="word-break:break-all;">${esc(page.url)}</span>: ${reasons.join(", ")}</li>`;
           }).join("")}</ul>
           ${summary.problemPages.length > 10 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">${HT.more(summary.problemPages.length - 10)}</p>` : ""}`
@@ -757,7 +782,7 @@ ${divider("FAQ / So funktioniert's")}
   <tbody>
     <tr id="faq-modul-techn-seo"><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
     <tr id="faq-modul-schema"><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
-    <tr id="faq-modul-headings"><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
+    <tr id="faq-modul-headings"><td>Heading-Struktur</td><td>H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
     <tr id="faq-modul-inhalt"><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
     <tr id="faq-modul-faq"><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
     <tr id="faq-modul-llm"><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
@@ -1004,7 +1029,7 @@ export function buildFaqDocumentHtml(): string {
     <tbody>
       <tr><td>Technische SEO-Basis</td><td>HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport</td><td>Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler</td></tr>
       <tr><td>Strukturierte Daten (Schema.org)</td><td>JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder</td><td>Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren</td></tr>
-      <tr><td>Heading-Struktur</td><td>H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
+      <tr><td>Heading-Struktur</td><td>H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
       <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
       <tr><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
       <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
@@ -1112,7 +1137,7 @@ export function buildFaqPanelHtml(): string {
     <tbody>
       ${row(["Technische SEO-Basis","HTTP-Antwortzeit, HTTPS, robots.txt, llms.txt, Sitemap (.xml oder /sitemap<sup>*</sup>), Canonical-Tags, hreflang, Meta-Titel und -Beschreibungen, Alt-Texte, Mobile-Viewport","Grundvoraussetzung für Indexierung durch Suchmaschinen und LLM-Crawler"])}
       ${row(["Strukturierte Daten (Schema.org)","JSON-LD, Microdata, RDFa — erkannte Typen: Organization, Product, FAQPage, BreadcrumbList u.a.; Vollständigkeit der Pflichtfelder","Maschinenlesbare Fakten erhöhen die Wahrscheinlichkeit, dass LLMs korrekte und vollständige Antworten generieren"])}
-      ${row(["Heading-Struktur","H1/H2/H3-Hierarchie, Anzahl H1 pro Seite, Hierarchiefehler","Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet"])}
+      ${row(["Heading-Struktur","H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften","Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet"])}
       ${row(["Inhaltliche Relevanz (KI-gestützt)","Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken","LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten"])}
       ${row(["FAQ-Qualität","Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe","FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit"])}
       ${row(["LLM-Sichtbarkeits-Simulation","Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)","Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben"], true)}

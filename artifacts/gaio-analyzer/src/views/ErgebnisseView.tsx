@@ -2639,6 +2639,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     <>
                       {[
                         [t("results.headings_pages_total"), headingSummary.totalPages],
+                        [t("results.headings_scored_pages"), headingSummary.scoredPages],
                         [t("results.headings_single_h1"), headingSummary.pagesWithSingleH1],
                         [t("results.headings_no_h1"), headingSummary.pagesWithoutH1],
                         [t("results.headings_multiple_h1"), headingSummary.pagesWithMultipleH1],
@@ -2652,17 +2653,42 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </>
                   )}
                 </div>
+                {headingSummary && headingSummary.legalPages > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("results.headings_legal_note", { n: headingSummary.legalPages })}
+                  </p>
+                )}
+                {headingSummary?.breakdown && (
+                  <div className="pt-2 border-t border-border/30 space-y-2">
+                    <p className="text-xs text-muted-foreground mb-1">{t("results.headings_breakdown_label")}</p>
+                    {headingSummary.breakdown.map((row) => (
+                      <div key={row.key} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-muted-foreground">{t(`results.headings_comp_${row.key}`)}</span>
+                          <span className="font-mono font-medium">{row.points.toFixed(1)} / {row.maxPoints.toFixed(1)}</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${row.maxPoints > 0 ? Math.max(0, Math.min(100, (row.points / row.maxPoints) * 100)) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">{t("results.headings_breakdown_note")}</p>
+                  </div>
+                )}
                 {headingSummary && (
                   headingSummary.problemPages.length > 0 ? (
                     <div className="pt-2 border-t border-border/30 space-y-2">
                       <p className="text-xs font-medium text-muted-foreground">{t("results.headings_problem_label")}</p>
                       <ul className="space-y-1.5 text-xs text-muted-foreground">
                         {headingSummary.problemPages.slice(0, 10).map((page) => {
-                          const reasons = [
-                            page.h1Count === 0 ? t("results.headings_reason_no_h1") : null,
-                            page.h1Count > 1 ? t("results.headings_reason_multi_h1", { n: page.h1Count }) : null,
-                            page.hasHierarchyIssues ? t("results.headings_reason_hierarchy") : null,
-                          ].filter((reason): reason is string => reason !== null);
+                          const reasons = page.reasons.map((reason) => {
+                            if (reason === "multi_h1") return t("results.headings_reason_multi_h1", { n: page.h1Count });
+                            if (reason === "legacy_hierarchy") return t("results.headings_reason_hierarchy");
+                            return t(`results.headings_reason_${reason}`);
+                          });
                           return (
                             <li key={page.url}>
                               <span className="break-all">{page.url}</span>
