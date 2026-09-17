@@ -1,3 +1,5 @@
+import { getHeadingSummary } from "./heading-summary";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type LlmQ = {
@@ -489,15 +491,48 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   }
 
   if (headings) {
-    const h1 = (headings.h1Tags as Record<string, unknown>)?.count ?? 0;
-    const issues = (headings.issues as string[] | undefined) ?? [];
+    const HT = {
+      title: "Heading-Struktur",
+      score: "Score",
+      totalPages: "Analysierte Seiten",
+      singleH1: "Seiten mit genau einer H1",
+      noH1: "Seiten ohne H1",
+      multipleH1: "Seiten mit mehreren H1",
+      hierarchy: "Seiten mit Hierarchiefehler (H3 vor erster H2)",
+      problemLabel: "Seiten mit Auffälligkeiten",
+      reasonNoH1: "keine H1",
+      reasonMultipleH1: (n: number) => `${n} H1-Überschriften`,
+      reasonHierarchy: "H3 vor erster H2",
+      more: (n: number) => `… und ${n} weitere`,
+      allOk: "Keine Auffälligkeiten auf den analysierten Seiten.",
+    } as const;
+    const summary = getHeadingSummary(headings);
     html += `
-    <h3>Heading-Struktur</h3>
+    <h3>${HT.title}</h3>
     <div class="detail-grid">
-      <div class="detail-item"><div class="label">Score ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
-      <div class="detail-item"><div class="label">H1-Tags</div><div class="val">${h1}</div></div>
+      <div class="detail-item"><div class="label">${HT.score} ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor((headings.score as number) ?? 0)}">${headings.score}/100</div></div>
+      ${summary ? `
+      <div class="detail-item"><div class="label">${HT.totalPages}</div><div class="val">${summary.totalPages}</div></div>
+      <div class="detail-item"><div class="label">${HT.singleH1}</div><div class="val">${summary.pagesWithSingleH1}</div></div>
+      <div class="detail-item"><div class="label">${HT.noH1}</div><div class="val">${summary.pagesWithoutH1}</div></div>
+      <div class="detail-item"><div class="label">${HT.multipleH1}</div><div class="val">${summary.pagesWithMultipleH1}</div></div>
+      <div class="detail-item"><div class="label">${HT.hierarchy}</div><div class="val">${summary.pagesWithHierarchyIssues}</div></div>
+      ` : ""}
     </div>
-    ${issues.length > 0 ? `<ul style="font-size:12px;color:${C.textSec};margin:6px 0;padding-left:16px;">${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}`;
+    ${summary ? (
+      summary.problemPages.length > 0
+        ? `<p style="font-size:12px;font-weight:600;color:${C.textSec};margin:6px 0 2px;">${HT.problemLabel}</p>
+          <ul style="font-size:12px;color:${C.textSec};margin:6px 0;padding-left:16px;">${summary.problemPages.slice(0, 10).map((page) => {
+            const reasons = [
+              page.h1Count === 0 ? HT.reasonNoH1 : null,
+              page.h1Count > 1 ? HT.reasonMultipleH1(page.h1Count) : null,
+              page.hasHierarchyIssues ? HT.reasonHierarchy : null,
+            ].filter((reason): reason is string => reason !== null);
+            return `<li><span style="word-break:break-all;">${esc(page.url)}</span>: ${reasons.join(", ")}</li>`;
+          }).join("")}</ul>
+          ${summary.problemPages.length > 10 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">${HT.more(summary.problemPages.length - 10)}</p>` : ""}`
+        : `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${HT.allOk}</p>`
+    ) : ""}`;
   }
 
   if (content) {

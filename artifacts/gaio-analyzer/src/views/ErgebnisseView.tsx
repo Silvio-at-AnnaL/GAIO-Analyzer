@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useAuth, adminFetch } from "@/store/authStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
+import { getHeadingSummary } from "@/lib/heading-summary";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -988,6 +989,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
     }>;
   } | null;
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
+  const headingSummary = getHeadingSummary(headingStructure);
 
   const radarData = [
     { subject: t("results.chart_dim_technical"), value: (technicalSeo?.score as number) ?? 0 },
@@ -2613,6 +2615,71 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                         ))}
                     </div>
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {headingStructure && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("results.headings_card_title")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("results.headings_score_label")}</p>
+                    <p className="font-mono font-bold" style={{ color: scoreBadgeColor((headingStructure.score as number) ?? 0) }}>
+                      {(headingStructure.score as number) ?? 0}/100
+                    </p>
+                  </div>
+                  {headingSummary && (
+                    <>
+                      {[
+                        [t("results.headings_pages_total"), headingSummary.totalPages],
+                        [t("results.headings_single_h1"), headingSummary.pagesWithSingleH1],
+                        [t("results.headings_no_h1"), headingSummary.pagesWithoutH1],
+                        [t("results.headings_multiple_h1"), headingSummary.pagesWithMultipleH1],
+                        [t("results.headings_hierarchy"), headingSummary.pagesWithHierarchyIssues],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="font-mono font-medium">{value}</p>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+                {headingSummary && (
+                  headingSummary.problemPages.length > 0 ? (
+                    <div className="pt-2 border-t border-border/30 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">{t("results.headings_problem_label")}</p>
+                      <ul className="space-y-1.5 text-xs text-muted-foreground">
+                        {headingSummary.problemPages.slice(0, 10).map((page) => {
+                          const reasons = [
+                            page.h1Count === 0 ? t("results.headings_reason_no_h1") : null,
+                            page.h1Count > 1 ? t("results.headings_reason_multi_h1", { n: page.h1Count }) : null,
+                            page.hasHierarchyIssues ? t("results.headings_reason_hierarchy") : null,
+                          ].filter((reason): reason is string => reason !== null);
+                          return (
+                            <li key={page.url}>
+                              <span className="break-all">{page.url}</span>
+                              <span>: {reasons.join(", ")}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {headingSummary.problemPages.length > 10 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("results.headings_more", { n: headingSummary.problemPages.length - 10 })}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{t("results.headings_all_ok")}</p>
+                  )
                 )}
               </CardContent>
             </Card>
