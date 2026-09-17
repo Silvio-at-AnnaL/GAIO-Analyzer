@@ -213,6 +213,10 @@ function firstEnglishRecommendation(recs: Recommendation[]): Recommendation | un
 
 // ─── Plausibility guard ───────────────────────────────────────────────────────
 
+const RULE_BASED_TOPIC_RULE = {
+  id: "rule_based_topic",
+  pattern: /(robots\.txt|robots-txt|sitemap|llms\.txt|llms-txt)/,
+} as const;
 const SCHEMA_TOTAL_ABSENCE_RULE = {
   id: "schema_total_absence",
   subject: /(strukturierte\w*[\s-]+daten|schema\.org|schema-markup|json-ld)/,
@@ -236,10 +240,9 @@ const HREFLANG_MONOLINGUAL_RULE = {
 } as const;
 
 const SCHEMA_TYPE_NAMES = [
-  "product", "webpage", "website", "article", "newsarticle", "organization",
-  "localbusiness", "faqpage", "breadcrumblist", "offer", "review",
-  "aggregaterating", "howto", "event", "person", "service", "imageobject",
-  "videoobject",
+  "Product", "WebPage", "WebSite", "Article", "NewsArticle", "Organization",
+  "LocalBusiness", "FAQPage", "BreadcrumbList", "Offer", "Review",
+  "AggregateRating", "HowTo", "ImageObject", "VideoObject",
 ] as const;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -254,7 +257,7 @@ function recommendationHeadline(rec: Recommendation): string {
   const end = [colonIndex, sentenceIndex]
     .filter((index) => index >= 0)
     .reduce((earliest, index) => Math.min(earliest, index), rec.finding.length);
-  return rec.finding.slice(0, end).slice(0, 160).toLowerCase();
+  return rec.finding.slice(0, end).slice(0, 160);
 }
 
 export function filterImplausibleRecommendations(
@@ -277,15 +280,18 @@ export function filterImplausibleRecommendations(
   const kept: Recommendation[] = [];
 
   for (const rec of recs) {
-    const headline = recommendationHeadline(rec);
+    const originalHeadline = recommendationHeadline(rec);
+    const headline = originalHeadline.toLowerCase();
     const finding = rec.finding.toLowerCase();
     let rule: string | undefined;
 
-    if (
+    if (RULE_BASED_TOPIC_RULE.pattern.test(headline)) {
+      rule = RULE_BASED_TOPIC_RULE.id;
+    } else if (
       detectedTypes.length > 0
       && SCHEMA_TOTAL_ABSENCE_RULE.subject.test(headline)
       && SCHEMA_TOTAL_ABSENCE_RULE.absence.test(headline)
-      && !SCHEMA_TYPE_NAMES.some((type) => new RegExp(`\\b${type}\\b`, "i").test(headline))
+      && !SCHEMA_TYPE_NAMES.some((type) => new RegExp(`\\b${type}\\b`).test(originalHeadline))
     ) {
       rule = SCHEMA_TOTAL_ABSENCE_RULE.id;
     } else if (
