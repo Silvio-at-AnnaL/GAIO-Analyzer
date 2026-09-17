@@ -1,11 +1,12 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { crawlSite } from "../crawler";
 import { analyzeTechnicalSeo } from "./technical-seo";
-import { analyzeSchemaOrg } from "./schema-org";
-import { analyzeHeadings } from "./headings";
+import { analyzeSchemaOrg, type SchemaScoreParams } from "./schema-org";
+import { analyzeHeadings, type HeadingScoreParams } from "./headings";
 import { analyzeFaq } from "./faq";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
+import { getScoreParams } from "../score-config.js";
 
 export interface CompetitorFindings {
   betterThanYou: string;
@@ -116,6 +117,10 @@ export async function analyzeCompetitors(
   const MAX_COMPETITORS = 5;
   const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
   const competitors: CompetitorScore[] = [];
+  const [schemaParams, headingParams] = await Promise.all([
+    getScoreParams("schema-org"),
+    getScoreParams("headings"),
+  ]);
 
   // Competitor scoring is a sample; cap the work so this module cannot grow
   // without bound when many URLs are submitted.
@@ -148,8 +153,8 @@ export async function analyzeCompetitors(
       }
 
       const technicalResult = analyzeTechnicalSeo(crawlResult, normalizedUrl);
-      const schemaResult = analyzeSchemaOrg(crawlResult.pages);
-      const headingResult = analyzeHeadings(crawlResult.pages, []);
+      const schemaResult = analyzeSchemaOrg(crawlResult.pages, schemaParams as unknown as SchemaScoreParams);
+      const headingResult = analyzeHeadings(crawlResult.pages, [], headingParams as unknown as HeadingScoreParams);
       const faqResult = await analyzeFaq(crawlResult.pages);
 
       const contentScore = Math.round(

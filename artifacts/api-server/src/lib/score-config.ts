@@ -14,6 +14,7 @@ export interface ScoreParamDef {
 export interface ScoreProfile {
   slug: string;
   label: string;
+  description?: string;
   params: ScoreParamDef[];
 }
 
@@ -21,12 +22,29 @@ export const SCORE_PROFILES: ScoreProfile[] = [
   {
     slug: "schema-org",
     label: "score.profile_schema_org",
+    description: "score.profile_schema_org_desc",
     params: [
       { key: "breadth_saturation", label: "score.param_breadth_saturation_label", default: 14, min: 4, max: 30, step: 1, help: "score.param_breadth_saturation_help" },
       { key: "substance_saturation", label: "score.param_substance_saturation_label", default: 14, min: 4, max: 30, step: 1, help: "score.param_substance_saturation_help" },
       { key: "substance_k", label: "score.param_substance_k_label", default: 0.5, min: 0.1, max: 1.5, step: 0.05, help: "score.param_substance_k_help" },
       { key: "malus_per_hard_error", label: "score.param_malus_per_hard_error_label", default: 0.20, min: 0, max: 0.5, step: 0.05, help: "score.param_malus_per_hard_error_help" },
       { key: "malus_floor", label: "score.param_malus_floor_label", default: 0.40, min: 0.1, max: 1, step: 0.05, help: "score.param_malus_floor_help" },
+    ],
+  },
+  {
+    slug: "headings",
+    label: "score.profile_headings",
+    description: "score.profile_headings_desc",
+    params: [
+      { key: "weight_h1", label: "score.param_weight_h1_label", default: 35, min: 0, max: 60, step: 5, help: "score.param_weight_h1_help" },
+      { key: "weight_hierarchy", label: "score.param_weight_hierarchy_label", default: 25, min: 0, max: 60, step: 5, help: "score.param_weight_hierarchy_help" },
+      { key: "weight_structure", label: "score.param_weight_structure_label", default: 20, min: 0, max: 60, step: 5, help: "score.param_weight_structure_help" },
+      { key: "weight_quality", label: "score.param_weight_quality_label", default: 20, min: 0, max: 60, step: 5, help: "score.param_weight_quality_help" },
+      { key: "multi_h1_credit", label: "score.param_multi_h1_credit_label", default: 0.5, min: 0, max: 1, step: 0.05, help: "score.param_multi_h1_credit_help" },
+      { key: "min_h2_for_structure", label: "score.param_min_h2_for_structure_label", default: 2, min: 1, max: 5, step: 1, help: "score.param_min_h2_for_structure_help" },
+      { key: "quality_min_words", label: "score.param_quality_min_words_label", default: 3, min: 1, max: 8, step: 1, help: "score.param_quality_min_words_help" },
+      { key: "quality_min_chars", label: "score.param_quality_min_chars_label", default: 15, min: 5, max: 40, step: 1, help: "score.param_quality_min_chars_help" },
+      { key: "duplicate_h1_factor", label: "score.param_duplicate_h1_factor_label", default: 0.5, min: 0, max: 1, step: 0.05, help: "score.param_duplicate_h1_factor_help" },
     ],
   },
 ];

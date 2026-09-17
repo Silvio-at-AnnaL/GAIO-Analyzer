@@ -1,7 +1,7 @@
 import { crawlSite, fetchPage, type CrawlFailure, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
-import { analyzeHeadings } from "./analyzers/headings";
+import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
 import { analyzeContentRelevance } from "./analyzers/content-relevance";
 import { analyzeFaq } from "./analyzers/faq";
 import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
@@ -406,7 +406,8 @@ export async function runAnalysis(
       state.progress = 35;
       save();
       await new Promise((r) => setTimeout(r, 1000));
-      state.headingStructure = analyzeHeadings(pages, brandTerms);
+      const headingParams = await getScoreParams("headings");
+      state.headingStructure = analyzeHeadings(pages, brandTerms, headingParams as unknown as HeadingScoreParams);
       await new Promise((r) => setTimeout(r, 300));
     } catch (err) {
       logger.error({ err }, "Heading analysis failed");

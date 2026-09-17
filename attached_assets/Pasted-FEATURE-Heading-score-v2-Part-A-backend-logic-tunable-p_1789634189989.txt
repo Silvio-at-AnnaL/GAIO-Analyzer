@@ -1,0 +1,158 @@
+FEATURE — Heading score v2, Part A: backend logic, tunable params, admin rule description.
+Part B (report renderers) follows later. Do not change any report renderer in this step.
+
+Files in scope:
+- artifacts/api-server/src/lib/analyzers/headings.ts
+- artifacts/api-server/src/lib/score-config.ts
+- artifacts/api-server/src/lib/analysis-engine.ts (headings call only)
+- artifacts/api-server/src/lib/analyzers/competitors.ts (param passing only)
+- artifacts/gaio-analyzer/src/views/admin/ScoreSettingsView.tsx
+- artifacts/gaio-analyzer/src/lib/labelDefaults.ts (group "score" only)
+
+1. score-config.ts
+   a) Add an optional field `description?: string` (i18n key) to ScoreProfile.
+      Set description "score.profile_schema_org_desc" on the existing schema-org profile.
+   b) Add a new profile, slug "headings", label "score.profile_headings",
+      description "score.profile_headings_desc". Params (key: default, min, max, step):
+      weight_h1: 35, 0, 60, 5
+      weight_hierarchy: 25, 0, 60, 5
+      weight_structure: 20, 0, 60, 5
+      weight_quality: 20, 0, 60, 5
+      multi_h1_credit: 0.5, 0, 1, 0.05
+      min_h2_for_structure: 2, 1, 5, 1
+      quality_min_words: 3, 1, 8, 1
+      quality_min_chars: 15, 5, 40, 1
+      duplicate_h1_factor: 0.5, 0, 1, 0.05
+      Label/help keys: "score.param_<key>_label" / "score.param_<key>_help".
+   The admin routes need no change; they iterate SCORE_PROFILES. Verify that `description`
+   is passed through in the JSON response.
+
+2. headings.ts — rewrite the scoring. Export `interface HeadingScoreParams`
+   (the 9 keys above) and `DEFAULT_HEADING_PARAMS`.
+   New signature: `analyzeHeadings(pages, brandTerms = [], params = DEFAULT_HEADING_PARAMS)`.
+
+   Code constants (not DB params):
+   - LEGAL_PATH = /impressum|datenschutz|privacy|agb|terms|cookie|legal|disclaimer|imprint|widerruf/i
+     (tested against the URL pathname only)
+   - GENERIC_HEADINGS = exact-match list, case-insensitive, trimmed:
+     home, startseite, willkommen, welcome, mehr erfahren, weiterlesen, read more, kontakt, contact,
+     news, aktuelles, menü, menu, navigation, suche, search, newsletter, unternehmen, produkte,
+     leistungen, service, über uns, about us
+   - TEMPLATE_SELECTOR = "header, nav, footer, aside"
+
+   Heading extraction: as today (h1-h6, whitespace-collapsed text, skip empty). Per heading also
+   record `inTemplate` = element has an ancestor matching TEMPLATE_SELECTOR.
+   "Content headings" = headings with inTemplate === false, PLUS all H1 regardless of position.
+
+   Per page:
+   - h1Count = all non-empty H1 (unchanged definition)
+   - excludedAsLegal = LEGAL_PATH matches the pathname
+   - hierarchyIssue:
+       null if the page has no content headings;
+       "h1_not_first" if the page has >=1 H1 and the first content heading is not an H1;
+       else "level_skip" if any content heading level is greater than the previous content heading
+       level + 1;
+       else null.
+   - hasHierarchyIssues = hierarchyIssue !== null (keep this field; the current UI uses it)
+   - h2Count = number of content H2
+   - descriptiveShare = among content H1+H2: share whose text has >= quality_min_words words AND
+     >= quality_min_chars characters AND is not in GENERIC_HEADINGS. 0 if there are none.
+   - duplicateH1 = the page's first H1 text also appears as the first H1 on another scored page
+     (case-insensitive).
+   Component values per page (0..1). A page with ZERO headings gets 0 in all four components.
+   - h1: 1 if h1Count === 1; multi_h1_credit if h1Count > 1; 0 if none
+   - hierarchy: page has content headings and hierarchyIssue === null → 1, else 0
+   - structure: h2Count >= min_h2_for_structure → 1, else 0
+   - quality: descriptiveShare × (duplicateH1 ? duplicate_h1_factor : 1)
+
+   Scored pages = pages with excludedAsLegal === false. If that set is empty, score all pages.
+   Component average = mean over scored pages (0 if there are none).
+   totalWeight = sum of the 4 weights.
+   score = totalWeight > 0 ? round(Σ(avg_i × weight_i) / totalWeight × 100) : 0, clamped to 0..100.
+
+   brandTerms: keep computing `keywordInHeadings` exactly as today, but it no longer affects the score.
+
+   Return shape (keep all existing fields, add new ones):
+   {
+     score,
+     pages: [{ url, h1Count, hasHierarchyIssues, hierarchyIssue, excludedAsLegal, h2Count,
+               descriptiveShare (rounded to 2 decimals), duplicateH1, headings (first 20, as today) }],
+     keywordInHeadings,
+     scoredPageCount,
+     breakdown: {
+       h1: { avg, weight, points },
+       hierarchy: { avg, weight, points },
+       structure: { avg, weight, points },
+       quality: { avg, weight, points }
+     },
+     params
+   }
+   where points = avg × weight / totalWeight × 100, rounded to 1 decimal.
+
+3. analysis-engine.ts: load `await getScoreParams("headings")` and pass it to analyzeHeadings
+   (same pattern as schemaParams). No other changes.
+
+4. Type-safety: do not change lib/api-spec or generated code. The response is not zod-filtered,
+   so extra fields pass through. Confirm this by checking routes/analyze.ts.
+
+5. competitors.ts: pass the tunable params to BOTH analyzeSchemaOrg and analyzeHeadings, loaded via
+   getScoreParams("schema-org") and getScoreParams("headings") (cached). Load them once per
+   analyzeCompetitors call, not per competitor.
+
+6. ScoreSettingsView.tsx
+   - Add `description?: string` to the ScoreProfile interface.
+   - Directly below each profile header, render t(profile.description) when set, in a muted box.
+     Use `whitespace-pre-line` so line breaks in the text are kept.
+   - The global box with t("score.intro_note") stays, but its text changes (see 7).
+
+7. labelDefaults.ts, group "score" — add or change exactly these texts
+   (German, keep the umlauts, keep the line breaks as \n):
+
+   CHANGE "score.intro_note" to:
+   "Jedes Profil beschreibt unten, wie sein Score berechnet wird. Änderungen wirken nur auf neue Analysen; bestehende Reports bleiben unverändert."
+
+   ADD "score.profile_schema_org_desc":
+   "Höhere Sättigungswerte machen die Bewertung strenger. Der Malus greift nur bei aktiv fehlerhaften Angaben, nicht bei fehlenden Feldern."
+
+   ADD "score.profile_headings": "Heading-Struktur (Überschriften)"
+
+   ADD "score.profile_headings_desc":
+   "So entsteht der Heading-Score (0–100):\nBewertet werden alle analysierten Seiten außer Rechtsseiten (Impressum, Datenschutz, AGB, Cookie-Hinweise, Widerruf). Sind nur Rechtsseiten vorhanden, werden diese bewertet. Jede Seite wird in vier Bausteinen geprüft; die Ergebnisse werden über alle Seiten gemittelt und nach den Gewichten unten zusammengerechnet.\n\n1. H1: Genau eine H1 ergibt volle Punkte, mehrere H1 den eingestellten Anteil, keine H1 null Punkte.\n2. Hierarchie: Die Seite besteht, wenn die H1 die erste Inhaltsüberschrift ist und keine Ebene übersprungen wird (z. B. H2 direkt auf H4). Überschriften in Kopfbereich, Menü, Fußbereich und Seitenleisten werden dabei ignoriert.\n3. Gliederung: Die Seite besteht, wenn ihr Inhalt mindestens die eingestellte Zahl an H2-Überschriften hat.\n4. Qualität: Anteil der H1/H2, die beschreibend sind – mindestens die eingestellte Wort- und Zeichenzahl und keine Floskeln wie „Home“, „Willkommen“ oder „Mehr erfahren“. Steht dieselbe H1 auf mehreren Seiten, wird der Qualitätswert dieser Seiten mit dem eingestellten Faktor gemindert.\nSeiten ohne jede Überschrift erhalten in allen Bausteinen null Punkte.\n\nGewichte: Sie müssen nicht 100 ergeben – der Score wird immer auf 0–100 umgerechnet. Ein höheres Gewicht macht den Baustein wichtiger, Gewicht 0 schaltet ihn ab.\nMarkenbegriffe aus dem Fragebogen fließen nicht in den Score ein.\nDie Einstellungen gelten auch für die Bewertung der Wettbewerber."
+
+   ADD label/help pairs:
+   weight_h1: "Gewicht H1" / "Anteil des Bausteins „genau eine H1 pro Seite“ am Score."
+   weight_hierarchy: "Gewicht Hierarchie" / "Anteil des Bausteins „H1 zuerst, keine übersprungenen Ebenen“ am Score."
+   weight_structure: "Gewicht Gliederung" / "Anteil des Bausteins „Inhalt in H2-Abschnitte gegliedert“ am Score."
+   weight_quality: "Gewicht Qualität" / "Anteil des Bausteins „beschreibende, eindeutige Überschriften“ am Score."
+   multi_h1_credit: "Anrechnung bei mehreren H1" / "Anteil der H1-Punkte für Seiten mit mehr als einer H1 (0 = keine Punkte, 1 = volle Punkte)."
+   min_h2_for_structure: "Mindestanzahl H2 für Gliederung" / "So viele H2 muss der Seiteninhalt haben, damit die Seite als gegliedert gilt."
+   quality_min_words: "Mindestwörter je Überschrift" / "Kürzere H1/H2 gelten nicht als beschreibend."
+   quality_min_chars: "Mindestzeichen je Überschrift" / "Kürzere H1/H2 gelten nicht als beschreibend."
+   duplicate_h1_factor: "Faktor bei doppelter H1" / "Qualitätswert von Seiten, deren H1 auch auf anderen Seiten steht, wird damit multipliziert (1 = kein Abzug)."
+
+Do NOT:
+- touch ErgebnisseView.tsx, report-export.ts or heading-summary.ts
+- touch lib/api-spec, lib/api-zod, lib/api-client-react
+- run pnpm install or codegen
+- change schema-org scoring logic (param passing in competitors.ts only)
+
+Verification (report the output):
+- `git diff --stat` including new/untracked files, plus the full diff
+- `pnpm --filter @workspace/api-server run typecheck` and `pnpm --filter @workspace/gaio-analyzer run typecheck`
+- A throwaway tsx script (do NOT commit it) that runs analyzeHeadings on inline HTML fixtures and
+  prints score, breakdown and pages. Fixtures:
+  (a) a page with 1 H1 and 3 H2
+  (b) a page with 2 H1
+  (c) a page with H2 → H4
+  (d) a page with <nav><h2>Menü</h2></nav> before the H1
+  (e) a page with no headings
+  (f) /impressum with no H1
+  (g) two pages with identical H1
+  Confirm expected behaviour: (d) has no hierarchy issue; (f) is excluded from scoring.
+- Run analyses on dev for https://www.steinbach-kugellager.de and https://www.wirthwein.de.
+  Report for each: score, scoredPageCount, breakdown, and the pages with hierarchyIssue
+  (url + issue).
+- Open Admin → Score-Einstellungen. Confirm both profiles render with their description and the
+  headings sliders save.
+
+Do not push or publish. Report back first.

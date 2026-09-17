@@ -17,6 +17,7 @@ interface ScoreParam {
 interface ScoreProfile {
   slug: string;
   label: string;
+  description?: string;
   params: ScoreParam[];
 }
 
@@ -150,6 +151,12 @@ export function ScoreSettingsView() {
                 {t("score.reset_button")}
               </button>
             </div>
+
+            {profile.description && (
+              <div className="mx-5 mt-5 whitespace-pre-line rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+                {t(profile.description)}
+              </div>
+            )}
 
             <div className="divide-y divide-border">
               {profile.params.map((param) => (
