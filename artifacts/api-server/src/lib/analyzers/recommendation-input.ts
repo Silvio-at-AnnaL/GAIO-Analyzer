@@ -57,14 +57,21 @@ function buildCompactModules(
   const modules: ModuleStatus = {};
 
   const crawlSource = record(moduleResults.crawlReliability);
+  const languageVariants = [...new Set(
+    array(moduleResults.languageVariants).flatMap((item) => {
+      const lang = string(record(item)?.lang);
+      return lang ? [lang] : [];
+    }),
+  )];
   modules.crawl = crawlSource ? "ok" : "missing";
   const crawl = crawlSource
     ? defined({
         pagesAttempted: number(crawlSource.attempted),
         pagesSucceeded: number(crawlSource.succeeded),
         pagesFailed: number(crawlSource.failed),
+        languageVariants,
       })
-    : unavailable();
+    : { ...unavailable(), languageVariants };
 
   const technicalSource = record(moduleResults.technicalSeo);
   modules.technicalSeo = technicalSource ? "ok" : "missing";
@@ -294,7 +301,7 @@ function buildCompactModules(
 
 export function buildRecommendationInput(
   moduleResults: Record<string, unknown>,
-): { text: string; size: number; modules: ModuleStatus; trimLevel: number } {
+): { text: string; size: number; languageVariantsChars: number; modules: ModuleStatus; trimLevel: number } {
   let trimLevel = 0;
   let built = buildCompactModules(moduleResults, trimLevel);
   let text = `${HEADER}\n${JSON.stringify(built.data)}`;
@@ -305,5 +312,7 @@ export function buildRecommendationInput(
     text = `${HEADER}\n${JSON.stringify(built.data)}`;
   }
 
-  return { text, size: text.length, modules: built.modules, trimLevel };
+  const crawl = record(built.data.crawl);
+  const languageVariantsChars = JSON.stringify(crawl?.languageVariants ?? []).length;
+  return { text, size: text.length, languageVariantsChars, modules: built.modules, trimLevel };
 }

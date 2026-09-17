@@ -1,0 +1,115 @@
+FIX — AI recommendations, Part 2: plausibility guard, language-variant input, new default template.
+Backend only.
+
+Files in scope:
+- artifacts/api-server/src/lib/analyzers/recommendations.ts
+- artifacts/api-server/src/lib/analyzers/recommendation-input.ts
+- artifacts/api-server/src/lib/analysis-engine.ts (only: add languageVariants to moduleResults)
+- artifacts/api-server/src/lib/prompt-defaults.ts (only: the "recommendations" entry)
+
+1. analysis-engine.ts: add `languageVariants: state.hreflangVariants` to the moduleResults object
+   passed to generateRecommendations. Nothing else.
+
+2. recommendation-input.ts: in the `crawl` block, add `languageVariants`: a de-duplicated array of
+   the `lang` values from moduleResults.languageVariants (defensive; [] if absent).
+   Also report its char count in the size log. No other changes.
+
+3. recommendations.ts — plausibility guard, applied to AI recommendations only
+   (never to rule-based ones), after parsing and after the language retry.
+   - Export `filterImplausibleRecommendations(recs, moduleResults): { kept, dropped: Array<{ rule, finding }> }`.
+   - headline(rec) = rec.finding up to the first ":" or ". " (whichever comes first), max 160 chars,
+     lowercased.
+   - Rules (named constants, each with an id):
+     a) "schema_total_absence": applies if schemaOrg.detectedTypes is a non-empty array.
+        Drop if the headline matches
+          /(strukturierte\w*[\s-]+daten|schema\.org|schema-markup|json-ld)/
+        AND matches
+          /(vollständig|gänzlich|komplett|keinerlei|auf keiner|überhaupt kein|kein\w*\s+(strukturierte|schema))/
+        AND contains none of these type names (case-insensitive, word match): product, webpage, website,
+        article, newsarticle, organization, localbusiness, faqpage, breadcrumblist, offer, review,
+        aggregaterating, howto, event, person, service, imageobject, videoobject.
+     b) "h1_absence": applies if headingStructure pages exist and no page with excludedAsLegal !== true
+        has h1Count === 0.
+        Drop if the headline matches
+          /(kein\w*\s+(eindeutige\w*\s+)?h1\b|\bh1\b[\w\s-]{0,20}(fehlt|fehlen|fehlend))/
+     c) "faq_schema_absence": applies if faqQuality.hasFaqSchema === true.
+        Drop if the headline matches
+          /(kein\w*\s+faq\w*[\s-]?schema|faq\w*[\s-]?schema[\w\s-]{0,20}(fehlt|fehlen|fehlend|nicht vorhanden|nicht implementiert))/
+        AND the full finding does not match /(obwohl|zwar|vorhanden ist)/.
+     d) "hreflang_present": applies if technicalSeo.hreflang.present === true.
+        Drop if the headline matches
+          /(kein\w*\s+hreflang|hreflang[\w\s-]{0,30}(fehlt|fehlen|fehlend|abwesend|nicht vorhanden))/
+     e) "hreflang_monolingual": applies if technicalSeo.hreflang.languages is empty AND
+        languageVariants is empty.
+        Drop if the headline contains "hreflang".
+   - Log each dropped recommendation (warn):
+     { rule, finding: first 160 chars } "implausible AI recommendation dropped".
+   - Final return stays: [...ruleBased, ...kept].
+
+4. prompt-defaults.ts, entry slug "recommendations":
+   - placeholder description for {{RESULTS_JSON}} →
+     "Kompakte, verbindliche Messwerte aller Module (automatisch erzeugt)"
+   - Replace `template` with EXACTLY the text below (keep both placeholders):
+
+{{RETRY_PREFIX}}Du bist Experte für die Auffindbarkeit durch KI-Sprachmodelle (GAIO) und klassisches SEO für B2B-Industrie-Websites. Erstelle aus den folgenden Messwerten eine priorisierte Maßnahmenliste. Alle Ausgaben ausschließlich auf Deutsch (Code-Beispiele ausgenommen).
+
+MESSWERTE:
+{{RESULTS_JSON}}
+
+REGELN FÜR BEFUNDE
+1. Verwende ausschließlich Befunde, die sich direkt aus den Messwerten ergeben. Erfinde keine Beispiele, Zahlen, URLs oder Seitenelemente, die dort nicht stehen.
+2. Behaupte nie, etwas fehle, wenn die Messwerte es als vorhanden ausweisen (z. B. schemaOrg.detectedTypes, faqQuality.hasFaqSchema, die H1-Zählwerte in headingStructure).
+3. Die Analyse umfasst nur die gecrawlten Seiten (crawl.pagesSucceeded). Formuliere daher „auf den analysierten Seiten nicht gefunden“ statt „fehlt vollständig“ oder „nirgends auf der Website“.
+4. Nenne konkrete URLs nur, wenn sie in den Messwerten stehen.
+5. robots.txt, sitemap.xml und llms.txt werden separat behandelt – dazu keine Empfehlungen.
+6. hreflang nur empfehlen, wenn die Website Sprachvarianten hat (crawl.languageVariants oder technicalSeo.hreflang.languages nicht leer). Einsprachige Websites brauchen kein hreflang.
+7. Keine doppelten Empfehlungen zum selben Thema. Höchstens 12 Empfehlungen.
+
+EINSTUFUNG
+- "critical": nur grundlegende, durch die Messwerte belegte Fehler: kein HTTPS; keinerlei strukturierte Daten (schemaOrg.detectedTypes leer); auf der Mehrheit der bewerteten Seiten keine H1; die Website konnte großteils nicht analysiert werden (viele fehlgeschlagene Seiten laut crawl).
+- "high_leverage": Maßnahmen mit großem Effekt auf die KI-Sichtbarkeit: fehlende wichtige Schema-Typen (schemaOrg.missingHighValue), fehlendes FAQ-Schema, dünne oder fehlende Inhalte zu Anwendungen, Produkten und Kompetenzen (contentRelevance), schwach beantwortete Fragen in der LLM-Prüfung (llmDiscoverability), fehlerhafte hreflang-Angaben bei mehrsprachigen Websites.
+- "secondary": Feinschliff: Längen von Meta-Titeln und Meta-Beschreibungen, Alt-Texte, Überschriften-Hierarchie (übersprungene Ebenen, H1 nicht zuerst) und Qualität der Überschriften.
+
+JEDE EMPFEHLUNG ENTHÄLT
+- finding: kurze Überschrift, dann Doppelpunkt, dann der konkrete Befund mit Zahlen oder URLs aus den Messwerten.
+- whyItMatters: warum das für die Auffindbarkeit durch KI-Sprachmodelle und/oder klassisches SEO relevant ist.
+- fixInstruction: konkrete Umsetzung (Code-Beispiel oder inhaltliche Anleitung).
+
+AUSGABE
+Gib ausschließlich ein JSON-Array zurück, ohne Markdown und ohne weiteren Text:
+[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]
+
+   (The template is inside a TS template literal: make sure it contains no backticks and no "${".)
+
+Do NOT:
+- write to the prompts DB table, call the reset route, or change prompt-manager.ts / admin-db.ts
+- change scoring, analyzers other than listed, the frontend, or lib/*
+- run pnpm install or codegen
+
+Verification (report the output):
+- full `git diff` and `pnpm --filter @workspace/api-server run typecheck`
+- Throwaway script, NOT committed (esbuild CJS, NODE_ENV=production) testing
+  filterImplausibleRecommendations. Use a moduleResults with:
+  detectedTypes ["Organization"]; all scored pages with h1Count 1; hasFaqSchema true;
+  hreflang { present:false, languages:[] }; languageVariants [].
+  Expected DROPPED:
+    "Strukturierte Daten vollständig fehlend: Auf keiner der 13 analysierten Seiten wurde Schema.org-Markup gefunden. Weder Organization, noch Product, noch BreadcrumbList sind implementiert."
+    "Keine H1-Überschrift: Die Seiten haben keine H1."
+    "FAQ-Schema fehlt: Es wurde kein FAQPage-Markup gefunden."
+    "Hreflang-Auszeichnung vollständig abwesend: Auf keiner der 13 gecrawlten Seiten sind hreflang-Tags vorhanden."
+  Expected KEPT:
+    "Produktschema (Typ Product) fehlt vollständig: Trotz klarer Produktseiten ist kein Product-Schema implementiert."
+    "WebPage-Schema fehlt auf allen Seiten: Der Schema.org-Score beträgt zwar 90, jedoch fehlt der Typ WebPage."
+    "FAQPage-Schema mit Qualitätsproblemen: Obwohl FAQPage-Schema auf 8 Seiten vorhanden ist, sind die ersten zwei Fragen keine echten Nutzerfragen."
+    "Überschriftenhierarchie auf /news fehlerhaft: Eine Gliederungsebene wird übersprungen."
+  Print kept/dropped per string with the rule id.
+- Template test WITHOUT the DB (throwaway script): use the new default template from prompt-defaults.ts
+  with fillTemplate, and a steinbach compact input.
+  - Use /tmp/recommendation-input-steinbach.txt if it still exists; otherwise run a fresh dev analysis
+    and rebuild it with buildRecommendationInput.
+  - Call the model once, exactly as recommendations.ts does, then apply the guard.
+  - Report: duration, number of recommendations, every tier + finding, and any dropped items.
+  - Confirm: no hreflang recommendation; no heading-hierarchy item above "secondary";
+    no "fehlt vollständig" wording.
+
+Do not push or publish. Report back first.

@@ -149,31 +149,36 @@ WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständ
     description: "Erstellt priorisierte Handlungsempfehlungen in drei Stufen: Kritisch, Hoher Hebel, Nachgeordnet.",
     module: "Analyse",
     placeholders: [
-      { key: "{{RESULTS_JSON}}", description: "JSON der Analyseergebnisse aller Module" },
+      { key: "{{RESULTS_JSON}}", description: "Kompakte, verbindliche Messwerte aller Module (automatisch erzeugt)" },
       { key: "{{RETRY_PREFIX}}", description: "Leer beim ersten Versuch; Fehlermeldung bei Wiederholung (automatisch gesetzt)" },
     ],
-    template: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+    template: `{{RETRY_PREFIX}}Du bist Experte für die Auffindbarkeit durch KI-Sprachmodelle (GAIO) und klassisches SEO für B2B-Industrie-Websites. Erstelle aus den folgenden Messwerten eine priorisierte Maßnahmenliste. Alle Ausgaben ausschließlich auf Deutsch (Code-Beispiele ausgenommen).
 
-{{RETRY_PREFIX}}Based on these website analysis findings, generate a prioritized action list grouped into three tiers:
-
-- "critical": must be fixed immediately (broken fundamentals: missing canonical, no HTTPS, 0 structured data, H1 absent)
-- "high_leverage": changes likely to produce major visibility gains (missing FAQPage schema, thin content, no use-case descriptions, hreflang errors, missing Organization schema)
-- "secondary": improvements for after critical + high-leverage are resolved (meta description length, image alt gaps, heading hierarchy inconsistencies)
-
-Each recommendation must include:
-- What exactly is wrong (specific page/element if possible)
-- Why it matters for LLM discoverability and/or classic SEO
-- Concrete fix instruction (code snippet or content guidance)
-
-Note: robots.txt, sitemap.xml, and llms.txt recommendations are already handled separately — focus on content quality, structured data, and on-page SEO issues.
-
-Analysis findings:
+MESSWERTE:
 {{RESULTS_JSON}}
 
-Return a JSON array (no markdown) of objects:
-[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]
+REGELN FÜR BEFUNDE
+1. Verwende ausschließlich Befunde, die sich direkt aus den Messwerten ergeben. Erfinde keine Beispiele, Zahlen, URLs oder Seitenelemente, die dort nicht stehen.
+2. Behaupte nie, etwas fehle, wenn die Messwerte es als vorhanden ausweisen (z. B. schemaOrg.detectedTypes, faqQuality.hasFaqSchema, die H1-Zählwerte in headingStructure).
+3. Die Analyse umfasst nur die gecrawlten Seiten (crawl.pagesSucceeded). Formuliere daher „auf den analysierten Seiten nicht gefunden“ statt „fehlt vollständig“ oder „nirgends auf der Website“.
+4. Nenne konkrete URLs nur, wenn sie in den Messwerten stehen.
+5. robots.txt, sitemap.xml und llms.txt werden separat behandelt – dazu keine Empfehlungen.
+6. hreflang nur empfehlen, wenn die Website Sprachvarianten hat (crawl.languageVariants oder technicalSeo.hreflang.languages nicht leer). Einsprachige Websites brauchen kein hreflang.
+7. Keine doppelten Empfehlungen zum selben Thema. Höchstens 12 Empfehlungen.
 
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle Felder — title, finding, why_it_matters, fix — müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
+EINSTUFUNG
+- "critical": nur grundlegende, durch die Messwerte belegte Fehler: kein HTTPS; keinerlei strukturierte Daten (schemaOrg.detectedTypes leer); auf der Mehrheit der bewerteten Seiten keine H1; die Website konnte großteils nicht analysiert werden (viele fehlgeschlagene Seiten laut crawl).
+- "high_leverage": Maßnahmen mit großem Effekt auf die KI-Sichtbarkeit: fehlende wichtige Schema-Typen (schemaOrg.missingHighValue), fehlendes FAQ-Schema, dünne oder fehlende Inhalte zu Anwendungen, Produkten und Kompetenzen (contentRelevance), schwach beantwortete Fragen in der LLM-Prüfung (llmDiscoverability), fehlerhafte hreflang-Angaben bei mehrsprachigen Websites.
+- "secondary": Feinschliff: Längen von Meta-Titeln und Meta-Beschreibungen, Alt-Texte, Überschriften-Hierarchie (übersprungene Ebenen, H1 nicht zuerst) und Qualität der Überschriften.
+
+JEDE EMPFEHLUNG ENTHÄLT
+- finding: kurze Überschrift, dann Doppelpunkt, dann der konkrete Befund mit Zahlen oder URLs aus den Messwerten.
+- whyItMatters: warum das für die Auffindbarkeit durch KI-Sprachmodelle und/oder klassisches SEO relevant ist.
+- fixInstruction: konkrete Umsetzung (Code-Beispiel oder inhaltliche Anleitung).
+
+AUSGABE
+Gib ausschließlich ein JSON-Array zurück, ohne Markdown und ohne weiteren Text:
+[{"tier": "critical|high_leverage|secondary", "finding": "...", "whyItMatters": "...", "fixInstruction": "..."}]`,
   },
 
   {

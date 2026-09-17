@@ -483,6 +483,7 @@ export async function runAnalysis(
 
       const moduleResults = {
         crawlReliability: state.crawlReliability,
+        languageVariants: state.hreflangVariants,
         technicalSeo: state.technicalSeo,
         schemaOrg: state.schemaOrg,
         headingStructure: state.headingStructure,

@@ -211,6 +211,123 @@ function firstEnglishRecommendation(recs: Recommendation[]): Recommendation | un
   return recs.find(isEnglishRecommendation);
 }
 
+// ─── Plausibility guard ───────────────────────────────────────────────────────
+
+const SCHEMA_TOTAL_ABSENCE_RULE = {
+  id: "schema_total_absence",
+  subject: /(strukturierte\w*[\s-]+daten|schema\.org|schema-markup|json-ld)/,
+  absence: /(vollständig|gänzlich|komplett|keinerlei|auf keiner|überhaupt kein|kein\w*\s+(strukturierte|schema))/,
+} as const;
+const H1_ABSENCE_RULE = {
+  id: "h1_absence",
+  pattern: /(kein\w*\s+(eindeutige\w*\s+)?h1\b|\bh1\b[\w\s-]{0,20}(fehlt|fehlen|fehlend))/,
+} as const;
+const FAQ_SCHEMA_ABSENCE_RULE = {
+  id: "faq_schema_absence",
+  pattern: /(kein\w*\s+faq\w*[\s-]?schema|faq\w*[\s-]?schema[\w\s-]{0,20}(fehlt|fehlen|fehlend|nicht vorhanden|nicht implementiert))/,
+  qualification: /(obwohl|zwar|vorhanden ist)/,
+} as const;
+const HREFLANG_PRESENT_RULE = {
+  id: "hreflang_present",
+  pattern: /(kein\w*\s+hreflang|hreflang[\w\s-]{0,30}(fehlt|fehlen|fehlend|abwesend|nicht vorhanden))/,
+} as const;
+const HREFLANG_MONOLINGUAL_RULE = {
+  id: "hreflang_monolingual",
+} as const;
+
+const SCHEMA_TYPE_NAMES = [
+  "product", "webpage", "website", "article", "newsarticle", "organization",
+  "localbusiness", "faqpage", "breadcrumblist", "offer", "review",
+  "aggregaterating", "howto", "event", "person", "service", "imageobject",
+  "videoobject",
+] as const;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function recommendationHeadline(rec: Recommendation): string {
+  const colonIndex = rec.finding.indexOf(":");
+  const sentenceIndex = rec.finding.indexOf(". ");
+  const end = [colonIndex, sentenceIndex]
+    .filter((index) => index >= 0)
+    .reduce((earliest, index) => Math.min(earliest, index), rec.finding.length);
+  return rec.finding.slice(0, end).slice(0, 160).toLowerCase();
+}
+
+export function filterImplausibleRecommendations(
+  recs: Recommendation[],
+  moduleResults: Record<string, unknown>,
+): { kept: Recommendation[]; dropped: Array<{ rule: string; finding: string }> } {
+  const schemaOrg = asRecord(moduleResults.schemaOrg);
+  const detectedTypes = Array.isArray(schemaOrg?.detectedTypes) ? schemaOrg.detectedTypes : [];
+  const headingStructure = asRecord(moduleResults.headingStructure);
+  const headingPages = Array.isArray(headingStructure?.pages) ? headingStructure.pages : [];
+  const scoredHeadingPages = headingPages
+    .map(asRecord)
+    .filter((page): page is Record<string, unknown> => page !== null && page.excludedAsLegal !== true);
+  const faqQuality = asRecord(moduleResults.faqQuality);
+  const technicalSeo = asRecord(moduleResults.technicalSeo);
+  const hreflang = asRecord(technicalSeo?.hreflang);
+  const hreflangLanguages = Array.isArray(hreflang?.languages) ? hreflang.languages : [];
+  const languageVariants = Array.isArray(moduleResults.languageVariants) ? moduleResults.languageVariants : [];
+  const dropped: Array<{ rule: string; finding: string }> = [];
+  const kept: Recommendation[] = [];
+
+  for (const rec of recs) {
+    const headline = recommendationHeadline(rec);
+    const finding = rec.finding.toLowerCase();
+    let rule: string | undefined;
+
+    if (
+      detectedTypes.length > 0
+      && SCHEMA_TOTAL_ABSENCE_RULE.subject.test(headline)
+      && SCHEMA_TOTAL_ABSENCE_RULE.absence.test(headline)
+      && !SCHEMA_TYPE_NAMES.some((type) => new RegExp(`\\b${type}\\b`, "i").test(headline))
+    ) {
+      rule = SCHEMA_TOTAL_ABSENCE_RULE.id;
+    } else if (
+      headingPages.length > 0
+      && !scoredHeadingPages.some((page) => page.h1Count === 0)
+      && H1_ABSENCE_RULE.pattern.test(headline)
+    ) {
+      rule = H1_ABSENCE_RULE.id;
+    } else if (
+      faqQuality?.hasFaqSchema === true
+      && FAQ_SCHEMA_ABSENCE_RULE.pattern.test(headline)
+      && !FAQ_SCHEMA_ABSENCE_RULE.qualification.test(finding)
+    ) {
+      rule = FAQ_SCHEMA_ABSENCE_RULE.id;
+    } else if (
+      hreflang?.present === true
+      && HREFLANG_PRESENT_RULE.pattern.test(headline)
+    ) {
+      rule = HREFLANG_PRESENT_RULE.id;
+    } else if (
+      hreflangLanguages.length === 0
+      && languageVariants.length === 0
+      && headline.includes("hreflang")
+    ) {
+      rule = HREFLANG_MONOLINGUAL_RULE.id;
+    }
+
+    if (rule) {
+      const droppedFinding = rec.finding.slice(0, 160);
+      dropped.push({ rule, finding: droppedFinding });
+      logger.warn(
+        { rule, finding: droppedFinding },
+        "implausible AI recommendation dropped",
+      );
+    } else {
+      kept.push(rec);
+    }
+  }
+
+  return { kept, dropped };
+}
+
 function parseRecommendations(text: string): Recommendation[] | null {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return null;
@@ -242,7 +359,12 @@ export async function generateRecommendations(
   try {
     const input = buildRecommendationInput(moduleResults);
     logger.info(
-      { inputChars: input.size, trimLevel: input.trimLevel, modules: input.modules },
+      {
+        inputChars: input.size,
+        languageVariantsChars: input.languageVariantsChars,
+        trimLevel: input.trimLevel,
+        modules: input.modules,
+      },
       "recommendations input built",
     );
 
@@ -310,5 +432,6 @@ export async function generateRecommendations(
     );
   }
 
-  return [...ruleBasedRecs, ...aiRecs];
+  const { kept } = filterImplausibleRecommendations(aiRecs, moduleResults);
+  return [...ruleBasedRecs, ...kept];
 }
