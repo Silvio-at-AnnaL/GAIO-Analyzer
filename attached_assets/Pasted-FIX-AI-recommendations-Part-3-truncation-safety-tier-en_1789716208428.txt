@@ -1,0 +1,87 @@
+FIX — AI recommendations, Part 3: truncation safety, tier enforcement, page outlines, template polish.
+Backend only.
+
+Files in scope:
+- artifacts/api-server/src/lib/analyzers/recommendations.ts
+- artifacts/api-server/src/lib/analyzers/recommendation-input.ts
+- artifacts/api-server/src/lib/prompt-defaults.ts (only the "recommendations" entry)
+
+Confirmed from production logs (steinbach, 17.09. 12:28–12:30): the API call succeeded (87.3 s,
+no error, no retry, no guard drop) but ZERO AI recommendations reached the report, because
+parseRecommendations requires one complete JSON array and returns null silently when the response was
+cut off at max_tokens. Nothing is logged in that case.
+
+1. recommendations.ts — robustness
+   a) max_tokens: 8192 → 12000. RECS_BUDGET_MS stays 240_000.
+   b) The API helper must also return the response's stop_reason and the raw text length.
+      After each call, log (info): { responseChars, stopReason } "AI recommendations response".
+   c) parseRecommendations(text): keep the strict path first (match /\[[\s\S]*\]/ + JSON.parse).
+      If that fails, SALVAGE instead of returning null:
+      - scan the text from the first "[" and collect top-level {...} blocks by counting braces,
+        ignoring braces inside strings (respect \" escapes)
+      - JSON.parse each complete block on its own; discard blocks that fail
+      - keep objects where tier, finding, whyItMatters and fixInstruction are all non-empty strings
+      - return the collected array (or null if empty)
+      Return additionally whether salvage was used and how many blocks were recovered, e.g. by
+      exporting `parseRecommendations(text): { recs: Recommendation[] | null; salvaged: boolean; count: number }`
+      and adapting the call sites.
+   d) Log (warn) when salvage was used: { recovered, stopReason } "AI recommendations recovered from truncated response".
+      Log (warn) when the result is still empty: { responseChars, stopReason } "AI recommendations unusable".
+   e) Keep the language retry, the time budget, the plausibility guard and the rule-based-first order.
+
+2. recommendations.ts — tier enforcement, applied to AI recommendations AFTER the plausibility guard.
+   Export `normalizeTiers(recs, moduleResults): { recs, changed: Array<{ from, to, finding }> }`.
+   Use the same headline extraction as the guard (text up to the first ":" or ". ", max 160 chars,
+   lowercased for matching).
+   - Rule "heading_not_critical": if tier === "critical" AND the headline matches
+       /(überschrift|heading|hierarchie|\bh1\b|\bh2\b)/
+     AND NOT (pages with excludedAsLegal !== true and h1Count === 0) > half of those pages
+     → set tier to "secondary".
+   - Rule "meta_not_critical": if tier === "critical" AND the headline matches
+       /(meta-?titel|meta-?beschreibung|meta-?description|title-tag|alt-text)/
+     → set tier to "secondary".
+   Log each change (info): { from, to, finding: first 160 chars } "recommendation tier normalized".
+
+3. recommendation-input.ts — give the model concrete page context back (it lost it in Part 1).
+   Replace the `sampleH1` field of headingStructure with `pageOutlines`:
+     max 13 entries, scored pages first (excludedAsLegal !== true), each
+     { url, h1: first H1 text (≤120 chars) or null, h2: up to 5 content H2 texts (≤80 chars each) }
+   Content H2 = headings with level "h2" and inTemplate !== true (defensive: if inTemplate is absent,
+   include the heading).
+   Trim level 1 drops pageOutlines (as it dropped sampleH1). Everything else stays.
+   MAX_INPUT_CHARS stays 30000.
+
+4. prompt-defaults.ts, entry "recommendations": keep the current template and its two placeholders,
+   and change only the following, keeping the existing structure and wording elsewhere:
+   - In "REGELN FÜR BEFUNDE", append these rules (continuing the numbering):
+     8. Schreibe den Kunden mit „Sie“ an. Verwende in allen drei Feldern die Sie-Form, niemals „Du“ oder Imperative wie „Füge“, „Ergänze“, „Erstelle“ ohne Anrede.
+     9. Nenne niemals interne Feldnamen, Datenpfade oder JSON-Schlüssel (z. B. schemaOrg.missingHighValue, hasFaqSchema, avgLength, contentRelevance-Score). Beschreibe den Befund in normaler Sprache mit den Zahlen aus den Messwerten.
+     10. Kein Markdown: keine Code-Zäune (```), keine Sternchen, keine Rauten-Überschriften. Code-Beispiele als reiner Text, höchstens 600 Zeichen je Empfehlung; bei längeren Beispielen nur den entscheidenden Ausschnitt zeigen.
+   - Change rule 7 from "Höchstens 12 Empfehlungen." to "Höchstens 10 Empfehlungen."
+   - In "EINSTUFUNG", append to the "secondary" line:
+     Überschriften- und Meta-Befunde sind immer „secondary“, außer der Mehrheit der bewerteten Seiten fehlt die H1.
+
+Do NOT:
+- write to the prompts DB table or call the reset route
+- change the guard rules, the budget, the language guard, or any analyzer outside the listed files
+- touch the frontend or lib/*
+- run pnpm install or codegen
+
+Verification (report the output):
+- full `git diff` and `pnpm --filter @workspace/api-server run typecheck`
+- Throwaway script, NOT committed (esbuild CJS, NODE_ENV=production):
+  a) Salvage: take a valid 3-object JSON array, cut it in the middle of the third object, and run
+     parseRecommendations. Expected: 2 recovered objects, salvaged = true. Also verify that an intact
+     array still parses via the strict path (salvaged = false) and that pure prose returns null.
+  b) Tier enforcement: with moduleResults where all scored pages have h1Count 1, check
+     "critical" + "Überschriftenstruktur stark fehlerhaft: …"      → secondary
+     "critical" + "Alle 16 Meta-Titel zu lang: …"                  → secondary
+     "critical" + "Kein HTTPS: …"                                  → unchanged
+     Then with moduleResults where 9 of 13 scored pages have h1Count 0:
+     "critical" + "Auf den meisten Seiten fehlt die H1: …"         → unchanged
+- One dev analysis each for https://www.steinbach-kugellager.de and https://identbase.de/ . Report per run:
+  the "recommendations input built" line, "AI recommendations response" (responseChars, stopReason),
+  any salvage/unusable/tier-normalized log lines, the duration, and the full list of tier + finding.
+  Confirm for both: no internal field names, no Markdown fences, Sie-Form throughout, at most 10 items.
+
+Do not push or publish. Report back first.

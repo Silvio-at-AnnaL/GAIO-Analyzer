@@ -164,12 +164,15 @@ REGELN FÜR BEFUNDE
 4. Nenne konkrete URLs nur, wenn sie in den Messwerten stehen.
 5. robots.txt, sitemap.xml und llms.txt werden separat behandelt – dazu keine Empfehlungen.
 6. hreflang nur empfehlen, wenn die Website Sprachvarianten hat (crawl.languageVariants oder technicalSeo.hreflang.languages nicht leer). Einsprachige Websites brauchen kein hreflang.
-7. Keine doppelten Empfehlungen zum selben Thema. Höchstens 12 Empfehlungen.
+7. Keine doppelten Empfehlungen zum selben Thema. Höchstens 10 Empfehlungen.
+8. Schreibe den Kunden mit „Sie“ an. Verwende in allen drei Feldern die Sie-Form, niemals „Du“ oder Imperative wie „Füge“, „Ergänze“, „Erstelle“ ohne Anrede.
+9. Nenne niemals interne Feldnamen, Datenpfade oder JSON-Schlüssel (z. B. schemaOrg.missingHighValue, hasFaqSchema, avgLength, contentRelevance-Score). Beschreibe den Befund in normaler Sprache mit den Zahlen aus den Messwerten.
+10. Kein Markdown: keine Code-Zäune (\`\`\`), keine Sternchen, keine Rauten-Überschriften. Code-Beispiele als reiner Text, höchstens 600 Zeichen je Empfehlung; bei längeren Beispielen nur den entscheidenden Ausschnitt zeigen.
 
 EINSTUFUNG
 - "critical": nur grundlegende, durch die Messwerte belegte Fehler: kein HTTPS; keinerlei strukturierte Daten (schemaOrg.detectedTypes leer); auf der Mehrheit der bewerteten Seiten keine H1; die Website konnte großteils nicht analysiert werden (viele fehlgeschlagene Seiten laut crawl).
 - "high_leverage": Maßnahmen mit großem Effekt auf die KI-Sichtbarkeit: fehlende wichtige Schema-Typen (schemaOrg.missingHighValue), fehlendes FAQ-Schema, dünne oder fehlende Inhalte zu Anwendungen, Produkten und Kompetenzen (contentRelevance), schwach beantwortete Fragen in der LLM-Prüfung (llmDiscoverability), fehlerhafte hreflang-Angaben bei mehrsprachigen Websites.
-- "secondary": Feinschliff: Längen von Meta-Titeln und Meta-Beschreibungen, Alt-Texte, Überschriften-Hierarchie (übersprungene Ebenen, H1 nicht zuerst) und Qualität der Überschriften.
+- "secondary": Feinschliff: Längen von Meta-Titeln und Meta-Beschreibungen, Alt-Texte, Überschriften-Hierarchie (übersprungene Ebenen, H1 nicht zuerst) und Qualität der Überschriften. Überschriften- und Meta-Befunde sind immer „secondary“, außer der Mehrheit der bewerteten Seiten fehlt die H1.
 
 JEDE EMPFEHLUNG ENTHÄLT
 - finding: kurze Überschrift, dann Doppelpunkt, dann der konkrete Befund mit Zahlen oder URLs aus den Messwerten.

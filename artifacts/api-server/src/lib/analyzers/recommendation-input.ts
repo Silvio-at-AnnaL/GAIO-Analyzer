@@ -191,14 +191,21 @@ function buildCompactModules(
     const url = string(page.url);
     return url && reasons.length > 0 ? [{ url, reasons }] : [];
   }).slice(0, problemLimit);
-  const sampleH1 = trimLevel >= 1
+  const pageOutlines = trimLevel >= 1
     ? undefined
-    : headingPages.flatMap((page) => {
+    : [...scoredHeadingPages, ...headingPages.filter((page) => page.excludedAsLegal === true)]
+      .flatMap((page) => {
         const url = string(page.url);
         const firstH1 = array(page.headings).find((item) => record(item)?.level === "h1");
-        const h1 = string(record(firstH1)?.text, 120);
-        return url && h1 ? [{ url, h1 }] : [];
-      }).slice(0, 10);
+        const h1 = string(record(firstH1)?.text, 120) ?? null;
+        const h2 = array(page.headings).flatMap((item) => {
+          const heading = record(item);
+          if (!heading || heading.level !== "h2" || heading.inTemplate === true) return [];
+          const text = string(heading.text, 80);
+          return text ? [text] : [];
+        }).slice(0, 5);
+        return url ? [{ url, h1, h2 }] : [];
+      }).slice(0, 13);
   const headingStructure = headingSource
     ? defined({
         score: number(headingSource.score),
@@ -209,7 +216,7 @@ function buildCompactModules(
         pagesWithMultipleH1: scoredHeadingPages.filter((page) => (number(page.h1Count) ?? 0) > 1).length,
         pagesWithHierarchyIssues: scoredHeadingPages.filter((page) => page.hasHierarchyIssues === true).length,
         problemPages,
-        sampleH1,
+        pageOutlines,
         keywordInHeadings: boolean(headingSource.keywordInHeadings),
       })
     : unavailable();

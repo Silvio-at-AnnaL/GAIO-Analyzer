@@ -334,15 +334,118 @@ export function filterImplausibleRecommendations(
   return { kept, dropped };
 }
 
-function parseRecommendations(text: string): Recommendation[] | null {
+export function normalizeTiers(
+  recs: Recommendation[],
+  moduleResults: Record<string, unknown>,
+): {
+  recs: Recommendation[];
+  changed: Array<{ from: Recommendation["tier"]; to: Recommendation["tier"]; finding: string }>;
+} {
+  const headingStructure = asRecord(moduleResults.headingStructure);
+  const headingPages = Array.isArray(headingStructure?.pages) ? headingStructure.pages : [];
+  const scoredHeadingPages = headingPages
+    .map(asRecord)
+    .filter((page): page is Record<string, unknown> => page !== null && page.excludedAsLegal !== true);
+  const pagesWithoutH1 = scoredHeadingPages.filter((page) => page.h1Count === 0).length;
+  const majorityMissingH1 = pagesWithoutH1 > scoredHeadingPages.length / 2;
+  const headingPattern = /(überschrift|heading|hierarchie|\bh1\b|\bh2\b)/;
+  const metaPattern = /(meta-?titel|meta-?beschreibung|meta-?description|title-tag|alt-text)/;
+  const changed: Array<{
+    from: Recommendation["tier"];
+    to: Recommendation["tier"];
+    finding: string;
+  }> = [];
+
+  const normalized = recs.map((rec) => {
+    if (rec.tier !== "critical") return rec;
+    const headline = recommendationHeadline(rec).toLowerCase();
+    let tier: Recommendation["tier"] | undefined;
+
+    if (headingPattern.test(headline) && !majorityMissingH1) {
+      tier = "secondary";
+    } else if (metaPattern.test(headline)) {
+      tier = "secondary";
+    }
+
+    if (!tier) return rec;
+    const change = { from: rec.tier, to: tier, finding: rec.finding.slice(0, 160) };
+    changed.push(change);
+    logger.info(change, "recommendation tier normalized");
+    return { ...rec, tier };
+  });
+
+  return { recs: normalized, changed };
+}
+
+function isCompleteRecommendation(value: unknown): value is Recommendation {
+  const rec = asRecord(value);
+  return rec !== null
+    && typeof rec.tier === "string"
+    && rec.tier.length > 0
+    && typeof rec.finding === "string"
+    && rec.finding.length > 0
+    && typeof rec.whyItMatters === "string"
+    && rec.whyItMatters.length > 0
+    && typeof rec.fixInstruction === "string"
+    && rec.fixInstruction.length > 0;
+}
+
+export function parseRecommendations(
+  text: string,
+): { recs: Recommendation[] | null; salvaged: boolean; count: number } {
   const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return null;
-  try {
-    const parsed: Recommendation[] = JSON.parse(match[0]);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
+  if (match) {
+    try {
+      const parsed: Recommendation[] = JSON.parse(match[0]);
+      if (Array.isArray(parsed)) {
+        return { recs: parsed, salvaged: false, count: parsed.length };
+      }
+    } catch {
+      // Fall through to object-by-object salvage.
+    }
   }
+
+  const arrayStart = text.indexOf("[");
+  if (arrayStart < 0) return { recs: null, salvaged: false, count: 0 };
+
+  const recovered: Recommendation[] = [];
+  let objectStart = -1;
+  let braceDepth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = arrayStart + 1; index < text.length; index++) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      if (braceDepth === 0) objectStart = index;
+      braceDepth++;
+    } else if (char === "}" && braceDepth > 0) {
+      braceDepth--;
+      if (braceDepth === 0 && objectStart >= 0) {
+        try {
+          const parsed: unknown = JSON.parse(text.slice(objectStart, index + 1));
+          if (isCompleteRecommendation(parsed)) recovered.push(parsed);
+        } catch {
+          // Discard invalid complete blocks and continue scanning.
+        }
+        objectStart = -1;
+      }
+    }
+  }
+
+  return {
+    recs: recovered.length > 0 ? recovered : null,
+    salvaged: recovered.length > 0,
+    count: recovered.length,
+  };
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -388,19 +491,49 @@ export async function generateRecommendations(
         });
         const request = anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 8192,
+          max_tokens: 12000,
           messages: [{ role: "user", content }],
         }, { timeout: remaining, signal: controller.signal });
         const msg = await Promise.race([request, timeout]);
         const block = msg.content[0];
-        return block.type === "text" ? block.text : "";
+        const text = block.type === "text" ? block.text : "";
+        const response = {
+          text,
+          stopReason: msg.stop_reason,
+          responseChars: text.length,
+        };
+        logger.info(
+          { responseChars: response.responseChars, stopReason: response.stopReason },
+          "AI recommendations response",
+        );
+        return response;
       } finally {
         if (timer) clearTimeout(timer);
       }
     };
 
-    const firstText = await callApi(await buildRecommendationsPrompt(input.text));
-    const firstParsed = parseRecommendations(firstText);
+    const parseResponse = (response: {
+      text: string;
+      stopReason: string | null;
+      responseChars: number;
+    }) => {
+      const parsed = parseRecommendations(response.text);
+      if (parsed.salvaged) {
+        logger.warn(
+          { recovered: parsed.count, stopReason: response.stopReason },
+          "AI recommendations recovered from truncated response",
+        );
+      } else if (!parsed.recs || parsed.recs.length === 0) {
+        logger.warn(
+          { responseChars: response.responseChars, stopReason: response.stopReason },
+          "AI recommendations unusable",
+        );
+      }
+      return parsed.recs;
+    };
+
+    const firstResponse = await callApi(await buildRecommendationsPrompt(input.text));
+    const firstParsed = parseResponse(firstResponse);
 
     if (firstParsed && firstParsed.length > 0) {
       const offending = firstEnglishRecommendation(firstParsed);
@@ -411,14 +544,14 @@ export async function generateRecommendations(
             { finding: offending.finding.slice(0, 120) },
             "English detected in recommendations — retrying",
           );
-          const retryText = await callApi(
+          const retryResponse = await callApi(
             await buildRecommendationsPrompt(
               input.text,
               "FEHLER: Deine letzte Antwort enthielt englische Texte. " +
               "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",
             ),
           );
-          const retryParsed = parseRecommendations(retryText);
+          const retryParsed = parseResponse(retryResponse);
           if (retryParsed && retryParsed.length > 0) aiRecs = retryParsed;
           else aiRecs = firstParsed;
         } else {
@@ -439,5 +572,6 @@ export async function generateRecommendations(
   }
 
   const { kept } = filterImplausibleRecommendations(aiRecs, moduleResults);
-  return [...ruleBasedRecs, ...kept];
+  const normalized = normalizeTiers(kept, moduleResults);
+  return [...ruleBasedRecs, ...normalized.recs];
 }
