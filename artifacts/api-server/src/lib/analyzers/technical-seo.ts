@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawlResult } from "../crawler";
+import { getTitleFromDom } from "../html-title";
 
 // ─── LLM crawler list ─────────────────────────────────────────────────────────
 
@@ -384,7 +385,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
         if (lang) allLangs.add(lang);
       });
     }
-    const title = $("title").text().trim();
+    const title = getTitleFromDom($);
     if (title) {
       titlePresent++;
       totalTitleLength += title.length;

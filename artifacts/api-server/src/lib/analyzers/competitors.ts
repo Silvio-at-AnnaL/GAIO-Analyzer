@@ -7,6 +7,7 @@ import { analyzeFaq } from "./faq";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { getScoreParams } from "../score-config.js";
+import { getTitleFromHtml } from "../html-title";
 
 export interface CompetitorFindings {
   betterThanYou: string;
@@ -57,8 +58,7 @@ function extractDomainName(url: string): string {
 }
 
 function extractPageTitle(html: string): string | null {
-  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  return match ? match[1].trim().replace(/\s+/g, " ") : null;
+  return getTitleFromHtml(html) || null;
 }
 
 async function generateFindings(
