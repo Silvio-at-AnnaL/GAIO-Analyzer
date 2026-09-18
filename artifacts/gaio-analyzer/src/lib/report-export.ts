@@ -651,6 +651,36 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   const cc = report.competitorComparison as { competitors: CompetitorEntry[] } | null;
   if (!cc || cc.competitors.length === 0) return "";
 
+  const CI = {
+    summary: (provided: number, analysed: number) =>
+      `${provided} Wettbewerber angegeben, ${analysed} analysiert.`,
+    duplicates: (n: number) => `${n} doppelte Domain(s) zusammengeführt.`,
+    own: (n: number) =>
+      `${n} Eintrag/Einträge entsprachen der analysierten Domain und wurden übersprungen.`,
+    limit: (urls: string) =>
+      `Wegen der Obergrenze von 5 Wettbewerbern nicht analysiert: ${urls}`,
+  } as const;
+  const competitorInput = report.competitorInput as Record<string, unknown> | null | undefined;
+  const provided = typeof competitorInput?.provided === "number" ? competitorInput.provided : null;
+  const analysed = typeof competitorInput?.analysed === "number" ? competitorInput.analysed : 0;
+  const duplicatesRemoved = typeof competitorInput?.duplicatesRemoved === "number"
+    ? competitorInput.duplicatesRemoved
+    : 0;
+  const ownDomainRemoved = typeof competitorInput?.ownDomainRemoved === "number"
+    ? competitorInput.ownDomainRemoved
+    : 0;
+  const droppedByLimit = Array.isArray(competitorInput?.droppedByLimit)
+    ? competitorInput.droppedByLimit.filter((item): item is string => typeof item === "string")
+    : [];
+  const competitorInputNotes = provided !== null && provided > 0
+    ? [
+        CI.summary(provided, analysed),
+        ...(duplicatesRemoved > 0 ? [CI.duplicates(duplicatesRemoved)] : []),
+        ...(ownDomainRemoved > 0 ? [CI.own(ownDomainRemoved)] : []),
+        ...(droppedByLimit.length > 0 ? [CI.limit(droppedByLimit.join(", "))] : []),
+      ]
+    : [];
+
   const myScore        = (report.overallScore as number) ?? 0;
   const myTechnical    = ((report.technicalSeo      as Record<string, unknown>)?.score as number) ?? 0;
   const mySchema       = ((report.schemaOrg         as Record<string, unknown>)?.score as number) ?? 0;
@@ -663,6 +693,9 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
 
   let html = divider("Wettbewerb");
   html += `<h2>Wettbewerbsvergleich</h2>`;
+  html += competitorInputNotes
+    .map((note) => `<p style="font-size:12px;color:${C.textMuted};margin:3px 0;">${esc(note)}</p>`)
+    .join("");
 
   type SortedRow = { compositeScore: number; html: string };
   const sortedRows: SortedRow[] = [
@@ -854,7 +887,7 @@ ${divider("FAQ / So funktioniert's")}
 <h3>Hinweise zur Genauigkeit</h3>
 <p style="font-size:13px;color:#4a4d57;line-height:1.7;">
   Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar.
-  Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber.
+  Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 5 Seiten pro Wettbewerber (Startseite + bis zu 4 Unterseiten).
   Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten
   Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.
 </p>`;
@@ -1095,7 +1128,7 @@ export function buildFaqDocumentHtml(): string {
   </div>
 
   <h2>Hinweise zur Genauigkeit</h2>
-  <p>Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber. Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
+  <p>Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 5 Seiten pro Wettbewerber (Startseite + bis zu 4 Unterseiten). Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
 
   <div class="note">IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}</div>
 </body>
@@ -1207,7 +1240,7 @@ export function buildFaqPanelHtml(): string {
   </div>
 
   <h3 style="${h3Style}">Hinweise zur Genauigkeit</h3>
-  <p style="${pStyle}">Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber. Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
+  <p style="${pStyle}">Scores basieren auf einer automatisierten Analyse und stellen Annäherungswerte dar. Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 5 Seiten pro Wettbewerber (Startseite + bis zu 4 Unterseiten). Die LLM-Sichtbarkeits-Simulation verwendet Claude (Anthropic) und spiegelt keine garantierten Rankingfaktoren wider. Alle Empfehlungen sollten mit einem Experten validiert werden.</p>
 
   <div style="margin-top:32px;padding-top:16px;border-top:1px solid ${bdr};font-size:11px;color:${muted};">
     IndustryStock.com/GAIO-Analyzer · Exportiert am ${new Date().toLocaleDateString("de-DE")}

@@ -988,6 +988,24 @@ function ReportView({ analysisId }: { analysisId: string }) {
       error?: string;
     }>;
   } | null;
+  const competitorInput = (report as unknown as Record<string, unknown>).competitorInput as {
+    provided?: unknown;
+    analysed?: unknown;
+    duplicatesRemoved?: unknown;
+    ownDomainRemoved?: unknown;
+    droppedByLimit?: unknown;
+  } | null | undefined;
+  const hasCompetitorInput = typeof competitorInput?.provided === "number" && competitorInput.provided > 0;
+  const competitorInputAnalysed = typeof competitorInput?.analysed === "number" ? competitorInput.analysed : 0;
+  const competitorDuplicatesRemoved = typeof competitorInput?.duplicatesRemoved === "number"
+    ? competitorInput.duplicatesRemoved
+    : 0;
+  const competitorOwnDomainRemoved = typeof competitorInput?.ownDomainRemoved === "number"
+    ? competitorInput.ownDomainRemoved
+    : 0;
+  const competitorsDroppedByLimit = Array.isArray(competitorInput?.droppedByLimit)
+    ? competitorInput.droppedByLimit.filter((item): item is string => typeof item === "string")
+    : [];
   const recommendations = report.recommendations as Array<{ tier: string; finding: string; whyItMatters: string; fixInstruction: string }>;
   const headingSummary = getHeadingSummary(headingStructure);
 
@@ -2913,6 +2931,31 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </BarChart>
                   </ResponsiveContainer>
                   <p className="text-xs text-muted-foreground mt-2">{t("results.your_site_highlighted")}</p>
+                  {hasCompetitorInput && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        {t("results.competitor_input_summary", {
+                          provided: competitorInput.provided as number,
+                          analysed: competitorInputAnalysed,
+                        })}
+                      </p>
+                      {competitorDuplicatesRemoved > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("results.competitor_input_duplicates", { n: competitorDuplicatesRemoved })}
+                        </p>
+                      )}
+                      {competitorOwnDomainRemoved > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("results.competitor_input_own", { n: competitorOwnDomainRemoved })}
+                        </p>
+                      )}
+                      {competitorsDroppedByLimit.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("results.competitor_input_limit", { urls: competitorsDroppedByLimit.join(", ") })}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

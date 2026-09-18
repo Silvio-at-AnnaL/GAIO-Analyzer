@@ -1,0 +1,63 @@
+FEATURE — competitor selection & input, step 2 of 2: show what was actually analysed.
+Frontend rendering only. Do not change artifacts/api-server.
+
+Backend field (may be ABSENT in older stored analyses):
+report.competitorInput = { provided, analysed, duplicatesRemoved, ownDomainRemoved, droppedByLimit: string[] }
+
+Files in scope:
+- artifacts/gaio-analyzer/src/lib/labelDefaults.ts (groups "results" and "faq")
+- artifacts/gaio-analyzer/src/views/ErgebnisseView.tsx
+- artifacts/gaio-analyzer/src/lib/report-export.ts
+
+1. labelDefaults.ts, group "results" — add:
+   "results.competitor_input_summary":    "{provided} Wettbewerber angegeben, {analysed} analysiert."
+   "results.competitor_input_duplicates": "{n} doppelte Domain(s) zusammengeführt."
+   "results.competitor_input_own":        "{n} Eintrag/Einträge entsprachen der analysierten Domain und wurden übersprungen."
+   "results.competitor_input_limit":      "Wegen der Obergrenze von 5 Wettbewerbern nicht analysiert: {urls}"
+
+2. labelDefaults.ts, group "faq" — in "faq.accuracy_desc" replace
+   "(Startseite + max. 3 Unterseiten)" with "(Startseite + bis zu 4 Unterseiten)".
+   Change nothing else in that text.
+
+3. ErgebnisseView.tsx, competitors tab: directly below the overview chart card (inside the same
+   CardContent, under the existing "your_site_highlighted" line), render the input note:
+   - Read `report.competitorInput` defensively; render nothing when it is missing or when
+     `provided` is not a number.
+   - Always show the summary line when provided > 0.
+   - Show the duplicates line only when duplicatesRemoved > 0, the own-domain line only when
+     ownDomainRemoved > 0, and the limit line only when droppedByLimit is a non-empty array
+     ({urls} = the entries joined with ", ").
+   - Same muted style as the existing note line, one line each, all texts via t().
+
+4. report-export.ts, renderCompetitorSection: render the same lines right after the
+   `<h2>Wettbewerbsvergleich</h2>` heading, before the table, using the same conditions.
+   Put the German texts into a named constant block (e.g. `CI = { ... }`) following the existing
+   ST / FT / HT pattern; wording must match the labelDefaults values above.
+   Note: this function returns early when there are no competitors — leave that behaviour unchanged.
+
+5. report-export.ts: the accuracy note appears three times (~lines 857, 1098, 1210) as
+   "Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 3 Seiten pro Wettbewerber."
+   Replace all three with
+   "Wettbewerber-Scores beruhen auf einer Stichprobe von maximal 5 Seiten pro Wettbewerber (Startseite + bis zu 4 Unterseiten)."
+   (The competitor crawl calls crawlSite(url, 5).)
+
+Do NOT:
+- touch artifacts/api-server or lib/*
+- change the competitor table, the cards, the chart, or any score
+- run pnpm install or codegen
+
+Verification (report the output):
+- full `git diff` and `pnpm --filter @workspace/gaio-analyzer run typecheck`
+- `git grep -n "maximal 3 Seiten\|max. 3 Unterseiten" -- artifacts` → expected: no matches
+- Labels: report the key count before/after (expected +4) and that faq.accuracy_desc changed.
+- Dev analysis for https://identbase.de/ with EXACTLY these competitor inputs
+  (enter them in the form; the form now filters, so submit them via the API if the form blocks it):
+    https://www.youcard24.de/ , https://cards-x.de/ , https://www.evolis.com , https://www.evolis.com ,
+    https://identbase.de/
+  Expected note: "5 Wettbewerber angegeben, 3 analysiert.", "1 doppelte Domain(s) zusammengeführt.",
+  "1 Eintrag/Einträge entsprachen der analysierten Domain und wurden übersprungen." and no limit line.
+  Report the note as rendered in the live view AND in the downloaded HTML report — they must match.
+- Open one OLD analysis (created before commit 3028c44) in the live view and confirm the competitor tab
+  renders unchanged, with no note and no error.
+
+Do not push or publish. Report back first.
