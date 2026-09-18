@@ -11,3 +11,15 @@ export function normalizeUrl(input: string): string {
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return "https://" + trimmed;
 }
+
+export function competitorKey(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return url.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}

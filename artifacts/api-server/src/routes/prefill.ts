@@ -28,6 +28,15 @@ function scorePrefillUrl(urlStr: string): number {
   return 10;
 }
 
+function competitorKey(input: string): string {
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+    return parsed.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 // ── Text extraction ───────────────────────────────────────────────────────────
 
 function extractText(html: string, maxChars = 1500): string {
@@ -540,11 +549,19 @@ router.post("/prefill", async (req, res): Promise<void> => {
   const validatedCompetitors = await Promise.all(
     rawCompetitors.map((c) => validateCompetitor(c, content_summary, confirmedNames)),
   );
+  const ownKey = competitorKey(url);
+  const seenCompetitorKeys = new Set<string>();
+  const filteredCompetitors = validatedCompetitors.filter((competitor) => {
+    const key = competitorKey(competitor.url);
+    if (!key || key === ownKey || seenCompetitorKeys.has(key)) return false;
+    seenCompetitorKeys.add(key);
+    return true;
+  });
 
   logger.info(
     {
-      total: validatedCompetitors.length,
-      verified: validatedCompetitors.filter((c) => c.verified).length,
+      total: filteredCompetitors.length,
+      verified: filteredCompetitors.filter((c) => c.verified).length,
     },
     "Prefill: validation complete",
   );
@@ -552,7 +569,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
   // STEP 5 — Return enriched response
   res.json({
     personas,
-    competitors: validatedCompetitors,
+    competitors: filteredCompetitors,
     content_summary,
     crawl_failed: crawlFailed,
     crawl_fail_reason: crawlFailReason,

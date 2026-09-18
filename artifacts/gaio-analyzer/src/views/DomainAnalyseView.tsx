@@ -7,7 +7,7 @@ import { InfoTooltip as Tooltip } from "@/components/ui/InfoTooltip";
 import { Plus, X, Loader2, ChevronDown, ChevronUp, Pencil, Check, Sparkles, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
-import { normalizeUrl } from "@/lib/utils";
+import { competitorKey, normalizeUrl } from "@/lib/utils";
 import { useT } from "@/lib/LabelProvider";
 
 const MAX_VISIBLE_PAGES = 15;
@@ -80,7 +80,7 @@ export function DomainAnalyseView() {
   const updateCompetitor = (index: number, value: string) => {
     const next = [...domainForm.competitors];
     next[index] = value;
-    if (value.trim() !== "" && index === next.length - 1 && next.length < 10) {
+    if (value.trim() !== "" && index === next.length - 1 && next.length < 5) {
       next.push("");
     }
     setDomainForm({ ...domainForm, competitors: next });
@@ -122,15 +122,25 @@ export function DomainAnalyseView() {
       },
       {
         onSuccess: (result) => {
-          const competitorUrls = result.competitors.map((c) => c.url);
-          const filledUrls = competitorUrls.length > 0 ? [...competitorUrls, ""] : [""];
+          const ownKey = competitorKey(domainForm.url);
+          const seenKeys = new Set<string>();
+          const filteredCompetitors = result.competitors.filter((competitor) => {
+            const key = competitorKey(competitor.url);
+            if (!key || key === ownKey || seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+          }).slice(0, 5);
+          const competitorUrls = filteredCompetitors.map((c) => c.url);
+          const filledUrls = competitorUrls.length > 0
+            ? [...competitorUrls, ...(competitorUrls.length < 5 ? [""] : [])]
+            : [""];
           setDomainForm({
             ...domainForm,
             personas: result.personas || domainForm.personas,
             competitors: filledUrls,
           });
           const verifiedMap: Record<string, boolean> = {};
-          result.competitors.forEach((c) => {
+          filteredCompetitors.forEach((c) => {
             verifiedMap[c.url] = c.verified;
           });
           setCompetitorVerified(verifiedMap);
@@ -207,7 +217,17 @@ export function DomainAnalyseView() {
   const handleStart = () => {
     if (!validate()) return;
 
-    const competitorUrls = domainForm.competitors.filter((c) => c.trim()).join("\n");
+    const ownKey = competitorKey(domainForm.url);
+    const seenKeys = new Set<string>();
+    const competitorUrls = domainForm.competitors
+      .filter((competitor) => {
+        if (!competitor.trim()) return false;
+        const key = competitorKey(competitor);
+        if (!key || key === ownKey || seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      })
+      .join("\n");
 
     const hasEditableList = editablePages.length > 0;
     const explicitUrls = hasEditableList && selectedPages.length > 0 ? selectedPages : null;
@@ -566,6 +586,16 @@ export function DomainAnalyseView() {
             <div className="space-y-2">
               {domainForm.competitors.map((comp, i) => {
                 const isValidUrl = comp.startsWith("http://") || comp.startsWith("https://");
+                const key = competitorKey(comp);
+                const isOwnDomain = Boolean(key) && key === competitorKey(domainForm.url);
+                const isDuplicate = Boolean(key) && domainForm.competitors
+                  .slice(0, i)
+                  .some((earlier) => earlier.trim() !== "" && competitorKey(earlier) === key);
+                const inputWarning = isOwnDomain
+                  ? { title: t("domain.competitor_own_domain"), ariaLabel: t("domain.competitor_own_domain") }
+                  : isDuplicate
+                    ? { title: t("domain.competitor_duplicate"), ariaLabel: t("domain.competitor_duplicate") }
+                    : null;
                 return (
                   <div key={i} className="flex gap-2 items-center">
                     <a
@@ -591,7 +621,14 @@ export function DomainAnalyseView() {
                       placeholder={t("domain.placeholder_competitor")}
                       data-testid={`input-competitor-${i}`}
                     />
-                    {comp in competitorVerified && (
+                    {inputWarning ? (
+                      <span
+                        title={inputWarning.title}
+                        className="shrink-0 flex items-center"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-amber-500" aria-label={inputWarning.ariaLabel} />
+                      </span>
+                    ) : comp in competitorVerified && (
                       competitorVerified[comp] ? (
                         <CheckCircle2
                           className="shrink-0 w-4 h-4 text-green-500"
@@ -618,7 +655,7 @@ export function DomainAnalyseView() {
                   </div>
                 );
               })}
-              {domainForm.competitors.length < 10 && domainForm.competitors.every((c) => c.trim() !== "") && (
+              {domainForm.competitors.length < 5 && domainForm.competitors.every((c) => c.trim() !== "") && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -629,6 +666,9 @@ export function DomainAnalyseView() {
                   {t("domain.btn_add_competitor")}
                 </Button>
               )}
+              <p className="text-xs text-muted-foreground">
+                {t("domain.competitor_limit_note")}
+              </p>
             </div>
           </section>
 

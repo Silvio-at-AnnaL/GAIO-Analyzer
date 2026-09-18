@@ -31,11 +31,20 @@ export interface AnalysisState {
   faqQuality: unknown | null;
   llmDiscoverability: unknown | null;
   competitorComparison: unknown | null;
+  competitorInput: CompetitorInput;
   recommendations: unknown[];
   errors: string[];
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
+}
+
+export interface CompetitorInput {
+  provided: number;
+  analysed: number;
+  duplicatesRemoved: number;
+  ownDomainRemoved: number;
+  droppedByLimit: string[];
 }
 
 interface AnalysisEntry {
@@ -158,6 +167,53 @@ function extractCompetitorUrls(q?: QuestionnaireInput | null): string[] {
   return urls;
 }
 
+function competitorKey(input: string): string {
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+    return parsed.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+export function normalizeCompetitorUrls(
+  urls: string[],
+  analysedUrl: string | null,
+): { urls: string[]; competitorInput: CompetitorInput } {
+  const ownKey = analysedUrl ? competitorKey(analysedUrl) : "";
+  const seenKeys = new Set<string>();
+  const uniqueUrls: string[] = [];
+  let duplicatesRemoved = 0;
+  let ownDomainRemoved = 0;
+
+  for (const url of urls) {
+    const key = competitorKey(url);
+    if (!key) continue;
+    if (ownKey && key === ownKey) {
+      ownDomainRemoved++;
+      continue;
+    }
+    if (seenKeys.has(key)) {
+      duplicatesRemoved++;
+      continue;
+    }
+    seenKeys.add(key);
+    uniqueUrls.push(url);
+  }
+
+  const urlsToAnalyse = uniqueUrls.slice(0, 5);
+  return {
+    urls: urlsToAnalyse,
+    competitorInput: {
+      provided: urls.length,
+      analysed: urlsToAnalyse.length,
+      duplicatesRemoved,
+      ownDomainRemoved,
+      droppedByLimit: uniqueUrls.slice(5),
+    },
+  };
+}
+
 function extractBrandTerms(q?: QuestionnaireInput | null): string[] {
   const terms: string[] = [];
   if (q?.brandName) terms.push(q.brandName);
@@ -203,6 +259,13 @@ export async function runAnalysis(
     faqQuality: null,
     llmDiscoverability: null,
     competitorComparison: null,
+    competitorInput: {
+      provided: 0,
+      analysed: 0,
+      duplicatesRemoved: 0,
+      ownDomainRemoved: 0,
+      droppedByLimit: [],
+    },
     recommendations: [],
     errors: [],
     crawledPages: [],
@@ -225,7 +288,11 @@ export async function runAnalysis(
 
   const questionnaireContext = buildQuestionnaireContext(questionnaire);
   const brandTerms = extractBrandTerms(questionnaire);
-  const competitorUrls = extractCompetitorUrls(questionnaire);
+  const normalizedCompetitors = normalizeCompetitorUrls(extractCompetitorUrls(questionnaire), url);
+  const competitorUrls = normalizedCompetitors.urls;
+  state.competitorInput = normalizedCompetitors.competitorInput;
+  logger.info(state.competitorInput, "competitor input normalized");
+  save();
 
   let crawlResult: CrawlResult;
   let pages: CrawledPage[];
