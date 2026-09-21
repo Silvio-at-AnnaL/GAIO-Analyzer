@@ -388,7 +388,11 @@ export async function runAnalysis(
 
       if (pages.length === 0) {
         state.status = "failed";
-        const crawlError = crawlResult.timedOut
+        const crawlError = crawlResult.homepageFailReason === "bot_protection"
+          ? "Crawl nicht möglich: Die Website blockiert automatisierte Zugriffe durch einen Bot-Schutz (z. B. Cloudflare). Für eine Analyse muss der Zugriff für den GAIO-Analyzer freigegeben werden."
+          : crawlResult.homepageFailReason === "parked_domain"
+            ? "Crawl nicht möglich: Unter dieser Domain ist nur eine Park- bzw. Verkaufsseite erreichbar."
+            : crawlResult.timedOut
           ? "Crawl abgebrochen: Die Website antwortet zu langsam für eine automatisierte Analyse (Zeitlimit überschritten)."
           : (explicitUrls && explicitUrls.length > 0
               ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"

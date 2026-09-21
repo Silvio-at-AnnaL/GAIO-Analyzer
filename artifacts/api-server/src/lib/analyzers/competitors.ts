@@ -33,6 +33,7 @@ export interface CompetitorScore {
   crawledPages: CompetitorCrawledPage[];
   findings: CompetitorFindings | null;
   error?: string;
+  errorReason?: "unreachable" | "bot_protection" | "parked_domain";
 }
 
 export interface CompetitorResult {
@@ -134,7 +135,14 @@ export async function analyzeCompetitors(
       const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: 45_000 });
 
       if (crawlResult.pages.length === 0) {
-        logger.warn({ url }, "Competitor crawl returned no pages — including with zero scores");
+        const errorReason = crawlResult.homepageFailReason === "bot_protection" ||
+          crawlResult.homepageFailReason === "parked_domain"
+          ? crawlResult.homepageFailReason
+          : "unreachable";
+        logger.warn(
+          { url, errorReason },
+          "Competitor crawl returned no pages — including with zero scores",
+        );
         competitors.push({
           name: competitorDomain,
           url: normalizedUrl,
@@ -148,6 +156,7 @@ export async function analyzeCompetitors(
           crawledPages: [],
           findings: null,
           error: "Nicht erreichbar",
+          errorReason,
         });
         continue;
       }

@@ -1,6 +1,11 @@
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
-import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "./fetch-diagnostics";
+import {
+  classifyFetchError,
+  classifyHttpStatus,
+  detectBlockedContent,
+  type CrawlFailReason,
+} from "./fetch-diagnostics";
 
 export interface CrawledPage {
   url: string;
@@ -30,6 +35,7 @@ export interface CrawlReliability {
 
 export interface CrawlResult {
   pages: CrawledPage[];
+  homepageFailReason?: CrawlFailReason | null;
   timedOut: boolean;
   robotsTxt: string | null;
   sitemapXml: string | null;
@@ -548,6 +554,7 @@ export async function crawlSite(
 
   const result: CrawlResult = {
     pages: [],
+    homepageFailReason: null,
     timedOut: false,
     robotsTxt: null,
     sitemapXml: null,
@@ -662,22 +669,26 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homePage.finalUrl);
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
-    result.pages.push({
-      url: canonicalHomepageUrl,
-      html: homepageHtml,
-      statusCode: homePage.statusCode,
-      responseTime: homePage.responseTime,
-      ttfb: homePage.ttfb,
-    });
-    if (homePage.statusCode < 400) {
+    const blocked = detectBlockedContent(homepageHtml);
+    if (homePage.statusCode < 400 && blocked === null) {
+      result.pages.push({
+        url: canonicalHomepageUrl,
+        html: homepageHtml,
+        statusCode: homePage.statusCode,
+        responseTime: homePage.responseTime,
+        ttfb: homePage.ttfb,
+      });
       result.reliability.succeeded++;
       opts?.onProgress?.(result.pages.length, maxPages);
     } else {
-      recordFailure(
-        canonicalHomepageUrl,
-        classifyHttpStatus(homePage.statusCode),
-        homePage.statusCode,
+      const reason = blocked ?? classifyHttpStatus(homePage.statusCode);
+      recordFailure(canonicalHomepageUrl, reason, homePage.statusCode);
+      result.homepageFailReason = reason;
+      logger.warn(
+        { url: canonicalHomepageUrl, reason, statusCode: homePage.statusCode },
+        "Homepage could not be analysed",
       );
+      return result;
     }
 
     // Quarantine hreflang variants found on homepage
@@ -689,7 +700,9 @@ export async function crawlSite(
     const reason = classifyFetchError(err);
     canonicalHomepageUrl = canon(homepageUrl);
     recordFailure(canonicalHomepageUrl, reason);
+    result.homepageFailReason = reason;
     logger.warn({ url: canonicalHomepageUrl, reason, err }, "Failed to fetch homepage");
+    return result;
   }
 
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
@@ -802,7 +815,8 @@ export async function crawlSite(
     result.reliability.attempted++;
     try {
       const page = await fetchWithTiming(url);
-      if (page.statusCode < 400) {
+      const blocked = detectBlockedContent(page.html);
+      if (page.statusCode < 400 && blocked === null) {
         result.pages.push({
           url,
           html: page.html,
@@ -834,7 +848,7 @@ export async function crawlSite(
           }
         }
       } else {
-        recordFailure(url, classifyHttpStatus(page.statusCode), page.statusCode);
+        recordFailure(url, blocked ?? classifyHttpStatus(page.statusCode), page.statusCode);
       }
     } catch (err) {
       const reason = classifyFetchError(err);

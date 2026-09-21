@@ -3,7 +3,12 @@ import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { logger } from "../lib/logger";
-import { classifyFetchError, classifyHttpStatus, type CrawlFailReason } from "../lib/fetch-diagnostics";
+import {
+  classifyFetchError,
+  classifyHttpStatus,
+  detectBlockedContent,
+  type CrawlFailReason,
+} from "../lib/fetch-diagnostics";
 
 const router: IRouter = Router();
 
@@ -114,42 +119,37 @@ async function fetchHtml(
   }
 }
 
-/**
- * Try HEAD first (fast), fall back to GET if HEAD fails or returns 4xx/5xx.
- * Many servers return 405 for HEAD, so the fallback matters.
- */
+async function readBodyAtMost(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let body = "";
+
+  while (bytesRead < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const remaining = maxBytes - bytesRead;
+    const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+    bytesRead += chunk.byteLength;
+    body += decoder.decode(chunk, { stream: bytesRead < maxBytes });
+    if (chunk.byteLength < value.byteLength) {
+      await reader.cancel();
+      break;
+    }
+  }
+
+  body += decoder.decode();
+  return body;
+}
+
 async function verifyUrl(url: string, timeoutMs: number): Promise<boolean> {
   if (timeoutMs <= 0) return false;
   const cap = Math.min(timeoutMs, 6000);
 
-  // HEAD attempt
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), cap);
-    try {
-      const resp = await fetch(url, {
-        method: "HEAD",
-        signal: ctrl.signal,
-        redirect: "follow",
-        headers: { "User-Agent": CRAWLER_UA },
-      });
-      clearTimeout(t);
-      if (resp.status < 400) return true;
-      // 4xx/5xx from HEAD — fall through to GET
-    } catch {
-      clearTimeout(t);
-      // network error — fall through to GET
-    }
-  } catch {
-    // ignore
-  }
-
-  // GET fallback
-  const remaining = Math.min(timeoutMs, 6000);
-  if (remaining <= 0) return false;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), remaining);
     try {
       const resp = await fetch(url, {
         method: "GET",
@@ -157,11 +157,18 @@ async function verifyUrl(url: string, timeoutMs: number): Promise<boolean> {
         redirect: "follow",
         headers: { "User-Agent": CRAWLER_UA },
       });
-      clearTimeout(t);
-      return resp.status < 400;
+      if (resp.status >= 400) return false;
+      const body = await readBodyAtMost(resp, 300 * 1024);
+      const blocked = detectBlockedContent(body);
+      if (blocked !== null) {
+        logger.warn({ url, reason: blocked }, "Prefill: suggested competitor rejected");
+        return false;
+      }
+      return true;
     } catch {
-      clearTimeout(t);
       return false;
+    } finally {
+      clearTimeout(t);
     }
   } catch {
     return false;

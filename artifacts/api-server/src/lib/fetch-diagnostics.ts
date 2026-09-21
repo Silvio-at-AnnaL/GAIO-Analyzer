@@ -1,3 +1,5 @@
+import { getTitleFromHtml } from "./html-title";
+
 /**
  * Classifies why a fetch() call failed, so the UI can report something
  * more useful than "could not be crawled".
@@ -12,7 +14,53 @@ export type CrawlFailReason =
   | "refused"
   | "timeout"
   | "http_error"
+  | "bot_protection"
+  | "parked_domain"
   | "unknown";
+
+const BOT_PROTECTION_TITLE =
+  /^(just a moment\.\.\.|attention required!? \| cloudflare|checking your browser|ddos-guard|access denied)$/i;
+const PARKED_DOMAIN_TEXT =
+  /(domain|diese domain)[^.]{0,60}(steht zum verkauf|zu verkaufen|is for sale|for sale|kaufen sie)/;
+const PARKING_PROVIDER_MARKERS = [
+  "sedoparking",
+  "sedo.com/search",
+  "dan.com/buy-domain",
+  "afternic",
+  "elitedomains",
+  "parkingcrew",
+  "bodis.com",
+];
+
+export function detectBlockedContent(
+  html: string,
+): "bot_protection" | "parked_domain" | null {
+  const title = getTitleFromHtml(html);
+  if (
+    BOT_PROTECTION_TITLE.test(title) ||
+    html.includes("window._cf_chl_opt") ||
+    html.includes("_Incapsula_Resource")
+  ) {
+    return "bot_protection";
+  }
+
+  const lowerHtml = html.toLowerCase();
+  const visibleText = lowerHtml
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 3000);
+  if (
+    PARKED_DOMAIN_TEXT.test(visibleText) ||
+    PARKING_PROVIDER_MARKERS.some((marker) => lowerHtml.includes(marker))
+  ) {
+    return "parked_domain";
+  }
+
+  return null;
+}
 
 /** Server responded, but with a non-OK HTTP status (4xx/5xx). */
 export function classifyHttpStatus(_status: number): CrawlFailReason {
