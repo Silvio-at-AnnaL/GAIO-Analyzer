@@ -447,8 +447,9 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       colSubstance: "Substanz",
     };
     const types = (schemaOrg.detectedTypes as string[] | undefined) ?? [];
-    const RECOMMENDED_SCHEMA_TYPES = ["Organization", "WebSite", "FAQPage", "Product", "BreadcrumbList", "Article", "LocalBusiness"];
-    const missingTypes = RECOMMENDED_SCHEMA_TYPES.filter((t) => !types.includes(t));
+    const missingTypes = Array.isArray(schemaOrg.missingHighValue)
+      ? schemaOrg.missingHighValue.filter((type): type is string => typeof type === "string")
+      : [];
     html += `
     <h3>Schema.org / Strukturierte Daten</h3>
     <div class="detail-grid">

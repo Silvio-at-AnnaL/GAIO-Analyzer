@@ -45,7 +45,7 @@ const MALUS_PER_HARD_ERROR = 0.20;
 const MALUS_FLOOR = 0.40;
 const STRUCTURAL_TYPES = new Set(["BreadcrumbList", "SiteNavigationElement", "WebPage"]);
 const TRIVIAL_KEYS = new Set(["@type", "@id", "@context"]);
-const HIGH_VALUE_TYPES = ["Organization", "Product", "FAQPage", "BreadcrumbList", "WebPage"];
+const HIGH_VALUE_TYPES = ["Organization", "Product", "FAQPage", "WebSite", "BreadcrumbList"];
 const PRODUCT_REQUIRED_PROPS = ["name", "description", "offers", "manufacturer", "sku", "image"];
 
 function isFilled(value: unknown): boolean {
