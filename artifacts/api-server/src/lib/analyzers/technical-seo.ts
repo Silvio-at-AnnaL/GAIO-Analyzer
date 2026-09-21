@@ -71,6 +71,9 @@ export interface TechnicalSeoResult {
   robotsTxt: boolean;
   sitemapXml: boolean;
   llmsTxt: boolean;
+  robotsTxtStatus: "found" | "missing" | "error";
+  sitemapStatus: "found" | "missing" | "error";
+  llmsTxtStatus: "found" | "missing" | "error";
   sitemapType: "xml" | "xml_index" | "html" | "none";
   canonicalTags: { present: boolean; count: number };
   hreflang: { present: boolean; languages: string[]; consistent: boolean };
@@ -478,6 +481,9 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
     robotsTxt: crawlResult.robotsTxtExists,
     sitemapXml: crawlResult.sitemapXmlExists,
     llmsTxt: crawlResult.llmsTxtExists,
+    robotsTxtStatus: crawlResult.robotsTxtStatus ?? "missing",
+    sitemapStatus: crawlResult.sitemapStatus ?? "missing",
+    llmsTxtStatus: crawlResult.llmsTxtStatus ?? "missing",
     sitemapType,
     canonicalTags: { present: canonicalCount > 0, count: canonicalCount },
     hreflang: { present: hreflangPresent, languages: Array.from(allLangs), consistent: hreflangConsistent },

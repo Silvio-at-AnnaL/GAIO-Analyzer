@@ -46,8 +46,23 @@ export interface CrawlResult {
   robotsTxtExists: boolean;
   sitemapXmlExists: boolean;
   llmsTxtExists: boolean;
+  robotsTxtStatus?: TechnicalFileStatus;
+  sitemapStatus?: TechnicalFileStatus;
+  llmsTxtStatus?: TechnicalFileStatus;
   hreflangVariants: HreflangVariant[];
   reliability: CrawlReliability;
+}
+
+export type TechnicalFileStatus = "found" | "missing" | "error";
+
+type FetchTimingResult = Awaited<ReturnType<typeof fetchWithTiming>>;
+
+export interface TechFileFetchResult {
+  status: TechnicalFileStatus;
+  resp?: FetchTimingResult;
+  statusCode?: number;
+  reason?: CrawlFailReason;
+  durationMs: number;
 }
 
 // ─── Priority scoring (unchanged from before) ─────────────────────────────────
@@ -223,6 +238,77 @@ async function fetchWithTiming(
   }
 }
 
+export async function fetchTechFile(
+  url: string,
+  timeoutMs: number,
+): Promise<TechFileFetchResult> {
+  const startedAt = Date.now();
+  let attempts = 0;
+  let result: TechFileFetchResult | null = null;
+
+  while (attempts < 2) {
+    attempts++;
+    try {
+      const resp = await fetchWithTiming(url, timeoutMs);
+      if (resp.statusCode === 200) {
+        result = { status: "found", resp, statusCode: resp.statusCode, durationMs: Date.now() - startedAt };
+        break;
+      }
+      if (resp.statusCode >= 400 && resp.statusCode < 500 && resp.statusCode !== 429) {
+        result = {
+          status: "missing",
+          resp,
+          statusCode: resp.statusCode,
+          reason: classifyHttpStatus(resp.statusCode),
+          durationMs: Date.now() - startedAt,
+        };
+        break;
+      }
+      result = {
+        status: "error",
+        resp,
+        statusCode: resp.statusCode,
+        reason: classifyHttpStatus(resp.statusCode),
+        durationMs: Date.now() - startedAt,
+      };
+    } catch (err) {
+      const classified = classifyFetchError(err);
+      const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classified;
+      result = { status: "error", reason, durationMs: Date.now() - startedAt };
+    }
+
+    if (attempts < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+
+  const finalResult = result ?? {
+    status: "error" as const,
+    reason: "unknown" as const,
+    durationMs: Date.now() - startedAt,
+  };
+  if (finalResult.status !== "found") {
+    let file = url;
+    try {
+      file = new URL(url).pathname || url;
+    } catch {
+      // Keep the full URL when it cannot be parsed.
+    }
+    logger.warn(
+      {
+        file,
+        url,
+        statusCode: finalResult.statusCode,
+        reason: finalResult.reason,
+        durationMs: finalResult.durationMs,
+        attempts,
+      },
+      "technical file not retrieved",
+    );
+  }
+  return finalResult;
+}
+
 // ─── HTML parsing helpers ─────────────────────────────────────────────────────
 
 function extractHreflangVariants(html: string, baseUrl: string): HreflangVariant[] {
@@ -396,7 +482,7 @@ async function fetchSitemapIndexChildren(indexXml: string): Promise<string | nul
   await Promise.allSettled(
     childUrls.map(async (childUrl) => {
       try {
-        const resp = await fetchWithTiming(childUrl, 5000);
+        const resp = await fetchWithTiming(childUrl, 10000);
         if (resp.statusCode === 200 && resp.html.includes("<urlset")) {
           const matches = [...resp.html.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)];
           allLocs.push(...matches.map((x) => x[1].trim()));
@@ -417,6 +503,7 @@ interface SitemapDiscoveryResult {
   htmlSitemapUrl: string | null;
   sitemapXmlExists: boolean;
   sitemapType: "xml" | "xml_index" | "html" | "none";
+  sitemapStatus: TechnicalFileStatus;
 }
 
 async function discoverSitemap(
@@ -427,52 +514,54 @@ async function discoverSitemap(
 ): Promise<SitemapDiscoveryResult> {
   const none: SitemapDiscoveryResult = {
     sitemapXml: null, htmlSitemapHtml: null, htmlSitemapUrl: null,
-    sitemapXmlExists: false, sitemapType: "none",
+    sitemapXmlExists: false, sitemapType: "none", sitemapStatus: "missing",
   };
+  let hadError = false;
 
   // Step 1: /sitemap.xml
-  try {
-    const resp = await fetchWithTiming(`${origin}/sitemap.xml`, 5000);
-    if (resp.statusCode === 200) {
+  {
+    const fetched = await fetchTechFile(`${origin}/sitemap.xml`, 10000);
+    hadError ||= fetched.status === "error";
+    const resp = fetched.resp;
+    if (fetched.status === "found" && resp) {
       if (resp.html.includes("<urlset")) {
-        return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml" };
+        return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
       }
       if (resp.html.includes("<sitemapindex")) {
         const merged = await fetchSitemapIndexChildren(resp.html);
-        return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+        return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
       }
     }
-  } catch {
-    logger.debug("sitemap.xml not accessible");
   }
 
   // Step 2: /sitemap_index.xml
-  try {
-    const resp = await fetchWithTiming(`${origin}/sitemap_index.xml`, 5000);
-    if (resp.statusCode === 200 && resp.html.includes("<sitemapindex")) {
+  {
+    const fetched = await fetchTechFile(`${origin}/sitemap_index.xml`, 10000);
+    hadError ||= fetched.status === "error";
+    const resp = fetched.resp;
+    if (fetched.status === "found" && resp?.html.includes("<sitemapindex")) {
       const merged = await fetchSitemapIndexChildren(resp.html);
-      return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+      return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
     }
-  } catch {
-    logger.debug("sitemap_index.xml not accessible");
   }
 
   // Step 3: robots.txt Sitemap: declarations
   if (robotsTxt) {
     for (const sitemapUrl of parseSitemapDeclarations(robotsTxt)) {
       try {
-        const resp = await fetchWithTiming(sitemapUrl, 5000);
+        const resp = await fetchWithTiming(sitemapUrl, 10000);
+        if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
         if (resp.statusCode === 200) {
           if (resp.html.includes("<sitemapindex")) {
             const merged = await fetchSitemapIndexChildren(resp.html);
-            return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index" };
+            return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
           }
           if (resp.html.includes("<urlset")) {
-            return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml" };
+            return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
           }
         }
       } catch {
-        // skip
+        hadError = true;
       }
     }
   }
@@ -486,12 +575,13 @@ async function discoverSitemap(
   for (const path of htmlPaths) {
     const url = `${origin}${path}`;
     try {
-      const resp = await fetchWithTiming(url, 3000);
+      const resp = await fetchWithTiming(url, 8000);
+      if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
       if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
-        return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: url, sitemapType: "html" };
+        return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: url, sitemapType: "html", sitemapStatus: "found" };
       }
     } catch {
-      // skip
+      hadError = true;
     }
   }
 
@@ -512,17 +602,23 @@ async function discoverSitemap(
     });
     if (foundUrl) {
       try {
-        const resp = await fetchWithTiming(foundUrl, 3000);
+        const resp = await fetchWithTiming(foundUrl, 8000);
+        if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
         if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
-          return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: foundUrl, sitemapType: "html" };
+          return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: foundUrl, sitemapType: "html", sitemapStatus: "found" };
         }
       } catch {
-        // skip
+        hadError = true;
       }
     }
   }
 
-  return none;
+  const finalResult = { ...none, sitemapStatus: hadError ? "error" as const : "missing" as const };
+  logger.warn(
+    { file: "Sitemap", url: origin, status: finalResult.sitemapStatus },
+    "technical file not retrieved",
+  );
+  return finalResult;
 }
 
 export async function crawlSite(
@@ -565,6 +661,9 @@ export async function crawlSite(
     robotsTxtExists: false,
     sitemapXmlExists: false,
     llmsTxtExists: false,
+    robotsTxtStatus: "missing",
+    sitemapStatus: "missing",
+    llmsTxtStatus: "missing",
     hreflangVariants: [],
     reliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
   };
@@ -581,31 +680,30 @@ export async function crawlSite(
   }
 
   // ── robots.txt ────────────────────────────────────────────────────────────
-  try {
-    const robotsResp = await fetchWithTiming(
-      `${base.protocol}//${baseDomain}/robots.txt`,
-      5000,
-    );
-    if (robotsResp.statusCode === 200 && robotsResp.html.length < 100_000) {
+  {
+    const robotsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/robots.txt`, 10000);
+    result.robotsTxtStatus = robotsResult.status;
+    const robotsResp = robotsResult.resp;
+    if (robotsResult.status === "found" && robotsResp && robotsResp.html.length < 100_000) {
       result.robotsTxt = robotsResp.html;
       result.robotsTxtExists = true;
     }
-  } catch {
-    logger.debug("robots.txt not accessible");
   }
 
   // ── llms.txt ──────────────────────────────────────────────────────────────
-  try {
-    const llmsResp = await fetchWithTiming(
-      `${base.protocol}//${baseDomain}/llms.txt`,
-      5000,
-    );
-    if (llmsResp.statusCode === 200 && llmsResp.html.length > 0 && llmsResp.html.length < 200_000) {
+  {
+    const llmsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/llms.txt`, 10000);
+    result.llmsTxtStatus = llmsResult.status;
+    const llmsResp = llmsResult.resp;
+    if (
+      llmsResult.status === "found" &&
+      llmsResp &&
+      llmsResp.html.length > 0 &&
+      llmsResp.html.length < 200_000
+    ) {
       result.llmsTxt = llmsResp.html;
       result.llmsTxtExists = true;
     }
-  } catch {
-    logger.debug("llms.txt not accessible");
   }
 
   const visited = new Set<string>();
@@ -721,6 +819,7 @@ export async function crawlSite(
     result.htmlSitemapHtml = sd.htmlSitemapHtml;
     result.htmlSitemapUrl = sd.htmlSitemapUrl;
     result.sitemapType = sd.sitemapType;
+    result.sitemapStatus = sd.sitemapStatus;
   }
 
   // ── Step 2: Collect all initial candidates from homepage links + sitemap ──

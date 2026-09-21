@@ -62,6 +62,13 @@ type ComparisonScores = Pick<
   "technicalScore" | "schemaScore" | "contentScore" | "headingScore" | "faqScore"
 >;
 
+type ComparisonArea = {
+  label: string;
+  main: number;
+  competitor: number;
+  diff: number;
+};
+
 function calculateComparisonScore(scores: ComparisonScores): number {
   const weightedScores = [
     { score: scores.schemaScore, weight: 0.20 },
@@ -75,10 +82,10 @@ function calculateComparisonScore(scores: ComparisonScores): number {
   return weightSum > 0 ? Math.round(weightedSum / weightSum) : 0;
 }
 
-function buildComparisonAreas(
+function getComparisonAreas(
   mainScores: MainSiteScores,
   competitorScores: ComparisonScores,
-): { advantages: string; disadvantages: string } {
+): ComparisonArea[] {
   const areas: Array<{ label: string; main: number | null; competitor: number | null }> = [
     { label: "Technisches SEO", main: mainScores.technicalScore, competitor: competitorScores.technicalScore },
     { label: "Schema.org", main: mainScores.schemaScore, competitor: competitorScores.schemaScore },
@@ -86,18 +93,54 @@ function buildComparisonAreas(
     { label: "Heading-Struktur", main: mainScores.headingScore, competitor: competitorScores.headingScore },
     { label: "FAQ", main: mainScores.faqScore, competitor: competitorScores.faqScore },
   ];
+  return areas.flatMap((area) => {
+    if (area.main === null || area.competitor === null) return [];
+    return [{ ...area, main: area.main, competitor: area.competitor, diff: area.main - area.competitor }];
+  });
+}
+
+function buildComparisonAreas(
+  mainScores: MainSiteScores,
+  competitorScores: ComparisonScores,
+): { advantages: string; disadvantages: string } {
   const advantages: string[] = [];
   const disadvantages: string[] = [];
-  for (const area of areas) {
-    if (area.main === null || area.competitor === null) continue;
+  for (const area of getComparisonAreas(mainScores, competitorScores)) {
     const line = `${area.label}: Ihre Website ${area.main}, Wettbewerber ${area.competitor}`;
-    const diff = area.main - area.competitor;
-    if (diff >= 5) advantages.push(line);
-    if (diff <= -5) disadvantages.push(line);
+    if (area.diff >= 5) advantages.push(line);
+    if (area.diff <= -5) disadvantages.push(line);
   }
   return {
     advantages: advantages.length > 0 ? advantages.join("\n") : "keine",
     disadvantages: disadvantages.length > 0 ? disadvantages.join("\n") : "keine",
+  };
+}
+
+export function buildCompetitorFindingsFallback(
+  mainScores: MainSiteScores,
+  competitorScores: ComparisonScores,
+): CompetitorFindings {
+  const areas = getComparisonAreas(mainScores, competitorScores);
+  const largestAdvantage = areas
+    .filter((area) => area.diff >= 5)
+    .sort((a, b) => b.diff - a.diff)[0];
+  const largestDisadvantage = areas
+    .filter((area) => area.diff <= -5)
+    .sort((a, b) => a.diff - b.diff)[0];
+  const strongestArea = largestAdvantage ?? areas.slice().sort((a, b) => b.diff - a.diff)[0];
+
+  return {
+    betterThanYou: largestDisadvantage
+      ? `${largestDisadvantage.label}: Wettbewerber ${largestDisadvantage.competitor} Punkte, Ihre Website ${largestDisadvantage.main} Punkte.`
+      : "Dieser Wettbewerber liegt in keinem der verglichenen Bereiche deutlich vor Ihrer Website.",
+    yourAdvantage: largestAdvantage
+      ? `${largestAdvantage.label}: Ihre Website ${largestAdvantage.main} Punkte, Wettbewerber ${largestAdvantage.competitor} Punkte.`
+      : "In keinem der verglichenen Bereiche liegt Ihre Website deutlich vorn.",
+    recommendation: largestDisadvantage
+      ? `Schließen Sie den Rückstand im Bereich ${largestDisadvantage.label} (${largestDisadvantage.main} gegenüber ${largestDisadvantage.competitor} Punkten).`
+      : strongestArea
+        ? `Bauen Sie Ihren Vorsprung im Bereich ${strongestArea.label} weiter aus.`
+        : "Stärken Sie die vorhandenen Inhalte und technischen Grundlagen weiter.",
   };
 }
 
@@ -129,41 +172,63 @@ async function generateFindings(
   advantages: string,
   disadvantages: string,
 ): Promise<CompetitorFindings> {
-  const prompt = fillTemplate(await getPrompt("competitor-analysis"), {
-    MAIN_DOMAIN: mainDomain,
-    MAIN_TECH: String(mainScores.technicalScore),
-    MAIN_SCHEMA: String(mainScores.schemaScore),
-    MAIN_CONTENT: String(mainScores.contentScore),
-    MAIN_HEADINGS: String(mainScores.headingScore),
-    MAIN_FAQ: String(mainScores.faqScore),
-    COMP_DOMAIN: competitorDomain,
-    COMP_TECH: String(competitorScores.technicalScore),
-    COMP_SCHEMA: String(competitorScores.schemaScore),
-    COMP_CONTENT: competitorScores.contentScore === null ? "—" : String(competitorScores.contentScore),
-    COMP_HEADINGS: String(competitorScores.headingScore),
-    COMP_FAQ: String(competitorScores.faqScore),
-    COMP_COMPOSITE: String(competitorScores.compositeScore),
-    ADVANTAGES: advantages,
-    DISADVANTAGES: disadvantages,
-  });
-
+  const startedAt = Date.now();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
-      max_tokens: 400,
-      messages: [{ role: "user", content: prompt }],
+    const prompt = fillTemplate(await getPrompt("competitor-analysis"), {
+      MAIN_DOMAIN: mainDomain,
+      MAIN_TECH: String(mainScores.technicalScore),
+      MAIN_SCHEMA: String(mainScores.schemaScore),
+      MAIN_CONTENT: String(mainScores.contentScore),
+      MAIN_HEADINGS: String(mainScores.headingScore),
+      MAIN_FAQ: String(mainScores.faqScore),
+      COMP_DOMAIN: competitorDomain,
+      COMP_TECH: String(competitorScores.technicalScore),
+      COMP_SCHEMA: String(competitorScores.schemaScore),
+      COMP_CONTENT: competitorScores.contentScore === null ? "—" : String(competitorScores.contentScore),
+      COMP_HEADINGS: String(competitorScores.headingScore),
+      COMP_FAQ: String(competitorScores.faqScore),
+      COMP_COMPOSITE: String(competitorScores.compositeScore),
+      ADVANTAGES: advantages,
+      DISADVANTAGES: disadvantages,
     });
+    const response = await Promise.race([
+      anthropic.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 400,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("timeout")), FINDINGS_TIMEOUT_MS);
+      }),
+    ]);
 
     const text = response.content[0].type === "text" ? response.content[0].text : "";
-    const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
-    return JSON.parse(cleaned) as CompetitorFindings;
-  } catch (err) {
-    logger.warn({ err }, "Failed to generate competitor findings");
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    if (firstBrace < 0 || lastBrace <= firstBrace) throw new Error("invalid JSON object");
+    const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1)) as Partial<CompetitorFindings>;
+    if (
+      typeof parsed.betterThanYou !== "string" || parsed.betterThanYou.trim() === "" ||
+      typeof parsed.yourAdvantage !== "string" || parsed.yourAdvantage.trim() === "" ||
+      typeof parsed.recommendation !== "string" || parsed.recommendation.trim() === ""
+    ) {
+      throw new Error("invalid findings fields");
+    }
     return {
-      betterThanYou: "Analyse nicht verfügbar.",
-      yourAdvantage: "Analyse nicht verfügbar.",
-      recommendation: "Analyse nicht verfügbar.",
+      betterThanYou: parsed.betterThanYou,
+      yourAdvantage: parsed.yourAdvantage,
+      recommendation: parsed.recommendation,
     };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { competitorDomain, reason, durationMs: Date.now() - startedAt },
+      "Failed to generate competitor findings — using deterministic fallback",
+    );
+    return buildCompetitorFindingsFallback(mainScores, competitorScores);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -194,6 +259,7 @@ export async function analyzeCompetitors(
     try {
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
+      const crawlStartedAt = Date.now();
       const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: CRAWL_DEADLINE_MS });
 
       if (crawlResult.pages.length === 0) {
@@ -202,7 +268,11 @@ export async function analyzeCompetitors(
           ? crawlResult.homepageFailReason
           : "unreachable";
         logger.warn(
-          { url, errorReason },
+          {
+            competitorDomain,
+            homepageFailReason: crawlResult.homepageFailReason,
+            durationMs: Date.now() - crawlStartedAt,
+          },
           "Competitor crawl returned no pages — including with zero scores",
         );
         return {
@@ -258,6 +328,7 @@ export async function analyzeCompetitors(
       const [faqResult, contentScore] = await Promise.all([
         analyzeFaq(crawlResult.pages),
         (async (): Promise<number | null> => {
+          const contentStartedAt = Date.now();
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           try {
             const contentResult = await Promise.race([
@@ -270,12 +341,20 @@ export async function analyzeCompetitors(
               }),
             ]);
             if (contentResult.failed === true) {
-              logger.warn({ url }, "Competitor content analysis returned fallback result");
+              logger.warn(
+                { competitorDomain, reason: "failed flag", durationMs: Date.now() - contentStartedAt },
+                "Competitor content analysis failed",
+              );
               return null;
             }
             return contentResult.score;
           } catch (err) {
-            logger.warn({ url, err }, "Competitor content analysis failed");
+            const message = err instanceof Error ? err.message : String(err);
+            const reason = message === "Competitor content analysis timed out" ? "timeout" : message;
+            logger.warn(
+              { competitorDomain, reason, durationMs: Date.now() - contentStartedAt },
+              "Competitor content analysis failed",
+            );
             return null;
           } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -300,17 +379,14 @@ export async function analyzeCompetitors(
 
       let findings: CompetitorFindings | null = null;
       try {
-        findings = await Promise.race([
-          generateFindings(
-            "Ihre Website",
-            mainSiteScores,
-            competitorDomain,
-            competitorScores,
-            advantages,
-            disadvantages,
-          ),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), FINDINGS_TIMEOUT_MS)),
-        ]);
+        findings = await generateFindings(
+          "Ihre Website",
+          mainSiteScores,
+          competitorDomain,
+          competitorScores,
+          advantages,
+          disadvantages,
+        );
         if (findings) {
           if (advantages === "keine") {
             findings.yourAdvantage =

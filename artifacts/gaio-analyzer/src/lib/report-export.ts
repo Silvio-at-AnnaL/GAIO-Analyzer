@@ -746,7 +746,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       compositeScore: c.compositeScore,
       html: `<tr>
         <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">${esc(competitorErrorText(c).badge)}</span>` : ""}</td>
-        <td style="color:${scoreColor(c.compositeScore)}"><strong>${c.compositeScore}</strong></td>
+        <td${c.error ? "" : ` style="color:${scoreColor(c.compositeScore)}"`}><strong>${c.error ? "—" : c.compositeScore}</strong></td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.technicalScore)}"`}>${c.error ? "—" : c.technicalScore}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.schemaScore)}"`}>${c.error ? "—" : c.schemaScore}</td>
         <td${c.error || c.contentScore === null ? "" : ` style="color:${scoreColor(c.contentScore)}"`}>${c.error || c.contentScore === null ? "—" : c.contentScore}</td>

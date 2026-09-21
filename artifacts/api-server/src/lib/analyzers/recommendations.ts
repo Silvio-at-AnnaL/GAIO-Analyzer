@@ -15,7 +15,7 @@ export interface Recommendation {
 
 // ─── Rule-based recommendations ───────────────────────────────────────────────
 
-function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>): Recommendation[] {
+export function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>): Recommendation[] {
   const recs: Recommendation[] = [];
   const techSeo = moduleResults.technicalSeo as Record<string, unknown> | null;
   if (!techSeo) return recs;
@@ -23,10 +23,17 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
   const robotsAnalysis = techSeo.robotsTxtAnalysis as Record<string, unknown> | null;
   const sitemapAnalysis = techSeo.sitemapXmlAnalysis as Record<string, unknown> | null;
   const llmsAnalysis = techSeo.llmsTxtAnalysis as Record<string, unknown> | null;
+  const robotsStatus = techSeo.robotsTxtStatus as "found" | "missing" | "error" | undefined;
+  const sitemapStatus = techSeo.sitemapStatus as "found" | "missing" | "error" | undefined;
+  const llmsStatus = techSeo.llmsTxtStatus as "found" | "missing" | "error" | undefined;
+  const robotsMissing = robotsStatus === undefined ? !techSeo.robotsTxt : robotsStatus === "missing";
+  const llmsMissing = llmsStatus === undefined ? !llmsAnalysis?.present : llmsStatus === "missing";
+  const robotsUsable = robotsStatus !== "error";
+  const sitemapUsable = sitemapStatus !== "error";
 
   // ── KRITISCH ────────────────────────────────────────────────────────────────
 
-  if (!techSeo.robotsTxt) {
+  if (robotsMissing) {
     recs.push({
       tier: "critical",
       finding: "robots.txt fehlt vollständig",
@@ -37,7 +44,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
     });
   }
 
-  if (robotsAnalysis) {
+  if (robotsUsable && robotsAnalysis) {
     const llmCrawlers = (robotsAnalysis.llmCrawlers as Array<{ name: string; status: string }>) ?? [];
     const siteBlockedAgents = (robotsAnalysis.siteBlockedAgents as string[]) ?? [];
     const wildcardBlocked = siteBlockedAgents.includes("*");
@@ -68,7 +75,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
 
   // ── HOHER HEBEL ─────────────────────────────────────────────────────────────
 
-  if (!llmsAnalysis || !llmsAnalysis.present) {
+  if (llmsMissing) {
     recs.push({
       tier: "high_leverage",
       finding: "llms.txt nicht vorhanden",
@@ -79,7 +86,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
     });
   }
 
-  if (robotsAnalysis && techSeo.robotsTxt) {
+  if (robotsUsable && robotsAnalysis && techSeo.robotsTxt) {
     const llmCrawlers = (robotsAnalysis.llmCrawlers as Array<{ name: string; status: string }>) ?? [];
     const keyBots = ["GPTBot", "ClaudeBot", "PerplexityBot"];
     const allKeyBotsNotMentioned = keyBots.every(
@@ -100,7 +107,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
   const sitemapType = (sitemapAnalysis?.type as string) ?? (techSeo.sitemapXml ? "xml" : "none");
   const hasXmlSitemap = sitemapType === "xml" || sitemapType === "xml_index";
 
-  if (sitemapType === "none") {
+  if (sitemapUsable && sitemapType === "none" && (sitemapStatus === undefined || sitemapStatus === "missing")) {
     recs.push({
       tier: "critical",
       finding: "Keine Sitemap gefunden (weder XML noch HTML)",
@@ -109,7 +116,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
       fixInstruction:
         "Erstellen Sie eine sitemap.xml im Root-Verzeichnis. Verwenden Sie ein CMS-Plugin (z.B. Yoast SEO für WordPress) oder generieren Sie die Sitemap automatisch aus Ihrer Routing-Konfiguration.",
     });
-  } else if (sitemapType === "html") {
+  } else if (sitemapUsable && sitemapType === "html") {
     recs.push({
       tier: "high_leverage",
       finding: "Nur eine HTML-Sitemap gefunden — keine maschinenlesbare XML-Sitemap vorhanden",
@@ -118,7 +125,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
       fixInstruction:
         "Erstellen Sie zusätzlich eine /sitemap.xml und referenzieren Sie diese in der robots.txt:\nSitemap: https://ihre-domain.de/sitemap.xml",
     });
-  } else if (hasXmlSitemap && sitemapAnalysis && (sitemapAnalysis.totalUrls as number) < 5) {
+  } else if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && (sitemapAnalysis.totalUrls as number) < 5) {
     recs.push({
       tier: "high_leverage",
       finding: `Sitemap enthält nur ${sitemapAnalysis.totalUrls} URL(s)`,
@@ -129,7 +136,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
     });
   }
 
-  if (hasXmlSitemap && sitemapAnalysis) {
+  if (sitemapUsable && hasXmlSitemap && sitemapAnalysis) {
     const coverage = sitemapAnalysis.crawledPageCoverage as number;
     if (coverage < 50 && (sitemapAnalysis.totalUrls as number) > 0) {
       recs.push({
@@ -145,7 +152,7 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
 
   // ── NACHGEORDNET ────────────────────────────────────────────────────────────
 
-  if (hasXmlSitemap && sitemapAnalysis && !sitemapAnalysis.oldestLastmod) {
+  if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && !sitemapAnalysis.oldestLastmod) {
     recs.push({
       tier: "secondary",
       finding: "XML-Sitemap enthält keine <lastmod>-Daten",
@@ -158,6 +165,8 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
 
   if (
     hasXmlSitemap &&
+    sitemapUsable &&
+    robotsUsable &&
     robotsAnalysis &&
     (robotsAnalysis.sitemapUrls as string[]).length === 0
   ) {
@@ -187,6 +196,22 @@ function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>
           "Ergänzen Sie eine > Beschreibung unter dem Titel und verlinken Sie alle wichtigen Produkt-, Service- und Kontaktseiten.",
       });
     }
+  }
+
+  const unavailableFiles = [
+    ...(robotsStatus === "error" ? ["robots.txt"] : []),
+    ...(sitemapStatus === "error" ? ["Sitemap"] : []),
+    ...(llmsStatus === "error" ? ["llms.txt"] : []),
+  ];
+  if (unavailableFiles.length > 0) {
+    recs.push({
+      tier: "secondary",
+      finding: `Technische Dateien während der Analyse nicht abrufbar: ${unavailableFiles.join(", ")}`,
+      whyItMatters:
+        "Die Dateien antworteten zum Zeitpunkt der Analyse nicht rechtzeitig oder mit einem Serverfehler. Ob sie vorhanden sind, ließ sich daher nicht feststellen. Langsame oder unzuverlässige Antworten erschweren auch Suchmaschinen- und KI-Crawlern den Zugriff.",
+      fixInstruction:
+        "Prüfen Sie Erreichbarkeit und Antwortzeiten der genannten Dateien (z. B. im Browser oder per Server-Log) und wiederholen Sie die Analyse. Häufen sich Zeitüberschreitungen, sollte die Server- bzw. Caching-Konfiguration überprüft werden.",
+    });
   }
 
   return recs;
