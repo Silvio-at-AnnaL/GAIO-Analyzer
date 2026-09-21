@@ -203,23 +203,31 @@ Gib ausschließlich ein JSON-Array zurück, ohne Markdown und ohne weiteren Text
       { key: "{{COMP_HEADINGS}}", description: "Heading Score des Wettbewerbers" },
       { key: "{{COMP_FAQ}}", description: "FAQ Score des Wettbewerbers" },
       { key: "{{COMP_COMPOSITE}}", description: "Gesamt-Score des Wettbewerbers" },
+      { key: "{{ADVANTAGES}}", description: "Bereiche, in denen die Hauptseite deutlich vorn liegt (vom Code ermittelt)" },
+      { key: "{{DISADVANTAGES}}", description: "Bereiche, in denen der Wettbewerber deutlich vorn liegt (vom Code ermittelt)" },
     ],
-    template: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+    template: `Du bist Experte für die Auffindbarkeit durch KI-Sprachmodelle (GAIO) und SEO im B2B-Industrieumfeld. Vergleiche zwei Websites anhand ihrer Messwerte. Schreibe auf Deutsch in der Sie-Form, ohne Markdown und ohne interne Feldnamen.
 
-You are an SEO and LLM-discoverability expert. Compare two B2B industrial websites based on their analysis scores.
+Ihre Website: {{MAIN_DOMAIN}}
+Werte: Technisches SEO {{MAIN_TECH}}, Schema.org {{MAIN_SCHEMA}}, Inhaltliche Relevanz {{MAIN_CONTENT}}, Heading-Struktur {{MAIN_HEADINGS}}, FAQ {{MAIN_FAQ}}
 
-Main site: {{MAIN_DOMAIN}}
-Scores: Technical SEO={{MAIN_TECH}}, Schema.org={{MAIN_SCHEMA}}, Content={{MAIN_CONTENT}}, Headings={{MAIN_HEADINGS}}, FAQ={{MAIN_FAQ}}
+Wettbewerber: {{COMP_DOMAIN}}
+Werte: Technisches SEO {{COMP_TECH}}, Schema.org {{COMP_SCHEMA}}, Inhaltliche Relevanz {{COMP_CONTENT}}, Heading-Struktur {{COMP_HEADINGS}}, FAQ {{COMP_FAQ}}, Vergleichswert {{COMP_COMPOSITE}}
 
-Competitor: {{COMP_DOMAIN}}
-Scores: Technical SEO={{COMP_TECH}}, Schema.org={{COMP_SCHEMA}}, Content={{COMP_CONTENT}}, Headings={{COMP_HEADINGS}}, FAQ={{COMP_FAQ}}, Composite={{COMP_COMPOSITE}}
+Bereiche, in denen Ihre Website deutlich vorn liegt:
+{{ADVANTAGES}}
 
-Respond with a JSON object (no markdown) with exactly these three fields:
-- "betterThanYou": One concrete thing this competitor does better (auf Deutsch, 1-2 Sätze)
-- "yourAdvantage": One area where the main site clearly outperforms this competitor (auf Deutsch, 1-2 Sätze)
-- "recommendation": One specific, actionable improvement the main site should make based on this comparison (auf Deutsch, 1-2 Sätze)
+Bereiche, in denen der Wettbewerber deutlich vorn liegt:
+{{DISADVANTAGES}}
 
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle drei Felder müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
+REGELN
+1. "yourAdvantage" beschreibt ausschließlich einen Bereich aus der Liste „Ihre Website deutlich vorn“. Ist die Liste „keine“, schreibe: „In keinem der verglichenen Bereiche liegt Ihre Website deutlich vorn.“
+2. "betterThanYou" beschreibt ausschließlich einen Bereich aus der Liste „Wettbewerber deutlich vorn“. Ist die Liste „keine“, schreibe: „Dieser Wettbewerber liegt in keinem der verglichenen Bereiche deutlich vor Ihrer Website.“
+3. Nenne die Zahlen korrekt. Ein höherer Wert ist besser. Übertreibe nicht („deutlich“ nur bei mindestens 15 Punkten Abstand).
+4. "recommendation": eine konkrete, umsetzbare Maßnahme für Ihre Website, abgeleitet aus dem größten Rückstand; gibt es keinen Rückstand, eine Maßnahme zum Ausbau des größten Vorsprungs.
+
+Antworte ausschließlich mit einem JSON-Objekt ohne weiteren Text:
+{"betterThanYou": "...", "yourAdvantage": "...", "recommendation": "..."}`,
   },
 
   {

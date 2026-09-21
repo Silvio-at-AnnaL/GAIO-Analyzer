@@ -13,6 +13,7 @@ export interface ContentDimension {
 export interface ContentRelevanceResult {
   score: number;
   dimensions: ContentDimension[];
+  failed?: boolean;
 }
 
 function extractPageText(html: string, maxLen = 4000): string {
@@ -35,6 +36,7 @@ export async function analyzeContentRelevance(
 
   const defaultResult: ContentRelevanceResult = {
     score: 50,
+    failed: true,
     dimensions: [
       { name: "Use Cases & Applications", score: 5, findings: ["Analysis could not be completed"] },
       { name: "Buyer Questions", score: 5, findings: ["Analysis could not be completed"] },

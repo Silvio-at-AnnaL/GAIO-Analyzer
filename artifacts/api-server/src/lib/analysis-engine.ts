@@ -537,7 +537,11 @@ export async function runAnalysis(
           faqScore: (state.faqQuality as { score: number } | null)?.score ?? 0,
           overallScore: 0,
         };
-        state.competitorComparison = await analyzeCompetitors(competitorUrls, mainSiteScores);
+        state.competitorComparison = await analyzeCompetitors(
+          competitorUrls,
+          mainSiteScores,
+          questionnaireContext,
+        );
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
         state.errors.push("Competitor analysis failed");
