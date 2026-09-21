@@ -51,3 +51,11 @@ Thumbs.db
 # Database dumps — never commit (may contain secrets / personal data)
 *.sql
 *.dump
+
+# Legacy SQLite admin database — local only
+artifacts/api-server/server/admin.db
+artifacts/api-server/server/admin.db-shm
+artifacts/api-server/server/admin.db-wal
+
+# Pasted prompt files and uploaded assets — local only
+attached_assets/
