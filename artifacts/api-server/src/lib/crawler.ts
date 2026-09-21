@@ -702,7 +702,14 @@ export async function crawlSite(
     recordFailure(canonicalHomepageUrl, reason);
     result.homepageFailReason = reason;
     logger.warn({ url: canonicalHomepageUrl, reason, err }, "Failed to fetch homepage");
-    return result;
+    if (
+      reason === "dns" ||
+      reason === "refused" ||
+      reason === "tls_chain" ||
+      reason === "tls_other"
+    ) {
+      return result;
+    }
   }
 
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────

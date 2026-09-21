@@ -30,6 +30,7 @@ type CompetitorEntry = {
   crawledPages?: Array<{ url: string; title: string | null }>;
   findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
   error?: string;
+  errorReason?: "unreachable" | "bot_protection" | "parked_domain";
 };
 
 // ─── Language flag map (hreflang badges) ──────────────────────────────────────
@@ -290,6 +291,8 @@ function renderCrawlReliabilityHtml(
     reason_refused: "Verbindung abgelehnt",
     reason_timeout: "Zeitüberschreitung",
     reason_http_error: "HTTP-Fehler",
+    reason_bot_protection: "Bot-Schutz blockiert den Zugriff",
+    reason_parked_domain: "Park- bzw. Verkaufsseite",
     reason_unknown: "Unbekannt",
     allOk: "Alle abgerufenen Seiten waren erfolgreich.",
     first25Only: "Es werden nur die ersten 25 fehlgeschlagenen Seiten angezeigt.",
@@ -310,6 +313,8 @@ function renderCrawlReliabilityHtml(
     refused: T.reason_refused,
     timeout: T.reason_timeout,
     http_error: T.reason_http_error,
+    bot_protection: T.reason_bot_protection,
+    parked_domain: T.reason_parked_domain,
     unknown: T.reason_unknown,
   };
 
@@ -660,6 +665,20 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
     limit: (urls: string) =>
       `Wegen der Obergrenze von 5 Wettbewerbern nicht analysiert: ${urls}`,
   } as const;
+  const CE = {
+    blocked: "Bot-Schutz",
+    blockedDesc: "Diese Website blockiert automatisierte Zugriffe (z. B. Cloudflare). Ein Vergleich ist nicht möglich.",
+    parked: "Geparkte Domain",
+    parkedDesc: "Unter dieser Domain ist nur eine Park- bzw. Verkaufsseite erreichbar – kein aktiver Wettbewerber.",
+    unreachable: "Nicht erreichbar",
+    unreachableDesc: "Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).",
+  } as const;
+  const competitorErrorText = (competitor: CompetitorEntry) =>
+    competitor.errorReason === "bot_protection"
+      ? { badge: CE.blocked, description: CE.blockedDesc }
+      : competitor.errorReason === "parked_domain"
+        ? { badge: CE.parked, description: CE.parkedDesc }
+        : { badge: CE.unreachable, description: CE.unreachableDesc };
   const competitorInput = report.competitorInput as Record<string, unknown> | null | undefined;
   const provided = typeof competitorInput?.provided === "number" ? competitorInput.provided : null;
   const analysed = typeof competitorInput?.analysed === "number" ? competitorInput.analysed : 0;
@@ -714,7 +733,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
     ...cc.competitors.map((c) => ({
       compositeScore: c.compositeScore,
       html: `<tr>
-        <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">Nicht erreichbar</span>` : ""}</td>
+        <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">${esc(competitorErrorText(c).badge)}</span>` : ""}</td>
         <td style="color:${scoreColor(c.compositeScore)}"><strong>${c.compositeScore}</strong></td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.technicalScore)}"`}>${c.error ? "—" : c.technicalScore}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.schemaScore)}"`}>${c.error ? "—" : c.schemaScore}</td>
@@ -742,7 +761,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       <a href="${esc(c.url)}" target="_blank" rel="noreferrer" style="font-size:12px;color:${C.accent};word-break:break-all;">${esc(c.url)}</a>
     </div>
     ${c.error
-      ? `<p style="font-size:12px;color:${C.textMuted};margin-top:6px;">Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).</p>`
+      ? `<p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${esc(competitorErrorText(c).description)}</p>`
       : `
     ${c.findings ? `
     <div class="findings">

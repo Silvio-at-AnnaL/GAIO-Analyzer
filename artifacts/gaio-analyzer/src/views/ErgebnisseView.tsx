@@ -430,6 +430,7 @@ interface CompetitorCardProps {
     crawledPages?: Array<{ url: string; title: string | null }>;
     findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
     error?: string;
+    errorReason?: "unreachable" | "bot_protection" | "parked_domain";
   };
   mainScores: {
     technicalScore: number;
@@ -443,6 +444,16 @@ interface CompetitorCardProps {
 function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
   const t = useT();
   if (competitor.error) {
+    const badgeKey = competitor.errorReason === "bot_protection"
+      ? "results.competitor_blocked"
+      : competitor.errorReason === "parked_domain"
+        ? "results.competitor_parked"
+        : "results.competitor_unreachable";
+    const descriptionKey = competitor.errorReason === "bot_protection"
+      ? "results.competitor_blocked_desc"
+      : competitor.errorReason === "parked_domain"
+        ? "results.competitor_parked_desc"
+        : "results.competitor_unreachable_desc";
     return (
       <Card className="border-border/50 opacity-75">
         <CardHeader className="pb-3">
@@ -457,13 +468,13 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
               <span className="font-bold text-base truncate text-muted-foreground">{competitor.name}</span>
             </div>
             <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-muted text-muted-foreground border border-border">
-              {t("results.competitor_unreachable")}
+              {t(badgeKey)}
             </span>
           </div>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">
-            {t("results.competitor_unreachable_desc")}{" "}
+            {t(descriptionKey)}{" "}
             <a href={competitor.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
               {competitor.url} <ExternalLink className="w-3 h-3" />
             </a>
@@ -986,6 +997,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
       error?: string;
+      errorReason?: "unreachable" | "bot_protection" | "parked_domain";
     }>;
   } | null;
   const competitorInput = (report as unknown as Record<string, unknown>).competitorInput as {
@@ -1048,7 +1060,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
 
   const competitorChartData = competitorComparison ? [
     { name: myDomain, compositeScore: report.overallScore ?? 0, isMain: true },
-    ...competitorComparison.competitors.map((c) => ({ name: c.name, compositeScore: c.compositeScore, isMain: false })),
+    ...competitorComparison.competitors
+      .filter((c) => !c.error)
+      .map((c) => ({ name: c.name, compositeScore: c.compositeScore, isMain: false })),
   ].sort((a, b) => b.compositeScore - a.compositeScore) : [];
 
   const captureSvg = (selector: string): string | null => {
@@ -2140,6 +2154,8 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               refused: "results.crawl_reason_refused",
               timeout: "results.crawl_reason_timeout",
               http_error: "results.crawl_reason_http_error",
+              bot_protection: "results.crawl_reason_bot_protection",
+              parked_domain: "results.crawl_reason_parked_domain",
               unknown: "results.crawl_reason_unknown",
             };
 
