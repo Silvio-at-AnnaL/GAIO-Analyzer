@@ -103,12 +103,18 @@ async function fetchHtml(
       headers: { "User-Agent": CRAWLER_UA, Accept: "text/html,application/xhtml+xml,*/*;q=0.8" },
       redirect: "follow",
     });
+    const html = await resp.text();
+    const blocked = detectBlockedContent(html);
+    if (blocked) {
+      onError?.(blocked);
+      return null;
+    }
     if (!resp.ok) {
       const reason = classifyHttpStatus(resp.status);
       onError?.(reason);
       return null;
     }
-    return await resp.text();
+    return html;
   } catch (err) {
     const reason = classifyFetchError(err);
     logger.warn({ url, reason }, "Prefill: fetch failed");
