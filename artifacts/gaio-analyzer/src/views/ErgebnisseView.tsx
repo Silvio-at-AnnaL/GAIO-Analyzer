@@ -422,7 +422,7 @@ interface CompetitorCardProps {
     url: string;
     technicalScore: number;
     schemaScore: number;
-    contentScore: number;
+    contentScore: number | null;
     headingScore: number;
     faqScore: number;
     compositeScore: number;
@@ -430,7 +430,7 @@ interface CompetitorCardProps {
     crawledPages?: Array<{ url: string; title: string | null }>;
     findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
     error?: string;
-    errorReason?: "unreachable" | "bot_protection" | "parked_domain";
+    errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
   };
   mainScores: {
     technicalScore: number;
@@ -448,12 +448,16 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
       ? "results.competitor_blocked"
       : competitor.errorReason === "parked_domain"
         ? "results.competitor_parked"
-        : "results.competitor_unreachable";
+        : competitor.errorReason === "js_rendered"
+          ? "results.competitor_js"
+          : "results.competitor_unreachable";
     const descriptionKey = competitor.errorReason === "bot_protection"
       ? "results.competitor_blocked_desc"
       : competitor.errorReason === "parked_domain"
         ? "results.competitor_parked_desc"
-        : "results.competitor_unreachable_desc";
+        : competitor.errorReason === "js_rendered"
+          ? "results.competitor_js_desc"
+          : "results.competitor_unreachable_desc";
     return (
       <Card className="border-border/50 opacity-75">
         <CardHeader className="pb-3">
@@ -536,12 +540,15 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
                     style={{ color: scoreBadgeColor(m.main) }}>
                     {m.main}
                   </td>
-                  <td className="py-2 text-right font-mono font-semibold text-sm"
-                    style={{ color: scoreBadgeColor(m.comp) }}>
-                    {m.comp}
+                  <td
+                    className="py-2 text-right font-mono font-semibold text-sm"
+                    style={m.comp === null ? undefined : { color: scoreBadgeColor(m.comp) }}
+                    title={m.comp === null ? t("results.competitor_content_na") : undefined}
+                  >
+                    {m.comp === null ? "—" : m.comp}
                   </td>
                   <td className="py-2 text-right pr-2">
-                    <Delta main={m.main} comp={m.comp} />
+                    {m.comp === null ? null : <Delta main={m.main} comp={m.comp} />}
                   </td>
                 </tr>
               ))}
@@ -989,7 +996,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       url: string;
       technicalScore: number;
       schemaScore: number;
-      contentScore: number;
+      contentScore: number | null;
       headingScore: number;
       faqScore: number;
       compositeScore: number;
@@ -997,8 +1004,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
       crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
       error?: string;
-      errorReason?: "unreachable" | "bot_protection" | "parked_domain";
+      errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
     }>;
+    mainComparisonScore?: number;
   } | null;
   const competitorInput = (report as unknown as Record<string, unknown>).competitorInput as {
     provided?: unknown;
@@ -1059,7 +1067,13 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const myDomain = report.url ? (() => { try { return new URL(report.url!).hostname; } catch { return t("results.chart_your_site"); } })() : t("results.chart_your_site");
 
   const competitorChartData = competitorComparison ? [
-    { name: myDomain, compositeScore: report.overallScore ?? 0, isMain: true },
+    {
+      name: myDomain,
+      compositeScore: typeof competitorComparison.mainComparisonScore === "number"
+        ? competitorComparison.mainComparisonScore
+        : report.overallScore ?? 0,
+      isMain: true,
+    },
     ...competitorComparison.competitors
       .filter((c) => !c.error)
       .map((c) => ({ name: c.name, compositeScore: c.compositeScore, isMain: false })),
@@ -2947,6 +2961,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </BarChart>
                   </ResponsiveContainer>
                   <p className="text-xs text-muted-foreground mt-2">{t("results.your_site_highlighted")}</p>
+                  {typeof competitorComparison.mainComparisonScore === "number" && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {t("results.competitor_value_note")}
+                    </p>
+                  )}
                   {hasCompetitorInput && (
                     <div className="mt-2 space-y-1">
                       <p className="text-xs text-muted-foreground">

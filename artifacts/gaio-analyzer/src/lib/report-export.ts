@@ -22,7 +22,7 @@ type CompetitorEntry = {
   url: string;
   technicalScore: number;
   schemaScore: number;
-  contentScore: number;
+  contentScore: number | null;
   headingScore: number;
   faqScore: number;
   compositeScore: number;
@@ -30,7 +30,7 @@ type CompetitorEntry = {
   crawledPages?: Array<{ url: string; title: string | null }>;
   findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
   error?: string;
-  errorReason?: "unreachable" | "bot_protection" | "parked_domain";
+  errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
 };
 
 // ─── Language flag map (hreflang badges) ──────────────────────────────────────
@@ -654,7 +654,10 @@ function renderLlmSection(report: Record<string, unknown>): string {
 }
 
 function renderCompetitorSection(report: Record<string, unknown>): string {
-  const cc = report.competitorComparison as { competitors: CompetitorEntry[] } | null;
+  const cc = report.competitorComparison as {
+    competitors: CompetitorEntry[];
+    mainComparisonScore?: number;
+  } | null;
   if (!cc || cc.competitors.length === 0) return "";
 
   const CI = {
@@ -673,13 +676,18 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
     parkedDesc: "Unter dieser Domain ist nur eine Park- bzw. Verkaufsseite erreichbar – kein aktiver Wettbewerber.",
     unreachable: "Nicht erreichbar",
     unreachableDesc: "Diese Domain konnte nicht gecrawlt werden (Timeout, Zugriffsblockierung oder ungültige URL).",
+    js: "Nicht auswertbar",
+    jsDesc: "Diese Website lädt ihre Inhalte erst per JavaScript nach. Eine automatisierte Bewertung wäre nicht aussagekräftig.",
+    valueNote: "Vergleichswert: gleiche Gewichtung wie der GAIO-Score, jedoch ohne LLM-Prüfung, die für Wettbewerber nicht durchgeführt wird. Ihr GAIO-Gesamtscore kann daher abweichen.",
   } as const;
   const competitorErrorText = (competitor: CompetitorEntry) =>
     competitor.errorReason === "bot_protection"
       ? { badge: CE.blocked, description: CE.blockedDesc }
       : competitor.errorReason === "parked_domain"
         ? { badge: CE.parked, description: CE.parkedDesc }
-        : { badge: CE.unreachable, description: CE.unreachableDesc };
+        : competitor.errorReason === "js_rendered"
+          ? { badge: CE.js, description: CE.jsDesc }
+          : { badge: CE.unreachable, description: CE.unreachableDesc };
   const competitorInput = report.competitorInput as Record<string, unknown> | null | undefined;
   const provided = typeof competitorInput?.provided === "number" ? competitorInput.provided : null;
   const analysed = typeof competitorInput?.analysed === "number" ? competitorInput.analysed : 0;
@@ -701,7 +709,10 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       ]
     : [];
 
-  const myScore        = (report.overallScore as number) ?? 0;
+  const hasMainComparisonScore = typeof cc.mainComparisonScore === "number";
+  const myScore        = hasMainComparisonScore
+    ? cc.mainComparisonScore as number
+    : (report.overallScore as number) ?? 0;
   const myTechnical    = ((report.technicalSeo      as Record<string, unknown>)?.score as number) ?? 0;
   const mySchema       = ((report.schemaOrg         as Record<string, unknown>)?.score as number) ?? 0;
   const myContent      = ((report.contentRelevance  as Record<string, unknown>)?.score as number) ?? 0;
@@ -738,7 +749,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
         <td style="color:${scoreColor(c.compositeScore)}"><strong>${c.compositeScore}</strong></td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.technicalScore)}"`}>${c.error ? "—" : c.technicalScore}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.schemaScore)}"`}>${c.error ? "—" : c.schemaScore}</td>
-        <td${c.error ? "" : ` style="color:${scoreColor(c.contentScore)}"`}>${c.error ? "—" : c.contentScore}</td>
+        <td${c.error || c.contentScore === null ? "" : ` style="color:${scoreColor(c.contentScore)}"`}>${c.error || c.contentScore === null ? "—" : c.contentScore}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.headingScore)}"`}>${c.error ? "—" : c.headingScore}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.faqScore)}"`}>${c.error ? "—" : c.faqScore}</td>
       </tr>`,
@@ -748,12 +759,13 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   html += `
   <table class="comp-table">
     <thead><tr>
-      <th>Domain</th><th>Gesamt</th><th>Techn.</th><th>Schema</th><th>Inhalt</th><th>Headings</th><th>FAQ</th>
+      <th>Domain</th><th>Vergleichswert</th><th>Techn.</th><th>Schema</th><th>Inhalt</th><th>Headings</th><th>FAQ</th>
     </tr></thead>
     <tbody>
       ${sortedRows.map((r) => r.html).join("")}
     </tbody>
-  </table>`;
+  </table>
+  ${hasMainComparisonScore ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.valueNote)}</p>` : ""}`;
 
   html += cc.competitors.map((c) => `
   <div class="comp-card">

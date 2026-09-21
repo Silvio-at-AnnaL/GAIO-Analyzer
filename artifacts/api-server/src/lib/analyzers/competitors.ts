@@ -4,7 +4,7 @@ import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./headings";
 import { analyzeFaq } from "./faq";
-import { analyzeContentRelevance } from "./content-relevance";
+import { analyzeContentRelevance, extractPageText } from "./content-relevance";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { getScoreParams } from "../score-config.js";
@@ -34,7 +34,7 @@ export interface CompetitorScore {
   crawledPages: CompetitorCrawledPage[];
   findings: CompetitorFindings | null;
   error?: string;
-  errorReason?: "unreachable" | "bot_protection" | "parked_domain";
+  errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
 }
 
 export interface CompetitorResult {
@@ -55,6 +55,7 @@ const MAX_COMPETITORS = 5;
 const CRAWL_DEADLINE_MS = 45_000;
 const FINDINGS_TIMEOUT_MS = 30_000;
 const CONTENT_TIMEOUT_MS = 60_000;
+const MIN_VISIBLE_TEXT_CHARS = 500;
 
 type ComparisonScores = Pick<
   CompetitorScore,
@@ -221,17 +222,51 @@ export async function analyzeCompetitors(
         };
       }
 
+      const crawledPages: CompetitorCrawledPage[] = crawlResult.pages.map((p) => ({
+        url: p.url,
+        title: extractPageTitle(p.html),
+      }));
+      const visibleTextLength = crawlResult.pages.reduce(
+        (total, page) => total + extractPageText(page.html, Number.MAX_SAFE_INTEGER).length,
+        0,
+      );
+      if (visibleTextLength < MIN_VISIBLE_TEXT_CHARS) {
+        logger.warn(
+          { url, visibleTextLength },
+          "Competitor appears to require JavaScript rendering — including as not evaluable",
+        );
+        return {
+          name: competitorDomain,
+          url: normalizedUrl,
+          technicalScore: 0,
+          schemaScore: 0,
+          contentScore: null,
+          headingScore: 0,
+          faqScore: 0,
+          compositeScore: 0,
+          crawledPagesCount: crawlResult.pages.length,
+          crawledPages,
+          findings: null,
+          error: "Nicht auswertbar",
+          errorReason: "js_rendered",
+        };
+      }
+
       const technicalResult = analyzeTechnicalSeo(crawlResult, normalizedUrl);
       const schemaResult = analyzeSchemaOrg(crawlResult.pages, schemaParams as unknown as SchemaScoreParams);
       const headingResult = analyzeHeadings(crawlResult.pages, [], headingParams as unknown as HeadingScoreParams);
       const [faqResult, contentScore] = await Promise.all([
         analyzeFaq(crawlResult.pages),
         (async (): Promise<number | null> => {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
           try {
             const contentResult = await Promise.race([
               analyzeContentRelevance(crawlResult.pages, questionnaireContext),
               new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error("Competitor content analysis timed out")), CONTENT_TIMEOUT_MS);
+                timeoutId = setTimeout(
+                  () => reject(new Error("Competitor content analysis timed out")),
+                  CONTENT_TIMEOUT_MS,
+                );
               }),
             ]);
             if (contentResult.failed === true) {
@@ -242,6 +277,8 @@ export async function analyzeCompetitors(
           } catch (err) {
             logger.warn({ url, err }, "Competitor content analysis failed");
             return null;
+          } finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
         })(),
       ]);
@@ -260,12 +297,6 @@ export async function analyzeCompetitors(
         { competitorDomain, advantages, disadvantages },
         "Competitor comparison areas determined",
       );
-
-      // B3: Build crawled-page list with titles extracted from HTML
-      const crawledPages: CompetitorCrawledPage[] = crawlResult.pages.map((p) => ({
-        url: p.url,
-        title: extractPageTitle(p.html),
-      }));
 
       let findings: CompetitorFindings | null = null;
       try {

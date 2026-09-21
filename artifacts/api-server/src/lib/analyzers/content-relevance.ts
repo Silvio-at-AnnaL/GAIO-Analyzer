@@ -16,7 +16,7 @@ export interface ContentRelevanceResult {
   failed?: boolean;
 }
 
-function extractPageText(html: string, maxLen = 4000): string {
+export function extractPageText(html: string, maxLen = 4000): string {
   const $ = cheerio.load(html);
   $("script, style, nav, footer, header").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
