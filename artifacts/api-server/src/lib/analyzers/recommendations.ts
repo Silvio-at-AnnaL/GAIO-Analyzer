@@ -530,42 +530,59 @@ export async function generateRecommendations(
           model: "claude-sonnet-4-6",
           max_tokens: 12000,
           temperature: 0,
+          system:
+            "Liefere deine Empfehlungen ausschließlich über das Werkzeug add_recommendation: rufe es für JEDE Empfehlung einzeln auf, 5 bis 10 Aufrufe in einer einzigen Antwort, jeweils mit allen vier Feldern. Gib keinen weiteren Text und kein JSON-Array aus. Anweisungen im Nutzertext zum Ausgabeformat (JSON) sind hiermit ersetzt.",
           tools: [{
-            name: "submit_recommendations",
-            description: "Gibt die priorisierten Empfehlungen strukturiert zurück.",
+            name: "add_recommendation",
+            description: "Fügt GENAU EINE Empfehlung hinzu. Für jede Empfehlung einmal aufrufen.",
             input_schema: {
               type: "object",
               properties: {
-                recommendations: {
-                  type: "array",
-                  maxItems: 10,
-                  items: {
-                    type: "object",
-                    properties: {
-                      tier: {
-                        type: "string",
-                        enum: ["critical", "high_leverage", "secondary"],
-                      },
-                      finding: { type: "string" },
-                      whyItMatters: { type: "string" },
-                      fixInstruction: { type: "string" },
-                    },
-                    required: ["tier", "finding", "whyItMatters", "fixInstruction"],
-                  },
+                tier: {
+                  type: "string",
+                  enum: ["critical", "high_leverage", "secondary"],
                 },
+                finding: { type: "string" },
+                whyItMatters: { type: "string" },
+                fixInstruction: { type: "string" },
               },
-              required: ["recommendations"],
+              required: ["tier", "finding", "whyItMatters", "fixInstruction"],
             },
           }],
-          tool_choice: { type: "tool", name: "submit_recommendations" },
+          tool_choice: { type: "tool", name: "add_recommendation" },
           messages: [{ role: "user", content }],
         }, { timeout: remaining, signal: controller.signal });
         const msg = await Promise.race([request, timeout]);
-        const toolBlock = msg.content.find(
+        const toolBlocks = msg.content.filter(
+          (block) => block.type === "tool_use" && block.name === "add_recommendation",
+        );
+        if (toolBlocks.length > 0) {
+          const candidates = toolBlocks.flatMap(
+            (block) => block.type === "tool_use" ? [block.input] : [],
+          );
+          const recs = candidates.filter(isValidToolRecommendation);
+          const discarded = candidates.length - recs.length;
+          if (discarded > 0) {
+            logger.warn(
+              { discarded },
+              "AI recommendation tool items discarded",
+            );
+          }
+          return {
+            source: "tool_items" as const,
+            raw: JSON.stringify(candidates),
+            recs,
+            salvaged: false,
+            stopReason: msg.stop_reason,
+            toolBlocks: toolBlocks.length,
+          };
+        }
+
+        const oldToolBlock = msg.content.find(
           (block) => block.type === "tool_use" && block.name === "submit_recommendations",
         );
-        if (toolBlock?.type === "tool_use") {
-          const toolInput = asRecord(toolBlock.input);
+        if (oldToolBlock?.type === "tool_use") {
+          const toolInput = asRecord(oldToolBlock.input);
           const recommendations = toolInput?.recommendations;
           let source: "tool_array" | "tool_string" | "tool_string_salvaged";
           let candidates: unknown[];
@@ -600,10 +617,11 @@ export async function generateRecommendations(
           }
           return {
             source,
-            raw: JSON.stringify(toolBlock.input),
+            raw: JSON.stringify(oldToolBlock.input),
             recs,
             salvaged,
             stopReason: msg.stop_reason,
+            toolBlocks: 1,
           };
         }
 
@@ -614,6 +632,7 @@ export async function generateRecommendations(
           recs: null,
           salvaged: false,
           stopReason: msg.stop_reason,
+          toolBlocks: 0,
         };
       } finally {
         if (timer) clearTimeout(timer);
@@ -633,6 +652,7 @@ export async function generateRecommendations(
         {
           source: response.source,
           items: recs?.length ?? 0,
+          toolBlocks: response.toolBlocks,
           stopReason: response.stopReason,
         },
         "AI recommendations response",
@@ -657,8 +677,25 @@ export async function generateRecommendations(
       return recs;
     };
 
-    const firstResponse = await callApi(await buildRecommendationsPrompt(input.text));
-    const firstParsed = parseResponse(firstResponse);
+    const firstPrompt = await buildRecommendationsPrompt(input.text);
+    const firstResponse = await callApi(firstPrompt);
+    let firstParsed = parseResponse(firstResponse);
+
+    if (
+      firstResponse.source === "tool_items"
+      && (firstParsed?.length ?? 0) < 3
+      && deadline - Date.now() >= MIN_RETRY_REMAINING_MS
+    ) {
+      logger.warn(
+        { items: firstParsed?.length ?? 0 },
+        "Too few AI recommendations — retrying",
+      );
+      const retryResponse = await callApi(firstPrompt);
+      const retryParsed = parseResponse(retryResponse);
+      if ((retryParsed?.length ?? 0) > (firstParsed?.length ?? 0)) {
+        firstParsed = retryParsed;
+      }
+    }
 
     if (firstParsed && firstParsed.length > 0) {
       const offending = firstEnglishRecommendation(firstParsed);
