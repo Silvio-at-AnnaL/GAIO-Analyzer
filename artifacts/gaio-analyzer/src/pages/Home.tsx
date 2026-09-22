@@ -30,7 +30,7 @@ import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
 import { SystemLogView } from "@/views/admin/SystemLogView";
 
 function AppContent() {
-  const { activeView, analysisId } = useAppStore();
+  const { activeView, analysisId, systemLogAnalysisId } = useAppStore();
   const { isAuthenticated, pendingChangeUsername } = useAuth();
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
@@ -74,7 +74,12 @@ function AppContent() {
                 {activeView === 19                  && <PromptVerwaltungView />}
                 {activeView === 20                  && <TextverwaltungView />}
                 {activeView === 21                  && <ScoreSettingsView />}
-                {activeView === 22                  && <SystemLogView />}
+                {activeView === 22                  && (
+                  <SystemLogView
+                    key={systemLogAnalysisId ?? "all"}
+                    initialAnalysisId={systemLogAnalysisId ?? undefined}
+                  />
+                )}
               </>
             )}
           </div>

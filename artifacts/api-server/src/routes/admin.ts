@@ -91,6 +91,7 @@ interface SystemEventRow {
   level: number;
   msg: string;
   analysis_id: string | null;
+  analysis_domain: string | null;
   context: Record<string, unknown> | null;
 }
 
@@ -657,7 +658,7 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
   const total = parseInt(String(totalResult.rows[0].c), 10);
 
   const rows = (await query<AnalysisLogRow & { has_html_export: number }>(`
-    SELECT al.id, al.domain, al.company_name, al.gaio_score, al.scores_json,
+    SELECT al.id, al.analysis_uuid, al.domain, al.company_name, al.gaio_score, al.scores_json,
            al.pages_crawled, al.status, al.triggered_by, al.error_message,
            al.html_export_id,
            TO_CHAR(al.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
@@ -678,6 +679,7 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
 
   const items = rows.map(r => ({
     id: r.id,
+    analysisUuid: r.analysis_uuid,
     domain: r.domain,
     companyName: r.company_name,
     triggeredBy: r.triggered_by,
@@ -723,8 +725,18 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
     }
 
     const rows = (await query<SystemEventRow>(
-      `SELECT system_events.id::text AS id, created_at, level, msg, analysis_id, context
+      `SELECT system_events.id::text AS id, system_events.created_at, level, msg, analysis_id, context,
+              analysis.analysis_domain
        FROM system_events
+       LEFT JOIN LATERAL (
+         SELECT NULLIF(
+           SPLIT_PART(SPLIT_PART(REGEXP_REPLACE(al.domain, '^https?://', '', 'i'), '/', 1), ':', 1),
+           ''
+         ) AS analysis_domain
+         FROM analysis_log al
+         WHERE al.analysis_uuid = system_events.analysis_id
+         LIMIT 1
+       ) analysis ON TRUE
        WHERE ($1::timestamptz IS NULL OR created_at >= $1)
          AND (
            $2::text IS NULL
@@ -748,6 +760,7 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
       level: row.level,
       msg: row.msg,
       analysisId: row.analysis_id,
+      analysisDomain: row.analysis_domain,
       context: row.context,
     }));
     res.json({

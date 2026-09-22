@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Trash2, ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
 import { adminFetch } from "@/store/authStore";
 import { useAuth } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
@@ -7,6 +7,7 @@ import { useT, useLabelContext } from "@/lib/LabelProvider";
 
 interface LogItem {
   id: number;
+  analysisUuid: string | null;
   domain: string;
   companyName: string | null;
   triggeredBy: string | null;
@@ -55,7 +56,7 @@ export function AnalysisLogView() {
   const { locale } = useLabelContext();
   const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { user, isAuthenticated, isLoading } = useAuth();
-  const { setActiveView } = useAppStore();
+  const { setActiveView, setSystemLogAnalysisId } = useAppStore();
 
   const [data, setData] = useState<LogResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -294,6 +295,19 @@ export function AnalysisLogView() {
 
                     {/* Aktionen */}
                     <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                      {item.analysisUuid && (
+                        <button
+                          onClick={() => {
+                            setSystemLogAnalysisId(item.analysisUuid);
+                            setActiveView(22);
+                          }}
+                          title={t("log.system_log_title")}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:text-primary"
+                          style={{ border: "1px solid hsl(var(--border))" }}>
+                          <ScrollText className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => setDeleteTarget(item)}
                         title={t("log.delete_title")}
@@ -301,6 +315,7 @@ export function AnalysisLogView() {
                         style={{ border: "1px solid hsl(var(--border))" }}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

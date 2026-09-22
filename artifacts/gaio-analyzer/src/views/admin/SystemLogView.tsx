@@ -10,6 +10,7 @@ interface SystemEvent {
   level: number;
   msg: string;
   analysisId: string | null;
+  analysisDomain: string | null;
   context: Record<string, unknown> | null;
 }
 
@@ -67,15 +68,16 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
   const { locale } = useLabelContext();
   const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const { setActiveView } = useAppStore();
+  const { setActiveView, setSystemLogAnalysisId } = useAppStore();
 
   const urlAnalysisId = new URLSearchParams(window.location.search).get("analysisId");
   const startingAnalysisId = initialAnalysisId || urlAnalysisId || "";
+  const initialMinLevel = startingAnalysisId ? "30" : "40";
 
   const [activeFilters, setActiveFilters] = useState({
     from: "",
     to: "",
-    minLevel: "40",
+    minLevel: initialMinLevel,
     analysisId: startingAnalysisId,
     q: "",
   });
@@ -173,7 +175,14 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
     setMinLevel("40");
     setAnalysisId("");
     setQ("");
+    setSystemLogAnalysisId(null);
     setActiveFilters({ from: "", to: "", minLevel: "40", analysisId: "", q: "" });
+  };
+
+  const showAllEvents = () => {
+    setAnalysisId("");
+    setSystemLogAnalysisId(null);
+    setActiveFilters((prev) => ({ ...prev, analysisId: "" }));
   };
 
   const handleAnalysisClick = (clickedId: string) => {
@@ -213,6 +222,9 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
     border: "1px solid hsl(var(--border))",
     color: "hsl(var(--foreground))",
   };
+  const filteredAnalysisDomain = activeFilters.analysisId
+    ? events.find((event) => event.analysisId === activeFilters.analysisId)?.analysisDomain ?? null
+    : null;
 
   return (
     <div className="space-y-6 pb-16">
@@ -323,6 +335,27 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
         </div>
       </form>
 
+      {activeFilters.analysisId && (
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span>
+            {filteredAnalysisDomain
+              ? t("systemlog.filtered_by_analysis_domain", {
+                  id: activeFilters.analysisId.slice(0, 8),
+                  domain: filteredAnalysisDomain,
+                })
+              : t("systemlog.filtered_by_analysis", { id: activeFilters.analysisId.slice(0, 8) })}
+          </span>
+          <button
+            type="button"
+            onClick={showAllEvents}
+            className="text-primary hover:underline"
+            data-testid="button-show-all-events"
+          >
+            {t("systemlog.show_all")}
+          </button>
+        </div>
+      )}
+
       <div className="rounded-xl overflow-hidden mt-6" style={cardStyle}>
         {error && (
           <div className="p-4 text-sm text-amber-400 border-b border-border/50">
@@ -336,7 +369,9 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
         )}
         {!isLoading && events.length === 0 && !error && (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            {t("systemlog.empty")}
+            {activeFilters.analysisId
+              ? t("systemlog.no_events_for_analysis")
+              : t("systemlog.empty")}
           </div>
         )}
 
@@ -423,7 +458,12 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
                               style={{ color: "hsl(var(--primary))" }}
                               data-testid={`link-analysis-${ev.analysisId}`}
                             >
-                              {ev.analysisId.slice(0, 8)}
+                              <span>{ev.analysisId.slice(0, 8)}</span>
+                              {ev.analysisDomain && (
+                                <span className="ml-1 text-muted-foreground">
+                                  · {ev.analysisDomain}
+                                </span>
+                              )}
                             </button>
                           ) : (
                             <span className="text-xs text-muted-foreground">–</span>

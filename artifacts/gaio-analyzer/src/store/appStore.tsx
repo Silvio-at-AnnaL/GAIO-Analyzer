@@ -21,6 +21,9 @@ interface AppState {
   activeView: ActiveView;
   setActiveView: (v: ActiveView) => void;
 
+  systemLogAnalysisId: string | null;
+  setSystemLogAnalysisId: (id: string | null) => void;
+
   domainForm: DomainForm;
   setDomainForm: (form: DomainForm) => void;
 
@@ -75,6 +78,7 @@ function applyTheme(theme: Theme) {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [activeView, setActiveView] = useState<ActiveView>(1);
+  const [systemLogAnalysisId, setSystemLogAnalysisId] = useState<string | null>(null);
   const [domainForm, setDomainForm] = useState<DomainForm>(DEFAULT_DOMAIN_FORM);
   const [htmlForm, setHtmlForm] = useState<HtmlForm>(DEFAULT_HTML_FORM);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
@@ -108,6 +112,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         activeView,
         setActiveView,
+        systemLogAnalysisId,
+        setSystemLogAnalysisId,
         domainForm,
         setDomainForm,
         htmlForm,

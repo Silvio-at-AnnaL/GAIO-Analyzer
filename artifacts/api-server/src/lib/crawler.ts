@@ -294,17 +294,19 @@ export async function fetchTechFile(
     } catch {
       // Keep the full URL when it cannot be parsed.
     }
-    logger.warn(
-      {
-        file,
-        url,
-        statusCode: finalResult.statusCode,
-        reason: finalResult.reason,
-        durationMs: finalResult.durationMs,
-        attempts,
-      },
-      "technical file not retrieved",
-    );
+    const fields = {
+      file,
+      url,
+      statusCode: finalResult.statusCode,
+      reason: finalResult.reason,
+      durationMs: finalResult.durationMs,
+      attempts,
+    };
+    if (finalResult.status === "error") {
+      logger.warn(fields, "technical file not retrieved");
+    } else {
+      logger.info(fields, "technical file not retrieved");
+    }
   }
   return finalResult;
 }
@@ -614,10 +616,12 @@ async function discoverSitemap(
   }
 
   const finalResult = { ...none, sitemapStatus: hadError ? "error" as const : "missing" as const };
-  logger.warn(
-    { file: "Sitemap", url: origin, status: finalResult.sitemapStatus },
-    "technical file not retrieved",
-  );
+  const fields = { file: "Sitemap", url: origin, status: finalResult.sitemapStatus };
+  if (finalResult.sitemapStatus === "error") {
+    logger.warn(fields, "technical file not retrieved");
+  } else {
+    logger.info(fields, "technical file not retrieved");
+  }
   return finalResult;
 }
 

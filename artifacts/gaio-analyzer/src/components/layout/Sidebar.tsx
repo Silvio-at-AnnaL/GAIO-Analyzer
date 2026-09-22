@@ -216,12 +216,13 @@ function LocaleSwitcher() {
 }
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { activeView, setActiveView, analysisStatus } = useAppStore();
+  const { activeView, setActiveView, analysisStatus, setSystemLogAnalysisId } = useAppStore();
   const { user, isAuthenticated, permissions } = useAuth();
   const branding = useBranding();
   const t = useT();
 
   function navigate(id: ActiveView) {
+    if (id === 22) setSystemLogAnalysisId(null);
     setActiveView(id);
     onNavigate?.();
   }

@@ -689,6 +689,10 @@ export const labelDefaults: Record<string, LabelDef> = {
   "systemlog.loading":              { group: "systemlog", de: "Wird geladen …" },
   "systemlog.error":                { group: "systemlog", de: "Systemprotokoll konnte nicht geladen werden." },
   "systemlog.analysis_filter_hint": { group: "systemlog", de: "Klick auf eine Analyse-ID filtert nach dieser Analyse." },
+  "systemlog.filtered_by_analysis": { group: "systemlog", de: "Gefiltert nach Analyse {id}" },
+  "systemlog.filtered_by_analysis_domain": { group: "systemlog", de: "Gefiltert nach Analyse {id} ({domain})" },
+  "systemlog.show_all":             { group: "systemlog", de: "Alle Einträge anzeigen" },
+  "systemlog.no_events_for_analysis": { group: "systemlog", de: "Für diese Analyse gibt es keine Protokolleinträge. Analysen vor Einführung des Systemprotokolls (22.09.2026) werden nicht erfasst." },
 
   "score.title":               { group: "score", de: "Score-Einstellungen" },
   "score.subtitle":            { group: "score", de: "Parameter der Bewertungslogik justieren. Änderungen wirken auf neue Analysen." },
@@ -826,6 +830,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "log.empty_search":           { group: "log", de: "Keine Eintr\u00E4ge f\u00FCr diese Suche." },
   "log.empty_none":             { group: "log", de: "Noch keine Analysen durchgef\u00FChrt." },
   "log.export_title":           { group: "log", de: "HTML-Export herunterladen" },
+  "log.system_log_title":       { group: "log", de: "Systemprotokoll dieser Analyse anzeigen" },
   "log.delete_title":           { group: "log", de: "Eintrag l\u00F6schen" },
   "log.pagination":             { group: "log", de: "Seite {page} von {pages}" },
   "log.per_page":               { group: "log", de: "{count} / Seite" },
