@@ -729,10 +729,7 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
               analysis.analysis_domain
        FROM system_events
        LEFT JOIN LATERAL (
-         SELECT NULLIF(
-           SPLIT_PART(SPLIT_PART(REGEXP_REPLACE(al.domain, '^https?://', '', 'i'), '/', 1), ':', 1),
-           ''
-         ) AS analysis_domain
+         SELECT al.domain AS analysis_domain
          FROM analysis_log al
          WHERE al.analysis_uuid = system_events.analysis_id
          LIMIT 1
@@ -754,15 +751,30 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
 
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const events = pageRows.map((row) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      level: row.level,
-      msg: row.msg,
-      analysisId: row.analysis_id,
-      analysisDomain: row.analysis_domain,
-      context: row.context,
-    }));
+    const events = pageRows.map((row) => {
+      let analysisDomain: string | null = null;
+      if (row.analysis_domain) {
+        try {
+          const value = row.analysis_domain.startsWith("//")
+            ? `https:${row.analysis_domain}`
+            : /^[a-z][a-z\d+.-]*:\/\//i.test(row.analysis_domain)
+              ? row.analysis_domain
+              : `https://${row.analysis_domain}`;
+          analysisDomain = new URL(value).hostname || null;
+        } catch {
+          analysisDomain = null;
+        }
+      }
+      return {
+        id: row.id,
+        createdAt: row.created_at,
+        level: row.level,
+        msg: row.msg,
+        analysisId: row.analysis_id,
+        analysisDomain,
+        context: row.context,
+      };
+    });
     res.json({
       events,
       nextBeforeId: hasMore ? pageRows.at(-1)?.id ?? null : null,
