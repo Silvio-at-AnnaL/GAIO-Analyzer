@@ -566,9 +566,30 @@ export async function generateRecommendations(
         );
         if (toolBlock?.type === "tool_use") {
           const toolInput = asRecord(toolBlock.input);
-          const candidates = Array.isArray(toolInput?.recommendations)
-            ? toolInput.recommendations
-            : [];
+          const recommendations = toolInput?.recommendations;
+          let source: "tool_array" | "tool_string" | "tool_string_salvaged";
+          let candidates: unknown[];
+          let salvaged = false;
+
+          if (Array.isArray(recommendations)) {
+            source = "tool_array";
+            candidates = recommendations;
+          } else if (typeof recommendations === "string") {
+            try {
+              const parsed: unknown = JSON.parse(recommendations);
+              source = "tool_string";
+              candidates = Array.isArray(parsed) ? parsed : [];
+            } catch {
+              const parsed = parseRecommendations(recommendations);
+              source = "tool_string_salvaged";
+              candidates = parsed.recs ?? [];
+              salvaged = parsed.salvaged;
+            }
+          } else {
+            source = "tool_array";
+            candidates = [];
+          }
+
           const recs = candidates.filter(isValidToolRecommendation);
           const discarded = candidates.length - recs.length;
           if (discarded > 0) {
@@ -578,11 +599,11 @@ export async function generateRecommendations(
             );
           }
           return {
-            source: "tool" as const,
+            source,
             raw: JSON.stringify(toolBlock.input),
             recs,
-            salvaged: false,
-          stopReason: msg.stop_reason,
+            salvaged,
+            stopReason: msg.stop_reason,
           };
         }
 
