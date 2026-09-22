@@ -415,6 +415,18 @@ function isCompleteRecommendation(value: unknown): value is Recommendation {
     && rec.fixInstruction.length > 0;
 }
 
+function isValidToolRecommendation(value: unknown): value is Recommendation {
+  const rec = asRecord(value);
+  return rec !== null
+    && (rec.tier === "critical" || rec.tier === "high_leverage" || rec.tier === "secondary")
+    && typeof rec.finding === "string"
+    && rec.finding.trim().length > 0
+    && typeof rec.whyItMatters === "string"
+    && rec.whyItMatters.trim().length > 0
+    && typeof rec.fixInstruction === "string"
+    && rec.fixInstruction.trim().length > 0;
+}
+
 export function parseRecommendations(
   text: string,
 ): { recs: Recommendation[] | null; salvaged: boolean; count: number } {
@@ -517,44 +529,111 @@ export async function generateRecommendations(
         const request = anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 12000,
+          temperature: 0,
+          tools: [{
+            name: "submit_recommendations",
+            description: "Gibt die priorisierten Empfehlungen strukturiert zurück.",
+            input_schema: {
+              type: "object",
+              properties: {
+                recommendations: {
+                  type: "array",
+                  maxItems: 10,
+                  items: {
+                    type: "object",
+                    properties: {
+                      tier: {
+                        type: "string",
+                        enum: ["critical", "high_leverage", "secondary"],
+                      },
+                      finding: { type: "string" },
+                      whyItMatters: { type: "string" },
+                      fixInstruction: { type: "string" },
+                    },
+                    required: ["tier", "finding", "whyItMatters", "fixInstruction"],
+                  },
+                },
+              },
+              required: ["recommendations"],
+            },
+          }],
+          tool_choice: { type: "tool", name: "submit_recommendations" },
           messages: [{ role: "user", content }],
         }, { timeout: remaining, signal: controller.signal });
         const msg = await Promise.race([request, timeout]);
-        const block = msg.content[0];
-        const text = block.type === "text" ? block.text : "";
-        const response = {
-          text,
-          stopReason: msg.stop_reason,
-          responseChars: text.length,
-        };
-        logger.info(
-          { responseChars: response.responseChars, stopReason: response.stopReason },
-          "AI recommendations response",
+        const toolBlock = msg.content.find(
+          (block) => block.type === "tool_use" && block.name === "submit_recommendations",
         );
-        return response;
+        if (toolBlock?.type === "tool_use") {
+          const toolInput = asRecord(toolBlock.input);
+          const candidates = Array.isArray(toolInput?.recommendations)
+            ? toolInput.recommendations
+            : [];
+          const recs = candidates.filter(isValidToolRecommendation);
+          const discarded = candidates.length - recs.length;
+          if (discarded > 0) {
+            logger.warn(
+              { discarded },
+              "AI recommendation tool items discarded",
+            );
+          }
+          return {
+            source: "tool" as const,
+            raw: JSON.stringify(toolBlock.input),
+            recs,
+            salvaged: false,
+          stopReason: msg.stop_reason,
+          };
+        }
+
+        const textBlock = msg.content.find((block) => block.type === "text");
+        return {
+          source: "text" as const,
+          raw: textBlock?.type === "text" ? textBlock.text : "",
+          recs: null,
+          salvaged: false,
+          stopReason: msg.stop_reason,
+        };
       } finally {
         if (timer) clearTimeout(timer);
       }
     };
 
-    const parseResponse = (response: {
-      text: string;
-      stopReason: string | null;
-      responseChars: number;
-    }) => {
-      const parsed = parseRecommendations(response.text);
-      if (parsed.salvaged) {
+    const parseResponse = (response: Awaited<ReturnType<typeof callApi>>) => {
+      let recs = response.recs;
+      let salvaged = response.salvaged;
+      if (response.source === "text") {
+        const parsed = parseRecommendations(response.raw);
+        recs = parsed.recs;
+        salvaged = parsed.salvaged;
+      }
+
+      logger.info(
+        {
+          source: response.source,
+          items: recs?.length ?? 0,
+          stopReason: response.stopReason,
+        },
+        "AI recommendations response",
+      );
+
+      if (salvaged) {
         logger.warn(
-          { recovered: parsed.count, stopReason: response.stopReason },
+          { recovered: recs?.length ?? 0, stopReason: response.stopReason },
           "AI recommendations recovered from truncated response",
         );
-      } else if (!parsed.recs || parsed.recs.length === 0) {
+      } else if (!recs || recs.length === 0) {
         logger.warn(
-          { responseChars: response.responseChars, stopReason: response.stopReason },
+          {
+            stopReason: response.stopReason,
+            source: response.source,
+            head: response.raw.slice(0, 300),
+            tail: response.raw.slice(-300),
+          },
           "AI recommendations unusable",
         );
       }
-      return parsed.recs;
+      return recs;
     };
 
     const firstResponse = await callApi(await buildRecommendationsPrompt(input.text));
