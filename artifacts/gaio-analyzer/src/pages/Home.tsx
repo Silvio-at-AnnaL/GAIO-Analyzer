@@ -27,6 +27,7 @@ import { AngebotCreatorView } from "@/views/admin/AngebotCreatorView";
 import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 import { TextverwaltungView } from "@/views/admin/TextverwaltungView";
 import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
+import { SystemLogView } from "@/views/admin/SystemLogView";
 
 function AppContent() {
   const { activeView, analysisId } = useAppStore();
@@ -73,6 +74,7 @@ function AppContent() {
                 {activeView === 19                  && <PromptVerwaltungView />}
                 {activeView === 20                  && <TextverwaltungView />}
                 {activeView === 21                  && <ScoreSettingsView />}
+                {activeView === 22                  && <SystemLogView />}
               </>
             )}
           </div>

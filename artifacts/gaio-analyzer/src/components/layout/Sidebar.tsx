@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, User, Users, Server, ArrowLeftRight,
-  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown,
+  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { useAuth, canAccess, type Permissions } from "@/store/authStore";
@@ -32,6 +32,7 @@ const FEATURE_VIEW: Record<string, ActiveView> = {
   ki_tool: 10,
   textverwaltung: 20,
   score_einstellungen: 21,
+  systemprotokoll: 22,
 };
 
 const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
@@ -40,6 +41,10 @@ const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
 
 const GROUP_ICON: Record<string, React.ElementType> = {
   Users, BarChart2, Palette, BrainCircuit, SlidersHorizontal,
+};
+
+const FEATURE_ICON: Record<string, React.ElementType> = {
+  systemprotokoll: ScrollText,
 };
 
 function NavButton({
@@ -141,6 +146,7 @@ function NavGroup({
           if (!viewId) return null;
           const label = FEATURE_LABEL[itemId] ?? itemId;
           const active = activeView === viewId;
+          const ItemIcon = FEATURE_ICON[itemId];
           return (
             <button
               key={itemId}
@@ -157,7 +163,10 @@ function NavGroup({
                 fontWeight:   active ? 500 : 400,
               }}
             >
-              {t(label)}
+              <span className="flex items-center gap-2">
+                {ItemIcon && <ItemIcon style={{ width: 14, height: 14 }} />}
+                {t(label)}
+              </span>
             </button>
           );
         })}
