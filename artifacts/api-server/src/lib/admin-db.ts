@@ -103,6 +103,22 @@ const CREATE_TABLES = `
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (key, locale)
   );
+
+  CREATE TABLE IF NOT EXISTS system_events (
+    id          BIGSERIAL   PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    level       SMALLINT    NOT NULL,
+    msg         TEXT        NOT NULL,
+    analysis_id TEXT,
+    context     JSONB
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_system_events_created_at
+    ON system_events (created_at);
+  CREATE INDEX IF NOT EXISTS idx_system_events_analysis_id
+    ON system_events (analysis_id);
+  CREATE INDEX IF NOT EXISTS idx_system_events_level
+    ON system_events (level);
 `;
 
 // ── Default settings ──────────────────────────────────────────────────────────

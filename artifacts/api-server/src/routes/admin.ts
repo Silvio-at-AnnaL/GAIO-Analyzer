@@ -85,6 +85,15 @@ const loginLimiter = rateLimit({
 
 const adminRouter = Router();
 
+interface SystemEventRow {
+  id: string;
+  created_at: string;
+  level: number;
+  msg: string;
+  analysis_id: string | null;
+  context: Record<string, unknown> | null;
+}
+
 interface CustomProviderRecord {
   id: string;
   name: string;
@@ -683,6 +692,57 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
   }));
 
   res.json({ items, total, page, pages: Math.ceil(total / limit), storageTotalKb });
+});
+
+// GET /api/admin/system-events — admin only, cursor-paginated
+adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const from = typeof req.query.from === "string" && req.query.from ? req.query.from : null;
+  const to = typeof req.query.to === "string" && req.query.to ? req.query.to : null;
+  const analysisId = typeof req.query.analysisId === "string" && req.query.analysisId
+    ? req.query.analysisId
+    : null;
+  const q = typeof req.query.q === "string" && req.query.q ? `%${req.query.q}%` : null;
+  const requestedMinLevel = parseInt(String(req.query.minLevel ?? "40"), 10);
+  const minLevel = [30, 40, 50].includes(requestedMinLevel) ? requestedMinLevel : 40;
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? "100"), 10) || 100));
+  const beforeIdRaw = typeof req.query.beforeId === "string" ? req.query.beforeId : "";
+  const beforeId = /^\d+$/.test(beforeIdRaw) ? beforeIdRaw : null;
+
+  if (from !== null && Number.isNaN(Date.parse(from))) {
+    res.status(400).json({ error: "Ungültiges from-Datum" }); return;
+  }
+  if (to !== null && Number.isNaN(Date.parse(to))) {
+    res.status(400).json({ error: "Ungültiges to-Datum" }); return;
+  }
+
+  const rows = (await query<SystemEventRow>(
+    `SELECT system_events.id::text AS id, created_at, level, msg, analysis_id, context
+     FROM system_events
+     WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+       AND ($2::timestamptz IS NULL OR created_at <= $2)
+       AND level >= $3
+       AND ($4::text IS NULL OR analysis_id = $4)
+       AND ($5::text IS NULL OR msg ILIKE $5 OR context::text ILIKE $5)
+       AND ($6::bigint IS NULL OR id < $6)
+     ORDER BY system_events.id DESC
+     LIMIT $7`,
+    [from, to, minLevel, analysisId, q, beforeId, limit + 1],
+  )).rows;
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const events = pageRows.map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    level: row.level,
+    msg: row.msg,
+    analysisId: row.analysis_id,
+    context: row.context,
+  }));
+  res.json({
+    events,
+    nextBeforeId: hasMore ? pageRows.at(-1)?.id ?? null : null,
+  });
 });
 
 // GET /api/admin/analysis-log/:id/export — admin only

@@ -14,6 +14,7 @@ import {
   updateAnalysisLogFailed,
 } from "./admin-db.js";
 import { getScoreParams } from "./score-config.js";
+import { runWithAnalysisContext } from "./log-context.js";
 
 export interface AnalysisState {
   id: string;
@@ -233,6 +234,7 @@ export async function runAnalysis(
   explicitUrls?: string[] | null,
   userSession?: string | null,
 ): Promise<void> {
+  return runWithAnalysisContext(id, async () => {
   const domain = url || "html-upload";
   const companyName = questionnaire?.companyName ?? questionnaire?.brandName ?? null;
 
@@ -634,4 +636,5 @@ export async function runAnalysis(
       }
     }
   }
+  });
 }

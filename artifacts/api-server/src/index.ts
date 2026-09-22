@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initializeDatabase } from "./lib/admin-db";
+import { initSystemEventLog } from "./lib/system-events";
 
 const rawPort = process.env["PORT"];
 
@@ -22,6 +23,7 @@ const RETRY_DELAY_MS = 5000;
 async function initWithRetry(attempt = 1): Promise<void> {
   try {
     await initializeDatabase();
+    initSystemEventLog();
     logger.info("Database initialized successfully");
   } catch (err: unknown) {
     logger.error({ err, attempt }, "Failed to initialize database");
