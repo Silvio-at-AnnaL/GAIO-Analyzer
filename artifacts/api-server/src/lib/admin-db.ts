@@ -224,12 +224,35 @@ export async function initializeDatabase(): Promise<void> {
 
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
+const SETTINGS_CACHE_TTL_MS = 60_000;
+const settingsCache = new Map<string, { value: string | null; expiresAt: number }>();
+
+export function clearSettingsCache(): void {
+  settingsCache.clear();
+}
+
 export async function getSetting(key: string): Promise<string | null> {
-  const result = await query<{ value: string }>(
-    "SELECT value FROM settings WHERE key = $1",
-    [key],
-  );
-  return result.rows[0]?.value ?? null;
+  const cached = settingsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  try {
+    const result = await query<{ value: string }>(
+      "SELECT value FROM settings WHERE key = $1",
+      [key],
+    );
+    const value = result.rows[0]?.value ?? null;
+    settingsCache.set(key, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
+    return value;
+  } catch (err) {
+    if (cached) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn({ key, err: message }, "getSetting failed — using cached value");
+      return cached.value;
+    }
+    throw err;
+  }
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
@@ -238,6 +261,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
     [key, value],
   );
+  settingsCache.set(key, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
 }
 
 // ── Analysis log helpers ──────────────────────────────────────────────────────
