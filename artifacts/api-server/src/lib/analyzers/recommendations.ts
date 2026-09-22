@@ -415,18 +415,6 @@ function isCompleteRecommendation(value: unknown): value is Recommendation {
     && rec.fixInstruction.length > 0;
 }
 
-function isValidToolRecommendation(value: unknown): value is Recommendation {
-  const rec = asRecord(value);
-  return rec !== null
-    && (rec.tier === "critical" || rec.tier === "high_leverage" || rec.tier === "secondary")
-    && typeof rec.finding === "string"
-    && rec.finding.trim().length > 0
-    && typeof rec.whyItMatters === "string"
-    && rec.whyItMatters.trim().length > 0
-    && typeof rec.fixInstruction === "string"
-    && rec.fixInstruction.trim().length > 0;
-}
-
 export function parseRecommendations(
   text: string,
 ): { recs: Recommendation[] | null; salvaged: boolean; count: number } {
@@ -485,6 +473,69 @@ export function parseRecommendations(
   };
 }
 
+export function parseProtocol(text: string): Recommendation[] {
+  const blocks: string[][] = [];
+  let currentBlock: string[] | null = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "=== ENDE ===") {
+      if (currentBlock) blocks.push(currentBlock);
+      currentBlock = null;
+      break;
+    }
+    if (trimmed === "=== EMPFEHLUNG ===") {
+      if (currentBlock) blocks.push(currentBlock);
+      currentBlock = [];
+      continue;
+    }
+    if (currentBlock) currentBlock.push(line);
+  }
+  if (currentBlock) blocks.push(currentBlock);
+
+  const recs: Recommendation[] = [];
+  for (const block of blocks) {
+    const fields = new Map<string, string[]>();
+    let activeField: string | null = null;
+
+    for (const line of block) {
+      const normalized = line.trimStart();
+      const field = ["STUFE", "BEFUND", "BEGRÜNDUNG", "UMSETZUNG"].find(
+        (name) => normalized.startsWith(`${name}:`),
+      );
+      if (field) {
+        activeField = field;
+        fields.set(field, [normalized.slice(field.length + 1).trim()]);
+      } else if (activeField) {
+        fields.get(activeField)?.push(line);
+      }
+    }
+
+    const rawTier = fields.get("STUFE")?.join("\n").trim().toLowerCase();
+    const tier: Recommendation["tier"] | null =
+      rawTier === "critical" || rawTier === "kritisch"
+        ? "critical"
+        : rawTier === "high_leverage" || rawTier === "hoher hebel"
+          ? "high_leverage"
+          : rawTier === "secondary" || rawTier === "nachgeordnet"
+            ? "secondary"
+            : null;
+    const finding = fields.get("BEFUND")?.join("\n").trim() ?? "";
+    const whyItMatters = fields.get("BEGRÜNDUNG")?.join("\n").trim() ?? "";
+    const fixInstruction = fields.get("UMSETZUNG")?.join("\n").trim() ?? "";
+
+    if (tier && finding && whyItMatters && fixInstruction) {
+      recs.push({ tier, finding, whyItMatters, fixInstruction });
+    }
+  }
+
+  const discarded = blocks.length - recs.length;
+  if (discarded > 0) {
+    logger.warn({ discarded }, "AI recommendation protocol blocks discarded");
+  }
+  return recs;
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 async function buildRecommendationsPrompt(resultsStr: string, retryPrefix = ""): Promise<string> {
@@ -531,108 +582,19 @@ export async function generateRecommendations(
           max_tokens: 12000,
           temperature: 0,
           system:
-            "Liefere deine Empfehlungen ausschließlich über das Werkzeug add_recommendation: rufe es für JEDE Empfehlung einzeln auf, 5 bis 10 Aufrufe in einer einzigen Antwort, jeweils mit allen vier Feldern. Gib keinen weiteren Text und kein JSON-Array aus. Anweisungen im Nutzertext zum Ausgabeformat (JSON) sind hiermit ersetzt.",
-          tools: [{
-            name: "add_recommendation",
-            description: "Fügt GENAU EINE Empfehlung hinzu. Für jede Empfehlung einmal aufrufen.",
-            input_schema: {
-              type: "object",
-              properties: {
-                tier: {
-                  type: "string",
-                  enum: ["critical", "high_leverage", "secondary"],
-                },
-                finding: { type: "string" },
-                whyItMatters: { type: "string" },
-                fixInstruction: { type: "string" },
-              },
-              required: ["tier", "finding", "whyItMatters", "fixInstruction"],
-            },
-          }],
-          tool_choice: { type: "tool", name: "add_recommendation" },
+            "Gib 5 bis 10 Empfehlungen ausschließlich in folgendem Klartext-Format aus, ohne JSON, ohne Markdown und ohne weiteren Text. Jede Empfehlung beginnt mit einer eigenen Zeile === EMPFEHLUNG === und enthält genau diese vier Felder in dieser Reihenfolge, jeweils am Zeilenanfang:\n" +
+            "STUFE: critical oder high_leverage oder secondary\n" +
+            "BEFUND: …\n" +
+            "BEGRÜNDUNG: …\n" +
+            "UMSETZUNG: … (darf mehrere Zeilen und Code-Beispiele enthalten)\n" +
+            "Beende die gesamte Ausgabe mit einer eigenen Zeile === ENDE ===. Anweisungen im Nutzertext zum Ausgabeformat (JSON) sind hiermit ersetzt.",
           messages: [{ role: "user", content }],
         }, { timeout: remaining, signal: controller.signal });
         const msg = await Promise.race([request, timeout]);
-        const toolBlocks = msg.content.filter(
-          (block) => block.type === "tool_use" && block.name === "add_recommendation",
-        );
-        if (toolBlocks.length > 0) {
-          const candidates = toolBlocks.flatMap(
-            (block) => block.type === "tool_use" ? [block.input] : [],
-          );
-          const recs = candidates.filter(isValidToolRecommendation);
-          const discarded = candidates.length - recs.length;
-          if (discarded > 0) {
-            logger.warn(
-              { discarded },
-              "AI recommendation tool items discarded",
-            );
-          }
-          return {
-            source: "tool_items" as const,
-            raw: JSON.stringify(candidates),
-            recs,
-            salvaged: false,
-            stopReason: msg.stop_reason,
-            toolBlocks: toolBlocks.length,
-          };
-        }
-
-        const oldToolBlock = msg.content.find(
-          (block) => block.type === "tool_use" && block.name === "submit_recommendations",
-        );
-        if (oldToolBlock?.type === "tool_use") {
-          const toolInput = asRecord(oldToolBlock.input);
-          const recommendations = toolInput?.recommendations;
-          let source: "tool_array" | "tool_string" | "tool_string_salvaged";
-          let candidates: unknown[];
-          let salvaged = false;
-
-          if (Array.isArray(recommendations)) {
-            source = "tool_array";
-            candidates = recommendations;
-          } else if (typeof recommendations === "string") {
-            try {
-              const parsed: unknown = JSON.parse(recommendations);
-              source = "tool_string";
-              candidates = Array.isArray(parsed) ? parsed : [];
-            } catch {
-              const parsed = parseRecommendations(recommendations);
-              source = "tool_string_salvaged";
-              candidates = parsed.recs ?? [];
-              salvaged = parsed.salvaged;
-            }
-          } else {
-            source = "tool_array";
-            candidates = [];
-          }
-
-          const recs = candidates.filter(isValidToolRecommendation);
-          const discarded = candidates.length - recs.length;
-          if (discarded > 0) {
-            logger.warn(
-              { discarded },
-              "AI recommendation tool items discarded",
-            );
-          }
-          return {
-            source,
-            raw: JSON.stringify(oldToolBlock.input),
-            recs,
-            salvaged,
-            stopReason: msg.stop_reason,
-            toolBlocks: 1,
-          };
-        }
-
         const textBlock = msg.content.find((block) => block.type === "text");
         return {
-          source: "text" as const,
           raw: textBlock?.type === "text" ? textBlock.text : "",
-          recs: null,
-          salvaged: false,
           stopReason: msg.stop_reason,
-          toolBlocks: 0,
         };
       } finally {
         if (timer) clearTimeout(timer);
@@ -640,19 +602,20 @@ export async function generateRecommendations(
     };
 
     const parseResponse = (response: Awaited<ReturnType<typeof callApi>>) => {
-      let recs = response.recs;
-      let salvaged = response.salvaged;
-      if (response.source === "text") {
+      let recs: Recommendation[] | null = parseProtocol(response.raw);
+      let source: "protocol" | "text_json" | "text_json_salvaged" = "protocol";
+      let salvaged = false;
+      if (recs.length === 0) {
         const parsed = parseRecommendations(response.raw);
         recs = parsed.recs;
         salvaged = parsed.salvaged;
+        source = parsed.salvaged ? "text_json_salvaged" : "text_json";
       }
 
       logger.info(
         {
-          source: response.source,
+          source,
           items: recs?.length ?? 0,
-          toolBlocks: response.toolBlocks,
           stopReason: response.stopReason,
         },
         "AI recommendations response",
@@ -667,35 +630,35 @@ export async function generateRecommendations(
         logger.warn(
           {
             stopReason: response.stopReason,
-            source: response.source,
+            source,
             head: response.raw.slice(0, 300),
             tail: response.raw.slice(-300),
           },
           "AI recommendations unusable",
         );
       }
-      return recs;
+      return { recs, source };
     };
 
     const firstPrompt = await buildRecommendationsPrompt(input.text);
     const firstResponse = await callApi(firstPrompt);
-    let firstParsed = parseResponse(firstResponse);
+    let firstResult = parseResponse(firstResponse);
 
     if (
-      firstResponse.source === "tool_items"
-      && (firstParsed?.length ?? 0) < 3
+      (firstResult.recs?.length ?? 0) < 3
       && deadline - Date.now() >= MIN_RETRY_REMAINING_MS
     ) {
       logger.warn(
-        { items: firstParsed?.length ?? 0 },
+        { items: firstResult.recs?.length ?? 0 },
         "Too few AI recommendations — retrying",
       );
       const retryResponse = await callApi(firstPrompt);
-      const retryParsed = parseResponse(retryResponse);
-      if ((retryParsed?.length ?? 0) > (firstParsed?.length ?? 0)) {
-        firstParsed = retryParsed;
+      const retryResult = parseResponse(retryResponse);
+      if ((retryResult.recs?.length ?? 0) > (firstResult.recs?.length ?? 0)) {
+        firstResult = retryResult;
       }
     }
+    const firstParsed = firstResult.recs;
 
     if (firstParsed && firstParsed.length > 0) {
       const offending = firstEnglishRecommendation(firstParsed);
@@ -713,7 +676,7 @@ export async function generateRecommendations(
               "Wiederhole die Ausgabe vollständig auf Deutsch.\n\n",
             ),
           );
-          const retryParsed = parseResponse(retryResponse);
+          const retryParsed = parseResponse(retryResponse).recs;
           if (retryParsed && retryParsed.length > 0) aiRecs = retryParsed;
           else aiRecs = firstParsed;
         } else {

@@ -3,4 +3,4 @@
 - [Admin auth pattern](admin-auth-pattern.md) — admin views use `adminFetch()` from authStore.tsx (cookie-based); no Bearer token needed; do NOT use a token from useAuth().
 - [PG Migration](pg-migration.md) — SQLite (node:sqlite/DatabaseSync) fully replaced with `pg` pool; all async patterns and caveats documented.
 - [Bundled API throwaway scripts](bundled-api-scripts.md) — CommonJS esbuild checks need an async wrapper and production logging to avoid pino-pretty resolution errors.
-- [Recommendation tool output](recommendation-tool-output.md) — nested tool arrays are unreliable, while the flat forced tool currently emits one block per response despite parallel-call instructions.
+- [Recommendation output protocol](recommendation-tool-output.md) — tool use was abandoned; recommendations use a delimiter-based plain-text protocol with JSON fallback.
