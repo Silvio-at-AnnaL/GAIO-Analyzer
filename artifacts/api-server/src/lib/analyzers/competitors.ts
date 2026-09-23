@@ -3,7 +3,7 @@ import { crawlSite } from "../crawler";
 import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./headings";
-import { analyzeFaq } from "./faq";
+import { analyzeFaq, type FaqScoreParams } from "./faq";
 import { analyzeContentRelevance, extractPageText } from "./content-relevance";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
@@ -238,9 +238,10 @@ export async function analyzeCompetitors(
   questionnaireContext: string,
 ): Promise<CompetitorResult> {
   const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
-  const [schemaParams, headingParams] = await Promise.all([
+  const [schemaParams, headingParams, faqParams] = await Promise.all([
     getScoreParams("schema-org"),
     getScoreParams("headings"),
+    getScoreParams("faq"),
   ]);
   const mainComparisonScore = calculateComparisonScore({
     technicalScore: mainSiteScores.technicalScore,
@@ -326,7 +327,7 @@ export async function analyzeCompetitors(
       const schemaResult = analyzeSchemaOrg(crawlResult.pages, schemaParams as unknown as SchemaScoreParams);
       const headingResult = analyzeHeadings(crawlResult.pages, [], headingParams as unknown as HeadingScoreParams);
       const [faqResult, contentScore] = await Promise.all([
-        analyzeFaq(crawlResult.pages),
+        analyzeFaq(crawlResult.pages, faqParams as unknown as FaqScoreParams),
         (async (): Promise<number | null> => {
           const contentStartedAt = Date.now();
           let timeoutId: ReturnType<typeof setTimeout> | undefined;

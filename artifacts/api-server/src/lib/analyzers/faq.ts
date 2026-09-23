@@ -4,140 +4,223 @@ import { callLLM } from "../ai-client.js";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
+const MIN_ANSWER_CHARS = 40;
+
+export interface FaqScoreParams {
+  weight_schema: number;
+  weight_visible: number;
+  weight_scope: number;
+  weight_quality: number;
+  schema_full_from: number;
+  visible_full_from: number;
+  scope_full_from: number;
+  scope_mid_from: number;
+  scope_mid_factor: number;
+  scope_low_factor: number;
+}
+
+export const DEFAULT_FAQ_PARAMS: FaqScoreParams = {
+  weight_schema: 40,
+  weight_visible: 20,
+  weight_scope: 15,
+  weight_quality: 25,
+  schema_full_from: 4,
+  visible_full_from: 3,
+  scope_full_from: 6,
+  scope_mid_from: 3,
+  scope_mid_factor: 0.55,
+  scope_low_factor: 0.2,
+};
+
+export interface FaqPair {
+  question: string;
+  answer: string;
+}
+
 export interface FaqResult {
   score: number;
   faqItemsFound: number;
   hasFaqSchema: boolean;
   hasHtmlFaq: boolean;
   qualityAssessment: string | null;
+  schemaQuestionCount: number;
+  visiblePairCount: number;
+  qualityScore: number | null;
+  breakdown: Record<"schema" | "visible" | "scope" | "quality", { points: number; max: number }>;
+  params: FaqScoreParams;
 }
 
-function detectFaqFromSchema(html: string): number {
-  let count = 0;
-  const $ = cheerio.load(html);
+const clean = (text: string) => text.replace(/\s+/g, " ").trim();
+const questionKey = (question: string) => clean(question).toLocaleLowerCase().replace(/[\p{P}\p{S}\s]+$/gu, "");
+const stripTags = (value: string) => clean(cheerio.load(value).root().text());
 
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const text = $(el).html();
-      if (!text) return;
-      const parsed = JSON.parse(text);
-      const items = Array.isArray(parsed) ? parsed : [parsed];
-      for (const item of items) {
-        if (item["@type"] === "FAQPage" && Array.isArray(item.mainEntity)) {
-          count += item.mainEntity.length;
-        }
-        if (item["@graph"]) {
-          for (const g of item["@graph"] as Array<Record<string, unknown>>) {
-            if (g["@type"] === "FAQPage" && Array.isArray(g.mainEntity)) {
-              count += (g.mainEntity as unknown[]).length;
-            }
-          }
+function addPair(target: Map<string, FaqPair>, question: string, answer: string): void {
+  const pair = { question: clean(question), answer: clean(answer) };
+  const key = questionKey(pair.question);
+  if (key && pair.answer && !target.has(key)) target.set(key, pair);
+}
+
+function schemaPairs(html: string, target: Map<string, FaqPair>): void {
+  const $ = cheerio.load(html);
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const node = value as Record<string, unknown>;
+    const types = Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]];
+    if (types.includes("FAQPage") && Array.isArray(node.mainEntity)) {
+      for (const entry of node.mainEntity) {
+        if (!entry || typeof entry !== "object") continue;
+        const item = entry as Record<string, unknown>;
+        const answer = Array.isArray(item.acceptedAnswer)
+          ? item.acceptedAnswer[0]
+          : item.acceptedAnswer;
+        const answerText = answer && typeof answer === "object"
+          ? (answer as Record<string, unknown>).text
+          : null;
+        const question = typeof item.name === "string" ? item.name : item.text;
+        if (typeof question === "string" && typeof answerText === "string") {
+          addPair(target, stripTags(question), stripTags(answerText));
         }
       }
+    }
+    if (node["@graph"]) visit(node["@graph"]);
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const raw = $(el).html();
+      if (raw) visit(JSON.parse(raw));
     } catch {
-      // skip
+      // Malformed JSON-LD is not a FAQ.
     }
   });
-
-  return count;
 }
 
-function detectFaqFromHtml(html: string): number {
+function visiblePairs(html: string, target: Map<string, FaqPair>): void {
   const $ = cheerio.load(html);
-  let count = 0;
-
-  count += $("details summary").length;
-
-  const faqPatterns = [
-    ".faq",
-    ".FAQ",
-    '[class*="faq"]',
-    '[class*="FAQ"]',
-    '[id*="faq"]',
-    '[id*="FAQ"]',
-    ".accordion",
-    '[class*="accordion"]',
-  ];
-
-  for (const pattern of faqPatterns) {
-    const items = $(pattern);
-    if (items.length > 0) {
-      count += items.length;
-      break;
-    }
-  }
-
-  const headingPattern = /^(Was |Wie |Warum |Wann |Wo |Wer |Welche |Can |How |What |Why |When |Where |Who |Which |Is |Do |Does )/i;
-  $("h2, h3, h4").each((_, el) => {
-    const text = $(el).text().trim();
-    if (text.endsWith("?") || headingPattern.test(text)) {
-      count++;
-    }
+  $("details").each((_, el) => {
+    const summary = $(el).children("summary").first();
+    if (!summary.length) return;
+    const question = summary.text();
+    const answer = clean($(el).clone().children("summary").remove().end().text());
+    if (answer.length >= MIN_ANSWER_CHARS) addPair(target, question, answer);
   });
-
-  return count;
+  $("h2, h3, h4").each((_, el) => {
+    const question = clean($(el).text());
+    if (!question.endsWith("?")) return;
+    const answer: string[] = [];
+    let sibling = $(el).next();
+    while (sibling.length && !sibling.is("h1, h2, h3, h4, h5, h6")) {
+      answer.push(sibling.text());
+      sibling = sibling.next();
+    }
+    const text = clean(answer.join(" "));
+    if (text.length >= MIN_ANSWER_CHARS) addPair(target, question, text);
+  });
 }
 
-export async function analyzeFaq(pages: CrawledPage[]): Promise<FaqResult> {
-  let totalSchemaFaq = 0;
-  let totalHtmlFaq = 0;
-
+export function extractFaqPairs(pages: CrawledPage[]): { schema: FaqPair[]; visible: FaqPair[]; distinct: FaqPair[] } {
+  const schema = new Map<string, FaqPair>();
+  const visible = new Map<string, FaqPair>();
   for (const page of pages) {
-    totalSchemaFaq += detectFaqFromSchema(page.html);
-    totalHtmlFaq += detectFaqFromHtml(page.html);
+    schemaPairs(page.html, schema);
+    visiblePairs(page.html, visible);
   }
+  const distinct = new Map(schema);
+  for (const [key, pair] of visible) {
+    if (!distinct.has(key)) distinct.set(key, pair);
+  }
+  return { schema: [...schema.values()], visible: [...visible.values()], distinct: [...distinct.values()] };
+}
 
-  const hasFaqSchema = totalSchemaFaq > 0;
-  const hasHtmlFaq = totalHtmlFaq > 0;
-  const faqItemsFound = Math.max(totalSchemaFaq, totalHtmlFaq);
+export function faqQualityContent(pairs: FaqPair[]): string {
+  return pairs.slice(0, 12)
+    .map(({ question, answer }) => `F: ${question}\nA: ${answer.slice(0, 300)}`)
+    .join("\n\n").slice(0, 3000);
+}
 
+export function parseFaqQualityResponse(response: string): { score: number; assessment: string } | null {
+  const lines = response.split(/\r?\n/);
+  const scoreLine = lines.findIndex((line) => line.trim().startsWith("BEWERTUNG:"));
+  if (scoreLine < 0) return null;
+  const match = /^BEWERTUNG:\s*(\d{1,3})\s*$/.exec(lines[scoreLine].trim());
+  if (!match) return null;
+  const score = Number(match[1]);
+  if (score > 100) return null;
+  const reasonLine = lines.findIndex((line, index) => index > scoreLine && line.trim().startsWith("BEGRÜNDUNG:"));
+  if (reasonLine < 0) return null;
+  const assessment = [lines[reasonLine].trim().slice("BEGRÜNDUNG:".length), ...lines.slice(reasonLine + 1)]
+    .join("\n").trim();
+  return assessment ? { score, assessment } : null;
+}
+
+export async function analyzeFaq(
+  pages: CrawledPage[],
+  params: FaqScoreParams = DEFAULT_FAQ_PARAMS,
+): Promise<FaqResult> {
+  const pairs = extractFaqPairs(pages);
+  const schemaQuestionCount = pairs.schema.length;
+  const visiblePairCount = pairs.visible.length;
+  const faqItemsFound = pairs.distinct.length;
+  let qualityScore: number | null = null;
   let qualityAssessment: string | null = null;
 
   if (faqItemsFound > 0) {
+    let response = "";
     try {
-      const faqContent = pages
-        .map((p) => {
-          const $ = cheerio.load(p.html);
-          const faqTexts: string[] = [];
-          $("details, .faq, [class*='faq'], [class*='accordion']").each((_, el) => {
-            faqTexts.push($(el).text().trim().slice(0, 500));
-          });
-          $("h2, h3, h4").each((_, el) => {
-            const text = $(el).text().trim();
-            if (text.endsWith("?")) {
-              const next = $(el).next().text().trim().slice(0, 300);
-              faqTexts.push(`Q: ${text}\nA: ${next}`);
-            }
-          });
-          return faqTexts.join("\n");
-        })
-        .filter((t) => t.length > 10)
-        .join("\n---\n")
-        .slice(0, 3000);
-
-      if (faqContent.length > 50) {
-        qualityAssessment = await callLLM(
-          fillTemplate(await getPrompt("faq-quality"), { FAQ_CONTENT: faqContent }),
-          8192,
-        );
+      response = await callLLM(
+        fillTemplate(await getPrompt("faq-quality"), { FAQ_CONTENT: faqQualityContent(pairs.distinct) }),
+        8192,
+      );
+      const parsed = parseFaqQualityResponse(response);
+      if (parsed) {
+        qualityScore = parsed.score;
+        qualityAssessment = parsed.assessment;
+      } else {
+        logger.warn({ response: response.slice(0, 200) }, "FAQ quality assessment unusable");
       }
     } catch (err) {
       logger.warn({ err }, "FAQ quality assessment failed");
+      logger.warn({ response: response.slice(0, 200) }, "FAQ quality assessment unusable");
     }
   }
 
-  let score = 0;
-  if (hasFaqSchema) score += 40;
-  if (hasHtmlFaq) score += 25;
-  if (faqItemsFound >= 5) score += 15;
-  else if (faqItemsFound >= 2) score += 10;
-  else if (faqItemsFound >= 1) score += 5;
-
-  if (qualityAssessment && !qualityAssessment.toLowerCase().includes("poor")) {
-    score += 20;
-  }
-
-  score = Math.min(100, Math.max(0, score));
-
-  return { score, faqItemsFound, hasFaqSchema, hasHtmlFaq, qualityAssessment };
+  const oneDecimal = (value: number) => Math.round(value * 10) / 10;
+  const breakdown = {
+    schema: {
+      points: oneDecimal(Math.min(schemaQuestionCount, params.schema_full_from) / params.schema_full_from * params.weight_schema),
+      max: oneDecimal(params.weight_schema),
+    },
+    visible: {
+      points: oneDecimal(Math.min(visiblePairCount, params.visible_full_from) / params.visible_full_from * params.weight_visible),
+      max: oneDecimal(params.weight_visible),
+    },
+    scope: {
+      points: oneDecimal(faqItemsFound >= params.scope_full_from ? params.weight_scope
+        : faqItemsFound >= params.scope_mid_from ? params.weight_scope * params.scope_mid_factor
+          : faqItemsFound >= 1 ? params.weight_scope * params.scope_low_factor : 0),
+      max: oneDecimal(params.weight_scope),
+    },
+    quality: {
+      points: oneDecimal(qualityScore === null ? 0 : params.weight_quality * qualityScore / 100),
+      max: oneDecimal(params.weight_quality),
+    },
+  };
+  const score = Math.max(0, Math.min(100, Math.round(
+    Object.values(breakdown).reduce((sum, part) => sum + part.points, 0),
+  )));
+  return {
+    score,
+    faqItemsFound,
+    hasFaqSchema: schemaQuestionCount > 0,
+    hasHtmlFaq: visiblePairCount > 0,
+    qualityAssessment,
+    schemaQuestionCount,
+    visiblePairCount,
+    qualityScore,
+    breakdown,
+    params: { ...params },
+  };
 }

@@ -20,6 +20,23 @@ export interface ScoreProfile {
 
 export const SCORE_PROFILES: ScoreProfile[] = [
   {
+    slug: "faq",
+    label: "score.profile_faq",
+    description: "score.profile_faq_desc",
+    params: [
+      { key: "weight_schema", label: "score.param_weight_schema_label", default: 40, min: 0, max: 60, step: 5, help: "score.param_weight_schema_help" },
+      { key: "weight_visible", label: "score.param_weight_visible_label", default: 20, min: 0, max: 60, step: 5, help: "score.param_weight_visible_help" },
+      { key: "weight_scope", label: "score.param_weight_scope_label", default: 15, min: 0, max: 60, step: 5, help: "score.param_weight_scope_help" },
+      { key: "weight_quality", label: "score.param_weight_quality_label", default: 25, min: 0, max: 60, step: 5, help: "score.param_weight_quality_help" },
+      { key: "schema_full_from", label: "score.param_schema_full_from_label", default: 4, min: 1, max: 10, step: 1, help: "score.param_schema_full_from_help" },
+      { key: "visible_full_from", label: "score.param_visible_full_from_label", default: 3, min: 1, max: 10, step: 1, help: "score.param_visible_full_from_help" },
+      { key: "scope_full_from", label: "score.param_scope_full_from_label", default: 6, min: 2, max: 20, step: 1, help: "score.param_scope_full_from_help" },
+      { key: "scope_mid_from", label: "score.param_scope_mid_from_label", default: 3, min: 1, max: 10, step: 1, help: "score.param_scope_mid_from_help" },
+      { key: "scope_mid_factor", label: "score.param_scope_mid_factor_label", default: 0.55, min: 0, max: 1, step: 0.05, help: "score.param_scope_mid_factor_help" },
+      { key: "scope_low_factor", label: "score.param_scope_low_factor_label", default: 0.2, min: 0, max: 1, step: 0.05, help: "score.param_scope_low_factor_help" },
+    ],
+  },
+  {
     slug: "schema-org",
     label: "score.profile_schema_org",
     description: "score.profile_schema_org_desc",

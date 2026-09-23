@@ -49,9 +49,14 @@ WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen 
     placeholders: [
       { key: "{{FAQ_CONTENT}}", description: "Extrahierter FAQ-Text der Website" },
     ],
-    template: `Evaluate this FAQ content from a B2B industrial website. Are the questions framed as real user questions? Do answers have sufficient depth? Give a 2-3 sentence assessment.
+    template: `Bewerte die FAQ-Inhalte einer B2B-Industrie-Website. Prüfe: Sind die Fragen echte Nutzerfragen (keine Marketing-Floskeln, keine Überschriften ohne Frage-Charakter)? Haben die Antworten inhaltliche Tiefe und konkrete Angaben? Decken sie typische Fragen vor einer Kaufentscheidung ab?
 
-{{FAQ_CONTENT}}`,
+FAQ-Inhalte:
+{{FAQ_CONTENT}}
+
+Antworte auf Deutsch, ohne Markdown, in genau diesem Format:
+BEWERTUNG: <Zahl von 0 bis 100>
+BEGRÜNDUNG: <zwei bis drei Sätze, sachlich, in der Sie-Form>`,
   },
 
   {

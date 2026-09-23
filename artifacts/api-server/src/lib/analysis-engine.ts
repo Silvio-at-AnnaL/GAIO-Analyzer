@@ -3,7 +3,7 @@ import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
 import { analyzeContentRelevance } from "./analyzers/content-relevance";
-import { analyzeFaq } from "./analyzers/faq";
+import { analyzeFaq, type FaqScoreParams } from "./analyzers/faq";
 import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
 import { analyzeCompetitors } from "./analyzers/competitors";
 import { generateRecommendations } from "./analyzers/recommendations";
@@ -504,7 +504,8 @@ export async function runAnalysis(
       state.progress = 60;
       save();
       await new Promise((r) => setTimeout(r, 600));
-      state.faqQuality = await analyzeFaq(pages);
+      const faqParams = await getScoreParams("faq");
+      state.faqQuality = await analyzeFaq(pages, faqParams as unknown as FaqScoreParams);
       await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       logger.error({ err }, "FAQ analysis failed");
