@@ -987,7 +987,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
   const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
   const crawlSkipped = (report as unknown as Record<string, unknown>).crawlSkipped as
-    | { otherLanguage: number; excludedPath: number; urls: string[] }
+    | { otherLanguage: number; excludedPath: number; duplicate?: number; urls: string[] }
     | null
     | undefined;
   const headingStructure = report.headingStructure as Record<string, unknown> | null;
@@ -2162,6 +2162,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             const failed = Number(crawlReliability.failed ?? 0);
             const skippedLang = Number(crawlSkipped?.otherLanguage ?? 0);
             const skippedPath = Number(crawlSkipped?.excludedPath ?? 0);
+            const skippedDuplicate = Number(crawlSkipped?.duplicate ?? 0);
             const skippedUrls = Array.isArray(crawlSkipped?.urls)
               ? crawlSkipped.urls.filter((url): url is string => typeof url === "string")
               : [];
@@ -2209,11 +2210,12 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </div>
                   </div>
 
-                  {crawlSkipped && skippedLang + skippedPath > 0 && (
+                  {crawlSkipped && skippedLang + skippedPath + skippedDuplicate > 0 && (
                     <div className="space-y-1.5 border-t border-border/30 pt-3 text-xs text-muted-foreground">
                       <p className="font-medium">{t("results.crawl_skipped_title")}</p>
                       {skippedLang > 0 && <p>{t("results.crawl_skipped_lang", { n: skippedLang })}</p>}
                       {skippedPath > 0 && <p>{t("results.crawl_skipped_path", { n: skippedPath })}</p>}
+                      {skippedDuplicate > 0 && <p>{t("results.crawl_skipped_duplicate", { n: skippedDuplicate })}</p>}
                       <p>{t("results.crawl_skipped_note")}</p>
                       {skippedUrls.length > 0 && (
                         <details>

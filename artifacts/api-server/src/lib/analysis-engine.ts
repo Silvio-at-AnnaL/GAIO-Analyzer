@@ -38,7 +38,7 @@ export interface AnalysisState {
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
-  crawlSkipped: { otherLanguage: number; excludedPath: number; urls: string[] } | null;
+  crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] } | null;
 }
 
 export interface CompetitorInput {
@@ -342,7 +342,7 @@ export async function runAnalysis(
         );
         crawlResult = {
           pages,
-          skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
+          skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
           timedOut: false,
           robotsTxt: null,
           sitemapXml: null,
@@ -428,7 +428,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
-        skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
+        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
         timedOut: false,
         robotsTxt: null,
         sitemapXml: null,

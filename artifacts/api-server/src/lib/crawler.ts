@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
 import {
@@ -35,7 +36,7 @@ export interface CrawlReliability {
 
 export interface CrawlResult {
   pages: CrawledPage[];
-  skipped: { otherLanguage: number; excludedPath: number; urls: string[] };
+  skipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] };
   homepageFailReason?: CrawlFailReason | null;
   timedOut: boolean;
   robotsTxt: string | null;
@@ -84,7 +85,7 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
 ];
 
 const EXCLUDED_KEYWORD_PATTERN =
-  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search/i;
+  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search|reviews?_write|review-write|bewertung-schreiben|gaestebuch|guestbook|print\.php|druckansicht|printview|[?&]print=/i;
 
 const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
 const EXTRA_FETCH_ALLOWANCE = 12;
@@ -111,6 +112,14 @@ const EN_STOPWORDS = new Set(
   "the and of with for you are this that from our your they have been will more about which".split(" "),
 );
 const BOILERPLATE_PATTERN = /cookie|consent|borlabs|recaptcha|privacy|banner/i;
+
+export function contentFingerprint(html: string): string | null {
+  const $ = cheerio.load(html);
+  $("script, style, noscript").remove();
+  const text = ($("body").length ? $("body").text() : $.root().text())
+    .replace(/\s+/g, " ").toLowerCase().trim();
+  return text.length < 200 ? null : createHash("sha1").update(text).digest("hex");
+}
 
 /** Classify the visible main text; short pages use their declared language. */
 export function detectPageLanguage(html: string): "de" | "en" | null {
@@ -742,7 +751,7 @@ export async function crawlSite(
 
   const result: CrawlResult = {
     pages: [],
-    skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
+    skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
     homepageFailReason: null,
     timedOut: false,
     robotsTxt: null,
@@ -761,6 +770,7 @@ export async function crawlSite(
     reliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
   };
   const excludedPathUrls = new Set<string>();
+  const seenFingerprints = new Map<string, string>();
   const recordExcludedPath = (url: string) => {
     if (excludedPathUrls.has(url)) return;
     excludedPathUrls.add(url);
@@ -882,6 +892,8 @@ export async function crawlSite(
     targetLang = preferred === "de" || preferred === "en" ? preferred : null;
     const blocked = detectBlockedContent(homepageHtml);
     if (homePage.statusCode < 400 && blocked === null) {
+      const fingerprint = contentFingerprint(homepageHtml);
+      if (fingerprint) seenFingerprints.set(fingerprint, canonicalHomepageUrl);
       result.pages.push({
         url: canonicalHomepageUrl,
         html: homepageHtml,
@@ -1067,6 +1079,15 @@ export async function crawlSite(
           }
           continue;
         }
+        const fingerprint = contentFingerprint(page.html);
+        const originalUrl = fingerprint ? seenFingerprints.get(fingerprint) : undefined;
+        if (originalUrl) {
+          result.skipped.duplicate++;
+          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+          logger.debug({ url, originalUrl }, "duplicate page skipped");
+          continue;
+        }
+        if (fingerprint) seenFingerprints.set(fingerprint, url);
         result.pages.push(crawledPage);
         acceptedBranches.add(branch);
         pagesLeft--;
