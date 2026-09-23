@@ -467,20 +467,29 @@ function firstPathSegment(pathname: string): string {
   return pathname.split("/")[1] || "";
 }
 
+function isForeignBranch(
+  branch: string,
+  foreignBranchHits: Map<string, number>,
+  acceptedBranches: Set<string>,
+): boolean {
+  return branch !== "" && (foreignBranchHits.get(branch) ?? 0) >= 2 && !acceptedBranches.has(branch);
+}
+
 function addToQueue(
   categoryQueues: Map<string, QueueEntry[]>,
   entry: QueueEntry,
   visited: Set<string>,
   hreflangUrlSet: Set<string>,
   targetLang: string | null,
-  foreignBranches: Set<string>,
+  foreignBranchHits: Map<string, number>,
+  acceptedBranches: Set<string>,
   onOtherLanguage: (url: string) => void,
 ): void {
   if (visited.has(entry.url) || hreflangUrlSet.has(entry.url)) return;
   const pathname = new URL(entry.url).pathname;
   const language = urlLang(pathname);
   const branch = firstPathSegment(pathname);
-  if (targetLang && ((language && language !== targetLang) || (branch && foreignBranches.has(branch)))) {
+  if (targetLang && ((language && language !== targetLang) || isForeignBranch(branch, foreignBranchHits, acceptedBranches))) {
     onOtherLanguage(entry.url);
     return;
   }
@@ -752,7 +761,8 @@ export async function crawlSite(
   };
   const skippedLanguagePages: CrawledPage[] = [];
   const skippedLanguageUrls = new Set<string>();
-  const foreignBranches = new Set<string>();
+  const foreignBranchHits = new Map<string, number>();
+  const acceptedBranches = new Set<string>();
   const recordOtherLanguage = (url: string) => {
     if (skippedLanguageUrls.has(url)) return;
     skippedLanguageUrls.add(url);
@@ -871,6 +881,7 @@ export async function crawlSite(
         responseTime: homePage.responseTime,
         ttfb: homePage.ttfb,
       });
+      acceptedBranches.add(firstPathSegment(new URL(canonicalHomepageUrl).pathname));
       result.reliability.succeeded++;
       opts?.onProgress?.(result.pages.length, maxPages);
     } else {
@@ -932,7 +943,7 @@ export async function crawlSite(
       recordExcludedPath,
     );
     for (const { url } of links) {
-      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
+      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
     }
   }
 
@@ -949,7 +960,7 @@ export async function crawlSite(
         }
         if (scoreUrl(u) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
-        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
+        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
       } catch {
         // skip
       }
@@ -1020,7 +1031,7 @@ export async function crawlSite(
 
     const pathname = new URL(url).pathname;
     const branch = firstPathSegment(pathname);
-    if (targetLang && branch && foreignBranches.has(branch)) {
+    if (targetLang && isForeignBranch(branch, foreignBranchHits, acceptedBranches)) {
       recordOtherLanguage(url);
       continue;
     }
@@ -1044,11 +1055,12 @@ export async function crawlSite(
           recordOtherLanguage(url);
           skippedLanguagePages.push(crawledPage);
           if (!urlLanguage && url !== homepageUrl && url !== canonicalHomepageUrl && branch) {
-            foreignBranches.add(branch);
+            foreignBranchHits.set(branch, (foreignBranchHits.get(branch) ?? 0) + 1);
           }
           continue;
         }
         result.pages.push(crawledPage);
+        acceptedBranches.add(branch);
         pagesLeft--;
         opts?.onProgress?.(result.pages.length, maxPages);
 
@@ -1068,7 +1080,7 @@ export async function crawlSite(
         if (pagesLeft > 0) {
           const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
           for (const { url: linkUrl } of links) {
-            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
+            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
           }
         }
       } else {
@@ -1083,7 +1095,11 @@ export async function crawlSite(
 
   if (result.pages.length < 2 && skippedLanguagePages.length > 0) {
     const added = Math.min(2 - result.pages.length, skippedLanguagePages.length);
-    result.pages.push(...skippedLanguagePages.slice(0, added));
+    const fallbackPages = skippedLanguagePages.slice(0, added);
+    result.pages.push(...fallbackPages);
+    for (const page of fallbackPages) {
+      acceptedBranches.add(firstPathSegment(new URL(page.url).pathname));
+    }
     opts?.onProgress?.(result.pages.length, maxPages);
     logger.warn({ targetLang, added }, "language filter relaxed");
   }
