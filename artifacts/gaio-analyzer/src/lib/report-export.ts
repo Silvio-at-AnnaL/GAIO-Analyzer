@@ -359,6 +359,19 @@ function renderCrawlReliabilityHtml(
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
+function renderBreakdownRow(label: string, valueText: string, ratio: number): string {
+  const width = Math.max(0, Math.min(100, ratio * 100));
+  return `<div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;">
+            <span style="color:${C.textMuted};">${label}</span>
+            <span style="font-family:monospace;font-weight:600;">${valueText}</span>
+          </div>
+          <div style="height:6px;overflow:hidden;border-radius:6px;background:${C.codeBg};margin-top:4px;">
+            <div style="height:100%;width:${width}%;background:${C.accent};"></div>
+          </div>
+        </div>`;
+}
+
 function renderDetailsSection(report: Record<string, unknown>): string {
   const DT = {
     heading: "Analyse-Details",
@@ -459,15 +472,24 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     ${types.length > 0 ? `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">Erkannte Typen: ${types.map(esc).join(", ")}</p>` : ""}
     ${missingTypes.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">Fehlende wichtige Typen: ${missingTypes.map((t) => `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px;">${esc(t)}</span>`).join("")}</p>` : ""}`;
 
-    if (typeof schemaOrg.breadthScore === "number") {
+    const breadth = schemaOrg.breadthScore;
+    const substance = schemaOrg.substanceScore;
+    const correctness = schemaOrg.correctnessFactor;
+    if (typeof breadth === "number" && Number.isFinite(breadth)) {
+      const complete = typeof substance === "number" && Number.isFinite(substance)
+        && typeof correctness === "number" && Number.isFinite(correctness);
       html += `
       <h3>${ST.breakdownTitle}</h3>
-      <div class="detail-grid">
-        <div class="detail-item"><div class="label">${ST.breadth}</div><div class="val">${(schemaOrg.breadthScore as number).toFixed(1)} / 40</div></div>
-        <div class="detail-item"><div class="label">${ST.substance}</div><div class="val">${(schemaOrg.substanceScore as number).toFixed(1)} / 60</div></div>
-        <div class="detail-item"><div class="label">${ST.correctness}</div><div class="val">×${(schemaOrg.correctnessFactor as number).toFixed(2)}</div></div>
-      </div>
-      ${(schemaOrg.correctnessFactor as number) < 1 ? `<p style="font-size:11px;color:${C.textMuted};margin:4px 0 12px;">${ST.correctnessNote}</p>` : ""}`;
+      ${complete ? `<div style="margin:10px 0;">
+        ${renderBreakdownRow(ST.breadth, `${breadth.toFixed(1)} / 40`, breadth / 40)}
+        ${renderBreakdownRow(ST.substance, `${substance.toFixed(1)} / 60`, substance / 60)}
+        ${renderBreakdownRow(ST.correctness, `×${correctness.toFixed(2)}`, correctness)}
+      </div>` : `<div class="detail-grid">
+        <div class="detail-item"><div class="label">${ST.breadth}</div><div class="val">${breadth.toFixed(1)} / 40</div></div>
+        ${typeof substance === "number" && Number.isFinite(substance) ? `<div class="detail-item"><div class="label">${ST.substance}</div><div class="val">${substance.toFixed(1)} / 60</div></div>` : ""}
+        ${typeof correctness === "number" && Number.isFinite(correctness) ? `<div class="detail-item"><div class="label">${ST.correctness}</div><div class="val">×${correctness.toFixed(2)}</div></div>` : ""}
+      </div>`}
+      ${typeof correctness === "number" && correctness < 1 ? `<p style="font-size:11px;color:${C.textMuted};margin:4px 0 12px;">${ST.correctnessNote}</p>` : ""}`;
     }
 
     const typeBreakdown = (schemaOrg.typeBreakdown as Array<{
@@ -542,8 +564,12 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     ${summary && summary.legalPages > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${HT.legalNote(summary.legalPages)}</p>` : ""}
     ${summary?.breakdown ? `
       <h3>${HT.breakdownLabel}</h3>
-      <div class="detail-grid">
-        ${summary.breakdown.map((row) => `<div class="detail-item"><div class="label">${HT.componentLabels[row.key]}</div><div class="val">${row.points.toFixed(1)} / ${row.maxPoints.toFixed(1)}</div></div>`).join("")}
+      <div style="margin:10px 0;">
+        ${summary.breakdown.map((row) => renderBreakdownRow(
+          HT.componentLabels[row.key],
+          `${row.points.toFixed(1)} / ${row.maxPoints.toFixed(1)}`,
+          row.maxPoints > 0 ? row.points / row.maxPoints : 0,
+        )).join("")}
       </div>
       <p style="font-size:11px;color:${C.textMuted};margin:4px 0 12px;">${HT.breakdownNote}</p>
     ` : ""}
@@ -627,16 +653,11 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       ] as const).map(([key, label]) => {
         const row = breakdown[key];
         if (!row || typeof row.points !== "number" || typeof row.max !== "number") return "";
-        const width = row.max > 0 ? Math.max(0, Math.min(100, row.points / row.max * 100)) : 0;
-        return `<div style="margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;">
-            <span style="color:${C.textMuted};">${label}</span>
-            <span style="font-family:monospace;font-weight:600;">${row.points.toFixed(1)} / ${row.max.toFixed(1)}</span>
-          </div>
-          <div style="height:6px;overflow:hidden;border-radius:6px;background:${C.codeBg};margin-top:4px;">
-            <div style="height:100%;width:${width}%;background:${C.accent};"></div>
-          </div>
-        </div>`;
+        return renderBreakdownRow(
+          label,
+          `${row.points.toFixed(1)} / ${row.max.toFixed(1)}`,
+          row.max > 0 ? row.points / row.max : 0,
+        );
       }).join("")}
     </div>` : ""}
     ${qualityAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;white-space:pre-line;"><strong>${FT.qualityAssessment}:</strong> ${esc(qualityAssessment)}</p>` : ""}`;
