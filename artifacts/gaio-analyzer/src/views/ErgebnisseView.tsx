@@ -2835,11 +2835,54 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     <p className="text-xs text-muted-foreground">{t("results.faq_entries_label")}</p>
                     <p className="font-mono font-medium">{(faqQuality.faqItemsFound as number) ?? 0}</p>
                   </div>
+                  {typeof faqQuality.schemaQuestionCount === "number" && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("results.faq_schema_questions")}</p>
+                      <p className="font-mono font-medium">{faqQuality.schemaQuestionCount}</p>
+                    </div>
+                  )}
+                  {typeof faqQuality.visiblePairCount === "number" && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("results.faq_visible_pairs")}</p>
+                      <p className="font-mono font-medium">{faqQuality.visiblePairCount}</p>
+                    </div>
+                  )}
+                  {(typeof faqQuality.qualityScore === "number" || faqQuality.qualityScore === null) && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("results.faq_quality_score")}</p>
+                      <p className="font-mono font-medium">
+                        {typeof faqQuality.qualityScore === "number"
+                          ? `${faqQuality.qualityScore}/100`
+                          : t("results.faq_quality_unavailable")}
+                      </p>
+                    </div>
+                  )}
                 </div>
+                {faqQuality.breakdown != null && typeof faqQuality.breakdown === "object" && (
+                  <div className="pt-2 border-t border-border/30 space-y-2">
+                    <p className="text-xs text-muted-foreground mb-1">{t("results.faq_breakdown_label")}</p>
+                    {(["schema", "visible", "scope", "quality"] as const).map((key) => {
+                      const row = (faqQuality.breakdown as Record<string, { points: number; max: number }>)[key];
+                      if (!row || typeof row.points !== "number" || typeof row.max !== "number") return null;
+                      return (
+                        <div key={key} className="space-y-1">
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="text-muted-foreground">{t(`results.faq_comp_${key}`)}</span>
+                            <span className="font-mono font-medium">{row.points.toFixed(1)} / {row.max.toFixed(1)}</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary"
+                              style={{ width: `${row.max > 0 ? Math.max(0, Math.min(100, row.points / row.max * 100)) : 0}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 {typeof faqQuality.qualityAssessment === "string" && faqQuality.qualityAssessment.trim() && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground whitespace-pre-line">
                     <strong>{t("results.faq_assessment_label")}:</strong>{" "}
-                    {faqQuality.qualityAssessment.trim().slice(0, 400)}
+                    {faqQuality.qualityAssessment.trim()}
                   </p>
                 )}
               </CardContent>

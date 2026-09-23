@@ -54,6 +54,7 @@ WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen 
 FAQ-Inhalte:
 {{FAQ_CONTENT}}
 
+Hinweis: Mit […vom Analyse-Tool gekürzt] markierte Antworten wurden nur für diese Prüfung gekürzt – werte das nicht als unvollständigen Inhalt.
 Antworte auf Deutsch, ohne Markdown, in genau diesem Format:
 BEWERTUNG: <Zahl von 0 bis 100>
 BEGRÜNDUNG: <zwei bis drei Sätze, sachlich, in der Sie-Form>`,

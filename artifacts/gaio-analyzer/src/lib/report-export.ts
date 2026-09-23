@@ -589,13 +589,20 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       htmlFaq: "HTML-FAQ erkannt",
       entries: "FAQ-Einträge",
       qualityAssessment: "KI-Qualitätseinschätzung",
+      schemaQuestions: "Fragen im FAQ-Schema",
+      visiblePairs: "Sichtbare Frage-Antwort-Paare",
+      breakdown: "Aufschlüsselung des Scores",
+      compSchema: "FAQ-Schema",
+      compVisible: "Sichtbare FAQ",
+      compScope: "Umfang",
+      compQuality: "Qualität (KI-Bewertung)",
+      qualityUnavailable: "nicht bewertbar",
+      qualityScore: "KI-Bewertung",
     } as const;
     const qualityAssessment = typeof faq.qualityAssessment === "string"
       ? faq.qualityAssessment.trim()
       : "";
-    const displayedAssessment = qualityAssessment.length > 400
-      ? `${qualityAssessment.slice(0, 397)}…`
-      : qualityAssessment;
+    const breakdown = faq.breakdown as Record<string, { points: number; max: number }> | null | undefined;
     html += `
     <h3>FAQ-Qualität</h3>
     <div class="detail-grid">
@@ -603,8 +610,36 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       <div class="detail-item"><div class="label">${FT.schema}</div><div class="val">${(faq.hasFaqSchema as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">${FT.htmlFaq}</div><div class="val">${(faq.hasHtmlFaq as boolean) ? "✓ Ja" : "✗ Nein"}</div></div>
       <div class="detail-item"><div class="label">${FT.entries}</div><div class="val">${(faq.faqItemsFound as number) ?? 0}</div></div>
+      ${typeof faq.schemaQuestionCount === "number" ? `<div class="detail-item"><div class="label">${FT.schemaQuestions}</div><div class="val">${faq.schemaQuestionCount}</div></div>` : ""}
+      ${typeof faq.visiblePairCount === "number" ? `<div class="detail-item"><div class="label">${FT.visiblePairs}</div><div class="val">${faq.visiblePairCount}</div></div>` : ""}
+      ${typeof faq.qualityScore === "number" || faq.qualityScore === null
+        ? `<div class="detail-item"><div class="label">${FT.qualityScore}</div><div class="val">${typeof faq.qualityScore === "number" ? `${faq.qualityScore}/100` : FT.qualityUnavailable}</div></div>`
+        : ""}
     </div>
-    ${displayedAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;"><strong>${FT.qualityAssessment}:</strong> ${esc(displayedAssessment)}</p>` : ""}`;
+    ${breakdown && typeof breakdown === "object" ? `
+    <div style="border-top:1px solid ${C.border};padding-top:10px;margin:10px 0;">
+      <div style="font-size:12px;color:${C.textMuted};margin-bottom:8px;">${FT.breakdown}</div>
+      ${([
+        ["schema", FT.compSchema],
+        ["visible", FT.compVisible],
+        ["scope", FT.compScope],
+        ["quality", FT.compQuality],
+      ] as const).map(([key, label]) => {
+        const row = breakdown[key];
+        if (!row || typeof row.points !== "number" || typeof row.max !== "number") return "";
+        const width = row.max > 0 ? Math.max(0, Math.min(100, row.points / row.max * 100)) : 0;
+        return `<div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;">
+            <span style="color:${C.textMuted};">${label}</span>
+            <span style="font-family:monospace;font-weight:600;">${row.points.toFixed(1)} / ${row.max.toFixed(1)}</span>
+          </div>
+          <div style="height:6px;overflow:hidden;border-radius:6px;background:${C.codeBg};margin-top:4px;">
+            <div style="height:100%;width:${width}%;background:${C.accent};"></div>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>` : ""}
+    ${qualityAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;white-space:pre-line;"><strong>${FT.qualityAssessment}:</strong> ${esc(qualityAssessment)}</p>` : ""}`;
   }
 
   return html;

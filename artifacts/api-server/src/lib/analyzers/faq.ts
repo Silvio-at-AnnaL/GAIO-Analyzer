@@ -140,8 +140,11 @@ export function extractFaqPairs(pages: CrawledPage[]): { schema: FaqPair[]; visi
 export function faqQualityContent(pairs: FaqPair[]): string {
   let content = "";
   for (const { question, answer } of pairs.slice(0, 12)) {
-    const next = `F: ${question.slice(0, 2600)}\nA: ${answer.slice(0, 300)}`;
-    if (content.length + next.length + (content ? 2 : 0) > 3000) break;
+    const shortenedAnswer = answer.length > 800
+      ? `${answer.slice(0, 800)} […vom Analyse-Tool gekürzt]`
+      : answer;
+    const next = `F: ${question.slice(0, 300)}\nA: ${shortenedAnswer}`;
+    if (content.length + next.length + (content ? 2 : 0) > 6000) break;
     content += (content ? "\n\n" : "") + next;
   }
   return content;
