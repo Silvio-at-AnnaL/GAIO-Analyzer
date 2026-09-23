@@ -108,12 +108,12 @@ const DE_STOPWORDS = new Set(
   "der die das und ist sind mit für von den dem des eine einen auch oder werden nicht auf im zum zur sich bei wir unsere unser".split(" "),
 );
 const EN_STOPWORDS = new Set(
-  "the and of to with for you are this that from our your they have been will more about which".split(" "),
+  "the and of with for you are this that from our your they have been will more about which".split(" "),
 );
 const BOILERPLATE_PATTERN = /cookie|consent|borlabs|recaptcha|privacy|banner/i;
 
 /** Classify the visible main text; short pages use their declared language. */
-export function detectPageLanguage(html: string): "de" | "en" | "other" | null {
+export function detectPageLanguage(html: string): "de" | "en" | null {
   try {
     const $ = cheerio.load(html);
     const declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0];
@@ -131,15 +131,23 @@ export function detectPageLanguage(html: string): "de" | "en" | "other" | null {
     const text = content.text().replace(/\s+/g, " ").trim();
     if (text.length < 200) return declared === "de" || declared === "en" ? declared : null;
 
-    let de = 0;
-    let en = 0;
+    let deTotal = 0;
+    let enTotal = 0;
+    const deWords = new Set<string>();
+    const enWords = new Set<string>();
     for (const word of text.toLowerCase().match(/\p{L}+/gu) ?? []) {
-      if (DE_STOPWORDS.has(word)) de++;
-      if (EN_STOPWORDS.has(word)) en++;
+      if (DE_STOPWORDS.has(word)) {
+        deTotal++;
+        deWords.add(word);
+      }
+      if (EN_STOPWORDS.has(word)) {
+        enTotal++;
+        enWords.add(word);
+      }
     }
-    if (de >= en * 1.5 && de >= 5) return "de";
-    if (en >= de * 1.5 && en >= 5) return "en";
-    return de < 5 && en < 5 ? null : "other";
+    if (deTotal >= enTotal * 1.5 && deTotal >= 5 && deWords.size >= 4) return "de";
+    if (enTotal >= deTotal * 1.5 && enTotal >= 5 && enWords.size >= 4) return "en";
+    return null;
   } catch {
     return null;
   }
