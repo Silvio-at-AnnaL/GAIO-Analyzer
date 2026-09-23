@@ -463,17 +463,24 @@ function hostKey(hostname: string): string {
   return hostname.toLowerCase().replace(/^www\./, "");
 }
 
+function firstPathSegment(pathname: string): string {
+  return pathname.split("/")[1] || "";
+}
+
 function addToQueue(
   categoryQueues: Map<string, QueueEntry[]>,
   entry: QueueEntry,
   visited: Set<string>,
   hreflangUrlSet: Set<string>,
   targetLang: string | null,
+  foreignBranches: Set<string>,
   onOtherLanguage: (url: string) => void,
 ): void {
   if (visited.has(entry.url) || hreflangUrlSet.has(entry.url)) return;
-  const language = urlLang(new URL(entry.url).pathname);
-  if (targetLang && language && language !== targetLang) {
+  const pathname = new URL(entry.url).pathname;
+  const language = urlLang(pathname);
+  const branch = firstPathSegment(pathname);
+  if (targetLang && ((language && language !== targetLang) || (branch && foreignBranches.has(branch)))) {
     onOtherLanguage(entry.url);
     return;
   }
@@ -745,6 +752,7 @@ export async function crawlSite(
   };
   const skippedLanguagePages: CrawledPage[] = [];
   const skippedLanguageUrls = new Set<string>();
+  const foreignBranches = new Set<string>();
   const recordOtherLanguage = (url: string) => {
     if (skippedLanguageUrls.has(url)) return;
     skippedLanguageUrls.add(url);
@@ -924,7 +932,7 @@ export async function crawlSite(
       recordExcludedPath,
     );
     for (const { url } of links) {
-      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
+      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
     }
   }
 
@@ -941,7 +949,7 @@ export async function crawlSite(
         }
         if (scoreUrl(u) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
-        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
+        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
       } catch {
         // skip
       }
@@ -1010,6 +1018,13 @@ export async function crawlSite(
     const url = bestEntry.url;
     visited.add(url);
 
+    const pathname = new URL(url).pathname;
+    const branch = firstPathSegment(pathname);
+    if (targetLang && branch && foreignBranches.has(branch)) {
+      recordOtherLanguage(url);
+      continue;
+    }
+
     result.reliability.attempted++;
     try {
       const page = await fetchWithTiming(url);
@@ -1023,10 +1038,14 @@ export async function crawlSite(
           ttfb: page.ttfb,
         };
         result.reliability.succeeded++;
-        const lang = targetLang ? urlLang(new URL(url).pathname) ?? detectPageLanguage(page.html) : null;
+        const urlLanguage = targetLang ? urlLang(pathname) : null;
+        const lang = targetLang ? urlLanguage ?? detectPageLanguage(page.html) : null;
         if (targetLang && lang && lang !== targetLang) {
           recordOtherLanguage(url);
           skippedLanguagePages.push(crawledPage);
+          if (!urlLanguage && url !== homepageUrl && url !== canonicalHomepageUrl && branch) {
+            foreignBranches.add(branch);
+          }
           continue;
         }
         result.pages.push(crawledPage);
@@ -1049,7 +1068,7 @@ export async function crawlSite(
         if (pagesLeft > 0) {
           const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
           for (const { url: linkUrl } of links) {
-            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
+            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranches, recordOtherLanguage);
           }
         }
       } else {
