@@ -87,7 +87,7 @@ const EXCLUDED_KEYWORD_PATTERN =
   /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search/i;
 
 const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
-const EXTRA_FETCH_ALLOWANCE = 5;
+const EXTRA_FETCH_ALLOWANCE = 8;
 
 const EXCLUDED_TRACKING_PARAMS = /[?&](utm_|fbclid|gclid)/i;
 
@@ -104,15 +104,49 @@ function scoreUrl(urlStr: string): number {
   return 20;
 }
 
-/** The document's declared language, without a regional subtag. */
-export function pageLanguage(html: string): string | null {
-  const $ = cheerio.load(html);
-  const root = $("html").first();
-  const declared = root.attr("lang") || root.attr("xml:lang");
-  if (!declared) return null;
-  const match = declared.trim().match(/^([a-z]{2,3})(?:-[a-z0-9]{2,8})*$/i);
-  return match ? match[1].toLowerCase() : null;
+const DE_STOPWORDS = new Set(
+  "der die das und ist sind mit für von den dem des eine einen auch oder werden nicht auf im zum zur sich bei wir unsere unser".split(" "),
+);
+const EN_STOPWORDS = new Set(
+  "the and of to with for you are this that from our your they have been will more about which".split(" "),
+);
+const BOILERPLATE_PATTERN = /cookie|consent|borlabs|recaptcha|privacy|banner/i;
+
+/** Classify the visible main text; short pages use their declared language. */
+export function detectPageLanguage(html: string): "de" | "en" | "other" | null {
+  try {
+    const $ = cheerio.load(html);
+    const declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0];
+    $("script, style, noscript, iframe, nav, header, footer").remove();
+    $("[class], [id]").each((_, el) => {
+      if (BOILERPLATE_PATTERN.test(`${$(el).attr("class") ?? ""} ${$(el).attr("id") ?? ""}`)) {
+        $(el).remove();
+      }
+    });
+    const content = $("main").first().length
+      ? $("main").first()
+      : $("article").first().length
+        ? $("article").first()
+        : $("body").first();
+    const text = content.text().replace(/\s+/g, " ").trim();
+    if (text.length < 200) return declared === "de" || declared === "en" ? declared : null;
+
+    let de = 0;
+    let en = 0;
+    for (const word of text.toLowerCase().match(/\p{L}+/gu) ?? []) {
+      if (DE_STOPWORDS.has(word)) de++;
+      if (EN_STOPWORDS.has(word)) en++;
+    }
+    if (de >= en * 1.5 && de >= 5) return "de";
+    if (en >= de * 1.5 && en >= 5) return "en";
+    return de < 5 && en < 5 ? null : "other";
+  } catch {
+    return null;
+  }
 }
+
+// Existing analysis-engine import uses this name for the main site's language.
+export const pageLanguage = detectPageLanguage;
 
 // ─── Rule 3: language preference ─────────────────────────────────────────────
 // de=2, en=1, neutral (no prefix)=1, anything else=0
@@ -697,7 +731,7 @@ export async function crawlSite(
     if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
   };
   const skippedLanguagePages: CrawledPage[] = [];
-  let targetLang: string | null = opts?.preferredLang ?? null;
+  let targetLang: string | null = null;
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
     result.reliability.failed++;
@@ -798,7 +832,8 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homePage.finalUrl);
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
-    targetLang = opts?.preferredLang ?? pageLanguage(homepageHtml);
+    const preferred = opts?.preferredLang ?? detectPageLanguage(homepageHtml);
+    targetLang = preferred === "de" || preferred === "en" ? preferred : null;
     const blocked = detectBlockedContent(homepageHtml);
     if (homePage.statusCode < 400 && blocked === null) {
       result.pages.push({
@@ -968,7 +1003,7 @@ export async function crawlSite(
           ttfb: page.ttfb,
         };
         result.reliability.succeeded++;
-        const lang = targetLang ? pageLanguage(page.html) : null;
+        const lang = targetLang ? detectPageLanguage(page.html) : null;
         if (targetLang && lang && lang !== targetLang) {
           result.skipped.otherLanguage++;
           if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
