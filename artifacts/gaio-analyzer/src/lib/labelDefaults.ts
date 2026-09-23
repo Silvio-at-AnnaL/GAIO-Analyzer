@@ -96,6 +96,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "domain.placeholder_competitor": { group: "domain", de: "z. B. wettbewerber.de" },
   "domain.competitor_limit_note":   { group: "domain", de: "Es werden bis zu 5 Wettbewerber analysiert." },
   "domain.competitor_reason_label": { group: "domain", de: "KI-Begründung:" },
+  "domain.competitor_dropped_note": { group: "domain", de: "{n} KI-Vorschlag/Vorschläge wurden verworfen, weil die Website fachlich nicht passt." },
   "domain.competitor_duplicate":    { group: "domain", de: "Dieselbe Domain ist bereits eingetragen – sie wird nur einmal analysiert." },
   "domain.competitor_own_domain":   { group: "domain", de: "Das ist Ihre eigene Domain – sie wird nicht als Wettbewerber analysiert." },
   "domain.tooltip_url_unverified": { group: "domain", de: "URL konnte nicht automatisch verifiziert werden — bitte prüfen" },

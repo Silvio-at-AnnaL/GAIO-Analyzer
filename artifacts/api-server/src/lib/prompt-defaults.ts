@@ -293,6 +293,34 @@ All text fields must be in German. The personas field must be plain prose — no
   },
 
   {
+    slug: "competitor-relevance",
+    name: "Wettbewerber-Relevanzprüfung",
+    description: "Prüft die vorgeschlagenen Wettbewerber am tatsächlichen Inhalt ihrer Startseite.",
+    module: "Basisdaten",
+    placeholders: [
+      { key: "{{COMPANY_SUMMARY}}", description: "Angebot des analysierten Unternehmens" },
+      { key: "{{MARKET_REGION}}", description: "Marktregion der analysierten Website" },
+      { key: "{{CANDIDATES}}", description: "Nummerierte Wettbewerber mit Domain und Startseitentext" },
+    ],
+    template: `Du prüfst, ob vorgeschlagene Wettbewerber tatsächlich Wettbewerber des folgenden Unternehmens sind.
+
+Unternehmen (Angebot laut eigener Website):
+{{COMPANY_SUMMARY}}
+Marktregion: {{MARKET_REGION}}
+
+Kandidaten (Nummer, Name, Domain, Textauszug der Startseite):
+{{CANDIDATES}}
+
+Ein Kandidat passt NUR, wenn sein Startseitentext zeigt, dass er vergleichbare Produkte oder Leistungen an ähnliche Kunden verkauft. Er passt NICHT, wenn der Text zu einem anderen Geschäft gehört, wenn es sich um eine Gemeinde, Behörde, Privatperson, ein Verzeichnis, einen Marktplatz oder eine reine Marken- bzw. Konzernseite ohne eigenes vergleichbares Angebot handelt, oder wenn kein auswertbarer Text vorliegt.
+
+Antworte auf Deutsch, ohne Markdown, für JEDEN Kandidaten genau diesen Block:
+KANDIDAT: <Nummer>
+PASST: ja oder nein
+GRUND: <ein Satz, höchstens 140 Zeichen>
+DUBLETTE_VON: <Nummer eines anderen Kandidaten, der dasselbe Unternehmen ist, sonst ->`,
+  },
+
+  {
     slug: "angebot-creator",
     name: "Angebots-Creator",
     description: "Generiert ein strukturiertes KI-Optimierungsangebot auf Basis der Analyseergebnisse.",

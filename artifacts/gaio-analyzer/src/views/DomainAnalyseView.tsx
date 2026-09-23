@@ -698,6 +698,13 @@ export function DomainAnalyseView() {
                 {t("domain.competitor_limit_note")}
               </p>
             </div>
+            {prefillMutation.data && "droppedByRelevance" in prefillMutation.data &&
+              typeof prefillMutation.data.droppedByRelevance === "number" &&
+              prefillMutation.data.droppedByRelevance > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t("domain.competitor_dropped_note", { n: prefillMutation.data.droppedByRelevance })}
+                </p>
+              )}
           </section>
 
           {/* Section: Zielgruppen */}

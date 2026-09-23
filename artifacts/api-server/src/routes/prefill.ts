@@ -508,6 +508,126 @@ All text must be in German. Each reason is mandatory, plain prose, one sentence 
   });
 }
 
+type PrefillCompetitor = { name: string; url: string; reason: string; verified: boolean };
+type RelevanceVerdict = { fits: boolean; reason: string; duplicateOf: number | null };
+
+function parseRelevanceVerdicts(text: string, count: number): Map<number, RelevanceVerdict> {
+  const verdicts = new Map<number, RelevanceVerdict>();
+  for (const block of text.split(/(?=^KANDIDAT:\s*)/m)) {
+    const lines = block.trim().split(/\r?\n/);
+    const number = lines.find((line) => /^KANDIDAT:/i.test(line))?.match(/^KANDIDAT:\s*(\d+)\s*$/i);
+    const fits = lines.find((line) => /^PASST:/i.test(line))?.match(/^PASST:\s*(ja|nein)\s*$/i);
+    const reason = lines.find((line) => /^GRUND:/i.test(line))?.match(/^GRUND:\s*(.+)\s*$/i);
+    const duplicate = lines.find((line) => /^DUBLETTE_VON:/i.test(line))?.match(/^DUBLETTE_VON:\s*(-|\d+)\s*$/i);
+    if (!number || !fits || !reason || !duplicate) continue;
+    const index = Number(number[1]);
+    const duplicateOf = duplicate[1] === "-" ? null : Number(duplicate[1]);
+    if (!Number.isSafeInteger(index) || index < 1 || index > count || verdicts.has(index)) continue;
+    if (duplicateOf !== null && (!Number.isSafeInteger(duplicateOf) || duplicateOf < 1 || duplicateOf > count || duplicateOf === index)) continue;
+    verdicts.set(index, { fits: fits[1].toLowerCase() === "ja", reason: competitorReason(reason[1]), duplicateOf });
+  }
+  return verdicts;
+}
+
+// The fetches and the model request are separate so a failed fetch still supplies an empty text excerpt.
+export async function checkCompetitorRelevance(
+  candidates: PrefillCompetitor[],
+  companySummary: string,
+  marketRegion: string,
+): Promise<{ competitors: PrefillCompetitor[]; droppedByRelevance: number }> {
+  if (candidates.length === 0) return { competitors: candidates, droppedByRelevance: 0 };
+
+  const excerpts = await Promise.all(candidates.map(async (candidate) => {
+    const html = await fetchHtml(candidate.url, 6000);
+    return html ? extractText(html, 800) : "";
+  }));
+  const candidateText = candidates.map((candidate, index) =>
+    `${index + 1}. ${candidate.name} | ${competitorKey(candidate.url)}\n${excerpts[index] || "(kein Text abrufbar)"}`,
+  ).join("\n\n");
+  let responseText = "";
+  try {
+    const prompt = fillTemplate(await getPrompt("competitor-relevance"), {
+      COMPANY_SUMMARY: companySummary,
+      MARKET_REGION: marketRegion,
+      CANDIDATES: candidateText,
+    });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 30_000 });
+    responseText = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
+      .join("");
+    const parsedVerdicts = parseRelevanceVerdicts(responseText, candidates.length);
+    if (parsedVerdicts.size === 0) {
+      logger.warn({ response: responseText.slice(0, 200) }, "competitor relevance check unusable");
+      return { competitors: candidates, droppedByRelevance: 0 };
+    }
+    const verdicts = new Map([...parsedVerdicts].map(([number, verdict]) => [
+      number,
+      !excerpts[number - 1] && verdict.fits
+        ? { fits: false, reason: "Kein auswertbarer Startseitentext vorhanden.", duplicateOf: null }
+        : verdict,
+    ] as const));
+
+    const kept = new Set(candidates.map((_, index) => index + 1));
+    for (const [index, verdict] of verdicts) {
+      if (!verdict.fits) kept.delete(index);
+    }
+    // Group chains of duplicate claims, then retain the lowest surviving number in each group.
+    const parent = candidates.map((_, index) => index + 1);
+    const root = (index: number): number => {
+      while (parent[index - 1] !== index) index = parent[index - 1];
+      return index;
+    };
+    for (const [index, verdict] of verdicts) {
+      if (verdict.duplicateOf !== null && kept.has(index) && kept.has(verdict.duplicateOf)) {
+        parent[root(index) - 1] = root(verdict.duplicateOf);
+      }
+    }
+    const firstByGroup = new Map<number, number>();
+    for (const index of [...kept].sort((a, b) => a - b)) {
+      const group = root(index);
+      if (!firstByGroup.has(group)) firstByGroup.set(group, index);
+      else kept.delete(index);
+    }
+
+    candidates.forEach((candidate, index) => {
+      const number = index + 1;
+      const verdict = verdicts.get(number);
+      const survives = kept.has(number);
+      const originalFit = verdict?.fits ?? null;
+      const duplicateWinner = originalFit === false ? null : firstByGroup.get(root(number));
+      logger.info({
+        number, name: candidate.name, host: competitorKey(candidate.url),
+        passt: originalFit === null ? null : (originalFit ? "ja" : "nein"),
+        grund: verdict?.reason ?? null, dubletteVon: verdict?.duplicateOf ?? "-",
+        kept: survives,
+      }, "Prefill: competitor relevance verdict");
+      if (!survives) {
+        logger.info({
+          name: candidate.name, host: competitorKey(candidate.url),
+          reason: duplicateWinner ? `Dublette von Kandidat ${duplicateWinner}` : (verdict?.reason || "Fachlich nicht passend"),
+        }, "Prefill: competitor dropped by relevance");
+      }
+    });
+    return {
+      competitors: candidates.flatMap((candidate, index) => {
+        if (!kept.has(index + 1)) return [];
+        const reason = candidate.reason || verdicts.get(index + 1)?.reason || "";
+        return [{ ...candidate, reason }];
+      }),
+      droppedByRelevance: candidates.length - kept.size,
+    };
+  } catch (err) {
+    logger.warn({ err, response: responseText.slice(0, 200) }, "competitor relevance check unusable");
+    return { competitors: candidates, droppedByRelevance: 0 };
+  }
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 router.post("/prefill", async (req, res): Promise<void> => {
@@ -637,12 +757,18 @@ router.post("/prefill", async (req, res): Promise<void> => {
     seenCompetitorKeys.add(key);
     return true;
   });
+  const relevance = await checkCompetitorRelevance(
+    filteredCompetitors,
+    content_summary ?? (crawledContent.slice(0, 1600) || "Kein auswertbarer Text der Unternehmenswebsite vorhanden."),
+    marketRegion,
+  );
 
   logger.info(
     {
-      total: filteredCompetitors.length,
-      verified: filteredCompetitors.filter((c) => c.verified).length,
+      total: relevance.competitors.length,
+      verified: relevance.competitors.filter((c) => c.verified).length,
       duplicateHostDrops,
+      droppedByRelevance: relevance.droppedByRelevance,
     },
     "Prefill: validation complete",
   );
@@ -650,10 +776,11 @@ router.post("/prefill", async (req, res): Promise<void> => {
   // STEP 5 — Return enriched response
   res.json({
     personas,
-    competitors: filteredCompetitors,
+    competitors: relevance.competitors,
     content_summary,
     crawl_failed: crawlFailed,
     crawl_fail_reason: crawlFailReason,
+    droppedByRelevance: relevance.droppedByRelevance,
   });
 });
 
