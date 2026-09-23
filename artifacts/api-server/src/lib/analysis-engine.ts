@@ -38,6 +38,7 @@ export interface AnalysisState {
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
+  crawlSkipped: { otherLanguage: number; excludedPath: number; urls: string[] } | null;
 }
 
 export interface CompetitorInput {
@@ -273,6 +274,7 @@ export async function runAnalysis(
     crawledPages: [],
     hreflangVariants: [],
     crawlReliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
+    crawlSkipped: null,
   };
 
   const startedAt = new Date().toISOString();
@@ -388,6 +390,7 @@ export async function runAnalysis(
       state.crawledPages = pages.map((p) => p.url);
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
       state.crawlReliability = crawlResult.reliability;
+      if (!explicitUrls?.length) state.crawlSkipped = crawlResult.skipped;
 
       if (pages.length === 0) {
         state.status = "failed";
@@ -441,6 +444,7 @@ export async function runAnalysis(
       };
       state.crawledPages = ["uploaded-page"];
       state.crawlReliability = crawlResult.reliability;
+      state.crawlSkipped = crawlResult.skipped;
     } else {
       state.status = "failed";
       state.errors.push("Invalid input: provide URL or HTML");

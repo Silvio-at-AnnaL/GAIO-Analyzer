@@ -986,6 +986,10 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
   const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
+  const crawlSkipped = (report as unknown as Record<string, unknown>).crawlSkipped as
+    | { otherLanguage: number; excludedPath: number; urls: string[] }
+    | null
+    | undefined;
   const headingStructure = report.headingStructure as Record<string, unknown> | null;
   const contentRelevance = report.contentRelevance as Record<string, unknown> | null;
   const faqQuality = report.faqQuality as Record<string, unknown> | null;
@@ -2156,6 +2160,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             const attempted = Number(crawlReliability.attempted);
             const succeeded = Number(crawlReliability.succeeded ?? 0);
             const failed = Number(crawlReliability.failed ?? 0);
+            const skippedLang = Number(crawlSkipped?.otherLanguage ?? 0);
+            const skippedPath = Number(crawlSkipped?.excludedPath ?? 0);
+            const skippedUrls = Array.isArray(crawlSkipped?.urls)
+              ? crawlSkipped.urls.filter((url): url is string => typeof url === "string")
+              : [];
             const failures = (crawlReliability.failures as Array<{
               url: string;
               reason: string;
@@ -2199,6 +2208,28 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       </p>
                     </div>
                   </div>
+
+                  {crawlSkipped && skippedLang + skippedPath > 0 && (
+                    <div className="space-y-1.5 border-t border-border/30 pt-3 text-xs text-muted-foreground">
+                      <p className="font-medium">{t("results.crawl_skipped_title")}</p>
+                      {skippedLang > 0 && <p>{t("results.crawl_skipped_lang", { n: skippedLang })}</p>}
+                      {skippedPath > 0 && <p>{t("results.crawl_skipped_path", { n: skippedPath })}</p>}
+                      <p>{t("results.crawl_skipped_note")}</p>
+                      {skippedUrls.length > 0 && (
+                        <details>
+                          <summary className="cursor-pointer">{t("results.crawl_skipped_examples")}</summary>
+                          <ul className="mt-2 space-y-1 pl-4">
+                            {skippedUrls.slice(0, 5).map((url, index) => (
+                              <li key={`${url}-${index}`} className="break-all">{url}</li>
+                            ))}
+                          </ul>
+                          {skippedUrls.length > 5 && (
+                            <p className="mt-1 pl-4">{t("results.crawl_skipped_more", { n: skippedUrls.length - 5 })}</p>
+                          )}
+                        </details>
+                      )}
+                    </div>
+                  )}
 
                   {failed === 0 ? (
                     <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">

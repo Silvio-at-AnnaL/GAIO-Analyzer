@@ -272,8 +272,18 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
   return html;
 }
 
+const CRAWL_SKIPPED_TEXT = {
+  title: "Nicht bewertete Seiten",
+  lang: "Seite(n) in einer anderen Sprache",
+  path: "technische Seite(n) (z. B. Impressum, Konto, Formulare, Seitenfragmente)",
+  note: "Diese Seiten fließen nicht in die Bewertung ein, damit nur vergleichbare Inhalte in derselben Sprache gemessen werden.",
+  examples: "Beispiele:",
+  more: "… und weitere",
+} as const;
+
 function renderCrawlReliabilityHtml(
   reliability: Record<string, unknown> | null | undefined,
+  skipped?: Record<string, unknown> | null,
 ): string {
   const T = {
     heading: "Crawl-Zuverlässigkeit",
@@ -326,6 +336,24 @@ function renderCrawlReliabilityHtml(
       <div class="detail-item"><div class="label">${T.succeeded}</div><div class="val" style="color:#22c55e;">✓ ${succeeded}</div></div>
       <div class="detail-item"><div class="label">${T.failed}</div><div class="val"${failed > 0 ? ' style="color:#ef4444;"' : ""}>${failed > 0 ? "✗ " : ""}${failed}</div></div>
     </div>`;
+
+  const skippedLang = Number(skipped?.otherLanguage ?? 0);
+  const skippedPath = Number(skipped?.excludedPath ?? 0);
+  if (skipped && skippedLang + skippedPath > 0) {
+    const urls = Array.isArray(skipped.urls)
+      ? skipped.urls.filter((url): url is string => typeof url === "string")
+      : [];
+    html += `<div style="border-top:1px solid ${C.border};padding-top:10px;margin:10px 0 12px;font-size:12px;color:${C.textMuted};">
+      <div style="font-weight:600;">${CRAWL_SKIPPED_TEXT.title}</div>
+      ${skippedLang > 0 ? `<p>${skippedLang} ${CRAWL_SKIPPED_TEXT.lang}</p>` : ""}
+      ${skippedPath > 0 ? `<p>${skippedPath} ${CRAWL_SKIPPED_TEXT.path}</p>` : ""}
+      <p>${CRAWL_SKIPPED_TEXT.note}</p>
+      ${urls.length > 0 ? `<details><summary>${CRAWL_SKIPPED_TEXT.examples}</summary>
+        <ul style="padding-left:18px;">${urls.slice(0, 5).map((url) => `<li style="word-break:break-all;">${esc(url)}</li>`).join("")}</ul>
+        ${urls.length > 5 ? `<p>${CRAWL_SKIPPED_TEXT.more}</p>` : ""}
+      </details>` : ""}
+    </div>`;
+  }
 
   if (failed === 0) {
     html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
@@ -390,6 +418,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   html += `<h2>${DT.heading}</h2>`;
   html += renderCrawlReliabilityHtml(
     report.crawlReliability as Record<string, unknown> | null | undefined,
+    report.crawlSkipped as Record<string, unknown> | null | undefined,
   );
 
   if (crawledPages.length > 0) {
@@ -1490,7 +1519,7 @@ function buildFailedReportShell(
 
   ${divider("Crawl-Zuverlässigkeit")}
   <h2>Crawl-Zuverlässigkeit</h2>
-  ${renderCrawlReliabilityHtml(limitedReliability)}
+  ${renderCrawlReliabilityHtml(limitedReliability, report.crawlSkipped as Record<string, unknown> | null | undefined)}
 
   ${divider("Nächste Schritte")}
   <h2>Nächste Schritte</h2>
