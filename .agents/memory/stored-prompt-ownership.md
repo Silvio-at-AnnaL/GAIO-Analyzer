@@ -8,3 +8,9 @@ Treat admin-stored prompts as production data. Do not automatically replace an e
 **Why:** The user deliberately kept an existing English FAQ prompt unchanged while introducing a German default. Live analyses therefore continued to use the English prompt and could not satisfy the new German response parser; that outcome was accepted until a person resets the stored prompt via the admin UI.
 
 **How to apply:** When a default template changes, check whether a stored version takes precedence. Verify the new default independently if necessary, distinguish that test from the currently active runtime behavior, and report any remaining manual activation step.
+
+Adding a genuinely new prompt slug through insert-only startup seeding is allowed; existing stored rows must remain untouched.
+
+**Why:** The user confirmed this is the expected behavior for a new prompt and asked for before/after verification of existing rows' update timestamps.
+
+**How to apply:** For a new slug, allow the normal insert-only seed, compare existing prompts before and after startup, and report the result. Do not treat this as permission to replace existing templates.
