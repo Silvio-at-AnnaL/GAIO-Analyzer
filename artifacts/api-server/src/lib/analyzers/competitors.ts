@@ -236,6 +236,7 @@ export async function analyzeCompetitors(
   competitorUrls: string[],
   mainSiteScores: MainSiteScores,
   questionnaireContext: string,
+  mainSiteLang: string | null,
 ): Promise<CompetitorResult> {
   const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
   const [schemaParams, headingParams, faqParams] = await Promise.all([
@@ -261,7 +262,7 @@ export async function analyzeCompetitors(
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
       const crawlStartedAt = Date.now();
-      const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: CRAWL_DEADLINE_MS });
+      const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: CRAWL_DEADLINE_MS, preferredLang: mainSiteLang ?? undefined });
 
       if (crawlResult.pages.length === 0) {
         const errorReason = crawlResult.homepageFailReason === "bot_protection" ||

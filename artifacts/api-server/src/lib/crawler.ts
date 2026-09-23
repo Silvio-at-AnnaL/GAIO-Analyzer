@@ -35,6 +35,7 @@ export interface CrawlReliability {
 
 export interface CrawlResult {
   pages: CrawledPage[];
+  skipped: { otherLanguage: number; excludedPath: number; urls: string[] };
   homepageFailReason?: CrawlFailReason | null;
   timedOut: boolean;
   robotsTxt: string | null;
@@ -83,9 +84,10 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
 ];
 
 const EXCLUDED_KEYWORD_PATTERN =
-  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json/i;
+  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search/i;
 
 const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
+const EXTRA_FETCH_ALLOWANCE = 5;
 
 const EXCLUDED_TRACKING_PARAMS = /[?&](utm_|fbclid|gclid)/i;
 
@@ -100,6 +102,16 @@ function scoreUrl(urlStr: string): number {
     if (pattern.test(urlStr)) return score;
   }
   return 20;
+}
+
+/** The document's declared language, without a regional subtag. */
+export function pageLanguage(html: string): string | null {
+  const $ = cheerio.load(html);
+  const root = $("html").first();
+  const declared = root.attr("lang") || root.attr("xml:lang");
+  if (!declared) return null;
+  const match = declared.trim().match(/^([a-z]{2,3})(?:-[a-z0-9]{2,8})*$/i);
+  return match ? match[1].toLowerCase() : null;
 }
 
 // ─── Rule 3: language preference ─────────────────────────────────────────────
@@ -340,6 +352,7 @@ function extractInternalLinks(
   canon: (url: string) => string,
   startPath: string,
   excludedUrls: Set<string>,
+  onExcludedPath: (url: string) => void,
 ): Array<{ url: string }> {
   const $ = cheerio.load(html);
   const seen = new Set<string>();
@@ -364,6 +377,10 @@ function extractInternalLinks(
       if (!isWithinStartPath(pathname, startPath)) return;
 
       // Score must be non-zero (excludes blacklisted/binary URLs)
+      if (EXCLUDED_KEYWORD_PATTERN.test(url)) {
+        onExcludedPath(url);
+        return;
+      }
       if (scoreUrl(url) === 0) return;
 
       results.push({ url });
@@ -628,7 +645,7 @@ async function discoverSitemap(
 export async function crawlSite(
   inputUrl: string,
   maxPages = 16,
-  opts?: { deadlineMs?: number; onProgress?: (done: number, total: number) => void },
+  opts?: { deadlineMs?: number; preferredLang?: string; onProgress?: (done: number, total: number) => void },
 ): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
@@ -654,6 +671,7 @@ export async function crawlSite(
 
   const result: CrawlResult = {
     pages: [],
+    skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
     homepageFailReason: null,
     timedOut: false,
     robotsTxt: null,
@@ -671,6 +689,15 @@ export async function crawlSite(
     hreflangVariants: [],
     reliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
   };
+  const excludedPathUrls = new Set<string>();
+  const recordExcludedPath = (url: string) => {
+    if (excludedPathUrls.has(url)) return;
+    excludedPathUrls.add(url);
+    result.skipped.excludedPath++;
+    if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+  };
+  const skippedLanguagePages: CrawledPage[] = [];
+  let targetLang: string | null = opts?.preferredLang ?? null;
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
     result.reliability.failed++;
@@ -771,6 +798,7 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homePage.finalUrl);
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
+    targetLang = opts?.preferredLang ?? pageLanguage(homepageHtml);
     const blocked = detectBlockedContent(homepageHtml);
     if (homePage.statusCode < 400 && blocked === null) {
       result.pages.push({
@@ -838,6 +866,7 @@ export async function crawlSite(
       canon,
       startPath,
       hreflangUrlSet,
+      recordExcludedPath,
     );
     for (const { url } of links) {
       addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet);
@@ -851,6 +880,10 @@ export async function crawlSite(
       try {
         const parsed = new URL(u);
         if (!isWithinStartPath(parsed.pathname, startPath)) continue;
+        if (EXCLUDED_KEYWORD_PATTERN.test(u)) {
+          recordExcludedPath(u);
+          continue;
+        }
         if (scoreUrl(u) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
         addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet);
@@ -875,7 +908,7 @@ export async function crawlSite(
 
   let pagesLeft = maxPages - result.pages.length; // homepage already in result
 
-  while (pagesLeft > 0) {
+  while (pagesLeft > 0 && result.reliability.attempted < maxPages + EXTRA_FETCH_ALLOWANCE) {
     if (Date.now() - crawlStart > CRAWL_DEADLINE_MS) {
       result.timedOut = true;
       break;
@@ -927,14 +960,22 @@ export async function crawlSite(
       const page = await fetchWithTiming(url);
       const blocked = detectBlockedContent(page.html);
       if (page.statusCode < 400 && blocked === null) {
-        result.pages.push({
+        const crawledPage: CrawledPage = {
           url,
           html: page.html,
           statusCode: page.statusCode,
           responseTime: page.responseTime,
           ttfb: page.ttfb,
-        });
+        };
         result.reliability.succeeded++;
+        const lang = targetLang ? pageLanguage(page.html) : null;
+        if (targetLang && lang && lang !== targetLang) {
+          result.skipped.otherLanguage++;
+          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+          skippedLanguagePages.push(crawledPage);
+          continue;
+        }
+        result.pages.push(crawledPage);
         pagesLeft--;
         opts?.onProgress?.(result.pages.length, maxPages);
 
@@ -952,7 +993,7 @@ export async function crawlSite(
 
         // Discover new links and add to per-category queues (Rule 5 Step 5)
         if (pagesLeft > 0) {
-          const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet);
+          const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
           for (const { url: linkUrl } of links) {
             addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet);
           }
@@ -965,6 +1006,13 @@ export async function crawlSite(
       recordFailure(url, reason);
       logger.warn({ url, reason, err }, "Failed to crawl page");
     }
+  }
+
+  if (result.pages.length < 2 && skippedLanguagePages.length > 0) {
+    const added = Math.min(2 - result.pages.length, skippedLanguagePages.length);
+    result.pages.push(...skippedLanguagePages.slice(0, added));
+    opts?.onProgress?.(result.pages.length, maxPages);
+    logger.warn({ targetLang, added }, "language filter relaxed");
   }
 
   // ── A2: Path-based language fallback ─────────────────────────────────────

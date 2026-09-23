@@ -1,4 +1,4 @@
-import { crawlSite, fetchPage, type CrawlFailure, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchPage, pageLanguage, type CrawlFailure, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
@@ -340,6 +340,7 @@ export async function runAnalysis(
         );
         crawlResult = {
           pages,
+          skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
           timedOut: false,
           robotsTxt: null,
           sitemapXml: null,
@@ -424,6 +425,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
+        skipped: { otherLanguage: 0, excludedPath: 0, urls: [] },
         timedOut: false,
         robotsTxt: null,
         sitemapXml: null,
@@ -544,6 +546,7 @@ export async function runAnalysis(
           competitorUrls,
           mainSiteScores,
           questionnaireContext,
+          pages[0] ? pageLanguage(pages[0].html) : null,
         );
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
