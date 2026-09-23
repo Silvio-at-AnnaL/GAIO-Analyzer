@@ -88,21 +88,29 @@ export async function findCandidatesBySearch(
     const candidates: RawCandidate[] = [];
     const seen = new Set([normalizedHost(ownHost)]);
     let rawResults = 0;
+    let successfulQueries = 0;
     for (const query of queries.slice(0, 3)) {
-      const response = await (dependencies.fetcher ?? fetch)("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: apiKey, query, search_depth: "basic", max_results: 8, include_answer: false,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error(`http_${response.status}`);
-      const data: unknown = await response.json();
-      if (!data || typeof data !== "object" || !("results" in data) || !Array.isArray(data.results)) {
-        throw new Error("invalid_results");
+      let results: SearchResult[];
+      try {
+        const response = await (dependencies.fetcher ?? fetch)("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: apiKey, query, search_depth: "basic", max_results: 8, include_answer: false,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) throw new Error(`http_${response.status}`);
+        const data: unknown = await response.json();
+        if (!data || typeof data !== "object" || !("results" in data) || !Array.isArray(data.results)) {
+          throw new Error("invalid_results");
+        }
+        results = data.results as SearchResult[];
+        successfulQueries++;
+      } catch (error) {
+        logger.info({ query, error: error instanceof Error ? error.message : "unknown" }, "Prefill: search query failed");
+        continue;
       }
-      const results = data.results as SearchResult[];
       rawResults += results.length;
       for (const result of results) {
         if (typeof result.url !== "string" || typeof result.title !== "string") continue;
@@ -111,8 +119,8 @@ export async function findCandidatesBySearch(
         if (url.protocol !== "https:" && url.protocol !== "http:") continue;
         const host = normalizedHost(url.hostname);
         if (seen.has(host) || excludedHost(host)) continue;
-        const name = result.title.split(/[|–-]/, 1)[0].trim().slice(0, 60).trim();
-        if (!name) continue;
+        // "Kugellager-Express GmbH | Wälzlager online" must keep "Kugellager-Express GmbH".
+        const name = result.title.split(/\s[|–—-]\s/, 1)[0].trim().slice(0, 60).trim() || host;
         seen.add(host);
         if (candidates.length < 8) {
           candidates.push({
@@ -125,7 +133,9 @@ export async function findCandidatesBySearch(
       }
     }
     logger.info({ provider, queries, rawResults, kept: candidates.length }, "Prefill: search candidates");
-    return { candidates, queries };
+    return successfulQueries === 0
+      ? { candidates: [], queries, error: "all_queries_failed" }
+      : { candidates, queries };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "unknown";
     return { candidates: [], queries, error: reason === "TimeoutError" ? "timeout" : reason.slice(0, 40) };
