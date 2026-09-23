@@ -23,6 +23,11 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "recommendations generation finished",
   "Prefill: validation complete",
   "Prefill: crawl complete",
+  "Prefill: competitor relevance verdict",
+  "Prefill: competitor dropped by relevance",
+  "Prefill: market region derived",
+  "Prefill: duplicate competitor host dropped",
+  "Prefill: no competitor has sufficient evidence for relevance check",
 ]);
 
 interface BufferedSystemEvent {
@@ -66,7 +71,7 @@ function reduceValue(value: unknown, seen: WeakSet<object>): unknown {
     seen.add(value);
     const reduced: Record<string, unknown> = {};
     for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-      reduced[key] = REDACTED_KEY_PATTERN.test(key)
+      reduced[key] = key !== "passt" && REDACTED_KEY_PATTERN.test(key)
         ? "[redacted]"
         : reduceValue(nestedValue, seen);
     }

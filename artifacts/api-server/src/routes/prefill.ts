@@ -511,6 +511,14 @@ All text must be in German. Each reason is mandatory, plain prose, one sentence 
 type PrefillCompetitor = { name: string; url: string; reason: string; verified: boolean };
 type RelevanceVerdict = { fits: boolean; reason: string; duplicateOf: number | null };
 type CandidateEvidence = { outcome: "ok" | "blocked" | "unreachable"; text: string };
+type RelevanceResult = {
+  competitors: PrefillCompetitor[];
+  droppedByRelevance: number;
+  droppedUnreachable: number;
+  droppedUnfit: number;
+  droppedDuplicateCompany: number;
+  judgedCount: number;
+};
 
 async function getCandidateEvidence(candidate: PrefillCompetitor): Promise<CandidateEvidence> {
   let failure: CrawlFailReason | null = null;
@@ -566,8 +574,11 @@ export async function checkCompetitorRelevance(
   candidates: PrefillCompetitor[],
   companySummary: string,
   marketRegion: string,
-): Promise<{ competitors: PrefillCompetitor[]; droppedByRelevance: number }> {
-  if (candidates.length === 0) return { competitors: candidates, droppedByRelevance: 0 };
+): Promise<RelevanceResult> {
+  if (candidates.length === 0) return {
+    competitors: candidates, droppedByRelevance: 0,
+    droppedUnreachable: 0, droppedUnfit: 0, droppedDuplicateCompany: 0, judgedCount: 0,
+  };
 
   const evidence = await Promise.all(candidates.map(getCandidateEvidence));
   const judgedIndexes = candidates.flatMap((_, index) =>
@@ -577,6 +588,9 @@ export async function checkCompetitorRelevance(
     `${number + 1}. ${candidates[index].name} | ${competitorKey(candidates[index].url)}\n${evidence[index].text}`,
   ).join("\n\n");
   const report = (kept: Set<number>, verdicts: Map<number, RelevanceVerdict>, firstByGroup: Map<number, number>, root: (index: number) => number) => {
+    let droppedUnreachable = 0;
+    let droppedUnfit = 0;
+    let droppedDuplicateCompany = 0;
     candidates.forEach((candidate, index) => {
       const number = judgedIndexes.indexOf(index) + 1;
       const verdict = number ? verdicts.get(number) : undefined;
@@ -590,6 +604,9 @@ export async function checkCompetitorRelevance(
         kept: survives,
       }, "Prefill: competitor relevance verdict");
       if (!survives) {
+        if (evidence[index].outcome === "unreachable") droppedUnreachable++;
+        else if (verdict?.fits === false) droppedUnfit++;
+        else droppedDuplicateCompany++;
         logger.info({
           name: candidate.name, host: competitorKey(candidate.url),
           reason: evidence[index].outcome === "unreachable"
@@ -605,6 +622,10 @@ export async function checkCompetitorRelevance(
         return [{ ...candidate, reason: candidate.reason || (number ? verdicts.get(number)?.reason : "") || "" }];
       }),
       droppedByRelevance: candidates.length - kept.size,
+      droppedUnreachable,
+      droppedUnfit,
+      droppedDuplicateCompany,
+      judgedCount: judgedIndexes.length,
     };
   };
   const keepAll = () => report(new Set(candidates.map((_, index) => index)), new Map(), new Map(), (n) => n);
@@ -712,6 +733,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
 
   let personas = "";
   let rawCompetitors: { name: string; url: string; reason: string }[] = [];
+  let suggestedTotal = 0;
   let content_summary: string | null = null;
 
   try {
@@ -745,6 +767,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     personas = typeof parsed.personas === "string" ? stripMarkdown(parsed.personas) : "";
 
     const raw = Array.isArray(parsed.competitors) ? parsed.competitors : [];
+    suggestedTotal = raw.length;
     rawCompetitors = raw
       .filter(
         (c): c is { name: string; url: string; reason?: unknown } =>
@@ -811,6 +834,11 @@ router.post("/prefill", async (req, res): Promise<void> => {
       verified: relevance.competitors.filter((c) => c.verified).length,
       duplicateHostDrops,
       droppedByRelevance: relevance.droppedByRelevance,
+      droppedUnreachable: relevance.droppedUnreachable,
+      droppedUnfit: relevance.droppedUnfit,
+      droppedDuplicateCompany: relevance.droppedDuplicateCompany,
+      suggestedTotal,
+      judgedCount: relevance.judgedCount,
     },
     "Prefill: validation complete",
   );
@@ -823,6 +851,11 @@ router.post("/prefill", async (req, res): Promise<void> => {
     crawl_failed: crawlFailed,
     crawl_fail_reason: crawlFailReason,
     droppedByRelevance: relevance.droppedByRelevance,
+    droppedUnreachable: relevance.droppedUnreachable,
+    droppedUnfit: relevance.droppedUnfit,
+    droppedDuplicateCompany: relevance.droppedDuplicateCompany,
+    suggestedTotal,
+    judgedCount: relevance.judgedCount,
   });
 });
 
