@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
+import { getSetting } from "../lib/admin-db.js";
+import { findCandidatesBySearch, type CandidateSourceName } from "../lib/competitor-sources.js";
 import { logger } from "../lib/logger";
 import {
   classifyFetchError,
@@ -786,6 +788,24 @@ router.post("/prefill", async (req, res): Promise<void> => {
     return;
   }
 
+  let candidateSource: CandidateSourceName = "ai";
+  if ((await getSetting("competitor_source") ?? "ai") === "search") {
+    const search = await findCandidatesBySearch(
+      content_summary ?? (crawledContent.slice(0, 1600) || "Kein auswertbarer Text der Unternehmenswebsite vorhanden."),
+      marketRegion,
+      competitorKey(url),
+    );
+    if (search.candidates.length >= 2) {
+      rawCompetitors = search.candidates.map(({ name, url: candidateUrl, reason }) => ({
+        name, url: candidateUrl, reason,
+      }));
+      candidateSource = "search";
+    } else {
+      logger.warn({ error: search.error ?? "too_few_candidates", candidates: search.candidates.length },
+        "competitor search source unusable");
+    }
+  }
+
   // STEP 4 — Validate & correct competitor URLs in parallel
   logger.info({ count: rawCompetitors.length }, "Prefill: starting URL validation");
   const confirmedNames = new Set<string>();
@@ -839,6 +859,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
       droppedDuplicateCompany: relevance.droppedDuplicateCompany,
       suggestedTotal,
       judgedCount: relevance.judgedCount,
+      candidateSource,
     },
     "Prefill: validation complete",
   );
@@ -856,6 +877,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     droppedDuplicateCompany: relevance.droppedDuplicateCompany,
     suggestedTotal,
     judgedCount: relevance.judgedCount,
+    candidateSource,
   });
 });
 

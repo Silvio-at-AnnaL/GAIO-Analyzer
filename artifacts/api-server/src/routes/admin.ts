@@ -958,12 +958,12 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
 const SETTINGS_GROUPS: Record<string, string[]> = {
-  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers"],
+  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers","competitor_source","search_provider","search_api_key"],
   mail:     ["mail_host","mail_port","mail_secure","mail_user","mail_password","mail_from_name","mail_from_address"],
   delivery: ["delivery_mode","delivery_bcc","delivery_require_email"],
 };
 
-const SECRET_KEYS = new Set(["ai_api_key_claude","ai_api_key_openai","ai_api_key_perplexity","ai_api_key_gemini","mail_password"]);
+const SECRET_KEYS = new Set(["ai_api_key_claude","ai_api_key_openai","ai_api_key_perplexity","ai_api_key_gemini","search_api_key","mail_password"]);
 
 function maskSecret(value: string): string {
   if (!value) return "";
@@ -1182,7 +1182,7 @@ adminRouter.get("/settings/:group", requireAuth, requireAdmin, async (req: Reque
 
   const result: Record<string, string> = {};
   for (const key of keys) {
-    const raw = await getSetting(key) ?? "";
+    const raw = await getSetting(key) ?? (key === "competitor_source" ? "ai" : key === "search_provider" ? "tavily" : "");
     if (key === "ai_custom_providers") {
       try {
         const providers = JSON.parse(raw || "[]") as CustomProviderRecord[];
@@ -1204,6 +1204,12 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
   const body = req.body as Record<string, string>;
   for (const [key, value] of Object.entries(body)) {
     if (!keys.includes(key)) continue;
+    if (key === "competitor_source" && value !== "ai" && value !== "search") {
+      res.status(400).json({ error: "Ungültige Wettbewerber-Quelle" }); return;
+    }
+    if (key === "search_provider" && value !== "tavily") {
+      res.status(400).json({ error: "Ungültiger Suchanbieter" }); return;
+    }
     if (key === "ai_custom_providers") {
       try {
         const incoming = JSON.parse(String(value)) as CustomProviderRecord[];

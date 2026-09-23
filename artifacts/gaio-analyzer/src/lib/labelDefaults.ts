@@ -953,6 +953,13 @@ export const labelDefaults: Record<string, LabelDef> = {
   "ai.add_provider_heading":     { group: "ai", de: "Neuen Anbieter hinzuf\u00FCgen" },
   "ai.openai_compatible_hint":   { group: "ai", de: "Die API muss OpenAI-kompatibel sein (Chat Completions Endpoint: POST /v1/chat/completions)." },
   "ai.add_button":               { group: "ai", de: "Hinzuf\u00FCgen" },
+  "ai.competitor_source_title":   { group: "ai", de: "Wettbewerber-Quelle" },
+  "ai.competitor_source_label":   { group: "ai", de: "Quelle für Wettbewerber-Vorschläge" },
+  "ai.competitor_source_ai":      { group: "ai", de: "KI-Wissen (ohne Recherche)" },
+  "ai.competitor_source_search":  { group: "ai", de: "Websuche" },
+  "ai.search_provider_label":     { group: "ai", de: "Suchanbieter" },
+  "ai.search_api_key_label":      { group: "ai", de: "API-Schlüssel des Suchanbieters" },
+  "ai.competitor_source_help":    { group: "ai", de: "Mit Websuche werden Wettbewerber aus echten Suchtreffern gewonnen statt aus dem Gedächtnis des Sprachmodells. Ohne hinterlegten Schlüssel wird automatisch auf KI-Wissen zurückgefallen." },
 
   // brand.*
   "brand.preview_primary_action": { group: "brand", de: "Prim\u00E4re Aktion" },

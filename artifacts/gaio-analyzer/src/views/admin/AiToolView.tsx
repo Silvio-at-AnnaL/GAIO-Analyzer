@@ -14,6 +14,9 @@ interface AiSettings {
   ai_api_key_gemini: string;
   ai_model_gemini: string;
   ai_custom_providers: string;
+  competitor_source: string;
+  search_provider: string;
+  search_api_key: string;
 }
 
 interface AiStatus {
@@ -75,6 +78,7 @@ export function AiToolView() {
   const [activeTab, setActiveTab]   = useState<string>("claude");
   const [editedKeys, setEditedKeys]     = useState<Record<string, string>>({});
   const [editedModels, setEditedModels] = useState<Record<string, string>>({});
+  const [searchKey, setSearchKey] = useState<string | undefined>();
 
   const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -145,6 +149,30 @@ export function AiToolView() {
       showFeedback("provider", "ok", t("ai.provider_activated", { name: label }));
     } else {
       showFeedback("provider", "err", t("delivery.save_error"));
+    }
+  }
+
+  async function saveCompetitorSource() {
+    setSaving("competitor-source");
+    try {
+      const body: Record<string, string> = {
+        competitor_source: settings?.competitor_source ?? "ai",
+        search_provider: settings?.search_provider ?? "tavily",
+      };
+      if (searchKey !== undefined) body.search_api_key = searchKey;
+      const res = await adminFetch("/api/admin/settings/ai", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Could not save competitor source");
+      setSearchKey(undefined);
+      await load();
+      showFeedback("competitor-source", "ok", t("ai.credentials_saved"));
+    } catch {
+      showFeedback("competitor-source", "err", t("delivery.save_error"));
+    } finally {
+      setSaving(null);
     }
   }
 
@@ -416,6 +444,64 @@ export function AiToolView() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ── Competitor source ─────────────────────────────────────────────── */}
+      <div className="rounded-lg border p-5 space-y-4" style={cardStyle}>
+        <h2 className="text-base font-semibold">{t("ai.competitor_source_title")}</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2 text-sm font-medium">
+            <span>{t("ai.competitor_source_label")}</span>
+            <select
+              data-testid="select-competitor-source"
+              value={settings?.competitor_source ?? "ai"}
+              onChange={e => setSettings(s => s ? { ...s, competitor_source: e.target.value } : s)}
+              className="w-full px-3 py-2 rounded-md border"
+              style={inputStyle}
+            >
+              <option value="ai">{t("ai.competitor_source_ai")}</option>
+              <option value="search">{t("ai.competitor_source_search")}</option>
+            </select>
+          </label>
+          <label className="space-y-2 text-sm font-medium">
+            <span>{t("ai.search_provider_label")}</span>
+            <select
+              data-testid="select-search-provider"
+              value={settings?.search_provider ?? "tavily"}
+              onChange={e => setSettings(s => s ? { ...s, search_provider: e.target.value } : s)}
+              className="w-full px-3 py-2 rounded-md border"
+              style={inputStyle}
+            >
+              <option value="tavily">Tavily</option>
+            </select>
+          </label>
+        </div>
+        <label className="block space-y-2 text-sm font-medium">
+          <span>{t("ai.search_api_key_label")}</span>
+          <input
+            data-testid="input-search-api-key"
+            type="password"
+            autoComplete="off"
+            value={searchKey ?? settings?.search_api_key ?? ""}
+            onFocus={() => { if (searchKey === undefined) setSearchKey(""); }}
+            onChange={e => setSearchKey(e.target.value)}
+            placeholder="••••••••"
+            className="w-full px-3 py-2 rounded-md border"
+            style={inputStyle}
+          />
+        </label>
+        <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{t("ai.competitor_source_help")}</p>
+        <button
+          data-testid="button-save-competitor-source"
+          onClick={() => void saveCompetitorSource()}
+          disabled={saving === "competitor-source"}
+          className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+          style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+        >
+          {saving === "competitor-source" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {t("ai.save_credentials_button")}
+        </button>
+        {feedback?.key === "competitor-source" && <FeedbackLine type={feedback.type} msg={feedback.msg} />}
       </div>
 
       {/* ── SECTION 3: Custom providers ──────────────────────────────────── */}

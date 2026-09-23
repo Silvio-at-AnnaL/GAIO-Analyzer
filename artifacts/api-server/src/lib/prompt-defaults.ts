@@ -293,6 +293,28 @@ All text fields must be in German. The personas field must be plain prose — no
   },
 
   {
+    slug: "competitor-search-queries",
+    name: "Wettbewerber-Suchanfragen",
+    description: "Erzeugt Suchanfragen, mit denen echte Wettbewerber gefunden werden.",
+    module: "Basisdaten",
+    placeholders: [
+      { key: "{{COMPANY_SUMMARY}}", description: "Angebot des analysierten Unternehmens" },
+      { key: "{{MARKET_REGION}}", description: "Marktregion der analysierten Website" },
+    ],
+    template: `Formuliere Suchanfragen, mit denen man Wettbewerber des folgenden Unternehmens findet.
+
+Unternehmen (Angebot laut eigener Website):
+{{COMPANY_SUMMARY}}
+Marktregion: {{MARKET_REGION}}
+
+Die Anfragen sollen Anbieter mit vergleichbarem Angebot in dieser Marktregion finden. Formuliere so, wie ein Einkäufer suchen würde: Produktbegriffe plus Rollenbegriff (Hersteller, Händler, Lieferant, Anbieter) plus Region. Keine Firmennamen, keine Fragen, keine Anführungszeichen.
+
+Antworte ohne Markdown mit genau drei Zeilen in diesem Format:
+ANFRAGE: <Suchanfrage>
+ANFRAGE: <Suchanfrage>
+ANFRAGE: <Suchanfrage>`,
+  },
+  {
     slug: "competitor-relevance",
     name: "Wettbewerber-Relevanzprüfung",
     description: "Prüft die vorgeschlagenen Wettbewerber am tatsächlichen Inhalt ihrer Startseite.",
