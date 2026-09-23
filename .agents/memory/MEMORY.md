@@ -4,3 +4,4 @@
 - [PG Migration](pg-migration.md) — SQLite (node:sqlite/DatabaseSync) fully replaced with `pg` pool; all async patterns and caveats documented.
 - [Bundled API throwaway scripts](bundled-api-scripts.md) — CommonJS esbuild checks need an async wrapper and production logging to avoid pino-pretty resolution errors.
 - [Recommendation output protocol](recommendation-tool-output.md) — tool use was abandoned; recommendations use a delimiter-based plain-text protocol with JSON fallback.
+- [Stored prompt ownership](stored-prompt-ownership.md) — treat admin-stored prompts as production data; changing a code default does not authorize rewriting an existing prompt.

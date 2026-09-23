@@ -5,6 +5,7 @@ import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 
 const MIN_ANSWER_CHARS = 40;
+const SUMMARY_QUESTION_START = /^(?:Was kostet|Wie viel|Wieviel|Was|Wie|Warum|Wann|Wo|Wer|Welche|Welcher|Welches|Kann|Können|Darf|Dürfen|Muss|Müssen|Gibt|Gilt|Ist|Sind|Haben|Hat|Bietet|Bieten|How|What|Why|When|Where|Who|Which|Can|Do|Does|Is|Are)\b/iu;
 
 export interface FaqScoreParams {
   weight_schema: number;
@@ -103,7 +104,8 @@ function visiblePairs(html: string, target: Map<string, FaqPair>): void {
   $("details").each((_, el) => {
     const summary = $(el).children("summary").first();
     if (!summary.length) return;
-    const question = summary.text();
+    const question = clean(summary.text());
+    if (!question.endsWith("?") && !SUMMARY_QUESTION_START.test(question)) return;
     const answer = clean($(el).clone().children("summary").remove().end().text());
     if (answer.length >= MIN_ANSWER_CHARS) addPair(target, question, answer);
   });
@@ -136,9 +138,13 @@ export function extractFaqPairs(pages: CrawledPage[]): { schema: FaqPair[]; visi
 }
 
 export function faqQualityContent(pairs: FaqPair[]): string {
-  return pairs.slice(0, 12)
-    .map(({ question, answer }) => `F: ${question}\nA: ${answer.slice(0, 300)}`)
-    .join("\n\n").slice(0, 3000);
+  let content = "";
+  for (const { question, answer } of pairs.slice(0, 12)) {
+    const next = `F: ${question.slice(0, 2600)}\nA: ${answer.slice(0, 300)}`;
+    if (content.length + next.length + (content ? 2 : 0) > 3000) break;
+    content += (content ? "\n\n" : "") + next;
+  }
+  return content;
 }
 
 export function parseFaqQualityResponse(response: string): { score: number; assessment: string } | null {
@@ -187,30 +193,32 @@ export async function analyzeFaq(
     }
   }
 
-  const oneDecimal = (value: number) => Math.round(value * 10) / 10;
+  const oneDecimal = (value: number) => Math.round((value + Number.EPSILON) * 10) / 10;
+  const schemaPoints = Math.min(schemaQuestionCount, params.schema_full_from) / params.schema_full_from * params.weight_schema;
+  const visiblePoints = Math.min(visiblePairCount, params.visible_full_from) / params.visible_full_from * params.weight_visible;
+  const scopePoints = faqItemsFound >= params.scope_full_from ? params.weight_scope
+    : faqItemsFound >= params.scope_mid_from ? params.weight_scope * params.scope_mid_factor
+      : faqItemsFound >= 1 ? params.weight_scope * params.scope_low_factor : 0;
+  const qualityPoints = qualityScore === null ? 0 : params.weight_quality * qualityScore / 100;
   const breakdown = {
     schema: {
-      points: oneDecimal(Math.min(schemaQuestionCount, params.schema_full_from) / params.schema_full_from * params.weight_schema),
+      points: oneDecimal(schemaPoints),
       max: oneDecimal(params.weight_schema),
     },
     visible: {
-      points: oneDecimal(Math.min(visiblePairCount, params.visible_full_from) / params.visible_full_from * params.weight_visible),
+      points: oneDecimal(visiblePoints),
       max: oneDecimal(params.weight_visible),
     },
     scope: {
-      points: oneDecimal(faqItemsFound >= params.scope_full_from ? params.weight_scope
-        : faqItemsFound >= params.scope_mid_from ? params.weight_scope * params.scope_mid_factor
-          : faqItemsFound >= 1 ? params.weight_scope * params.scope_low_factor : 0),
+      points: oneDecimal(scopePoints),
       max: oneDecimal(params.weight_scope),
     },
     quality: {
-      points: oneDecimal(qualityScore === null ? 0 : params.weight_quality * qualityScore / 100),
+      points: oneDecimal(qualityPoints),
       max: oneDecimal(params.weight_quality),
     },
   };
-  const score = Math.max(0, Math.min(100, Math.round(
-    Object.values(breakdown).reduce((sum, part) => sum + part.points, 0),
-  )));
+  const score = Math.max(0, Math.min(100, Math.round(schemaPoints + visiblePoints + scopePoints + qualityPoints)));
   return {
     score,
     faqItemsFound,
