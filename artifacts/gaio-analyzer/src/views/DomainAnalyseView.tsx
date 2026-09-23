@@ -28,6 +28,7 @@ export function DomainAnalyseView() {
   const [phase2Visible, setPhase2Visible] = useState(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
   const [competitorVerified, setCompetitorVerified] = useState<Record<string, boolean>>({});
+  const [competitorReasons, setCompetitorReasons] = useState<Record<string, string>>({});
 
   const [editablePages, setEditablePages] = useState<string[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -79,6 +80,13 @@ export function DomainAnalyseView() {
 
   const updateCompetitor = (index: number, value: string) => {
     const next = [...domainForm.competitors];
+    if (next[index] !== value) {
+      setCompetitorReasons((previous) => {
+        const updated = { ...previous };
+        delete updated[next[index]];
+        return updated;
+      });
+    }
     next[index] = value;
     if (value.trim() !== "" && index === next.length - 1 && next.length < 5) {
       next.push("");
@@ -87,6 +95,11 @@ export function DomainAnalyseView() {
   };
 
   const removeCompetitor = (index: number) => {
+    setCompetitorReasons((previous) => {
+      const updated = { ...previous };
+      delete updated[domainForm.competitors[index]];
+      return updated;
+    });
     const next = domainForm.competitors.filter((_, i) => i !== index);
     setDomainForm({ ...domainForm, competitors: next.length > 0 ? next : [""] });
   };
@@ -112,6 +125,7 @@ export function DomainAnalyseView() {
   const handlePrefill = () => {
     if (!validatePhase1()) return;
     setPrefillError(null);
+    setCompetitorReasons({});
 
     prefillMutation.mutate(
       {
@@ -140,10 +154,14 @@ export function DomainAnalyseView() {
             competitors: filledUrls,
           });
           const verifiedMap: Record<string, boolean> = {};
+          const reasonsMap: Record<string, string> = {};
           filteredCompetitors.forEach((c) => {
             verifiedMap[c.url] = c.verified;
+            const reason = (c as typeof c & { reason?: unknown }).reason;
+            if (typeof reason === "string" && reason.trim()) reasonsMap[c.url] = reason.trim();
           });
           setCompetitorVerified(verifiedMap);
+          setCompetitorReasons(reasonsMap);
           setPhase2Visible(true);
         },
         onError: () => {
@@ -156,6 +174,7 @@ export function DomainAnalyseView() {
 
   const handleRevealManually = () => {
     setPrefillError(null);
+    setCompetitorReasons({});
     setPhase2Visible(true);
   };
 
@@ -599,7 +618,8 @@ export function DomainAnalyseView() {
                     ? { title: t("domain.competitor_duplicate"), ariaLabel: t("domain.competitor_duplicate") }
                     : null;
                 return (
-                  <div key={i} className="flex gap-2 items-center">
+                  <div key={i} className="space-y-1">
+                    <div className="flex gap-2 items-center">
                     <a
                       href={isValidUrl ? comp : undefined}
                       target="_blank"
@@ -653,6 +673,12 @@ export function DomainAnalyseView() {
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
+                    )}
+                    </div>
+                    {competitorReasons[comp] && (
+                      <p className="pl-6 text-xs text-muted-foreground line-clamp-2">
+                        {t("domain.competitor_reason_label")} {competitorReasons[comp]}
+                      </p>
                     )}
                   </div>
                 );

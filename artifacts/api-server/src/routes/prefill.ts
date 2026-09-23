@@ -42,6 +42,26 @@ function competitorKey(input: string): string {
   }
 }
 
+function marketRegionFor(url: string, homepageLang: string | null): string {
+  let tld: string;
+  try {
+    tld = new URL(url).hostname.toLowerCase().split(".").at(-1) ?? "";
+  } catch {
+    return "unbekannt";
+  }
+  const lang = homepageLang?.split(/[-_]/)[0].toLowerCase();
+  if (tld === "at") return "Österreich / DACH-Raum, deutschsprachig";
+  if (tld === "ch") return "Schweiz / DACH-Raum, deutschsprachig";
+  if (tld === "de") return "Deutschland / DACH-Raum, deutschsprachig";
+  if (lang === "de") return "deutschsprachiger Markt";
+  if (lang === "en" && /^[a-z]{2}$/.test(tld)) return `.${tld}-Markt, englischsprachig`;
+  return "unbekannt";
+}
+
+function competitorReason(value: unknown): string {
+  return typeof value === "string" ? value.trim().slice(0, 200).trim() : "";
+}
+
 // ── Text extraction ───────────────────────────────────────────────────────────
 
 function extractText(html: string, maxChars = 1500): string {
@@ -226,15 +246,19 @@ Rules:
 async function claudeFindReplacement(
   failedName: string,
   contentSummary: string | null,
+  marketRegion: string,
   confirmedNames: Set<string>,
-): Promise<{ name: string; url: string } | null> {
+  usedHosts: Set<string>,
+  reserveHost: (url: string, stage: string) => boolean,
+): Promise<{ name: string; url: string; reason: string } | null> {
   try {
     const confirmedList = Array.from(confirmedNames).join(", ") || "none yet";
+    const usedHostList = Array.from(usedHosts).join(", ");
     const context = contentSummary ?? "No content summary available";
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 150,
+      max_tokens: 220,
       messages: [
         {
           role: "user",
@@ -242,17 +266,24 @@ async function claudeFindReplacement(
 
 Based on this company's product context:
 ${context}
+Market region: ${marketRegion}
 
 Suggest ONE different direct competitor that:
 - Sells similar products to the same industries
+- Actually serves this market with its own local presence or shipping
+- Is not a marketplace, platform, directory, association, municipality, public authority, parent company, reseller of this company's products, or manufacturer whose products this company distributes
+- Has a domain that belongs to the named company, not a place, person or unrelated organisation with the same name
 - Is NOT in this list of already confirmed competitors: ${confirmedList}
+- Has a domain NOT in this list of already suggested, corrected or replaced domains: ${usedHostList}
 - Has a website you are highly confident exists and is reachable
 
 Return ONLY JSON, no other text:
-{ "name": "...", "url": "https://..." }
+{ "name": "...", "url": "https://...", "reason": "<ein Satz auf Deutsch: warum ist das ein direkter Wettbewerber?>" }
+
+The reason is mandatory, plain German prose, at most 140 characters.
 
 If you cannot suggest a reliable replacement, return:
-{ "name": null, "url": null }`,
+{ "name": null, "url": null, "reason": null }`,
         },
       ],
     });
@@ -268,7 +299,9 @@ If you cannot suggest a reliable replacement, return:
     if (!parsed.name || !parsed.url) return null;
     if (typeof parsed.name !== "string" || typeof parsed.url !== "string") return null;
     if (!parsed.url.startsWith("https://")) return null;
-    return { name: parsed.name.trim(), url: parsed.url.trim() };
+    const url = parsed.url.trim();
+    if (!reserveHost(url, "replacement")) return null;
+    return { name: parsed.name.trim(), url, reason: competitorReason(parsed.reason) };
   } catch {
     return null;
   }
@@ -277,10 +310,13 @@ If you cannot suggest a reliable replacement, return:
 // ── Full 4-attempt validation pipeline for one competitor ─────────────────────
 
 async function validateCompetitor(
-  competitor: { name: string; url: string },
+  competitor: { name: string; url: string; reason: string },
   contentSummary: string | null,
+  marketRegion: string,
   confirmedNames: Set<string>,
-): Promise<{ name: string; url: string; verified: boolean }> {
+  usedHosts: Set<string>,
+  reserveHost: (url: string, stage: string) => boolean,
+): Promise<{ name: string; url: string; reason: string; verified: boolean }> {
   const deadline = Date.now() + 15000;
 
   // ATTEMPT 1 — verify AI-suggested URL
@@ -305,7 +341,8 @@ async function validateCompetitor(
   }
 
   // ATTEMPT 3 — verify the corrected URL
-  if (correctedUrl && correctedUrl !== competitor.url) {
+  if (correctedUrl && correctedUrl !== competitor.url &&
+      (competitorKey(correctedUrl) === competitorKey(competitor.url) || reserveHost(correctedUrl, "correction"))) {
     const rem3 = deadline - Date.now();
     if (rem3 > 0) {
       const valid3 = await verifyUrl(correctedUrl, Math.min(rem3, 6000));
@@ -315,7 +352,7 @@ async function validateCompetitor(
       );
       if (valid3) {
         confirmedNames.add(competitor.name.toLowerCase());
-        return { name: competitor.name, url: correctedUrl, verified: true };
+        return { ...competitor, url: correctedUrl, verified: true };
       }
     }
   }
@@ -323,7 +360,7 @@ async function validateCompetitor(
   // ATTEMPT 4 — ask Claude for a replacement competitor
   const rem4 = deadline - Date.now();
   if (rem4 > 1000) {
-    const replacement = await claudeFindReplacement(competitor.name, contentSummary, confirmedNames);
+    const replacement = await claudeFindReplacement(competitor.name, contentSummary, marketRegion, confirmedNames, usedHosts, reserveHost);
     if (replacement) {
       const rem5 = deadline - Date.now();
       if (rem5 > 0) {
@@ -355,14 +392,15 @@ interface PageContent {
 async function miniCrawl(
   inputUrl: string,
   maxPages = 8,
-): Promise<{ pages: PageContent[]; failReason: CrawlFailReason | null }> {
+): Promise<{ pages: PageContent[]; failReason: CrawlFailReason | null; homepageLang: string | null }> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
   const results: PageContent[] = [];
 
   let failReason: CrawlFailReason | null = null;
   const homepageHtml = await fetchHtml(inputUrl, 10000, (r) => { failReason = r; });
-  if (!homepageHtml) return { pages: results, failReason: failReason ?? "unknown" };
+  if (!homepageHtml) return { pages: results, failReason: failReason ?? "unknown", homepageLang: null };
+  const homepageLang = cheerio.load(homepageHtml)("html").attr("lang") ?? null;
 
   const homepageText = extractText(homepageHtml);
   if (homepageText) results.push({ url: inputUrl, text: homepageText });
@@ -391,7 +429,7 @@ async function miniCrawl(
     }
   }
 
-  return { pages: results, failReason: null };
+  return { pages: results, failReason: null, homepageLang };
 }
 
 // ── Build content summary ─────────────────────────────────────────────────────
@@ -432,12 +470,14 @@ async function buildPrompt(
   url: string,
   crawledContent: string,
   crawlFailed: boolean,
+  marketRegion: string,
 ): Promise<string> {
   if (crawlFailed) {
     return `You are a B2B market research assistant. Analyze the following company and provide structured information.
 
 Company: ${company_name}
 Website: ${url}
+Market region: ${marketRegion}
 
 NOTE: The website could not be crawled. Base your analysis on the company name, URL, and any general knowledge you have.
 
@@ -446,23 +486,25 @@ Identify the primary B2B buyer personas. Include relevant industries, job titles
 
 TASK 2 — COMPETITORS
 Identify 5-8 direct competitors — companies that sell similar products to the same target industries. Only list companies you are confident exist with real websites.
+They must serve the stated market. Exclude marketplaces, directories, associations, public authorities, parent companies, resellers of this company's products and manufacturers whose products this company distributes. Verify that each domain belongs to the company named.
 
 Return ONLY valid JSON, no other text:
 {
   "content_summary": null,
   "personas": "<German prose, 3-5 sentences>",
   "competitors": [
-    { "name": "<company>", "url": "https://..." }
+    { "name": "<company>", "url": "https://...", "reason": "<ein Satz auf Deutsch: warum ist das ein direkter Wettbewerber?>" }
   ]
 }
 
-All text must be in German. The personas field must be plain prose — no bullet points, no markdown.`;
+All text must be in German. Each reason is mandatory, plain prose, one sentence of at most 140 characters. The personas field must be plain prose — no bullet points, no markdown.`;
   }
 
   return fillTemplate(await getPrompt("prefill-analysis"), {
     CRAWLED_CONTENT: crawledContent,
     COMPANY_NAME: company_name,
     WEBSITE_URL: url,
+    MARKET_REGION: marketRegion,
   });
 }
 
@@ -483,10 +525,12 @@ router.post("/prefill", async (req, res): Promise<void> => {
   let pages: PageContent[] = [];
   let crawlFailed = false;
   let crawlFailReason: CrawlFailReason | null = null;
+  let homepageLang: string | null = null;
 
   try {
     const outcome = await miniCrawl(url, 8);
     pages = outcome.pages;
+    homepageLang = outcome.homepageLang;
     crawlFailed = pages.length === 0;
     crawlFailReason = crawlFailed ? (outcome.failReason ?? "unknown") : null;
     logger.info({ url, pageCount: pages.length, crawlFailed, crawlFailReason }, "Prefill: crawl complete");
@@ -498,12 +542,14 @@ router.post("/prefill", async (req, res): Promise<void> => {
 
   // STEP 2 — Build content summary
   const crawledContent = buildContentSummary(pages, 8000);
+  const marketRegion = marketRegionFor(url, homepageLang);
+  logger.info({ url, marketRegion }, "Prefill: market region derived");
 
   // STEP 3 — Call Claude for initial analysis
-  const prompt = await buildPrompt(company_name, url, crawledContent, crawlFailed);
+  const prompt = await buildPrompt(company_name, url, crawledContent, crawlFailed, marketRegion);
 
   let personas = "";
-  let rawCompetitors: { name: string; url: string }[] = [];
+  let rawCompetitors: { name: string; url: string; reason: string }[] = [];
   let content_summary: string | null = null;
 
   try {
@@ -539,10 +585,10 @@ router.post("/prefill", async (req, res): Promise<void> => {
     const raw = Array.isArray(parsed.competitors) ? parsed.competitors : [];
     rawCompetitors = raw
       .filter(
-        (c): c is { name: string; url: string } =>
+        (c): c is { name: string; url: string; reason?: unknown } =>
           c && typeof c === "object" && typeof c.name === "string" && typeof c.url === "string",
       )
-      .map((c) => ({ name: c.name.trim(), url: normaliseUrl(c.url) ?? c.url }))
+      .map((c) => ({ name: c.name.trim(), url: normaliseUrl(c.url) ?? c.url, reason: competitorReason(c.reason) }))
       .filter((c) => c.url.startsWith("http"));
 
     content_summary =
@@ -558,15 +604,36 @@ router.post("/prefill", async (req, res): Promise<void> => {
   // STEP 4 — Validate & correct competitor URLs in parallel
   logger.info({ count: rawCompetitors.length }, "Prefill: starting URL validation");
   const confirmedNames = new Set<string>();
+  const usedHosts = new Set<string>([competitorKey(url)]);
+  let duplicateHostDrops = 0;
+  const reserveHost = (candidateUrl: string, stage: string): boolean => {
+    const host = competitorKey(candidateUrl);
+    if (!host) {
+      logger.info({ candidateUrl, stage }, "Prefill: invalid competitor host dropped");
+      return false;
+    }
+    if (usedHosts.has(host)) {
+      duplicateHostDrops++;
+      logger.info({ host, stage, duplicateHostDrops }, "Prefill: duplicate competitor host dropped");
+      return false;
+    }
+    usedHosts.add(host);
+    return true;
+  };
+  const uniqueCompetitors = rawCompetitors.filter((c) => reserveHost(c.url, "suggestion"));
 
   const validatedCompetitors = await Promise.all(
-    rawCompetitors.map((c) => validateCompetitor(c, content_summary, confirmedNames)),
+    uniqueCompetitors.map((c) => validateCompetitor(c, content_summary, marketRegion, confirmedNames, usedHosts, reserveHost)),
   );
   const ownKey = competitorKey(url);
   const seenCompetitorKeys = new Set<string>();
   const filteredCompetitors = validatedCompetitors.filter((competitor) => {
     const key = competitorKey(competitor.url);
-    if (!key || key === ownKey || seenCompetitorKeys.has(key)) return false;
+    if (!key || key === ownKey || seenCompetitorKeys.has(key)) {
+      duplicateHostDrops++;
+      logger.info({ host: key, stage: "response", duplicateHostDrops }, "Prefill: duplicate competitor host dropped");
+      return false;
+    }
     seenCompetitorKeys.add(key);
     return true;
   });
@@ -575,6 +642,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     {
       total: filteredCompetitors.length,
       verified: filteredCompetitors.filter((c) => c.verified).length,
+      duplicateHostDrops,
     },
     "Prefill: validation complete",
   );

@@ -245,6 +245,7 @@ Antworte ausschließlich mit einem JSON-Objekt ohne weiteren Text:
       { key: "{{CRAWLED_CONTENT}}", description: "Gecrawlter Webseitentext" },
       { key: "{{COMPANY_NAME}}", description: "Unternehmensname" },
       { key: "{{WEBSITE_URL}}", description: "Website-URL" },
+      { key: "{{MARKET_REGION}}", description: "Marktregion der analysierten Website" },
     ],
     template: `You are a B2B market analyst.
 
@@ -268,6 +269,9 @@ TASK 2 — COMPETITORS
 Based on the specific products and services you found on this website, identify 5-8 direct competitors — companies that sell similar or identical products to the same target industries.
 
 Rules for competitor selection:
+- The company's market region is: {{MARKET_REGION}}. Suggest competitors that actually serve this market with their own local presence or shipping. Do not suggest suppliers from other regions unless they clearly serve this market.
+- Never suggest marketplaces or platforms (Amazon, eBay, Alibaba, Wer liefert was, Europages), industry directories, associations, municipalities or public authorities, parent or holding companies of the analyzed company, resellers of the analyzed company's own products, or manufacturers whose products the analyzed company itself distributes.
+- Before naming a company, check that the domain you give belongs to that company and not to a place, person or unrelated organisation with the same name.
 - Must be direct product competitors, not adjacent or complementary companies
 - Must be real companies with real websites you are confident exist
 - Prefer companies of similar size and market focus where possible
@@ -279,11 +283,12 @@ Return ONLY valid JSON, no other text:
   "content_summary": "<2-3 sentences in German summarizing what products/services the company actually offers, based on the crawled pages>",
   "personas": "<German prose text, 3-5 sentences>",
   "competitors": [
-    { "name": "<company>", "url": "https://..." }
+    { "name": "<company>", "url": "https://...", "reason": "<ein Satz auf Deutsch: warum ist das ein direkter Wettbewerber?>" }
   ]
 }
 
 CRITICAL: Base your analysis ONLY on the website content provided above. Do not use general knowledge about the company name. If the crawled content is insufficient to identify reliable competitors, return fewer than 5 rather than guessing.
+The reason field is mandatory for every competitor: one German sentence, at most 140 characters, in plain prose.
 All text fields must be in German. The personas field must be plain prose — no bullet points, no numbering, no markdown.`,
   },
 
