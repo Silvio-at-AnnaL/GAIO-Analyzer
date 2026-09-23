@@ -87,7 +87,7 @@ const EXCLUDED_KEYWORD_PATTERN =
   /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search/i;
 
 const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
-const EXTRA_FETCH_ALLOWANCE = 8;
+const EXTRA_FETCH_ALLOWANCE = 12;
 
 const EXCLUDED_TRACKING_PARAMS = /[?&](utm_|fbclid|gclid)/i;
 
@@ -468,8 +468,15 @@ function addToQueue(
   entry: QueueEntry,
   visited: Set<string>,
   hreflangUrlSet: Set<string>,
+  targetLang: string | null,
+  onOtherLanguage: (url: string) => void,
 ): void {
   if (visited.has(entry.url) || hreflangUrlSet.has(entry.url)) return;
+  const language = urlLang(new URL(entry.url).pathname);
+  if (targetLang && language && language !== targetLang) {
+    onOtherLanguage(entry.url);
+    return;
+  }
   if (!categoryQueues.has(entry.category)) categoryQueues.set(entry.category, []);
   const q = categoryQueues.get(entry.category)!;
   if (q.some((e) => e.url === entry.url)) return;
@@ -495,6 +502,12 @@ const KNOWN_LANG_CODES = new Set([
 
 function isKnownLangCode(code: string): boolean {
   return KNOWN_LANG_CODES.has(code.toLowerCase());
+}
+
+function urlLang(pathname: string): string | null {
+  const match = pathname.match(LANG_PREFIX_RE);
+  if (!match || !isKnownLangCode(match[1])) return null;
+  return match[1].toLowerCase().split("-")[0];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -731,6 +744,13 @@ export async function crawlSite(
     if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
   };
   const skippedLanguagePages: CrawledPage[] = [];
+  const skippedLanguageUrls = new Set<string>();
+  const recordOtherLanguage = (url: string) => {
+    if (skippedLanguageUrls.has(url)) return;
+    skippedLanguageUrls.add(url);
+    result.skipped.otherLanguage++;
+    if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+  };
   let targetLang: string | null = null;
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
@@ -904,7 +924,7 @@ export async function crawlSite(
       recordExcludedPath,
     );
     for (const { url } of links) {
-      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet);
+      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
     }
   }
 
@@ -921,7 +941,7 @@ export async function crawlSite(
         }
         if (scoreUrl(u) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
-        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet);
+        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
       } catch {
         // skip
       }
@@ -1003,10 +1023,9 @@ export async function crawlSite(
           ttfb: page.ttfb,
         };
         result.reliability.succeeded++;
-        const lang = targetLang ? detectPageLanguage(page.html) : null;
+        const lang = targetLang ? urlLang(new URL(url).pathname) ?? detectPageLanguage(page.html) : null;
         if (targetLang && lang && lang !== targetLang) {
-          result.skipped.otherLanguage++;
-          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+          recordOtherLanguage(url);
           skippedLanguagePages.push(crawledPage);
           continue;
         }
@@ -1030,7 +1049,7 @@ export async function crawlSite(
         if (pagesLeft > 0) {
           const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
           for (const { url: linkUrl } of links) {
-            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet);
+            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, recordOtherLanguage);
           }
         }
       } else {
