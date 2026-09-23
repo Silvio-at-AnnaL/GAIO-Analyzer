@@ -311,7 +311,7 @@ Marktregion: {{MARKET_REGION}}
 Kandidaten (Nummer, Name, Domain, Textauszug der Startseite):
 {{CANDIDATES}}
 
-Ein Kandidat passt NUR, wenn sein Startseitentext zeigt, dass er vergleichbare Produkte oder Leistungen an ähnliche Kunden verkauft. Er passt NICHT, wenn der Text zu einem anderen Geschäft gehört, wenn es sich um eine Gemeinde, Behörde, Privatperson, ein Verzeichnis, einen Marktplatz oder eine reine Marken- bzw. Konzernseite ohne eigenes vergleichbares Angebot handelt, oder wenn kein auswertbarer Text vorliegt.
+Ein Kandidat passt NUR, wenn sein Startseitentext zeigt, dass er vergleichbare Produkte oder Leistungen an ähnliche Kunden verkauft. Er passt NICHT, wenn der Text zu einem anderen Geschäft gehört, wenn es sich um eine Gemeinde, Behörde, Privatperson, ein Verzeichnis, einen Marktplatz oder eine reine Marken- bzw. Konzernseite ohne eigenes vergleichbares Angebot handelt.
 
 Antworte auf Deutsch, ohne Markdown, für JEDEN Kandidaten genau diesen Block:
 KANDIDAT: <Nummer>

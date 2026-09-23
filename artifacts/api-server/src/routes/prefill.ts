@@ -113,7 +113,7 @@ const CRAWLER_UA = "GAIOAnalyzer/1.0 (Website Audit Tool)";
 async function fetchHtml(
   url: string,
   timeoutMs = 8000,
-  onError?: (reason: CrawlFailReason) => void,
+  onError?: (reason: CrawlFailReason, status?: number) => void,
 ): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -131,7 +131,7 @@ async function fetchHtml(
     }
     if (!resp.ok) {
       const reason = classifyHttpStatus(resp.status);
-      onError?.(reason);
+      onError?.(reason, resp.status);
       return null;
     }
     return html;
@@ -510,6 +510,39 @@ All text must be in German. Each reason is mandatory, plain prose, one sentence 
 
 type PrefillCompetitor = { name: string; url: string; reason: string; verified: boolean };
 type RelevanceVerdict = { fits: boolean; reason: string; duplicateOf: number | null };
+type CandidateEvidence = { outcome: "ok" | "blocked" | "unreachable"; text: string };
+
+async function getCandidateEvidence(candidate: PrefillCompetitor): Promise<CandidateEvidence> {
+  let failure: CrawlFailReason | null = null;
+  let status: number | undefined;
+  const html = await fetchHtml(candidate.url, 6000, (reason, httpStatus) => {
+    failure = reason;
+    status = httpStatus;
+  });
+  let evidence: CandidateEvidence;
+  if (html !== null) {
+    const $ = cheerio.load(html);
+    const summary = [
+      $("title").first().text(),
+      $('meta[name="description"]').first().attr("content") ?? "",
+      extractText(html, 800),
+    ].join(" ").replace(/\s+/g, " ").trim();
+    if (summary.length >= 120) {
+      evidence = { outcome: "ok", text: summary };
+    } else {
+      $("script, style").remove();
+      evidence = { outcome: "ok", text: $("body").text().replace(/\s+/g, " ").trim().slice(0, 800) };
+    }
+  } else {
+    const blocked = failure === "bot_protection" || failure === "parked_domain" ||
+      (failure === "http_error" && status !== undefined && [401, 403, 429].includes(status));
+    evidence = { outcome: blocked ? "blocked" : "unreachable", text: "" };
+  }
+  logger.info({
+    host: competitorKey(candidate.url), outcome: evidence.outcome, evidenceChars: evidence.text.length,
+  }, "Prefill: competitor evidence");
+  return evidence;
+}
 
 function parseRelevanceVerdicts(text: string, count: number): Map<number, RelevanceVerdict> {
   const verdicts = new Map<number, RelevanceVerdict>();
@@ -529,7 +562,6 @@ function parseRelevanceVerdicts(text: string, count: number): Map<number, Releva
   return verdicts;
 }
 
-// The fetches and the model request are separate so a failed fetch still supplies an empty text excerpt.
 export async function checkCompetitorRelevance(
   candidates: PrefillCompetitor[],
   companySummary: string,
@@ -537,13 +569,52 @@ export async function checkCompetitorRelevance(
 ): Promise<{ competitors: PrefillCompetitor[]; droppedByRelevance: number }> {
   if (candidates.length === 0) return { competitors: candidates, droppedByRelevance: 0 };
 
-  const excerpts = await Promise.all(candidates.map(async (candidate) => {
-    const html = await fetchHtml(candidate.url, 6000);
-    return html ? extractText(html, 800) : "";
-  }));
-  const candidateText = candidates.map((candidate, index) =>
-    `${index + 1}. ${candidate.name} | ${competitorKey(candidate.url)}\n${excerpts[index] || "(kein Text abrufbar)"}`,
+  const evidence = await Promise.all(candidates.map(getCandidateEvidence));
+  const judgedIndexes = candidates.flatMap((_, index) =>
+    evidence[index].outcome === "ok" && evidence[index].text.length >= 120 ? [index] : [],
+  );
+  const candidateText = judgedIndexes.map((index, number) =>
+    `${number + 1}. ${candidates[index].name} | ${competitorKey(candidates[index].url)}\n${evidence[index].text}`,
   ).join("\n\n");
+  const report = (kept: Set<number>, verdicts: Map<number, RelevanceVerdict>, firstByGroup: Map<number, number>, root: (index: number) => number) => {
+    candidates.forEach((candidate, index) => {
+      const number = judgedIndexes.indexOf(index) + 1;
+      const verdict = number ? verdicts.get(number) : undefined;
+      const survives = kept.has(index);
+      const duplicateWinner = verdict?.fits && number ? firstByGroup.get(root(number)) : undefined;
+      logger.info({
+        host: competitorKey(candidate.url), outcome: evidence[index].outcome,
+        evidenceChars: evidence[index].text.length, judged: number > 0,
+        passt: verdict ? (verdict.fits ? "ja" : "nein") : null,
+        grund: verdict?.reason ?? null, dubletteVon: verdict?.duplicateOf ?? "-",
+        kept: survives,
+      }, "Prefill: competitor relevance verdict");
+      if (!survives) {
+        logger.info({
+          name: candidate.name, host: competitorKey(candidate.url),
+          reason: evidence[index].outcome === "unreachable"
+            ? "Startseite nicht erreichbar"
+            : duplicateWinner ? `Dublette von Kandidat ${duplicateWinner}` : (verdict?.reason || "Fachlich nicht passend"),
+        }, "Prefill: competitor dropped by relevance");
+      }
+    });
+    return {
+      competitors: candidates.flatMap((candidate, index) => {
+        if (!kept.has(index)) return [];
+        const number = judgedIndexes.indexOf(index) + 1;
+        return [{ ...candidate, reason: candidate.reason || (number ? verdicts.get(number)?.reason : "") || "" }];
+      }),
+      droppedByRelevance: candidates.length - kept.size,
+    };
+  };
+  const keepAll = () => report(new Set(candidates.map((_, index) => index)), new Map(), new Map(), (n) => n);
+  const initiallyKept = new Set(candidates.flatMap((_, index) =>
+    evidence[index].outcome === "unreachable" ? [] : [index],
+  ));
+  if (judgedIndexes.length === 0) {
+    logger.info("Prefill: no competitor has sufficient evidence for relevance check");
+    return report(initiallyKept, new Map(), new Map(), (n) => n);
+  }
   let responseText = "";
   try {
     const prompt = fillTemplate(await getPrompt("competitor-relevance"), {
@@ -561,24 +632,18 @@ export async function checkCompetitorRelevance(
       .filter((block) => block.type === "text")
       .map((block) => (block as { type: "text"; text: string }).text)
       .join("");
-    const parsedVerdicts = parseRelevanceVerdicts(responseText, candidates.length);
-    if (parsedVerdicts.size === 0) {
+    const verdicts = parseRelevanceVerdicts(responseText, judgedIndexes.length);
+    if (verdicts.size === 0) {
       logger.warn({ response: responseText.slice(0, 200) }, "competitor relevance check unusable");
-      return { competitors: candidates, droppedByRelevance: 0 };
+      return keepAll();
     }
-    const verdicts = new Map([...parsedVerdicts].map(([number, verdict]) => [
-      number,
-      !excerpts[number - 1] && verdict.fits
-        ? { fits: false, reason: "Kein auswertbarer Startseitentext vorhanden.", duplicateOf: null }
-        : verdict,
-    ] as const));
 
-    const kept = new Set(candidates.map((_, index) => index + 1));
+    const kept = new Set(judgedIndexes.map((_, index) => index + 1));
     for (const [index, verdict] of verdicts) {
       if (!verdict.fits) kept.delete(index);
     }
     // Group chains of duplicate claims, then retain the lowest surviving number in each group.
-    const parent = candidates.map((_, index) => index + 1);
+    const parent = judgedIndexes.map((_, index) => index + 1);
     const root = (index: number): number => {
       while (parent[index - 1] !== index) index = parent[index - 1];
       return index;
@@ -595,36 +660,13 @@ export async function checkCompetitorRelevance(
       else kept.delete(index);
     }
 
-    candidates.forEach((candidate, index) => {
-      const number = index + 1;
-      const verdict = verdicts.get(number);
-      const survives = kept.has(number);
-      const originalFit = verdict?.fits ?? null;
-      const duplicateWinner = originalFit === false ? null : firstByGroup.get(root(number));
-      logger.info({
-        number, name: candidate.name, host: competitorKey(candidate.url),
-        passt: originalFit === null ? null : (originalFit ? "ja" : "nein"),
-        grund: verdict?.reason ?? null, dubletteVon: verdict?.duplicateOf ?? "-",
-        kept: survives,
-      }, "Prefill: competitor relevance verdict");
-      if (!survives) {
-        logger.info({
-          name: candidate.name, host: competitorKey(candidate.url),
-          reason: duplicateWinner ? `Dublette von Kandidat ${duplicateWinner}` : (verdict?.reason || "Fachlich nicht passend"),
-        }, "Prefill: competitor dropped by relevance");
-      }
-    });
-    return {
-      competitors: candidates.flatMap((candidate, index) => {
-        if (!kept.has(index + 1)) return [];
-        const reason = candidate.reason || verdicts.get(index + 1)?.reason || "";
-        return [{ ...candidate, reason }];
-      }),
-      droppedByRelevance: candidates.length - kept.size,
-    };
+    return report(new Set([...initiallyKept].filter((index) => {
+      const number = judgedIndexes.indexOf(index) + 1;
+      return number === 0 || kept.has(number);
+    })), verdicts, firstByGroup, root);
   } catch (err) {
     logger.warn({ err, response: responseText.slice(0, 200) }, "competitor relevance check unusable");
-    return { competitors: candidates, droppedByRelevance: 0 };
+    return keepAll();
   }
 }
 
