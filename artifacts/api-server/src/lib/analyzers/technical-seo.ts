@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { CrawlResult } from "../crawler";
+import type { CrawlResult, SitemapResolution } from "../crawler";
 import { getTitleFromDom } from "../html-title";
 
 // ─── LLM crawler list ─────────────────────────────────────────────────────────
@@ -42,7 +42,11 @@ export interface SitemapXmlAnalysis {
   priorityDistribution: Record<string, number>;
   hasImageSitemap: boolean;
   hasVideoSitemap: boolean;
-  crawledPageCoverage: number;
+  crawledPageCoverage: number | null;
+  nestedIndex: boolean;
+  nestedExample: string[] | null;
+  sitemapFilesRead: number | null;
+  sitemapFilesComplete: boolean | null;
   htmlSitemapUrl: string | null;
   htmlSections: string[];
   summary: string;
@@ -189,6 +193,7 @@ function analyzeSitemapXml(
   content: string,
   type: "xml" | "xml_index",
   crawledPages: string[],
+  resolution: SitemapResolution | null,
 ): SitemapXmlAnalysis {
   const isSitemapIndex = type === "xml_index";
   const locMatches = [...content.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)];
@@ -206,8 +211,8 @@ function analyzeSitemapXml(
     priorityDistribution[val] = (priorityDistribution[val] || 0) + 1;
   }
 
-  const hasImageSitemap = content.includes("image:") || content.includes("xmlns:image");
-  const hasVideoSitemap = content.includes("video:") || content.includes("xmlns:video");
+  const hasImageSitemap = Boolean(resolution?.hasImage) || content.includes("image:") || content.includes("xmlns:image");
+  const hasVideoSitemap = Boolean(resolution?.hasVideo) || content.includes("video:") || content.includes("xmlns:video");
 
   const sitemapUrls = locMatches.map((m) => m[1].trim());
   const normalise = (u: string) => u.replace(/\/$/, "").toLowerCase();
@@ -215,13 +220,20 @@ function analyzeSitemapXml(
   const eligibleCrawled = crawledPages.filter((p) => p !== "uploaded-page");
   const matchedCrawled = eligibleCrawled.filter((p) => sitemapUrlSet.has(normalise(p)));
   const crawledPageCoverage =
-    eligibleCrawled.length > 0 ? Math.round((matchedCrawled.length / eligibleCrawled.length) * 100) : 0;
+    resolution && !resolution.complete && matchedCrawled.length !== eligibleCrawled.length
+      ? null
+      : eligibleCrawled.length > 0 ? Math.round((matchedCrawled.length / eligibleCrawled.length) * 100) : 0;
 
   let summary: string;
-  if (totalUrls === 0) {
+  if (totalUrls === 0 && (!resolution || resolution.complete)) {
     summary = "Die Sitemap ist leer oder enthält keine auswertbaren URLs.";
   } else if (isSitemapIndex) {
-    summary = `Sitemap-Index mit ${totalUrls} Einträgen — ${crawledPageCoverage}% der gecrawlten Seiten sind enthalten.`;
+    const filesRead = resolution?.filesRead ?? 0;
+    summary = `Sitemap-Index: ${totalUrls} Seiten-URLs aus ${filesRead} Teil-Sitemap${filesRead !== 1 ? "s" : ""}`
+      + (resolution?.nested ? " — verschachtelter Aufbau (von Google nicht unterstützt)" : "")
+      + (crawledPageCoverage !== null
+        ? ` — ${crawledPageCoverage}% der gecrawlten Seiten sind enthalten.`
+        : " — nicht alle Teil-Sitemaps konnten gelesen werden, die Abdeckung wird daher nicht bewertet.");
   } else {
     summary = `${totalUrls} URL${totalUrls !== 1 ? "s" : ""} indexiert, ${crawledPageCoverage}% der gecrawlten Seiten abgedeckt${dates.length === 0 ? " — keine Lastmod-Daten vorhanden" : ""}.`;
   }
@@ -236,6 +248,10 @@ function analyzeSitemapXml(
     hasImageSitemap,
     hasVideoSitemap,
     crawledPageCoverage,
+    nestedIndex: resolution?.nested ?? false,
+    nestedExample: resolution?.nestedExample ?? null,
+    sitemapFilesRead: resolution?.filesRead ?? null,
+    sitemapFilesComplete: resolution?.complete ?? null,
     htmlSitemapUrl: null,
     htmlSections: [],
     summary,
@@ -288,6 +304,10 @@ function analyzeHtmlSitemap(
     hasImageSitemap: false,
     hasVideoSitemap: false,
     crawledPageCoverage,
+    nestedIndex: false,
+    nestedExample: null,
+    sitemapFilesRead: null,
+    sitemapFilesComplete: null,
     htmlSitemapUrl: url,
     htmlSections: htmlSections.slice(0, 10),
     summary: `HTML-Sitemap mit ${totalUrls} Links in ${htmlSections.length} Sektion${htmlSections.length !== 1 ? "en" : ""} — ${crawledPageCoverage}% der gecrawlten Seiten enthalten.`,
@@ -450,6 +470,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
       crawlResult.sitemapXml,
       sitemapType === "xml_index" ? "xml_index" : "xml",
       crawledPageUrls,
+      crawlResult.sitemapResolution ?? null,
     );
     sitemapXmlContent = crawlResult.sitemapXml.slice(0, 500);
   } else if (sitemapType === "html" && crawlResult.htmlSitemapHtml && crawlResult.htmlSitemapUrl) {

@@ -125,7 +125,7 @@ export function generateRuleBasedRecommendations(moduleResults: Record<string, u
       fixInstruction:
         "Erstellen Sie zusätzlich eine /sitemap.xml und referenzieren Sie diese in der robots.txt:\nSitemap: https://ihre-domain.de/sitemap.xml",
     });
-  } else if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && (sitemapAnalysis.totalUrls as number) < 5) {
+  } else if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && sitemapAnalysis.sitemapFilesComplete !== false && (sitemapAnalysis.totalUrls as number) < 5) {
     recs.push({
       tier: "high_leverage",
       finding: `Sitemap enthält nur ${sitemapAnalysis.totalUrls} URL(s)`,
@@ -136,9 +136,20 @@ export function generateRuleBasedRecommendations(moduleResults: Record<string, u
     });
   }
 
+  if (sitemapUsable && sitemapAnalysis?.nestedIndex === true) {
+    const nestedExample = sitemapAnalysis.nestedExample as string[] | null;
+    recs.push({
+      tier: "high_leverage",
+      finding: "Ihr Sitemap-Index verweist auf weitere Sitemap-Indizes (verschachtelt)",
+      whyItMatters: "Google wertet verschachtelte Sitemap-Indizes laut eigener Dokumentation als Fehler: Ein Sitemap-Index darf nur Sitemap-Dateien auflisten, keine weiteren Indizes. Die dort gelisteten Seiten werden über diese Sitemap möglicherweise nicht erfasst. Ob Ihre Website betroffen ist, zeigt der Sitemap-Bericht Ihrer Google Search Console. Quelle: Google Search Console-Hilfe, https://support.google.com/webmasters/answer/7451001",
+      fixInstruction: "Tragen Sie die eigentlichen Sitemap-Dateien direkt in den obersten Sitemap-Index ein, statt auf weitere Index-Dateien zu verweisen, und reichen Sie die Sitemap anschließend neu ein."
+        + (nestedExample?.length ? `\nBeispiel aus Ihrer Website: ${nestedExample.join(" → ")}` : ""),
+    });
+  }
+
   if (sitemapUsable && hasXmlSitemap && sitemapAnalysis) {
-    const coverage = sitemapAnalysis.crawledPageCoverage as number;
-    if (coverage < 50 && (sitemapAnalysis.totalUrls as number) > 0) {
+    const coverage = sitemapAnalysis.crawledPageCoverage;
+    if (typeof coverage === "number" && coverage < 50 && (sitemapAnalysis.totalUrls as number) > 0) {
       recs.push({
         tier: "high_leverage",
         finding: `Nur ${coverage}% der gecrawlten Seiten sind in der Sitemap enthalten`,
@@ -152,7 +163,7 @@ export function generateRuleBasedRecommendations(moduleResults: Record<string, u
 
   // ── NACHGEORDNET ────────────────────────────────────────────────────────────
 
-  if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && !sitemapAnalysis.oldestLastmod) {
+  if (sitemapUsable && hasXmlSitemap && sitemapAnalysis && sitemapAnalysis.sitemapFilesComplete !== false && !sitemapAnalysis.oldestLastmod) {
     recs.push({
       tier: "secondary",
       finding: "XML-Sitemap enthält keine <lastmod>-Daten",

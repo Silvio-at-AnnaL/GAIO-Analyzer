@@ -34,6 +34,19 @@ export interface CrawlReliability {
   failures: CrawlFailure[];
 }
 
+export interface SitemapResolution {
+  topLevelEntries: number;
+  filesRead: number;
+  filesFailed: number;
+  filesSkipped: number;
+  nested: boolean;
+  nestedExample: string[] | null;
+  complete: boolean;
+  pageUrlCount: number;
+  hasImage: boolean;
+  hasVideo: boolean;
+}
+
 export interface CrawlResult {
   pages: CrawledPage[];
   skipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] };
@@ -41,6 +54,7 @@ export interface CrawlResult {
   timedOut: boolean;
   robotsTxt: string | null;
   sitemapXml: string | null;
+  sitemapResolution?: SitemapResolution | null;
   llmsTxt: string | null;
   htmlSitemapHtml: string | null;
   htmlSitemapUrl: string | null;
@@ -58,7 +72,7 @@ export interface CrawlResult {
 export type SiteTechFiles = Pick<CrawlResult,
   "robotsTxt" | "robotsTxtExists" | "robotsTxtStatus" | "llmsTxt" | "llmsTxtExists" |
   "llmsTxtStatus" | "sitemapXml" | "sitemapXmlExists" | "htmlSitemapHtml" |
-  "htmlSitemapUrl" | "sitemapType" | "sitemapStatus">;
+  "htmlSitemapUrl" | "sitemapType" | "sitemapStatus" | "sitemapResolution">;
 
 export type TechnicalFileStatus = "found" | "missing" | "error";
 
@@ -576,36 +590,118 @@ function parseSitemapDeclarations(robotsTxt: string): string[] {
   return urls;
 }
 
-async function fetchSitemapIndexChildren(indexXml: string): Promise<string | null> {
-  const childUrls: string[] = [];
-  const locRe = /<loc>\s*(.*?)\s*<\/loc>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = locRe.exec(indexXml)) !== null && childUrls.length < 5) {
-    childUrls.push(m[1].trim());
+const SITEMAP_MAX_FILES = 60;
+const SITEMAP_MAX_URLS = 50_000;
+const SITEMAP_MAX_CHARS = 20_000_000;
+const SITEMAP_TIME_BUDGET_MS = 25_000;
+
+function sitemapEntries(xml: string): string[] {
+  return [...xml.matchAll(/<sitemap\b[^>]*>[\s\S]*?<\/sitemap>/gi)]
+    .map(([block]) => block.match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i)?.[1].trim())
+    .filter((url): url is string => Boolean(url));
+}
+
+function prioritizeSitemapEntries(entries: string[], preferredLang: string | null): string[] {
+  if (!preferredLang || !/^[a-z]{2,3}$/i.test(preferredLang)) return entries;
+  const token = new RegExp(`(^|[^a-z])${preferredLang.toLowerCase()}([^a-z]|$)`);
+  const preferred: string[] = [];
+  const rest: string[] = [];
+  for (const url of entries) {
+    (token.test(url.toLowerCase()) ? preferred : rest).push(url);
   }
-  if (childUrls.length === 0) return null;
+  return [...preferred, ...rest];
+}
 
-  const allLocs: string[] = [];
-  await Promise.allSettled(
-    childUrls.map(async (childUrl) => {
-      try {
-        const resp = await fetchWithTiming(childUrl, 10000);
-        if (resp.statusCode === 200 && resp.html.includes("<urlset")) {
-          const matches = [...resp.html.matchAll(/<loc>\s*(.*?)\s*<\/loc>/gi)];
-          allLocs.push(...matches.map((x) => x[1].trim()));
+async function resolveSitemapIndex(
+  indexUrl: string,
+  indexXml: string,
+  preferredLang: string | null,
+): Promise<{ mergedXml: string; resolution: SitemapResolution }> {
+  const start = Date.now();
+  const topEntries = prioritizeSitemapEntries(sitemapEntries(indexXml), preferredLang);
+  const resolution: SitemapResolution = {
+    topLevelEntries: topEntries.length, filesRead: 0, filesFailed: 0, filesSkipped: 0,
+    nested: false, nestedExample: null, complete: false, pageUrlCount: 0,
+    hasImage: false, hasVideo: false,
+  };
+  const queue = topEntries.map((url) => ({ url, level: 1 }));
+  const pages = new Map<string, string | null>();
+  let next = 0;
+  let filesStarted = 1; // Include the already-fetched top-level index in the file budget.
+  let charsRead = indexXml.length;
+  let urlCapHit = false;
+  let firstNestedOrder = Infinity;
+
+  const inFlight = new Set<Promise<void>>();
+  while (next < queue.length || inFlight.size > 0) {
+    while (next < queue.length && inFlight.size < 4 &&
+           filesStarted < SITEMAP_MAX_FILES && charsRead < SITEMAP_MAX_CHARS &&
+           Date.now() - start < SITEMAP_TIME_BUDGET_MS && !urlCapHit) {
+      const order = next++;
+      const { url, level } = queue[order];
+      filesStarted++;
+      const work = (async () => {
+        try {
+          const remaining = SITEMAP_TIME_BUDGET_MS - (Date.now() - start);
+          const resp = await fetchWithTiming(url, Math.min(10000, remaining));
+          if (resp.statusCode !== 200) {
+            resolution.filesFailed++;
+            return;
+          }
+          charsRead += resp.html.length;
+          if (/<urlset\b/i.test(resp.html)) {
+            resolution.filesRead++;
+            resolution.hasImage ||= resp.html.includes("image:") || resp.html.includes("xmlns:image");
+            resolution.hasVideo ||= resp.html.includes("video:") || resp.html.includes("xmlns:video");
+            for (const [block] of resp.html.matchAll(/<url\b[^>]*>[\s\S]*?<\/url>/gi)) {
+              const loc = block.match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i)?.[1].trim();
+              if (!loc || pages.has(loc)) continue;
+              if (pages.size >= SITEMAP_MAX_URLS) {
+                urlCapHit = true;
+                break;
+              }
+              const lastmod = block.match(/<lastmod>\s*([\s\S]*?)\s*<\/lastmod>/i)?.[1].trim() ?? null;
+              pages.set(loc, lastmod);
+            }
+            if (pages.size >= SITEMAP_MAX_URLS) urlCapHit = true;
+          } else if (/<sitemapindex\b/i.test(resp.html)) {
+            resolution.filesRead++;
+            resolution.nested = true;
+            const rawChildren = sitemapEntries(resp.html);
+            const children = prioritizeSitemapEntries(rawChildren, preferredLang);
+            if (order < firstNestedOrder) {
+              firstNestedOrder = order;
+              resolution.nestedExample = [indexUrl, url, ...(rawChildren.length ? [rawChildren[0]] : [])];
+            }
+            if (level === 1) {
+              queue.push(...children.map((child) => ({ url: child, level: 2 })));
+            } else {
+              resolution.filesSkipped++;
+            }
+          } else {
+            resolution.filesFailed++;
+          }
+        } catch {
+          resolution.filesFailed++;
         }
-      } catch {
-        // skip
-      }
-    }),
-  );
-
-  if (allLocs.length === 0) return null;
-  return `<urlset>\n${allLocs.map((u) => `<url><loc>${u}</loc></url>`).join("\n")}\n</urlset>`;
+      })();
+      inFlight.add(work);
+      void work.finally(() => inFlight.delete(work));
+    }
+    if (inFlight.size === 0) break;
+    await Promise.race(inFlight);
+  }
+  resolution.filesSkipped += queue.length - next;
+  resolution.pageUrlCount = pages.size;
+  resolution.complete = resolution.filesFailed === 0 && resolution.filesSkipped === 0 && !urlCapHit;
+  const lines = [...pages].map(([loc, lastmod]) =>
+    `<url><loc>${loc}</loc>${lastmod === null ? "" : `<lastmod>${lastmod}</lastmod>`}</url>`);
+  return { mergedXml: `<urlset>\n${lines.join("\n")}\n</urlset>`, resolution };
 }
 
 interface SitemapDiscoveryResult {
   sitemapXml: string | null;
+  sitemapResolution: SitemapResolution | null;
   htmlSitemapHtml: string | null;
   htmlSitemapUrl: string | null;
   sitemapXmlExists: boolean;
@@ -618,9 +714,10 @@ async function discoverSitemap(
   robotsTxt: string | null,
   homepageHtml: string,
   homepageUrl: string,
+  preferredLang: string | null,
 ): Promise<SitemapDiscoveryResult> {
   const none: SitemapDiscoveryResult = {
-    sitemapXml: null, htmlSitemapHtml: null, htmlSitemapUrl: null,
+    sitemapXml: null, sitemapResolution: null, htmlSitemapHtml: null, htmlSitemapUrl: null,
     sitemapXmlExists: false, sitemapType: "none", sitemapStatus: "missing",
   };
   let hadError = false;
@@ -635,8 +732,8 @@ async function discoverSitemap(
         return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
       }
       if (resp.html.includes("<sitemapindex")) {
-        const merged = await fetchSitemapIndexChildren(resp.html);
-        return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
+        const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap.xml`, resp.html, preferredLang);
+        return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
       }
     }
   }
@@ -647,8 +744,8 @@ async function discoverSitemap(
     hadError ||= fetched.status === "error";
     const resp = fetched.resp;
     if (fetched.status === "found" && resp?.html.includes("<sitemapindex")) {
-      const merged = await fetchSitemapIndexChildren(resp.html);
-      return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
+      const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap_index.xml`, resp.html, preferredLang);
+      return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
     }
   }
 
@@ -660,8 +757,8 @@ async function discoverSitemap(
         if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
         if (resp.statusCode === 200) {
           if (resp.html.includes("<sitemapindex")) {
-            const merged = await fetchSitemapIndexChildren(resp.html);
-            return { ...none, sitemapXml: merged ?? resp.html, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
+            const { mergedXml, resolution } = await resolveSitemapIndex(sitemapUrl, resp.html, preferredLang);
+            return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
           }
           if (resp.html.includes("<urlset")) {
             return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
@@ -740,6 +837,7 @@ export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFile
     llmsTxtExists: false,
     llmsTxtStatus: "missing",
     sitemapXml: null,
+    sitemapResolution: null,
     sitemapXmlExists: false,
     htmlSitemapHtml: null,
     htmlSitemapUrl: null,
@@ -780,7 +878,7 @@ export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFile
     // Continue sitemap discovery with the input origin and no homepage HTML.
   }
 
-  const sitemap = await discoverSitemap(canonicalOrigin, result.robotsTxt, homepageHtml, canonicalHomepageUrl);
+  const sitemap = await discoverSitemap(canonicalOrigin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, homepageHtml ? detectPageLanguage(homepageHtml) : null);
   return { ...result, ...sitemap };
 }
 
@@ -811,6 +909,7 @@ export async function fetchExplicitPages(
     timedOut: false,
     robotsTxt: null,
     sitemapXml: null,
+    sitemapResolution: null,
     llmsTxt: null,
     htmlSitemapHtml: null,
     htmlSitemapUrl: null,
@@ -1065,8 +1164,9 @@ export async function crawlSite(
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
   {
     const origin = `${canonicalProtocol}//${canonicalHost}`;
-    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl);
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, targetLang);
     result.sitemapXml = sd.sitemapXml;
+    result.sitemapResolution = sd.sitemapResolution;
     result.sitemapXmlExists = sd.sitemapXmlExists;
     result.htmlSitemapHtml = sd.htmlSitemapHtml;
     result.htmlSitemapUrl = sd.htmlSitemapUrl;
