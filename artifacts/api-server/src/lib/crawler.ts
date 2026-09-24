@@ -55,6 +55,11 @@ export interface CrawlResult {
   reliability: CrawlReliability;
 }
 
+export type SiteTechFiles = Pick<CrawlResult,
+  "robotsTxt" | "robotsTxtExists" | "robotsTxtStatus" | "llmsTxt" | "llmsTxtExists" |
+  "llmsTxtStatus" | "sitemapXml" | "sitemapXmlExists" | "htmlSitemapHtml" |
+  "htmlSitemapUrl" | "sitemapType" | "sitemapStatus">;
+
 export type TechnicalFileStatus = "found" | "missing" | "error";
 
 type FetchTimingResult = Awaited<ReturnType<typeof fetchWithTiming>>;
@@ -723,6 +728,122 @@ async function discoverSitemap(
     logger.info(fields, "technical file not retrieved");
   }
   return finalResult;
+}
+
+export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFiles> {
+  const base = new URL(inputUrl);
+  const result: SiteTechFiles = {
+    robotsTxt: null,
+    robotsTxtExists: false,
+    robotsTxtStatus: "missing",
+    llmsTxt: null,
+    llmsTxtExists: false,
+    llmsTxtStatus: "missing",
+    sitemapXml: null,
+    sitemapXmlExists: false,
+    htmlSitemapHtml: null,
+    htmlSitemapUrl: null,
+    sitemapType: "none",
+    sitemapStatus: "missing",
+  };
+
+  const robotsResult = await fetchTechFile(`${base.protocol}//${base.hostname}/robots.txt`, 10000);
+  result.robotsTxtStatus = robotsResult.status;
+  const robotsResp = robotsResult.resp;
+  if (robotsResult.status === "found" && robotsResp && robotsResp.html.length < 100_000) {
+    result.robotsTxt = robotsResp.html;
+    result.robotsTxtExists = true;
+  }
+
+  const llmsResult = await fetchTechFile(`${base.protocol}//${base.hostname}/llms.txt`, 10000);
+  result.llmsTxtStatus = llmsResult.status;
+  const llmsResp = llmsResult.resp;
+  if (llmsResult.status === "found" && llmsResp && llmsResp.html.length > 0 && llmsResp.html.length < 200_000) {
+    result.llmsTxt = llmsResp.html;
+    result.llmsTxtExists = true;
+  }
+
+  let canonicalOrigin = base.origin;
+  let canonicalHomepageUrl = inputUrl;
+  let homepageHtml = "";
+  try {
+    const homePage = await fetchWithTiming(inputUrl);
+    if (homePage.statusCode < 400) {
+      const finalUrl = new URL(homePage.finalUrl);
+      if (hostKey(finalUrl.hostname) === hostKey(base.hostname)) {
+        canonicalOrigin = finalUrl.origin;
+      }
+      canonicalHomepageUrl = homePage.finalUrl;
+      homepageHtml = homePage.html;
+    }
+  } catch {
+    // Continue sitemap discovery with the input origin and no homepage HTML.
+  }
+
+  const sitemap = await discoverSitemap(canonicalOrigin, result.robotsTxt, homepageHtml, canonicalHomepageUrl);
+  return { ...result, ...sitemap };
+}
+
+export async function fetchExplicitPages(
+  inputUrl: string,
+  explicitUrls: string[],
+  opts?: { onProgress?: (done: number, total: number) => void },
+): Promise<CrawlResult> {
+  const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20_000, 180_000);
+  const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
+  const completed = new Array<boolean>(explicitUrls.length).fill(false);
+  const loopStart = Date.now();
+  let done = 0;
+
+  for (const [index, pageUrl] of explicitUrls.entries()) {
+    if (Date.now() - loopStart >= BATCH_DEADLINE_MS) break;
+    results[index] = await fetchPage(pageUrl);
+    completed[index] = true;
+    opts?.onProgress?.(++done, explicitUrls.length);
+  }
+
+  const pages = results.filter(
+    (page): page is CrawledPage => page !== null && page.statusCode < 400,
+  );
+  const result: CrawlResult = {
+    pages,
+    skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+    timedOut: false,
+    robotsTxt: null,
+    sitemapXml: null,
+    llmsTxt: null,
+    htmlSitemapHtml: null,
+    htmlSitemapUrl: null,
+    sitemapType: "none",
+    robotsTxtExists: false,
+    sitemapXmlExists: false,
+    llmsTxtExists: false,
+    hreflangVariants: [],
+    reliability: {
+      attempted: explicitUrls.length,
+      succeeded: pages.length,
+      failed: explicitUrls.length - pages.length,
+      failures: results.flatMap<CrawlFailure>((page, index) => {
+        if (!completed[index]) {
+          return [{ url: explicitUrls[index], reason: "timeout" as const }];
+        }
+        if (page === null) {
+          return [{ url: explicitUrls[index], reason: "unknown" as const }];
+        }
+        if (page.statusCode >= 400) {
+          return [{
+            url: explicitUrls[index],
+            reason: "http_error" as const,
+            statusCode: page.statusCode,
+          }];
+        }
+        return [];
+      }).slice(0, 25),
+    },
+  };
+
+  if (pages.length > 0) Object.assign(result, await fetchSiteTechFiles(inputUrl));
+  return result;
 }
 
 export async function crawlSite(

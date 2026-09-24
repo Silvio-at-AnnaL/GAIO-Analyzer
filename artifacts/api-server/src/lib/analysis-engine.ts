@@ -1,4 +1,4 @@
-import { crawlSite, fetchPage, pageLanguage, type CrawlFailure, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchExplicitPages, pageLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
@@ -308,74 +308,14 @@ export async function runAnalysis(
       save();
 
       if (explicitUrls && explicitUrls.length > 0) {
-        // Use pre-selected pages, fetch them individually without re-crawling
-        const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20_000, 180_000);
-        const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
-        const completed = new Array<boolean>(explicitUrls.length).fill(false);
-        let settled = 0;
-        let batchOpen = true;
-        let deadlineTimer: ReturnType<typeof setTimeout>;
-
-        const deadline = new Promise<void>((resolve) => {
-          deadlineTimer = setTimeout(resolve, BATCH_DEADLINE_MS);
-        });
-        const all = Promise.allSettled(
-          explicitUrls.map(async (pageUrl, index) => {
-            const page = await fetchPage(pageUrl);
-            results[index] = page;
-            completed[index] = true;
-            settled++;
-            if (batchOpen) {
-              state.progress = 5 + Math.round((settled / explicitUrls.length) * 15);
-              state.currentModule = "Crawling Website";
-              save();
-            }
-          }),
-        );
-
-        await Promise.race([all, deadline]);
-        batchOpen = false;
-        clearTimeout(deadlineTimer!);
-
-        pages = results.filter(
-          (page): page is CrawledPage => page !== null && page.statusCode < 400,
-        );
-        crawlResult = {
-          pages,
-          skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
-          timedOut: false,
-          robotsTxt: null,
-          sitemapXml: null,
-          llmsTxt: null,
-          htmlSitemapHtml: null,
-          htmlSitemapUrl: null,
-          sitemapType: "none",
-          robotsTxtExists: false,
-          sitemapXmlExists: false,
-          llmsTxtExists: false,
-          hreflangVariants: [],
-          reliability: {
-            attempted: explicitUrls.length,
-            succeeded: pages.length,
-            failed: explicitUrls.length - pages.length,
-            failures: results.flatMap<CrawlFailure>((page, index) => {
-              if (!completed[index]) {
-                return [{ url: explicitUrls[index], reason: "timeout" as const }];
-              }
-              if (page === null) {
-                return [{ url: explicitUrls[index], reason: "unknown" as const }];
-              }
-              if (page.statusCode >= 400) {
-                return [{
-                  url: explicitUrls[index],
-                  reason: "http_error" as const,
-                  statusCode: page.statusCode,
-                }];
-              }
-              return [];
-            }).slice(0, 25),
+        crawlResult = await fetchExplicitPages(url, explicitUrls, {
+          onProgress: (done, total) => {
+            state.progress = 5 + Math.round((done / total) * 15);
+            state.currentModule = "Crawling Website";
+            save();
           },
-        };
+        });
+        pages = crawlResult.pages;
       } else {
         crawlResult = await crawlSite(url, 16, {
           deadlineMs: 90_000,
