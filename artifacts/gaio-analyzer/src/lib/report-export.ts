@@ -156,7 +156,7 @@ function divider(label: string): string {
 function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): string {
   type LlmCrawlerStatus = { name: string; status: "allowed" | "disallowed" | "not_mentioned" };
   type RobotsAnalysis = { userAgents: string[]; llmCrawlers: LlmCrawlerStatus[]; siteBlockedAgents: string[]; crawlDelays: Array<{ agent: string; delay: number }>; sitemapUrls: string[]; summary: string };
-  type SitemapAnalysis = { type?: string; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
+  type SitemapAnalysis = { type?: string; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number | null; nestedIndex?: boolean; nestedExample?: string[] | null; sitemapFilesRead?: number | null; sitemapFilesComplete?: boolean | null; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
   type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
   type LlmsAnalysis = { present: boolean; title: string | null; description: string | null; sections: LlmsSection[]; linkedPageCount: number; hasDescription: boolean; summary: string };
 
@@ -172,6 +172,13 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
   const llmsTxtContent    = technicalSeo.llmsTxtContent as string | null;
 
   const sitemapTypeBadge  = sitemapType === "xml" ? "XML" : sitemapType === "xml_index" ? "XML-Index" : sitemapType === "html" ? "HTML-Sitemap" : "nicht gefunden";
+  const CS = {
+    indexNested: "XML-Index (verschachtelt)",
+    filesRead: "Teil-Sitemaps gelesen",
+    incomplete: "unvollständig",
+    nestedHint: "Verschachtelter Aufbau: Laut Google darf ein Sitemap-Index nur Sitemap-Dateien auflisten, keine weiteren Sitemap-Indizes. Abhilfe siehe Empfehlungen.",
+    nestedExample: "Beispiel:",
+  } as const;
 
   const subHead = (label: string, found: boolean, badge?: string) =>
     `<h4 style="font-size:13px;font-weight:600;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid ${C.border};">${esc(label)} — <span style="color:${found ? "#22c55e" : "#ef4444"}">${badge ? esc(badge) : (found ? "gefunden" : "nicht gefunden")}</span></h4>`;
@@ -210,9 +217,10 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
     const isXml  = sitemapType === "xml" || sitemapType === "xml_index";
     const isHtml = sitemapType === "html";
     html += `<div class="detail-grid">
-      <div class="detail-item"><div class="label">Typ</div><div class="val">${esc(sitemapTypeBadge)}</div></div>
+      <div class="detail-item"><div class="label">Typ</div><div class="val">${esc(sitemapAnalysis.nestedIndex === true ? CS.indexNested : sitemapTypeBadge)}</div></div>
       <div class="detail-item"><div class="label">${isHtml ? "Verlinkungen gesamt" : "URLs gesamt"}</div><div class="val">${sitemapAnalysis.totalUrls}</div></div>
-      <div class="detail-item"><div class="label">Crawl-Abdeckung</div><div class="val">${sitemapAnalysis.crawledPageCoverage}%</div></div>
+      <div class="detail-item"><div class="label">Crawl-Abdeckung</div><div class="val">${sitemapAnalysis.crawledPageCoverage === null ? "—" : `${sitemapAnalysis.crawledPageCoverage}%`}</div></div>${isXml && typeof sitemapAnalysis.sitemapFilesRead === "number" ? `
+      <div class="detail-item"><div class="label">${CS.filesRead}</div><div class="val">${sitemapAnalysis.sitemapFilesRead}${sitemapAnalysis.sitemapFilesComplete === false ? ` (${CS.incomplete})` : ""}</div></div>` : ""}
       ${isXml ? `<div class="detail-item"><div class="label">Älteste Lastmod</div><div class="val">${sitemapAnalysis.oldestLastmod ? esc(sitemapAnalysis.oldestLastmod.slice(0, 10)) : "—"}</div></div>` : ""}
       ${isXml ? `<div class="detail-item"><div class="label">Neueste Lastmod</div><div class="val">${sitemapAnalysis.newestLastmod ? esc(sitemapAnalysis.newestLastmod.slice(0, 10)) : "—"}</div></div>` : ""}
       ${isXml ? `<div class="detail-item"><div class="label">Spezial-Typen</div><div class="val">${[sitemapAnalysis.hasImageSitemap && "Image", sitemapAnalysis.hasVideoSitemap && "Video"].filter(Boolean).join(", ") || "—"}</div></div>` : ""}
@@ -222,6 +230,12 @@ function renderTechnischeDateienHtml(technicalSeo: Record<string, unknown>): str
       html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0 4px;"><strong>Sektion-Überschriften:</strong> ${sitemapAnalysis.htmlSections.map(esc).join(", ")}</p>`;
     }
     html += `<p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(sitemapAnalysis.summary)}</p>`;
+    if (sitemapAnalysis.nestedIndex === true) {
+      html += `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#92400e;">
+        ${CS.nestedHint}
+        ${sitemapAnalysis.nestedExample?.length ? `<div style="margin-top:4px;font-family:monospace;word-break:break-all;">${CS.nestedExample} ${sitemapAnalysis.nestedExample.map(esc).join(" → ")}</div>` : ""}
+      </div>`;
+    }
     if (isHtml) {
       html += `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#92400e;">
         HTML-Sitemaps sind nicht maschinenlesbar — Suchmaschinen und LLM-Crawler können sie nicht automatisch verarbeiten. Erstellen Sie zusätzlich eine <code>/sitemap.xml</code>.

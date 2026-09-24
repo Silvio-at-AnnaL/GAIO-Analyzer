@@ -2342,7 +2342,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           {technicalSeo && (() => {
             type LlmCrawlerStatus = { name: string; status: "allowed" | "disallowed" | "not_mentioned" };
             type RobotsAnalysis = { userAgents: string[]; llmCrawlers: LlmCrawlerStatus[]; siteBlockedAgents: string[]; crawlDelays: Array<{ agent: string; delay: number }>; sitemapUrls: string[]; summary: string };
-            type SitemapAnalysis = { type?: "xml" | "xml_index" | "html" | "none"; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
+            type SitemapAnalysis = { type?: "xml" | "xml_index" | "html" | "none"; totalUrls: number; isSitemapIndex: boolean; oldestLastmod: string | null; newestLastmod: string | null; priorityDistribution: Record<string, number>; hasImageSitemap: boolean; hasVideoSitemap: boolean; crawledPageCoverage: number | null; nestedIndex?: boolean; nestedExample?: string[] | null; sitemapFilesRead?: number | null; sitemapFilesComplete?: boolean | null; htmlSitemapUrl?: string | null; htmlSections?: string[]; summary: string };
             type LlmsSection = { name: string; links: Array<{ title: string; url: string; description: string }> };
             type LlmsAnalysis = { present: boolean; title: string | null; description: string | null; sections: LlmsSection[]; linkedPageCount: number; hasDescription: boolean; summary: string };
             const robots = technicalSeo.robotsTxtAnalysis as RobotsAnalysis | null;
@@ -2437,12 +2437,18 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">{t("results.sitemap_type_label")}</p>
-                                  <p className="text-sm font-bold">{sitemap.isSitemapIndex ? t("results.sitemap_is_index") : t("results.sitemap_single")}</p>
+                                  <p className="text-sm font-bold">{sitemap.nestedIndex === true ? t("results.sitemap_is_index_nested") : sitemap.isSitemapIndex ? t("results.sitemap_is_index") : t("results.sitemap_single")}</p>
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">{t("results.sitemap_crawl_coverage")}</p>
-                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage === null ? "—" : `${sitemap.crawledPageCoverage}%`}</p>
                                 </div>
+                                {typeof sitemap.sitemapFilesRead === "number" && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">{t("results.sitemap_files_read")}</p>
+                                    <p className="text-sm font-bold font-mono">{sitemap.sitemapFilesRead}{sitemap.sitemapFilesComplete === false ? ` (${t("results.sitemap_incomplete")})` : ""}</p>
+                                  </div>
+                                )}
                                 <div>
                                   <p className="text-xs text-muted-foreground">{t("results.sitemap_special_types")}</p>
                                   <p className="text-sm font-bold">{[sitemap.hasImageSitemap && t("results.sitemap_type_image"), sitemap.hasVideoSitemap && t("results.sitemap_type_video")].filter(Boolean).join(", ") || "—"}</p>
@@ -2471,6 +2477,14 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground italic">{sitemap.summary}</p>
+                              {sitemap.nestedIndex === true && (
+                                <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+                                  {t("results.sitemap_nested_hint")}
+                                  {sitemap.nestedExample && sitemap.nestedExample.length > 0 && (
+                                    <p className="mt-1 font-mono break-all">{t("results.sitemap_nested_example")} {sitemap.nestedExample.join(" → ")}</p>
+                                  )}
+                                </div>
+                              )}
                               {sitemapContent && !pdfMode && (
                                 <details className="text-xs">
                                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{t("results.raw_data_toggle")}</summary>
@@ -2494,7 +2508,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">{t("results.sitemap_crawl_coverage")}</p>
-                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage}%</p>
+                                  <p className="text-sm font-bold font-mono">{sitemap.crawledPageCoverage === null ? "—" : `${sitemap.crawledPageCoverage}%`}</p>
                                 </div>
                                 <div>
                                   <p className="text-xs text-muted-foreground">{t("results.sitemap_structure_sections")}</p>
