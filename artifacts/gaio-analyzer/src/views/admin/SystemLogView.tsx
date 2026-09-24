@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, type FormEvent } fr
 import { adminFetch, useAuth } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download } from "lucide-react";
 
 interface SystemEvent {
   id: string;
@@ -17,6 +17,24 @@ interface SystemEvent {
 interface SystemLogResponse {
   events: SystemEvent[];
   nextBeforeId: string | null;
+}
+
+interface SystemLogFilters {
+  from: string;
+  to: string;
+  minLevel: string;
+  analysisId: string;
+  q: string;
+}
+
+function filterParams(filters: SystemLogFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.minLevel) params.set("minLevel", filters.minLevel);
+  if (filters.analysisId) params.set("analysisId", filters.analysisId);
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  return params;
 }
 
 function LevelBadge({ level, t }: { level: number; t: (k: string) => string }) {
@@ -93,6 +111,8 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
   const [isLoading, setIsLoading] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [expandedContexts, setExpandedContexts] = useState<Record<string, boolean>>({});
   const requestGeneration = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
@@ -116,12 +136,7 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
       setError(null);
 
       try {
-        const params = new URLSearchParams();
-        if (activeFilters.from) params.set("from", activeFilters.from);
-        if (activeFilters.to) params.set("to", activeFilters.to);
-        if (activeFilters.minLevel) params.set("minLevel", activeFilters.minLevel);
-        if (activeFilters.analysisId) params.set("analysisId", activeFilters.analysisId);
-        if (activeFilters.q.trim()) params.set("q", activeFilters.q.trim());
+        const params = filterParams(activeFilters);
         params.set("limit", "50");
         if (beforeId) params.set("beforeId", beforeId);
 
@@ -167,6 +182,37 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
   const handleFilter = (e?: FormEvent) => {
     if (e) e.preventDefault();
     setActiveFilters({ from, to, minLevel, analysisId, q });
+  };
+
+  const handleExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const params = filterParams(activeFilters);
+      const res = await adminFetch(`/api/admin/system-events/export?${params.toString()}`);
+      if (!res.ok) throw new Error("Export failed");
+      const match = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"|filename=([^;]+)/i);
+      const filename = match?.[1] ?? match?.[2]?.trim() ?? "systemprotokoll.json";
+      const objectUrl = URL.createObjectURL(await res.blob());
+      try {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch {
+      setExportError(t("systemlog.export_error"));
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleReset = () => {
@@ -314,7 +360,19 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
           />
         </div>
 
-        <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={isExporting}
+            title={t("systemlog.export_hint")}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
+            style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
+            data-testid="button-export-system-log"
+          >
+            <Download className="w-4 h-4" />
+            {isExporting ? t("systemlog.export_running") : t("systemlog.btn_export")}
+          </button>
           <button
             type="button"
             onClick={handleReset}
@@ -332,6 +390,7 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
           >
             {t("systemlog.btn_filter")}
           </button>
+          {exportError && <span className="text-xs text-red-400" role="alert">{exportError}</span>}
         </div>
       </form>
 

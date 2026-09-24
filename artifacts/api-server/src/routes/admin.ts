@@ -87,12 +87,85 @@ const adminRouter = Router();
 
 interface SystemEventRow {
   id: string;
-  created_at: string;
+  created_at: string | Date;
   level: number;
   msg: string;
   analysis_id: string | null;
   analysis_domain: string | null;
   context: Record<string, unknown> | null;
+}
+
+const SYSTEM_EVENTS_EXPORT_MAX = 5000;
+const SYSTEM_EVENTS_SELECT = `SELECT system_events.id::text AS id, system_events.created_at, level, msg, analysis_id, context,
+       analysis.analysis_domain
+  FROM system_events
+  LEFT JOIN LATERAL (
+    SELECT al.domain AS analysis_domain
+    FROM analysis_log al
+    WHERE al.analysis_uuid = system_events.analysis_id
+    LIMIT 1
+  ) analysis ON TRUE`;
+
+function systemEventFilters(req: Request) {
+  const from = typeof req.query.from === "string" && req.query.from ? req.query.from : null;
+  const to = typeof req.query.to === "string" && req.query.to ? req.query.to : null;
+  const toIsPlainDate = to !== null && /^\d{4}-\d{2}-\d{2}$/.test(to);
+  const analysisId = typeof req.query.analysisId === "string" && req.query.analysisId
+    ? req.query.analysisId
+    : null;
+  const rawQ = typeof req.query.q === "string" && req.query.q ? req.query.q : null;
+  const escapedQ = rawQ
+    ?.replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+  const q = escapedQ ? `%${escapedQ}%` : null;
+  const requestedMinLevel = parseInt(String(req.query.minLevel ?? "40"), 10);
+  const minLevel = [30, 40, 50].includes(requestedMinLevel) ? requestedMinLevel : 40;
+
+  if (from !== null && Number.isNaN(Date.parse(from))) {
+    return { error: "Ungültiges from-Datum" } as const;
+  }
+  if (to !== null && Number.isNaN(Date.parse(to))) {
+    return { error: "Ungültiges to-Datum" } as const;
+  }
+
+  return {
+    from, to, minLevel, analysisId, rawQ,
+    params: [from, to, minLevel, analysisId, q, toIsPlainDate],
+    where: `WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+      AND (
+        $2::text IS NULL
+        OR ($6::boolean AND created_at < $2::date + INTERVAL '1 day')
+        OR (NOT $6::boolean AND created_at <= $2::timestamptz)
+      )
+      AND level >= $3
+      AND ($4::text IS NULL OR analysis_id = $4)
+      AND ($5::text IS NULL OR msg ILIKE $5 ESCAPE '\\' OR context::text ILIKE $5 ESCAPE '\\')`,
+  };
+}
+
+function normalizeAnalysisDomain(domain: string | null): string | null {
+  if (!domain) return null;
+  try {
+    const value = domain.startsWith("//")
+      ? `https:${domain}`
+      : /^[a-z][a-z\d+.-]*:\/\//i.test(domain)
+        ? domain
+        : `https://${domain}`;
+    return new URL(value).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+const berlinDateTime = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Europe/Berlin",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+
+function formatBerlinTime(value: Date | string): string {
+  return berlinDateTime.format(new Date(value));
 }
 
 interface CustomProviderRecord {
@@ -699,82 +772,34 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
 // GET /api/admin/system-events — admin only, cursor-paginated
 adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const from = typeof req.query.from === "string" && req.query.from ? req.query.from : null;
-    const to = typeof req.query.to === "string" && req.query.to ? req.query.to : null;
-    const toIsPlainDate = to !== null && /^\d{4}-\d{2}-\d{2}$/.test(to);
-    const analysisId = typeof req.query.analysisId === "string" && req.query.analysisId
-      ? req.query.analysisId
-      : null;
-    const rawQ = typeof req.query.q === "string" && req.query.q ? req.query.q : null;
-    const escapedQ = rawQ
-      ?.replace(/\\/g, "\\\\")
-      .replace(/%/g, "\\%")
-      .replace(/_/g, "\\_");
-    const q = escapedQ ? `%${escapedQ}%` : null;
-    const requestedMinLevel = parseInt(String(req.query.minLevel ?? "40"), 10);
-    const minLevel = [30, 40, 50].includes(requestedMinLevel) ? requestedMinLevel : 40;
+    const filters = systemEventFilters(req);
+    if ("error" in filters) {
+      res.status(400).json({ error: filters.error }); return;
+    }
     const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? "100"), 10) || 100));
     const beforeIdRaw = typeof req.query.beforeId === "string" ? req.query.beforeId : "";
     const beforeId = /^\d+$/.test(beforeIdRaw) ? beforeIdRaw : null;
 
-    if (from !== null && Number.isNaN(Date.parse(from))) {
-      res.status(400).json({ error: "Ungültiges from-Datum" }); return;
-    }
-    if (to !== null && Number.isNaN(Date.parse(to))) {
-      res.status(400).json({ error: "Ungültiges to-Datum" }); return;
-    }
-
     const rows = (await query<SystemEventRow>(
-      `SELECT system_events.id::text AS id, system_events.created_at, level, msg, analysis_id, context,
-              analysis.analysis_domain
-       FROM system_events
-       LEFT JOIN LATERAL (
-         SELECT al.domain AS analysis_domain
-         FROM analysis_log al
-         WHERE al.analysis_uuid = system_events.analysis_id
-         LIMIT 1
-       ) analysis ON TRUE
-       WHERE ($1::timestamptz IS NULL OR created_at >= $1)
-         AND (
-           $2::text IS NULL
-           OR ($8::boolean AND created_at < $2::date + INTERVAL '1 day')
-           OR (NOT $8::boolean AND created_at <= $2::timestamptz)
-         )
-         AND level >= $3
-         AND ($4::text IS NULL OR analysis_id = $4)
-         AND ($5::text IS NULL OR msg ILIKE $5 ESCAPE '\\' OR context::text ILIKE $5 ESCAPE '\\')
-         AND ($6::bigint IS NULL OR system_events.id < $6)
+      `${SYSTEM_EVENTS_SELECT}
+        ${filters.where}
+         AND ($7::bigint IS NULL OR system_events.id < $7)
        ORDER BY system_events.id DESC
-       LIMIT $7`,
-      [from, to, minLevel, analysisId, q, beforeId, limit + 1, toIsPlainDate],
+        LIMIT $8`,
+       [...filters.params, beforeId, limit + 1],
     )).rows;
 
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const events = pageRows.map((row) => {
-      let analysisDomain: string | null = null;
-      if (row.analysis_domain) {
-        try {
-          const value = row.analysis_domain.startsWith("//")
-            ? `https:${row.analysis_domain}`
-            : /^[a-z][a-z\d+.-]*:\/\//i.test(row.analysis_domain)
-              ? row.analysis_domain
-              : `https://${row.analysis_domain}`;
-          analysisDomain = new URL(value).hostname || null;
-        } catch {
-          analysisDomain = null;
-        }
-      }
-      return {
-        id: row.id,
-        createdAt: row.created_at,
-        level: row.level,
-        msg: row.msg,
-        analysisId: row.analysis_id,
-        analysisDomain,
-        context: row.context,
-      };
-    });
+    const events = pageRows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      level: row.level,
+      msg: row.msg,
+      analysisId: row.analysis_id,
+      analysisDomain: normalizeAnalysisDomain(row.analysis_domain),
+      context: row.context,
+    }));
     res.json({
       events,
       nextBeforeId: hasMore ? pageRows.at(-1)?.id ?? null : null,
@@ -782,6 +807,62 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
   } catch (err) {
     logger.warn({ err }, "system-events query failed");
     res.status(500).json({ error: "Systemprotokoll konnte nicht geladen werden" });
+  }
+});
+
+// GET /api/admin/system-events/export — admin only, oldest first
+adminRouter.get("/system-events/export", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const filters = systemEventFilters(req);
+    if ("error" in filters) {
+      res.status(400).json({ error: filters.error }); return;
+    }
+
+    const rows = (await query<SystemEventRow>(
+      `${SYSTEM_EVENTS_SELECT}
+        ${filters.where}
+        ORDER BY system_events.id DESC
+        LIMIT $7`,
+      [...filters.params, SYSTEM_EVENTS_EXPORT_MAX + 1],
+    )).rows;
+    const truncated = rows.length > SYSTEM_EVENTS_EXPORT_MAX;
+    const newest = truncated ? rows.slice(0, SYSTEM_EVENTS_EXPORT_MAX) : rows;
+    const exportedAt = formatBerlinTime(new Date());
+    const safeId = filters.analysisId?.slice(0, 8).toLowerCase().replace(/[^a-z0-9-]/g, "");
+    const filename = `systemprotokoll_${safeId ? `${safeId}_` : ""}${exportedAt.slice(0, 16).replace(" ", "_").replace(":", "-")}.json`;
+    const events = newest.reverse().map((row) => ({
+      id: row.id,
+      time: formatBerlinTime(row.created_at),
+      timeUtc: new Date(row.created_at).toISOString(),
+      level: row.level,
+      levelName: ({ 30: "info", 40: "warn", 50: "error", 60: "fatal" } as Record<number, string>)[row.level] ?? String(row.level),
+      message: row.msg,
+      analysisId: row.analysis_id,
+      domain: normalizeAnalysisDomain(row.analysis_domain),
+      details: row.context,
+    }));
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(JSON.stringify({
+      exportedAt,
+      timeZone: "Europe/Berlin",
+      filter: {
+        from: filters.from,
+        to: filters.to,
+        minLevel: filters.minLevel,
+        analysisId: filters.analysisId,
+        q: filters.rawQ,
+      },
+      order: "oldest first",
+      maxEntries: SYSTEM_EVENTS_EXPORT_MAX,
+      count: events.length,
+      truncated,
+      events,
+    }, null, 2));
+  } catch (err) {
+    logger.warn({ err }, "system-events export failed");
+    res.status(500).json({ error: "Systemprotokoll konnte nicht exportiert werden" });
   }
 });
 
