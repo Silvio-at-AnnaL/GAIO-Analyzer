@@ -52,6 +52,7 @@ export interface MainSiteScores {
 }
 
 const MAX_COMPETITORS = 5;
+const COMPETITOR_MAX_PAGES = 5;
 const CRAWL_DEADLINE_MS = 45_000;
 const FINDINGS_TIMEOUT_MS = 30_000;
 const CONTENT_TIMEOUT_MS = 60_000;
@@ -262,7 +263,7 @@ export async function analyzeCompetitors(
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
       const crawlStartedAt = Date.now();
-      const crawlResult = await crawlSite(normalizedUrl, 5, { deadlineMs: CRAWL_DEADLINE_MS, preferredLang: mainSiteLang ?? undefined });
+      const crawlResult = await crawlSite(normalizedUrl, COMPETITOR_MAX_PAGES, { deadlineMs: CRAWL_DEADLINE_MS, preferredLang: mainSiteLang ?? undefined });
 
       if (crawlResult.pages.length === 0) {
         const errorReason = crawlResult.homepageFailReason === "bot_protection" ||
@@ -292,6 +293,25 @@ export async function analyzeCompetitors(
           error: "Nicht erreichbar",
           errorReason,
         };
+      }
+
+      if (crawlResult.timedOut || crawlResult.pages.length < COMPETITOR_MAX_PAGES) {
+        logger.warn(
+          {
+            competitorDomain,
+            pages: crawlResult.pages.length,
+            requested: COMPETITOR_MAX_PAGES,
+            timedOut: crawlResult.timedOut,
+            attempted: crawlResult.reliability.attempted,
+            succeeded: crawlResult.reliability.succeeded,
+            failed: crawlResult.reliability.failed,
+            skippedOtherLanguage: crawlResult.skipped.otherLanguage,
+            skippedExcludedPath: crawlResult.skipped.excludedPath,
+            skippedDuplicate: crawlResult.skipped.duplicate,
+            durationMs: Date.now() - crawlStartedAt,
+          },
+          "Competitor crawl returned fewer pages than requested",
+        );
       }
 
       const crawledPages: CompetitorCrawledPage[] = crawlResult.pages.map((p) => ({

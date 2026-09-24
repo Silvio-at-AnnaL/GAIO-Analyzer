@@ -494,6 +494,8 @@ function isForeignBranch(
 
 function addToQueue(
   categoryQueues: Map<string, QueueEntry[]>,
+  queuedUrls: Set<string>,
+  dirtyQueues: Set<QueueEntry[]>,
   entry: QueueEntry,
   visited: Set<string>,
   hreflangUrlSet: Set<string>,
@@ -512,9 +514,10 @@ function addToQueue(
   }
   if (!categoryQueues.has(entry.category)) categoryQueues.set(entry.category, []);
   const q = categoryQueues.get(entry.category)!;
-  if (q.some((e) => e.url === entry.url)) return;
+  if (queuedUrls.has(entry.url)) return;
+  queuedUrls.add(entry.url);
   q.push(entry);
-  sortCategoryQueue(q);
+  dirtyQueues.add(q);
 }
 
 // ─── Known language/region codes for path-based detection ────────────────────
@@ -864,6 +867,8 @@ export async function crawlSite(
 
   // Per-category queues (Rule 5 data structure)
   const categoryQueues = new Map<string, QueueEntry[]>();
+  const queuedUrls = new Set<string>();
+  const dirtyQueues = new Set<QueueEntry[]>();
   // Per-category crawl counts for the 25% cap (Rule 1)
   const categoryCounts = new Map<string, number>();
 
@@ -963,7 +968,7 @@ export async function crawlSite(
       recordExcludedPath,
     );
     for (const { url } of links) {
-      addToQueue(categoryQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
     }
   }
 
@@ -980,7 +985,7 @@ export async function crawlSite(
         }
         if (scoreUrl(u) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
-        addToQueue(categoryQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+        addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
       } catch {
         // skip
       }
@@ -1018,6 +1023,8 @@ export async function crawlSite(
     let bestEntry: QueueEntry | null = null;
     let bestScore = -Infinity;
 
+    for (const queue of dirtyQueues) sortCategoryQueue(queue);
+    dirtyQueues.clear();
     for (const [cat, queue] of categoryQueues) {
       // Flush stale (visited / quarantined) entries from the front
       while (queue.length > 0 && (visited.has(queue[0].url) || hreflangUrlSet.has(queue[0].url))) {
@@ -1109,7 +1116,7 @@ export async function crawlSite(
         if (pagesLeft > 0) {
           const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
           for (const { url: linkUrl } of links) {
-            addToQueue(categoryQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+            addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
           }
         }
       } else {
