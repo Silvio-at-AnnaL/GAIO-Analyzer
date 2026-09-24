@@ -590,7 +590,7 @@ function parseSitemapDeclarations(robotsTxt: string): string[] {
   return urls;
 }
 
-const SITEMAP_MAX_FILES = 60;
+const SITEMAP_MAX_FILES = 100;
 const SITEMAP_MAX_URLS = 50_000;
 const SITEMAP_MAX_CHARS = 20_000_000;
 const SITEMAP_TIME_BUDGET_MS = 25_000;
@@ -607,7 +607,14 @@ function prioritizeSitemapEntries(entries: string[], preferredLang: string | nul
   const preferred: string[] = [];
   const rest: string[] = [];
   for (const url of entries) {
-    (token.test(url.toLowerCase()) ? preferred : rest).push(url);
+    let pathAndSearch: string;
+    try {
+      const parsed = new URL(url);
+      pathAndSearch = parsed.pathname + parsed.search;
+    } catch {
+      pathAndSearch = url;
+    }
+    (token.test(pathAndSearch.toLowerCase()) ? preferred : rest).push(url);
   }
   return [...preferred, ...rest];
 }
@@ -674,7 +681,7 @@ async function resolveSitemapIndex(
               resolution.nestedExample = [indexUrl, url, ...(rawChildren.length ? [rawChildren[0]] : [])];
             }
             if (level === 1) {
-              queue.push(...children.map((child) => ({ url: child, level: 2 })));
+              queue.splice(next, 0, ...children.map((child) => ({ url: child, level: 2 })));
             } else {
               resolution.filesSkipped++;
             }
