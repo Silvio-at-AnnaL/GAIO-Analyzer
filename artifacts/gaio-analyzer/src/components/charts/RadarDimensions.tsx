@@ -1,6 +1,9 @@
+import { useT } from "@/lib/LabelProvider";
+
 export function RadarDimensions({ dimensions }: {
-  dimensions: Array<{ label: string; value: number; color: string }>;
+  dimensions: Array<{ label: string; value: number | null; color: string }>;
 }) {
+  const t = useT();
   const CX = 160, CY = 160, MAX_R = 120, RINGS = 5;
   const N = dimensions.length;
 
@@ -9,8 +12,10 @@ export function RadarDimensions({ dimensions }: {
     return { x: CX + r * Math.cos(angle), y: CY + r * Math.sin(angle) };
   };
 
-  const dataPoints = dimensions.map((d, i) => pt(i, (d.value / 100) * MAX_R));
-  const polyPoints = dataPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const dataPoints = dimensions.flatMap((d, i) =>
+    d.value === null ? [] : [{ point: pt(i, (d.value / 100) * MAX_R), index: i }]
+  );
+  const polyPoints = dataPoints.map(({ point }) => `${point.x},${point.y}`).join(" ");
 
   return (
     <div style={{ background: "#1e2235", borderRadius: 12, padding: 20, height: "100%", boxSizing: "border-box" }}>
@@ -36,7 +41,7 @@ export function RadarDimensions({ dimensions }: {
           })}
 
           {/* Axis lines */}
-          {dimensions.map((_, i) => {
+          {dimensions.map((d, i) => {
             const end = pt(i, MAX_R);
             return (
               <line
@@ -47,6 +52,7 @@ export function RadarDimensions({ dimensions }: {
                 y2={end.y}
                 stroke="rgba(255,255,255,0.15)"
                 strokeWidth={1}
+                strokeDasharray={d.value === null ? "3 3" : undefined}
               />
             );
           })}
@@ -61,7 +67,7 @@ export function RadarDimensions({ dimensions }: {
           />
 
           {/* Dots on data points */}
-          {dataPoints.map((p, i) => (
+          {dataPoints.map(({ point: p, index: i }) => (
             <circle
               key={i}
               cx={p.x}
@@ -83,7 +89,7 @@ export function RadarDimensions({ dimensions }: {
                 y={end.y - 5}
                 width={10}
                 height={10}
-                fill={d.color}
+                fill={d.value === null ? "rgba(255,255,255,0.25)" : d.color}
                 rx={1}
               />
             );
@@ -118,14 +124,14 @@ export function RadarDimensions({ dimensions }: {
                 <span style={{ fontSize: 11, fontWeight: 700, color: d.color }}>
                   {d.label}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "white" }}>
-                  {d.value}
+                <span style={{ fontSize: 13, fontWeight: d.value === null ? 400 : 800, color: d.value === null ? "rgba(255,255,255,0.5)" : "white" }}>
+                  {d.value === null ? t("results.module_unavailable") : d.value}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 2 }}>
                 {Array.from({ length: 10 }, (_, i) => {
-                  const fullSegments = Math.floor(d.value / 10);
-                  const fraction = (d.value % 10) / 10;
+                  const fullSegments = d.value === null ? 0 : Math.floor(d.value / 10);
+                  const fraction = d.value === null ? 0 : (d.value % 10) / 10;
                   let segmentBg: string;
                   if (i < fullSegments) {
                     segmentBg = d.color;

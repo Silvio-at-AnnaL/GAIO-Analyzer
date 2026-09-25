@@ -362,6 +362,8 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.llm_part_b_explainer":       { group: "results", de: "Buyer kennt die Marke bereits \u2014 pr\u00FCft, wie tief und konkret die Seite Markenfragen beantwortet." },
   "results.llm_fallback_title":         { group: "results", de: "LLM-Auffindbarkeits-Simulation (Score: {score}/100)" },
   "results.llm_no_data":                { group: "results", de: "Keine LLM-Daten verf\u00FCgbar." },
+  "results.module_unavailable":          { group: "results", de: "nicht verfügbar" },
+  "results.module_unavailable_note":     { group: "results", de: "Dieses Modul konnte bei dieser Analyse technisch nicht ausgeführt werden. Der GAIO-Score wurde ohne dieses Modul berechnet." },
 
   "results.technical_metrics_title":    { group: "results", de: "Technische SEO-Metriken" },
   "results.technical_details_title":    { group: "results", de: "Technische Details" },

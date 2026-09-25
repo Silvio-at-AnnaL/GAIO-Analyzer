@@ -789,6 +789,16 @@ function buildExportTimestamp(d: Date = new Date()): string {
   return `${dd}-${mm}-${yyyy}--${hh}-${min}-${ss}`;
 }
 
+function UnavailableModuleCard({ title }: { title: string }) {
+  const t = useT();
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle></CardHeader>
+      <CardContent className="text-sm text-muted-foreground">{t("results.module_unavailable_note")}</CardContent>
+    </Card>
+  );
+}
+
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
   const { mode: deliveryMode } = useDeliveryMode();
@@ -1034,12 +1044,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const headingSummary = getHeadingSummary(headingStructure);
 
   const radarData = [
-    { subject: t("results.chart_dim_technical"), value: (technicalSeo?.score as number) ?? 0 },
-    { subject: t("results.chart_dim_schema"),    value: (schemaOrg?.score as number) ?? 0 },
-    { subject: t("results.chart_dim_headings"),  value: (headingStructure?.score as number) ?? 0 },
-    { subject: t("results.chart_dim_content"),   value: (contentRelevance?.score as number) ?? 0 },
-    { subject: "FAQ",                            value: (faqQuality?.score as number) ?? 0 },
-    { subject: "LLM",                            value: (llmDiscoverability?.score as number) ?? 0 },
+    { subject: t("results.chart_dim_technical"), value: (technicalSeo?.score as number) ?? null },
+    { subject: t("results.chart_dim_schema"),    value: (schemaOrg?.score as number) ?? null },
+    { subject: t("results.chart_dim_headings"),  value: (headingStructure?.score as number) ?? null },
+    { subject: t("results.chart_dim_content"),   value: (contentRelevance?.score as number) ?? null },
+    { subject: "FAQ",                            value: (faqQuality?.score as number) ?? null },
+    { subject: "LLM",                            value: (llmDiscoverability?.score as number) ?? null },
   ];
 
   const mainScores = {
@@ -1282,12 +1292,12 @@ function ReportView({ analysisId }: { analysisId: string }) {
       // ── Build score data for the header iframe ────────────────────────────────
       const hdrScores = {
         gaio:      report.overallScore ?? 0,
-        technSeo:  (technicalSeo?.score as number)      ?? 0,
-        schema:    (schemaOrg?.score as number)          ?? 0,
-        headings:  (headingStructure?.score as number)   ?? 0,
-        inhalt:    (contentRelevance?.score as number)   ?? 0,
-        faq:       (faqQuality?.score as number)         ?? 0,
-        llm:       (llmDiscoverability?.score as number) ?? 0,
+        technSeo:  (technicalSeo?.score as number)      ?? null,
+        schema:    (schemaOrg?.score as number)          ?? null,
+        headings:  (headingStructure?.score as number)   ?? null,
+        inhalt:    (contentRelevance?.score as number)   ?? null,
+        faq:       (faqQuality?.score as number)         ?? null,
+        llm:       (llmDiscoverability?.score as number) ?? null,
       };
       const hdrDomain     = report.url || "";
       const hdrPageCount  = (report.crawledPages as string[] | null)?.length ?? 0;
@@ -1355,18 +1365,20 @@ function ReportView({ analysisId }: { analysisId: string }) {
           const sw = i === RINGS - 1 ? 2 : 1;
           return `<circle cx="${CX}" cy="${CY}" r="${r.toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>`;
         }).join('');
-        const axisLines = dims.map((_, i) => {
+        const axisLines = dims.map((d, i) => {
           const end = ptF(i, MAX_R);
-          return `<line x1="${CX}" y1="${CY}" x2="${end.x.toFixed(1)}" y2="${end.y.toFixed(1)}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>`;
+          return `<line x1="${CX}" y1="${CY}" x2="${end.x.toFixed(1)}" y2="${end.y.toFixed(1)}" stroke="rgba(255,255,255,0.15)" stroke-width="1"${d.val === null ? ' stroke-dasharray="3 3"' : ''}/>`;
         }).join('');
-        const dataPoints = dims.map((d, i) => ptF(i, (d.val / 100) * MAX_R));
-        const polyPoints = dataPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-        const dots = dataPoints.map((p, i) =>
+        const dataPoints = dims.flatMap((d, i) =>
+          d.val === null ? [] : [{ point: ptF(i, (d.val / 100) * MAX_R), index: i }]
+        );
+        const polyPoints = dataPoints.map(({ point }) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
+        const dots = dataPoints.map(({ point: p, index: i }) =>
           `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${dims[i].color}" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>`
         ).join('');
         const squares = dims.map((d, i) => {
           const end = ptF(i, MAX_R + 12);
-          return `<rect x="${(end.x - 5).toFixed(1)}" y="${(end.y - 5).toFixed(1)}" width="10" height="10" fill="${d.color}" rx="1"/>`;
+          return `<rect x="${(end.x - 5).toFixed(1)}" y="${(end.y - 5).toFixed(1)}" width="10" height="10" fill="${d.val === null ? 'rgba(255,255,255,0.25)' : d.color}" rx="1"/>`;
         }).join('');
         const lbls = dims.map((d, i) => {
           const lp = ptF(i, MAX_R + 30);
@@ -1375,8 +1387,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
         }).join('');
         const svgStr = `<svg width="280" height="280" viewBox="0 0 320 320" style="flex-shrink:0;display:block">${rings}${axisLines}<polygon points="${polyPoints}" fill="rgba(212,170,60,0.3)" stroke="rgba(212,170,60,0.85)" stroke-width="2" stroke-linejoin="round"/>${dots}${squares}${lbls}</svg>`;
         const legendRows = dims.map(d => {
-          const fullSeg = Math.floor(d.val / 10);
-          const fraction = (d.val % 10) / 10;
+          const fullSeg = d.val === null ? 0 : Math.floor(d.val / 10);
+          const fraction = d.val === null ? 0 : (d.val % 10) / 10;
           const segs = Array.from({ length: 10 }, (_, i) => {
             let bg: string;
             if (i < fullSeg) bg = d.color;
@@ -1384,7 +1396,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
             else bg = 'rgba(255,255,255,0.1)';
             return `<div style="flex:1;height:9px;border-radius:2px;background:${bg}"></div>`;
           }).join('');
-          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:${d.color}">${d.label}</span><span style="font-size:13px;font-weight:800;color:white">${d.val}</span></div><div style="display:flex;gap:2px">${segs}</div></div>`;
+          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:${d.color}">${d.label}</span><span style="font-size:13px;font-weight:${d.val === null ? 400 : 800};color:${d.val === null ? 'rgba(255,255,255,0.5)' : 'white'}">${d.val === null ? t("results.module_unavailable") : d.val}</span></div><div style="display:flex;gap:2px">${segs}</div></div>`;
         }).join('');
         return `<div style="flex-shrink:0;width:280px">${svgStr}</div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-width:0">${legendRows}</div>`;
       };
@@ -2292,6 +2304,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             variants={(report as { hreflangVariants?: HreflangVariant[] }).hreflangVariants ?? []}
           />
 
+          {!technicalSeo && <UnavailableModuleCard title={t("results.technical_details_title")} />}
           {technicalSeo && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.technical_details_title")}</CardTitle></CardHeader>
@@ -2624,6 +2637,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             );
           })()}
 
+          {!schemaOrg && <UnavailableModuleCard title={t("results.schema_title")} />}
           {schemaOrg && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.schema_title")}</CardTitle></CardHeader>
@@ -2715,6 +2729,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             </Card>
           )}
 
+          {!headingStructure && <UnavailableModuleCard title={t("results.headings_card_title")} />}
           {headingStructure && (
             <Card>
               <CardHeader>
@@ -2806,6 +2821,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             </Card>
           )}
 
+          {!contentRelevance && <UnavailableModuleCard title={t("results.content_relevance_title")} />}
           {contentRelevance && (
             <Card>
               <CardHeader><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("results.content_relevance_title")}</CardTitle></CardHeader>
@@ -2851,6 +2867,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             </Card>
           )}
 
+          {!faqQuality && <UnavailableModuleCard title={t("results.faq_card_title")} />}
           {faqQuality && (
             <Card>
               <CardHeader>
@@ -2939,7 +2956,9 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
         {/* LLM Tab */}
         <TabsContent forceMount value="llm" className="space-y-4 pt-4">
-          {llmQuestions.length > 0 ? (
+          {!llmDiscoverability ? (
+            <UnavailableModuleCard title={t("results.tab_llm")} />
+          ) : llmQuestions.length > 0 ? (
             <>
               {/* Sub-score grid */}
               <div className="grid grid-cols-3 gap-3">

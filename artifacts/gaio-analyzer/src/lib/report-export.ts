@@ -92,6 +92,15 @@ const C = {
   codeBg:      "#eef0f4",
 } as const;
 
+const MODULE_UNAVAILABLE_TEXT = {
+  value: "nicht verfügbar",
+  note: "Dieses Modul konnte bei dieser Analyse technisch nicht ausgeführt werden. Der GAIO-Score wurde ohne dieses Modul berechnet.",
+} as const;
+
+function renderUnavailableModuleSection(title: string): string {
+  return `<h3>${title}</h3><p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${MODULE_UNAVAILABLE_TEXT.note}</p>`;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
@@ -478,6 +487,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     </div>`;
 
     html += renderTechnischeDateienHtml(technicalSeo);
+  } else {
+    html += renderUnavailableModuleSection(DT.technicalSeoHeading);
   }
 
   const uniqueLangs = [...new Set(hreflang.map((v) => v.lang))].sort();
@@ -562,6 +573,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
         </tbody>
       </table>`;
     }
+  } else {
+    html += renderUnavailableModuleSection("Schema.org / Strukturierte Daten");
   }
 
   if (headings) {
@@ -636,6 +649,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
           ${summary.problemPages.length > 10 ? `<p style="font-size:12px;color:${C.textMuted};margin:4px 0;">${HT.more(summary.problemPages.length - 10)}</p>` : ""}`
         : `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${HT.allOk}</p>`
     ) : ""}`;
+  } else {
+    html += renderUnavailableModuleSection("Heading-Struktur");
   }
 
   if (content) {
@@ -653,6 +668,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       </div>
       ${dim.findings.length > 0 ? `<ul style="font-size:12px;color:${C.textSec};margin:4px 0;padding-left:16px;">${dim.findings.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
     </div>`).join("")}`;
+  } else {
+    html += renderUnavailableModuleSection("Inhaltliche Relevanz");
   }
 
   if (faq) {
@@ -707,6 +724,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       }).join("")}
     </div>` : ""}
     ${qualityAssessment ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;white-space:pre-line;"><strong>${FT.qualityAssessment}:</strong> ${esc(qualityAssessment)}</p>` : ""}`;
+  } else {
+    html += renderUnavailableModuleSection("FAQ-Qualität");
   }
 
   return html;
@@ -714,7 +733,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
 
 function renderLlmSection(report: Record<string, unknown>): string {
   const llm = report.llmDiscoverability as Record<string, unknown> | null;
-  if (!llm) return "";
+  if (!llm) return `${divider("LLM-Auffindbarkeit")}<h2>LLM-Auffindbarkeit</h2><p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${MODULE_UNAVAILABLE_TEXT.note}</p>`;
 
   const partA     = llm.partA as LlmPart | undefined;
   const partB     = llm.partB as LlmPart | undefined;
@@ -1579,12 +1598,12 @@ export async function generateHtmlReport(
   const crawledCount = ((report.crawledPages as string[]) ?? []).length;
 
   const scoreDefs = [
-    { name: "Technisches SEO",      score: ((report.technicalSeo        as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-techn-seo" },
-    { name: "Schema.org",           score: ((report.schemaOrg           as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-schema"    },
-    { name: "Heading-Struktur",     score: ((report.headingStructure    as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-headings"  },
-    { name: "Inhaltliche Relevanz", score: ((report.contentRelevance    as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-inhalt"    },
-    { name: "FAQ-Qualität",         score: ((report.faqQuality          as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-faq"       },
-    { name: "LLM-Auffindbarkeit",   score: ((report.llmDiscoverability  as Record<string, unknown>)?.score as number) ?? 0, faqId: "faq-modul-llm"       },
+    { name: "Technisches SEO",      score: ((report.technicalSeo        as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-techn-seo" },
+    { name: "Schema.org",           score: ((report.schemaOrg           as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-schema"    },
+    { name: "Heading-Struktur",     score: ((report.headingStructure    as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-headings"  },
+    { name: "Inhaltliche Relevanz", score: ((report.contentRelevance    as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-inhalt"    },
+    { name: "FAQ-Qualität",         score: ((report.faqQuality          as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-faq"       },
+    { name: "LLM-Auffindbarkeit",   score: ((report.llmDiscoverability  as Record<string, unknown>)?.score as number) ?? null, faqId: "faq-modul-llm"       },
   ];
 
   const bodyContent = [
@@ -1763,13 +1782,13 @@ ${analysisDataScript}
   <table class="data-table">
     <thead><tr><th>Dimension</th><th>Score</th></tr></thead>
     <tbody>
-      ${scoreDefs.map((s) => `<tr><td>${esc(s.name)}${moduleInfoLink(s.faqId)}</td><td style="font-weight:700;color:${scoreColor(s.score)}">${s.score}/100</td></tr>`).join("")}
+      ${scoreDefs.map((s) => `<tr><td>${esc(s.name)}${moduleInfoLink(s.faqId)}</td><td style="font-weight:700;color:${s.score === null ? C.textMuted : scoreColor(s.score)}">${s.score === null ? MODULE_UNAVAILABLE_TEXT.value : `${s.score}/100`}</td></tr>`).join("")}
     </tbody>
   </table>
 
   ${bodyContent}
 `;
-  const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? 0, schema: scoreDefs[1]?.score ?? 0, headings: scoreDefs[2]?.score ?? 0, content: scoreDefs[3]?.score ?? 0, faq: scoreDefs[4]?.score ?? 0, llm: scoreDefs[5]?.score ?? 0 } })}</script>`;
+  const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? null, schema: scoreDefs[1]?.score ?? null, headings: scoreDefs[2]?.score ?? null, content: scoreDefs[3]?.score ?? null, faq: scoreDefs[4]?.score ?? null, llm: scoreDefs[5]?.score ?? null } })}</script>`;
   const titleTarget = opts.inputParams?.companyName?.trim()
     ? opts.inputParams.companyName.trim()
     : url;
