@@ -433,15 +433,16 @@ interface CompetitorCardProps {
     errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
   };
   mainScores: {
-    technicalScore: number;
-    schemaScore: number;
-    contentScore: number;
-    headingScore: number;
-    faqScore: number;
+    technicalScore: number | null;
+    schemaScore: number | null;
+    contentScore: number | null;
+    headingScore: number | null;
+    faqScore: number | null;
   };
+  excludedModules?: string[];
 }
 
-function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
+function CompetitorCard({ competitor, mainScores, excludedModules = [] }: CompetitorCardProps) {
   const t = useT();
   if (competitor.error) {
     const badgeKey = competitor.errorReason === "bot_protection"
@@ -489,12 +490,13 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
   }
 
   const metrics = [
-    { label: t("results.metric_technical_seo"), main: mainScores.technicalScore, comp: competitor.technicalScore },
-    { label: t("results.metric_schema"), main: mainScores.schemaScore, comp: competitor.schemaScore },
-    { label: t("results.metric_content"), main: mainScores.contentScore, comp: competitor.contentScore },
-    { label: t("results.metric_headings"), main: mainScores.headingScore, comp: competitor.headingScore },
-    { label: t("results.metric_faq"), main: mainScores.faqScore, comp: competitor.faqScore },
+    { key: "technical", label: t("results.metric_technical_seo"), main: mainScores.technicalScore, comp: competitor.technicalScore },
+    { key: "schema", label: t("results.metric_schema"), main: mainScores.schemaScore, comp: competitor.schemaScore },
+    { key: "content", label: t("results.metric_content"), main: mainScores.contentScore, comp: competitor.contentScore },
+    { key: "headings", label: t("results.metric_headings"), main: mainScores.headingScore, comp: competitor.headingScore },
+    { key: "faq", label: t("results.metric_faq"), main: mainScores.faqScore, comp: competitor.faqScore },
   ];
+  const hasExcludedMark = metrics.some((m) => excludedModules.includes(m.key) && m.comp !== null);
 
   const badgeColor = scoreBadgeColor(competitor.compositeScore);
 
@@ -537,24 +539,26 @@ function CompetitorCard({ competitor, mainScores }: CompetitorCardProps) {
                 <tr key={m.label} className="border-b border-border/50 last:border-0">
                   <td className="py-2 text-sm text-foreground/80">{m.label}</td>
                   <td className="py-2 text-right font-mono font-semibold text-sm"
-                    style={{ color: scoreBadgeColor(m.main) }}>
-                    {m.main}
+                    style={{ color: m.main === null ? "hsl(var(--muted-foreground))" : scoreBadgeColor(m.main) }}
+                    title={m.main === null ? t("results.module_unavailable") : undefined}>
+                    {m.main === null ? "—" : m.main}
                   </td>
                   <td
                     className="py-2 text-right font-mono font-semibold text-sm"
-                    style={m.comp === null ? undefined : { color: scoreBadgeColor(m.comp) }}
-                    title={m.comp === null ? t("results.competitor_content_na") : undefined}
+                    style={m.comp === null ? undefined : { color: excludedModules.includes(m.key) ? "hsl(var(--muted-foreground))" : scoreBadgeColor(m.comp) }}
+                    title={m.comp === null ? t("results.competitor_content_na") : excludedModules.includes(m.key) ? t("results.competitor_excluded_mark") : undefined}
                   >
-                    {m.comp === null ? "—" : m.comp}
+                    {m.comp === null ? "—" : m.comp}{m.comp !== null && excludedModules.includes(m.key) && <sup>¹</sup>}
                   </td>
                   <td className="py-2 text-right pr-2">
-                    {m.comp === null ? null : <Delta main={m.main} comp={m.comp} />}
+                    {m.main === null || m.comp === null || excludedModules.includes(m.key) ? null : <Delta main={m.main} comp={m.comp} />}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {hasExcludedMark && <p className="text-xs text-muted-foreground">{t("results.competitor_excluded_footnote")}</p>}
 
         {/* LLM note */}
         <p className="text-xs text-muted-foreground italic">
@@ -1021,6 +1025,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
     }>;
     mainComparisonScore?: number;
+    excludedModules?: string[];
   } | null;
   const competitorInput = (report as unknown as Record<string, unknown>).competitorInput as {
     provided?: unknown;
@@ -1053,11 +1058,11 @@ function ReportView({ analysisId }: { analysisId: string }) {
   ];
 
   const mainScores = {
-    technicalScore: (technicalSeo?.score as number) ?? 0,
-    schemaScore: (schemaOrg?.score as number) ?? 0,
-    contentScore: (contentRelevance?.score as number) ?? 0,
-    headingScore: (headingStructure?.score as number) ?? 0,
-    faqScore: (faqQuality?.score as number) ?? 0,
+    technicalScore: (technicalSeo?.score as number) ?? null,
+    schemaScore: (schemaOrg?.score as number) ?? null,
+    contentScore: (contentRelevance?.score as number) ?? null,
+    headingScore: (headingStructure?.score as number) ?? null,
+    faqScore: (faqQuality?.score as number) ?? null,
   };
 
   const technicalBarData = technicalSeo ? [
@@ -3105,7 +3110,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
               {/* Competitor detail cards */}
               {competitorComparison.competitors.map((c) => (
-                <CompetitorCard key={c.url} competitor={c} mainScores={mainScores} />
+                <CompetitorCard key={c.url} competitor={c} mainScores={mainScores} excludedModules={competitorComparison.excludedModules ?? []} />
               ))}
             </>
           ) : (

@@ -339,6 +339,8 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.competitor_js_desc":         { group: "results", de: "Diese Website lädt ihre Inhalte erst per JavaScript nach. Eine automatisierte Bewertung wäre nicht aussagekräftig." },
   "results.competitor_value_note":      { group: "results", de: "Vergleichswert: gleiche Gewichtung wie der GAIO-Score, jedoch ohne LLM-Prüfung, die für Wettbewerber nicht durchgeführt wird. Ihr GAIO-Gesamtscore kann daher abweichen." },
   "results.competitor_content_na":      { group: "results", de: "Inhalt nicht bewertbar" },
+  "results.competitor_excluded_mark":    { group: "results", de: "nicht im Vergleichswert" },
+  "results.competitor_excluded_footnote": { group: "results", de: "¹ Nicht im Vergleichswert berücksichtigt, weil das Modul bei Ihrer Website nicht verfügbar war." },
   "results.chart_score_label":          { group: "results", de: "Score" },
   "results.your_site_highlighted":      { group: "results", de: "Ihre Seite ist blau hervorgehoben." },
   "results.competitor_input_summary":    { group: "results", de: "{provided} Wettbewerber angegeben, {analysed} analysiert." },

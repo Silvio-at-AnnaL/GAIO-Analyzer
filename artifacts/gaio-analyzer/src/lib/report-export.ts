@@ -97,6 +97,10 @@ const MODULE_UNAVAILABLE_TEXT = {
   note: "Dieses Modul konnte bei dieser Analyse technisch nicht ausgeführt werden. Der GAIO-Score wurde ohne dieses Modul berechnet.",
 } as const;
 
+const COMPETITOR_EXCLUDED_TEXT = {
+  footnote: "¹ Nicht im Vergleichswert berücksichtigt, weil das Modul bei Ihrer Website nicht verfügbar war.",
+} as const;
+
 function renderUnavailableModuleSection(title: string): string {
   return `<h3>${title}</h3><p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${MODULE_UNAVAILABLE_TEXT.note}</p>`;
 }
@@ -778,8 +782,10 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   const cc = report.competitorComparison as {
     competitors: CompetitorEntry[];
     mainComparisonScore?: number;
+    excludedModules?: string[];
   } | null;
   if (!cc || cc.competitors.length === 0) return "";
+  const excludedModules = cc.excludedModules ?? [];
 
   const CI = {
     summary: (provided: number, analysed: number) =>
@@ -834,11 +840,22 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   const myScore        = hasMainComparisonScore
     ? cc.mainComparisonScore as number
     : (report.overallScore as number) ?? 0;
-  const myTechnical    = ((report.technicalSeo      as Record<string, unknown>)?.score as number) ?? 0;
-  const mySchema       = ((report.schemaOrg         as Record<string, unknown>)?.score as number) ?? 0;
-  const myContent      = ((report.contentRelevance  as Record<string, unknown>)?.score as number) ?? 0;
-  const myHeadings     = ((report.headingStructure  as Record<string, unknown>)?.score as number) ?? 0;
-  const myFaq          = ((report.faqQuality        as Record<string, unknown>)?.score as number) ?? 0;
+  const myTechnical    = ((report.technicalSeo      as Record<string, unknown>)?.score as number) ?? null;
+  const mySchema       = ((report.schemaOrg         as Record<string, unknown>)?.score as number) ?? null;
+  const myContent      = ((report.contentRelevance  as Record<string, unknown>)?.score as number) ?? null;
+  const myHeadings     = ((report.headingStructure  as Record<string, unknown>)?.score as number) ?? null;
+  const myFaq          = ((report.faqQuality        as Record<string, unknown>)?.score as number) ?? null;
+  const ownScoreCell = (score: number | null) =>
+    `<strong style="color:${score === null ? C.textMuted : scoreColor(score)}">${score === null ? "—" : score}</strong>`;
+  let hasExcludedMark = false;
+  const competitorScoreCell = (score: number | null, key: string, error?: string) => {
+    if (error || score === null) return "<td>—</td>";
+    if (excludedModules.includes(key)) {
+      hasExcludedMark = true;
+      return `<td style="color:${C.textMuted}">${score}<sup>¹</sup></td>`;
+    }
+    return `<td style="color:${scoreColor(score)}">${score}</td>`;
+  };
   const myDomain = report.url
     ? (() => { try { return new URL(report.url as string).hostname; } catch { return "Ihre Seite"; } })()
     : "Ihre Seite";
@@ -856,11 +873,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       html: `<tr style="background:${C.bg};">
         <td><strong>${esc(myDomain)}</strong> <span style="font-size:10px;color:${C.textMuted}">(Ihre Seite)</span></td>
         <td><strong style="color:${scoreColor(myScore)}">${myScore}</strong></td>
-        <td><strong style="color:${scoreColor(myTechnical)}">${myTechnical}</strong></td>
-        <td><strong style="color:${scoreColor(mySchema)}">${mySchema}</strong></td>
-        <td><strong style="color:${scoreColor(myContent)}">${myContent}</strong></td>
-        <td><strong style="color:${scoreColor(myHeadings)}">${myHeadings}</strong></td>
-        <td><strong style="color:${scoreColor(myFaq)}">${myFaq}</strong></td>
+        <td>${ownScoreCell(myTechnical)}</td>
+        <td>${ownScoreCell(mySchema)}</td>
+        <td>${ownScoreCell(myContent)}</td>
+        <td>${ownScoreCell(myHeadings)}</td>
+        <td>${ownScoreCell(myFaq)}</td>
       </tr>`,
     },
     ...cc.competitors.map((c) => ({
@@ -868,11 +885,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       html: `<tr>
         <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">${esc(competitorErrorText(c).badge)}</span>` : ""}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.compositeScore)}"`}><strong>${c.error ? "—" : c.compositeScore}</strong></td>
-        <td${c.error ? "" : ` style="color:${scoreColor(c.technicalScore)}"`}>${c.error ? "—" : c.technicalScore}</td>
-        <td${c.error ? "" : ` style="color:${scoreColor(c.schemaScore)}"`}>${c.error ? "—" : c.schemaScore}</td>
-        <td${c.error || c.contentScore === null ? "" : ` style="color:${scoreColor(c.contentScore)}"`}>${c.error || c.contentScore === null ? "—" : c.contentScore}</td>
-        <td${c.error ? "" : ` style="color:${scoreColor(c.headingScore)}"`}>${c.error ? "—" : c.headingScore}</td>
-        <td${c.error ? "" : ` style="color:${scoreColor(c.faqScore)}"`}>${c.error ? "—" : c.faqScore}</td>
+        ${competitorScoreCell(c.technicalScore, "technical", c.error)}
+        ${competitorScoreCell(c.schemaScore, "schema", c.error)}
+        ${competitorScoreCell(c.contentScore, "content", c.error)}
+        ${competitorScoreCell(c.headingScore, "headings", c.error)}
+        ${competitorScoreCell(c.faqScore, "faq", c.error)}
       </tr>`,
     })),
   ].sort((a, b) => b.compositeScore - a.compositeScore);
@@ -886,7 +903,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       ${sortedRows.map((r) => r.html).join("")}
     </tbody>
   </table>
-  ${hasMainComparisonScore ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.valueNote)}</p>` : ""}`;
+  ${hasMainComparisonScore ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.valueNote)}</p>` : ""}${hasExcludedMark ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${COMPETITOR_EXCLUDED_TEXT.footnote}</p>` : ""}`;
 
   html += cc.competitors.map((c) => `
   <div class="comp-card">

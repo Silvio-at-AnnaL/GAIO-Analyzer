@@ -11,12 +11,12 @@ const BASE = (import.meta.env.BASE_URL as string ?? "/").replace(/\/$/, "");
 const LOCALE_MAP: Record<string, string> = { de: "de-DE", en: "en-US" };
 
 interface DimensionScores {
-  technical: number;
-  schema:    number;
-  headings:  number;
-  content:   number;
-  faq:       number;
-  llm:       number;
+  technical: number | null;
+  schema:    number | null;
+  headings:  number | null;
+  content:   number | null;
+  faq:       number | null;
+  llm:       number | null;
 }
 
 interface AnalysisSnapshot {
@@ -51,24 +51,25 @@ const DIM_LABELS: Record<keyof DimensionScores, string> = {
 };
 
 function parseLogScores(scoresJson: string | null): DimensionScores {
-  const z: DimensionScores = { technical: 0, schema: 0, headings: 0, content: 0, faq: 0, llm: 0 };
+  const z: DimensionScores = { technical: null, schema: null, headings: null, content: null, faq: null, llm: null };
   if (!scoresJson) return z;
   try {
     const raw = JSON.parse(scoresJson) as Record<string, unknown>;
+    const asScore = (value: unknown) => value == null ? null : Number(value);
     return {
-      technical: Number(raw.technicalSeo       ?? raw.technical ?? 0),
-      schema:    Number(raw.schemaOrg          ?? raw.schema    ?? 0),
-      headings:  Number(raw.headingStructure   ?? raw.headings  ?? 0),
-      content:   Number(raw.contentRelevance   ?? raw.content   ?? 0),
-      faq:       Number(raw.faqQuality         ?? raw.faq       ?? 0),
-      llm:       Number(raw.llmDiscoverability ?? raw.llm       ?? 0),
+      technical: asScore(raw.technicalSeo       ?? raw.technical),
+      schema:    asScore(raw.schemaOrg          ?? raw.schema),
+      headings:  asScore(raw.headingStructure   ?? raw.headings),
+      content:   asScore(raw.contentRelevance   ?? raw.content),
+      faq:       asScore(raw.faqQuality         ?? raw.faq),
+      llm:       asScore(raw.llmDiscoverability ?? raw.llm),
     };
   } catch { return z; }
 }
 
 function parseReportScores(report: Record<string, unknown>): DimensionScores {
   const s = (key: string) =>
-    ((report[key] as { score?: number } | null)?.score) ?? 0;
+    ((report[key] as { score?: number } | null)?.score) ?? null;
   return {
     technical: s("technicalSeo"),
     schema:    s("schemaOrg"),
@@ -81,13 +82,14 @@ function parseReportScores(report: Record<string, unknown>): DimensionScores {
 
 function parseEmbedScores(data: Record<string, unknown>): DimensionScores {
   const s = (data.scores ?? {}) as Record<string, unknown>;
+  const asScore = (value: unknown) => value == null ? null : Number(value);
   return {
-    technical: Number(s.technical ?? 0),
-    schema:    Number(s.schema    ?? 0),
-    headings:  Number(s.headings  ?? 0),
-    content:   Number(s.content   ?? 0),
-    faq:       Number(s.faq       ?? 0),
-    llm:       Number(s.llm       ?? 0),
+    technical: asScore(s.technical),
+    schema:    asScore(s.schema),
+    headings:  asScore(s.headings),
+    content:   asScore(s.content),
+    faq:       asScore(s.faq),
+    llm:       asScore(s.llm),
   };
 }
 
@@ -124,7 +126,9 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
-function ScoreCell({ score }: { score: number }) {
+function ScoreCell({ score }: { score: number | null }) {
+  const t = useT();
+  if (score === null) return <span className="text-muted-foreground" title={t("results.module_unavailable")}>—</span>;
   const color = score >= 70 ? "#3b82f6" : score >= 45 ? "#d97706" : "#ef4444";
   return <span style={{ fontWeight: 700, color }}>{score}</span>;
 }
@@ -191,7 +195,9 @@ function CompareResult({ current, comparison }: { current: AnalysisSnapshot; com
           </thead>
           <tbody>
             {DIM_KEYS.map((key, i) => {
-              const d = current.scores[key] - comparison.scores[key];
+              const currentScore = current.scores[key];
+              const comparisonScore = comparison.scores[key];
+              const d = currentScore === null || comparisonScore === null ? null : currentScore - comparisonScore;
               return (
                 <tr
                   key={key}
@@ -203,7 +209,7 @@ function CompareResult({ current, comparison }: { current: AnalysisSnapshot; com
                   <td className="px-4 py-2 font-medium">{t(DIM_LABELS[key])}</td>
                   <td className="px-3 py-2 text-center"><ScoreCell score={comparison.scores[key]} /></td>
                   <td className="px-3 py-2 text-center"><ScoreCell score={current.scores[key]} /></td>
-                  <td className="px-3 py-2 text-center"><DeltaBadge delta={d} /></td>
+                  <td className="px-3 py-2 text-center">{d === null ? <span className="text-muted-foreground">—</span> : <DeltaBadge delta={d} />}</td>
                 </tr>
               );
             })}
