@@ -40,14 +40,15 @@ export interface CompetitorScore {
 export interface CompetitorResult {
   competitors: CompetitorScore[];
   mainComparisonScore: number;
+  excludedModules: string[];
 }
 
 export interface MainSiteScores {
-  technicalScore: number;
-  schemaScore: number;
-  contentScore: number;
-  headingScore: number;
-  faqScore: number;
+  technicalScore: number | null;
+  schemaScore: number | null;
+  contentScore: number | null;
+  headingScore: number | null;
+  faqScore: number | null;
   overallScore: number;
 }
 
@@ -59,7 +60,7 @@ const CONTENT_TIMEOUT_MS = 60_000;
 const MIN_VISIBLE_TEXT_CHARS = 500;
 
 type ComparisonScores = Pick<
-  CompetitorScore,
+  MainSiteScores,
   "technicalScore" | "schemaScore" | "contentScore" | "headingScore" | "faqScore"
 >;
 
@@ -70,7 +71,7 @@ type ComparisonArea = {
   diff: number;
 };
 
-function calculateComparisonScore(scores: ComparisonScores): number {
+export function calculateComparisonScore(scores: ComparisonScores): number {
   const weightedScores = [
     { score: scores.schemaScore, weight: 0.20 },
     { score: scores.contentScore, weight: 0.20 },
@@ -81,6 +82,30 @@ function calculateComparisonScore(scores: ComparisonScores): number {
   const weightedSum = weightedScores.reduce((sum, entry) => sum + entry.score * entry.weight, 0);
   const weightSum = weightedScores.reduce((sum, entry) => sum + entry.weight, 0);
   return weightSum > 0 ? Math.round(weightedSum / weightSum) : 0;
+}
+
+export function getExcludedModules(mainScores: MainSiteScores): string[] {
+  const fields = [
+    ["technical", mainScores.technicalScore],
+    ["schema", mainScores.schemaScore],
+    ["content", mainScores.contentScore],
+    ["headings", mainScores.headingScore],
+    ["faq", mainScores.faqScore],
+  ] as const;
+  return fields.filter(([, score]) => score === null).map(([name]) => name);
+}
+
+export function maskExcludedScores(
+  mainScores: MainSiteScores,
+  competitorScores: ComparisonScores,
+): ComparisonScores {
+  return {
+    technicalScore: mainScores.technicalScore === null ? null : competitorScores.technicalScore,
+    schemaScore: mainScores.schemaScore === null ? null : competitorScores.schemaScore,
+    contentScore: mainScores.contentScore === null ? null : competitorScores.contentScore,
+    headingScore: mainScores.headingScore === null ? null : competitorScores.headingScore,
+    faqScore: mainScores.faqScore === null ? null : competitorScores.faqScore,
+  };
 }
 
 function getComparisonAreas(
@@ -176,19 +201,21 @@ async function generateFindings(
   const startedAt = Date.now();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
+    const comparable = maskExcludedScores(mainScores, competitorScores);
+    const promptScore = (score: number | null) => score === null ? "—" : String(score);
     const prompt = fillTemplate(await getPrompt("competitor-analysis"), {
       MAIN_DOMAIN: mainDomain,
-      MAIN_TECH: String(mainScores.technicalScore),
-      MAIN_SCHEMA: String(mainScores.schemaScore),
-      MAIN_CONTENT: String(mainScores.contentScore),
-      MAIN_HEADINGS: String(mainScores.headingScore),
-      MAIN_FAQ: String(mainScores.faqScore),
+      MAIN_TECH: promptScore(mainScores.technicalScore),
+      MAIN_SCHEMA: promptScore(mainScores.schemaScore),
+      MAIN_CONTENT: promptScore(mainScores.contentScore),
+      MAIN_HEADINGS: promptScore(mainScores.headingScore),
+      MAIN_FAQ: promptScore(mainScores.faqScore),
       COMP_DOMAIN: competitorDomain,
-      COMP_TECH: String(competitorScores.technicalScore),
-      COMP_SCHEMA: String(competitorScores.schemaScore),
-      COMP_CONTENT: competitorScores.contentScore === null ? "—" : String(competitorScores.contentScore),
-      COMP_HEADINGS: String(competitorScores.headingScore),
-      COMP_FAQ: String(competitorScores.faqScore),
+      COMP_TECH: promptScore(comparable.technicalScore),
+      COMP_SCHEMA: promptScore(comparable.schemaScore),
+      COMP_CONTENT: promptScore(comparable.contentScore),
+      COMP_HEADINGS: promptScore(comparable.headingScore),
+      COMP_FAQ: promptScore(comparable.faqScore),
       COMP_COMPOSITE: String(competitorScores.compositeScore),
       ADVANTAGES: advantages,
       DISADVANTAGES: disadvantages,
@@ -240,6 +267,10 @@ export async function analyzeCompetitors(
   mainSiteLang: string | null,
 ): Promise<CompetitorResult> {
   const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
+  const excludedModules = getExcludedModules(mainSiteScores);
+  if (excludedModules.length > 0) {
+    logger.info({ excludedModules }, "Comparison excludes failed main-site modules");
+  }
   const [schemaParams, headingParams, faqParams] = await Promise.all([
     getScoreParams("schema-org"),
     getScoreParams("headings"),
@@ -392,7 +423,7 @@ export async function analyzeCompetitors(
         faqScore: faqResult.score,
         compositeScore: 0,
       };
-      competitorScores.compositeScore = calculateComparisonScore(competitorScores);
+      competitorScores.compositeScore = calculateComparisonScore(maskExcludedScores(mainSiteScores, competitorScores));
       const { advantages, disadvantages } = buildComparisonAreas(mainSiteScores, competitorScores);
       logger.info(
         { competitorDomain, advantages, disadvantages },
@@ -450,5 +481,5 @@ export async function analyzeCompetitors(
     }
   }));
 
-  return { competitors, mainComparisonScore };
+  return { competitors, mainComparisonScore, excludedModules };
 }

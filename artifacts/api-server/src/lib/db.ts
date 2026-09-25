@@ -21,13 +21,45 @@ pool.on("error", (err) => {
   logger.error({ err }, "Unexpected PostgreSQL pool error");
 });
 
+export async function connectWithRetry(
+  connect: () => Promise<pg.PoolClient>,
+  delayMs = 500,
+): Promise<pg.PoolClient> {
+  const startedAt = Date.now();
+  try {
+    return await connect();
+  } catch (err) {
+    logger.warn(
+      { reason: err instanceof Error ? err.message : String(err), durationMs: Date.now() - startedAt },
+      "PostgreSQL connect failed — retrying once",
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    return connect();
+  }
+}
+
+export async function runQuery<T = Record<string, any>>(
+  connect: () => Promise<pg.PoolClient>,
+  text: string,
+  params?: unknown[],
+): Promise<{ rows: T[]; rowCount: number | null }> {
+  const client = await connectWithRetry(connect);
+  try {
+    const result = await client.query(text, params);
+    client.release();
+    return { rows: result.rows as T[], rowCount: result.rowCount };
+  } catch (err) {
+    client.release(err as Error);
+    throw err;
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function query<T = Record<string, any>>(
   text: string,
   params?: unknown[],
 ): Promise<{ rows: T[]; rowCount: number | null }> {
-  const result = await pool.query(text, params);
-  return { rows: result.rows as T[], rowCount: result.rowCount };
+  return runQuery<T>(() => pool.connect(), text, params);
 }
 
 export { pool };

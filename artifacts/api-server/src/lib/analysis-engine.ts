@@ -479,11 +479,11 @@ export async function runAnalysis(
         state.progress = 85;
         save();
         const mainSiteScores = {
-          technicalScore: (state.technicalSeo as { score: number } | null)?.score ?? 0,
-          schemaScore: (state.schemaOrg as { score: number } | null)?.score ?? 0,
-          contentScore: (state.contentRelevance as { score: number } | null)?.score ?? 0,
-          headingScore: (state.headingStructure as { score: number } | null)?.score ?? 0,
-          faqScore: (state.faqQuality as { score: number } | null)?.score ?? 0,
+          technicalScore: (state.technicalSeo as { score: number } | null)?.score ?? null,
+          schemaScore: (state.schemaOrg as { score: number } | null)?.score ?? null,
+          contentScore: (state.contentRelevance as { score: number } | null)?.score ?? null,
+          headingScore: (state.headingStructure as { score: number } | null)?.score ?? null,
+          faqScore: (state.faqQuality as { score: number } | null)?.score ?? null,
           overallScore: 0,
         };
         state.competitorComparison = await analyzeCompetitors(
