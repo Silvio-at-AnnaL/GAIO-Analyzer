@@ -34,6 +34,7 @@ const PARKING_PROVIDER_MARKERS = [
 
 export function detectBlockedContent(
   html: string,
+  finalUrl?: string,
 ): "bot_protection" | "parked_domain" | null {
   const title = getTitleFromHtml(html);
   if (
@@ -57,6 +58,18 @@ export function detectBlockedContent(
     PARKING_PROVIDER_MARKERS.some((marker) => lowerHtml.includes(marker))
   ) {
     return "parked_domain";
+  }
+
+  if (/captcha/i.test(title)) return "bot_protection";
+  if (finalUrl) {
+    try {
+      const hostname = new URL(finalUrl).hostname.toLowerCase();
+      if (hostname === "perfdrive.com" || hostname.endsWith(".perfdrive.com")) {
+        return "bot_protection";
+      }
+    } catch {
+      // An invalid final URL must not change the content classification.
+    }
   }
 
   return null;

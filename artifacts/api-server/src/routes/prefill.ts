@@ -126,7 +126,7 @@ async function fetchHtml(
       redirect: "follow",
     });
     const html = await resp.text();
-    const blocked = detectBlockedContent(html);
+    const blocked = detectBlockedContent(html, resp.url);
     if (blocked) {
       onError?.(blocked);
       return null;
@@ -187,7 +187,7 @@ async function verifyUrl(url: string, timeoutMs: number): Promise<boolean> {
       });
       if (resp.status >= 400) return false;
       const body = await readBodyAtMost(resp, 300 * 1024);
-      const blocked = detectBlockedContent(body);
+      const blocked = detectBlockedContent(body, resp.url);
       if (blocked !== null) {
         logger.warn({ url, reason: blocked }, "Prefill: suggested competitor rejected");
         return false;

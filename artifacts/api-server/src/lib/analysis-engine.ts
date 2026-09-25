@@ -39,6 +39,7 @@ export interface AnalysisState {
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
   crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] } | null;
+  homepageRedirect: { from: string; to: string } | null;
 }
 
 export interface CompetitorInput {
@@ -275,6 +276,7 @@ export async function runAnalysis(
     hreflangVariants: [],
     crawlReliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
     crawlSkipped: null,
+    homepageRedirect: null,
   };
 
   const startedAt = new Date().toISOString();
@@ -328,6 +330,7 @@ export async function runAnalysis(
         pages = crawlResult.pages;
       }
       state.crawledPages = pages.map((p) => p.url);
+      state.homepageRedirect = crawlResult.homepageRedirect ?? null;
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
       state.crawlReliability = crawlResult.reliability;
       if (!explicitUrls?.length) state.crawlSkipped = crawlResult.skipped;

@@ -24,6 +24,7 @@ export interface CompetitorCrawledPage {
 export interface CompetitorScore {
   name: string;
   url: string;
+  redirectedTo?: string;
   technicalScore: number;
   schemaScore: number;
   contentScore: number | null;
@@ -289,12 +290,14 @@ export async function analyzeCompetitors(
   const competitors = await Promise.all(urlsToProcess.map(async (url): Promise<CompetitorScore> => {
     const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
     const competitorDomain = extractDomainName(normalizedUrl);
+    let redirectedTo: string | undefined;
 
     try {
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
       const crawlStartedAt = Date.now();
       const crawlResult = await crawlSite(normalizedUrl, COMPETITOR_MAX_PAGES, { deadlineMs: CRAWL_DEADLINE_MS, preferredLang: mainSiteLang ?? undefined });
+      redirectedTo = crawlResult.homepageRedirect?.to;
 
       if (crawlResult.pages.length === 0) {
         const errorReason = crawlResult.homepageFailReason === "bot_protection" ||
@@ -312,6 +315,7 @@ export async function analyzeCompetitors(
         return {
           name: competitorDomain,
           url: normalizedUrl,
+          redirectedTo: crawlResult.homepageRedirect?.to,
           technicalScore: 0,
           schemaScore: 0,
           contentScore: 0,
@@ -361,6 +365,7 @@ export async function analyzeCompetitors(
         return {
           name: competitorDomain,
           url: normalizedUrl,
+          redirectedTo: crawlResult.homepageRedirect?.to,
           technicalScore: 0,
           schemaScore: 0,
           contentScore: null,
@@ -457,6 +462,7 @@ export async function analyzeCompetitors(
       return {
         name: competitorDomain,
         url: normalizedUrl,
+        redirectedTo: crawlResult.homepageRedirect?.to,
         ...competitorScores,
         crawledPagesCount: crawlResult.pages.length,
         crawledPages,
@@ -467,6 +473,7 @@ export async function analyzeCompetitors(
       return {
         name: competitorDomain,
         url: normalizedUrl,
+        redirectedTo,
         technicalScore: 0,
         schemaScore: 0,
         contentScore: 0,

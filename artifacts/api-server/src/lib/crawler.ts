@@ -51,6 +51,7 @@ export interface CrawlResult {
   pages: CrawledPage[];
   skipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] };
   homepageFailReason?: CrawlFailReason | null;
+  homepageRedirect?: { from: string; to: string } | null;
   timedOut: boolean;
   robotsTxt: string | null;
   sitemapXml: string | null;
@@ -72,7 +73,8 @@ export interface CrawlResult {
 export type SiteTechFiles = Pick<CrawlResult,
   "robotsTxt" | "robotsTxtExists" | "robotsTxtStatus" | "llmsTxt" | "llmsTxtExists" |
   "llmsTxtStatus" | "sitemapXml" | "sitemapXmlExists" | "htmlSitemapHtml" |
-  "htmlSitemapUrl" | "sitemapType" | "sitemapStatus" | "sitemapResolution">;
+  "htmlSitemapUrl" | "sitemapType" | "sitemapStatus" | "sitemapResolution" |
+  "homepageRedirect">;
 
 export type TechnicalFileStatus = "found" | "missing" | "error";
 
@@ -837,6 +839,7 @@ async function discoverSitemap(
 export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFiles> {
   const base = new URL(inputUrl);
   const result: SiteTechFiles = {
+    homepageRedirect: null,
     robotsTxt: null,
     robotsTxtExists: false,
     robotsTxtStatus: "missing",
@@ -873,6 +876,14 @@ export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFile
   let homepageHtml = "";
   try {
     const homePage = await fetchWithTiming(inputUrl);
+    const finalHost = new URL(homePage.finalUrl).hostname;
+    if (hostKey(finalHost) !== hostKey(base.hostname)) {
+      result.homepageRedirect = { from: inputUrl, to: homePage.finalUrl };
+      logger.warn(
+        { from: inputUrl, to: homePage.finalUrl, fromHost: base.hostname, toHost: finalHost },
+        "Homepage redirected to another host",
+      );
+    }
     if (homePage.statusCode < 400) {
       const finalUrl = new URL(homePage.finalUrl);
       if (hostKey(finalUrl.hostname) === hostKey(base.hostname)) {
@@ -983,6 +994,7 @@ export async function crawlSite(
     pages: [],
     skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
     homepageFailReason: null,
+    homepageRedirect: null,
     timedOut: false,
     robotsTxt: null,
     sitemapXml: null,
@@ -1110,6 +1122,13 @@ export async function crawlSite(
     const homePage = await fetchWithTiming(homepageUrl);
     try {
       const finalUrl = new URL(homePage.finalUrl);
+      if (hostKey(finalUrl.hostname) !== siteKey) {
+        result.homepageRedirect = { from: inputUrl, to: homePage.finalUrl };
+        logger.warn(
+          { from: inputUrl, to: homePage.finalUrl, fromHost: base.hostname, toHost: finalUrl.hostname },
+          "Homepage redirected to another host",
+        );
+      }
       if (hostKey(finalUrl.hostname) === siteKey) {
         canonicalProtocol = finalUrl.protocol;
         canonicalHost = finalUrl.host;
@@ -1122,7 +1141,7 @@ export async function crawlSite(
     homepageHtml = homePage.html;
     const preferred = opts?.preferredLang ?? detectPageLanguage(homepageHtml);
     targetLang = preferred === "de" || preferred === "en" ? preferred : null;
-    const blocked = detectBlockedContent(homepageHtml);
+    const blocked = detectBlockedContent(homepageHtml, homePage.finalUrl);
     if (homePage.statusCode < 400 && blocked === null) {
       const fingerprint = contentFingerprint(homepageHtml);
       if (fingerprint) seenFingerprints.set(fingerprint, canonicalHomepageUrl);
@@ -1294,7 +1313,7 @@ export async function crawlSite(
     result.reliability.attempted++;
     try {
       const page = await fetchWithTiming(url);
-      const blocked = detectBlockedContent(page.html);
+      const blocked = detectBlockedContent(page.html, page.finalUrl);
       if (page.statusCode < 400 && blocked === null) {
         const crawledPage: CrawledPage = {
           url,
