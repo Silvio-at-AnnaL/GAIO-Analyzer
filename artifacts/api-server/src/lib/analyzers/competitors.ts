@@ -201,6 +201,12 @@ async function generateFindings(
 ): Promise<CompetitorFindings> {
   const startedAt = Date.now();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let stopReason: string | null = null;
+  let inputTokens: number | null = null;
+  let outputTokens: number | null = null;
+  let textChars: number | null = null;
+  let text: string | null = null;
+  let responseReceived = false;
   try {
     const comparable = maskExcludedScores(mainScores, competitorScores);
     const promptScore = (score: number | null) => score === null ? "—" : String(score);
@@ -232,7 +238,12 @@ async function generateFindings(
       }),
     ]);
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    responseReceived = true;
+    stopReason = response.stop_reason;
+    inputTokens = response.usage.input_tokens;
+    outputTokens = response.usage.output_tokens;
+    text = response.content[0].type === "text" ? response.content[0].text : "";
+    textChars = text.length;
     const firstBrace = text.indexOf("{");
     const lastBrace = text.lastIndexOf("}");
     if (firstBrace < 0 || lastBrace <= firstBrace) throw new Error("invalid JSON object");
@@ -244,6 +255,10 @@ async function generateFindings(
     ) {
       throw new Error("invalid findings fields");
     }
+    logger.info(
+      { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars, parsed: true, durationMs: Date.now() - startedAt },
+      "Competitor findings response",
+    );
     return {
       betterThanYou: parsed.betterThanYou,
       yourAdvantage: parsed.yourAdvantage,
@@ -251,8 +266,19 @@ async function generateFindings(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    const durationMs = Date.now() - startedAt;
+    if (responseReceived) {
+      logger.info(
+        { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars, parsed: false, durationMs },
+        "Competitor findings response",
+      );
+    }
     logger.warn(
-      { competitorDomain, reason, durationMs: Date.now() - startedAt },
+      {
+        competitorDomain, reason, durationMs, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars,
+        textStart: text?.slice(0, 150) ?? null,
+        textEnd: text?.slice(-150) ?? null,
+      },
       "Failed to generate competitor findings — using deterministic fallback",
     );
     return buildCompetitorFindingsFallback(mainScores, competitorScores);
