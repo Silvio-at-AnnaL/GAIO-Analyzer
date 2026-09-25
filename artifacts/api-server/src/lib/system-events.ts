@@ -17,6 +17,7 @@ const EXCLUDED_CONTEXT_KEYS = new Set([
 
 export const PERSISTED_INFO_MESSAGES = new Set([
   "Analysis completed",
+  "Competitor findings response",
   "competitor input normalized",
   "recommendations input built",
   "AI recommendations response",
@@ -72,7 +73,8 @@ function reduceValue(value: unknown, seen: WeakSet<object>): unknown {
     seen.add(value);
     const reduced: Record<string, unknown> = {};
     for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-      reduced[key] = key !== "passt" && REDACTED_KEY_PATTERN.test(key)
+      reduced[key] = key !== "passt" && REDACTED_KEY_PATTERN.test(key) &&
+        nestedValue !== null && typeof nestedValue !== "number" && typeof nestedValue !== "boolean"
         ? "[redacted]"
         : reduceValue(nestedValue, seen);
     }
@@ -82,7 +84,7 @@ function reduceValue(value: unknown, seen: WeakSet<object>): unknown {
   return value;
 }
 
-function buildContext(obj: Record<string, unknown>): Record<string, unknown> | null {
+export function buildContext(obj: Record<string, unknown>): Record<string, unknown> | null {
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (!EXCLUDED_CONTEXT_KEYS.has(key)) filtered[key] = value;
@@ -110,7 +112,7 @@ function buildContext(obj: Record<string, unknown>): Record<string, unknown> | n
   return truncated;
 }
 
-function shouldPersist({ level, msg }: LogSinkEntry): boolean {
+export function shouldPersist({ level, msg }: LogSinkEntry): boolean {
   if (msg === "request completed") return false;
   return level >= 40 || (level === 30 && PERSISTED_INFO_MESSAGES.has(msg));
 }

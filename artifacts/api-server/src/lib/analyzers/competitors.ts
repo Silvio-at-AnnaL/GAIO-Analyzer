@@ -57,6 +57,7 @@ const MAX_COMPETITORS = 5;
 const COMPETITOR_MAX_PAGES = 5;
 const CRAWL_DEADLINE_MS = 45_000;
 const FINDINGS_TIMEOUT_MS = 30_000;
+const FINDINGS_MAX_TOKENS = 1024;
 const CONTENT_TIMEOUT_MS = 60_000;
 const MIN_VISIBLE_TEXT_CHARS = 500;
 
@@ -230,7 +231,8 @@ async function generateFindings(
     const response = await Promise.race([
       anthropic.messages.create({
         model: "claude-sonnet-4-5",
-        max_tokens: 400,
+        max_tokens: FINDINGS_MAX_TOKENS,
+        temperature: 0,
         messages: [{ role: "user", content: prompt }],
       }),
       new Promise<never>((_, reject) => {
@@ -256,7 +258,7 @@ async function generateFindings(
       throw new Error("invalid findings fields");
     }
     logger.info(
-      { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars, parsed: true, durationMs: Date.now() - startedAt },
+      { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: FINDINGS_MAX_TOKENS, textChars, parsed: true, durationMs: Date.now() - startedAt },
       "Competitor findings response",
     );
     return {
@@ -269,13 +271,13 @@ async function generateFindings(
     const durationMs = Date.now() - startedAt;
     if (responseReceived) {
       logger.info(
-        { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars, parsed: false, durationMs },
+        { competitorDomain, stopReason, inputTokens, outputTokens, maxTokens: FINDINGS_MAX_TOKENS, textChars, parsed: false, durationMs },
         "Competitor findings response",
       );
     }
     logger.warn(
       {
-        competitorDomain, reason, durationMs, stopReason, inputTokens, outputTokens, maxTokens: 400, textChars,
+        competitorDomain, reason, durationMs, stopReason, inputTokens, outputTokens, maxTokens: FINDINGS_MAX_TOKENS, textChars,
         textStart: text?.slice(0, 150) ?? null,
         textEnd: text?.slice(-150) ?? null,
       },
