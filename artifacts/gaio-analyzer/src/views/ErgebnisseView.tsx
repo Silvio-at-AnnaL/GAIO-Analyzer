@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { RadarDimensions } from "@/components/charts/RadarDimensions";
-import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, type InputParams, type ContactData } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, formatRedirectUrl, type InputParams, type ContactData } from "@/lib/report-export";
 import { useBranding } from "@/store/brandingStore";
 import {
   ResponsiveContainer,
@@ -101,6 +101,10 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
 
   const progress = report?.progress ?? 0;
   const isFailed = report?.status === "failed";
+  const failedHomepageRedirect = (report as unknown as Record<string, unknown> | undefined)?.homepageRedirect as
+    | { from: string; to: string }
+    | null
+    | undefined;
 
   const buildFailedHtml = async () => {
     if (!report || report.status !== "failed") return "";
@@ -266,6 +270,14 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
           ))}
         </div>
       )}
+      {isFailed && failedHomepageRedirect && (
+        <p className="text-xs text-muted-foreground">
+          {t("results.redirect_info_own", {
+            from: formatRedirectUrl(failedHomepageRedirect.from),
+            to: formatRedirectUrl(failedHomepageRedirect.to),
+          })}
+        </p>
+      )}
 
       {isFailed && (
         <div className="space-y-2">
@@ -420,6 +432,7 @@ interface CompetitorCardProps {
   competitor: {
     name: string;
     url: string;
+    redirectedTo?: string;
     technicalScore: number;
     schemaScore: number;
     contentScore: number | null;
@@ -476,6 +489,11 @@ function CompetitorCard({ competitor, mainScores, excludedModules = [] }: Compet
               {t(badgeKey)}
             </span>
           </div>
+          {competitor.redirectedTo && (
+            <p className="text-xs text-muted-foreground">
+              {t("results.redirect_info_competitor", { to: formatRedirectUrl(competitor.redirectedTo) })}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">
@@ -520,6 +538,11 @@ function CompetitorCard({ competitor, mainScores, excludedModules = [] }: Compet
             {competitor.compositeScore} · {t(scoreLabel(competitor.compositeScore))}
           </div>
         </div>
+        {competitor.redirectedTo && (
+          <p className="text-xs text-muted-foreground">
+            {t("results.redirect_info_competitor", { to: formatRedirectUrl(competitor.redirectedTo) })}
+          </p>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -1000,6 +1023,10 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
   const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
+  const homepageRedirect = (report as unknown as Record<string, unknown>).homepageRedirect as
+    | { from: string; to: string }
+    | null
+    | undefined;
   const crawlSkipped = (report as unknown as Record<string, unknown>).crawlSkipped as
     | { otherLanguage: number; excludedPath: number; duplicate?: number; urls: string[] }
     | null
@@ -1019,6 +1046,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
       faqScore: number;
       compositeScore: number;
       crawledPagesCount: number;
+      redirectedTo?: string;
       crawledPages?: Array<{ url: string; title: string | null }>;
       findings?: { betterThanYou: string; yourAdvantage: string; recommendation: string } | null;
       error?: string;
@@ -2173,6 +2201,14 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
         {/* Details Tab */}
         <TabsContent forceMount value="details" className="space-y-4 pt-4">
+          {homepageRedirect && (
+            <p className="text-xs text-muted-foreground">
+              {t("results.redirect_info_own", {
+                from: formatRedirectUrl(homepageRedirect.from),
+                to: formatRedirectUrl(homepageRedirect.to),
+              })}
+            </p>
+          )}
           {crawlReliability && Number(crawlReliability.attempted) > 0 && (() => {
             const attempted = Number(crawlReliability.attempted);
             const succeeded = Number(crawlReliability.succeeded ?? 0);

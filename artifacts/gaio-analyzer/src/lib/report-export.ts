@@ -20,6 +20,7 @@ type LlmPart = {
 type CompetitorEntry = {
   name: string;
   url: string;
+  redirectedTo?: string;
   technicalScore: number;
   schemaScore: number;
   contentScore: number | null;
@@ -100,6 +101,26 @@ const MODULE_UNAVAILABLE_TEXT = {
 const COMPETITOR_EXCLUDED_TEXT = {
   footnote: "¹ Nicht im Vergleichswert berücksichtigt, weil das Modul bei Ihrer Website nicht verfügbar war.",
 } as const;
+
+const REDIRECT_INFO_TEXT = {
+  own: (from: string, to: string) => `Info: Die Startseite leitet auf eine andere Domain weiter: ${from} → ${to}.`,
+  competitor: (to: string) => `Info: leitet weiter auf ${to}`,
+} as const;
+
+export function formatRedirectUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return String(value ?? "").split(/[?#]/)[0];
+  }
+}
+
+function renderOwnRedirectInfoHtml(report: Record<string, unknown>): string {
+  const redirect = report.homepageRedirect as { from: string; to: string } | null | undefined;
+  if (!redirect) return "";
+  return `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${esc(REDIRECT_INFO_TEXT.own(formatRedirectUrl(redirect.from), formatRedirectUrl(redirect.to)))}</p>`;
+}
 
 function renderUnavailableModuleSection(title: string): string {
   return `<h3>${title}</h3><p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${MODULE_UNAVAILABLE_TEXT.note}</p>`;
@@ -446,6 +467,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
 
   let html = divider("Details");
   html += `<h2>${DT.heading}</h2>`;
+  html += renderOwnRedirectInfoHtml(report);
   html += renderCrawlReliabilityHtml(
     report.crawlReliability as Record<string, unknown> | null | undefined,
     report.crawlSkipped as Record<string, unknown> | null | undefined,
@@ -911,7 +933,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       <strong style="font-size:15px;">${esc(c.name)}</strong>
       <a href="${esc(c.url)}" target="_blank" rel="noreferrer" style="font-size:12px;color:${C.accent};word-break:break-all;">${esc(c.url)}</a>
     </div>
-    ${c.error
+    ${c.redirectedTo ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${esc(REDIRECT_INFO_TEXT.competitor(formatRedirectUrl(c.redirectedTo)))}</p>` : ""}${c.error
       ? `<p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${esc(competitorErrorText(c).description)}</p>`
       : `
     ${c.findings ? `
@@ -1572,7 +1594,7 @@ function buildFailedReportShell(
 
   ${divider("Crawl-Zuverlässigkeit")}
   <h2>Crawl-Zuverlässigkeit</h2>
-  ${renderCrawlReliabilityHtml(limitedReliability, report.crawlSkipped as Record<string, unknown> | null | undefined)}
+  ${renderOwnRedirectInfoHtml(report)}${renderCrawlReliabilityHtml(limitedReliability, report.crawlSkipped as Record<string, unknown> | null | undefined)}
 
   ${divider("Nächste Schritte")}
   <h2>Nächste Schritte</h2>

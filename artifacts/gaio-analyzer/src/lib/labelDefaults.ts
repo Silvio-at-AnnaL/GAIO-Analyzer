@@ -341,6 +341,8 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.competitor_content_na":      { group: "results", de: "Inhalt nicht bewertbar" },
   "results.competitor_excluded_mark":    { group: "results", de: "nicht im Vergleichswert" },
   "results.competitor_excluded_footnote": { group: "results", de: "¹ Nicht im Vergleichswert berücksichtigt, weil das Modul bei Ihrer Website nicht verfügbar war." },
+  "results.redirect_info_own":          { group: "results", de: "Info: Die Startseite leitet auf eine andere Domain weiter: {from} → {to}." },
+  "results.redirect_info_competitor":   { group: "results", de: "Info: leitet weiter auf {to}" },
   "results.chart_score_label":          { group: "results", de: "Score" },
   "results.your_site_highlighted":      { group: "results", de: "Ihre Seite ist blau hervorgehoben." },
   "results.competitor_input_summary":    { group: "results", de: "{provided} Wettbewerber angegeben, {analysed} analysiert." },
