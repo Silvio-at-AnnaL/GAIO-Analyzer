@@ -14,3 +14,9 @@ For ESM bundles that replace an imported module through an esbuild plugin, give 
 **Why:** Without `resolveDir`, imports inside the virtual module cannot be resolved; externalizing workspace packages leaves their uncompiled TypeScript extensionless imports for Node to resolve at runtime.
 
 **How to apply:** Externalize only npm packages that need Node's own runtime resolution, while allowing local workspace sources to be bundled into the temporary verification script.
+
+For temporary bundles emitted outside the workspace, externalized dependencies resolve relative to the output directory, not the package being tested. Include the relevant workspace package `node_modules` directories in `NODE_PATH` when executing the bundle. Esbuild plugins require its asynchronous build API.
+
+**Why:** A private-function test bundle succeeded but could not load an externalized transitive package from `/tmp`; a synchronous build also rejected the source-injection plugin.
+
+**How to apply:** When a temporary test needs source injection, use async esbuild and supply runtime dependency search paths rather than changing project dependencies.
