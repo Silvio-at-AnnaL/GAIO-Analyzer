@@ -29,6 +29,10 @@ const mocks = {
             const state = globalThis.__aiClientTest;
             state.requests.push(request);
             if (state.directError && !("baseURL" in options)) throw state.directError;
+            if (state.proxyError && "baseURL" in options) {
+              if (state.clearKeyOnProxyError) state.settings.ai_api_key_claude = "";
+              throw state.proxyError;
+            }
             return { content: [{ type: "text", text: "Claude response" }] };
           },
         };
@@ -87,6 +91,8 @@ function reset(settings = {}) {
     fallbackRequests: [],
     logs: [],
     directError: null,
+    proxyError: null,
+    clearKeyOnProxyError: false,
   };
   return globalThis.__aiClientTest;
 }
@@ -157,4 +163,44 @@ test("direct SDK failure logs safe diagnostics then falls back", async () => {
   assert.equal(state.fallbackRequests.length, 1);
   assert.ok(!JSON.stringify(state.logs).includes(directKey));
   assert.ok(!JSON.stringify(state.logs).includes("headers"));
+});
+
+test("proxy SDK failure logs sanitized outer-catch diagnostics then falls back", async () => {
+  const state = reset({ ai_api_key_claude: proxyKey });
+  const error = new Error(`Proxy rejected ${proxyKey}`);
+  error.name = `ProxyError-${proxyKey}`;
+  error.status = 429;
+  error.headers = { authorization: proxyKey };
+  state.proxyError = error;
+  state.clearKeyOnProxyError = true;
+
+  assert.equal(await callLLM("prompt"), "Fallback response");
+  const warning = state.logs.find(({ level, msg }) =>
+    level === "warn" && msg === "Configured AI provider failed, falling back to Replit integration"
+  );
+  assert.deepEqual(warning.obj, {
+    provider: "claude",
+    errorName: "ProxyError-[REDACTED]",
+    status: 429,
+    errorMessage: "Proxy rejected [REDACTED]",
+  });
+  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
+    { provider: "claude", route: "fallback", model: "claude-sonnet-4-6" },
+  ]);
+  assert.equal(state.fallbackRequests.length, 1);
+  assert.ok(!JSON.stringify(state.logs).includes(proxyKey));
+  assert.ok(!JSON.stringify(state.logs).includes("headers"));
+});
+
+test("outer catch omits a non-numeric status and keeps the fallback", async () => {
+  const state = reset({ ai_api_key_claude: proxyKey });
+  const error = new Error(`Proxy rejected ${proxyKey}`);
+  error.status = "429";
+  state.proxyError = error;
+
+  assert.equal(await callLLM("prompt"), "Fallback response");
+  const warning = state.logs.find(({ level }) => level === "warn");
+  assert.equal(Object.hasOwn(warning.obj, "status"), false);
+  assert.equal(warning.obj.errorMessage, "Proxy rejected [REDACTED]");
+  assert.ok(!JSON.stringify(state.logs).includes(proxyKey));
 });

@@ -74,6 +74,7 @@ async function callFallback(prompt: string, maxTokens: number, temperature: numb
 
 export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0): Promise<string> {
   let provider = "claude";
+  let claudeKeyUsed: string | null = null;
   let customProviders: Array<{
     id: string;
     api_key: string;
@@ -144,6 +145,7 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
       case "claude":
       default: {
         const apiKey = await getSetting("ai_api_key_claude") ?? "";
+        claudeKeyUsed = apiKey;
         const model  = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
         if (!apiKey) {
           logger.warn("callLLM: no Claude API key configured, using Replit integration");
@@ -180,8 +182,28 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
       }
     }
   } catch (err) {
+    let configuredClaudeKey = claudeKeyUsed;
+    if (configuredClaudeKey === null) {
+      try {
+        configuredClaudeKey = await getSetting("ai_api_key_claude") ?? "";
+      } catch {
+        // Do not risk logging an unredacted credential if settings are unavailable.
+      }
+    }
+    const redact = (value: string) => configuredClaudeKey === null
+      ? "[REDACTED]"
+      : configuredClaudeKey
+        ? value.replaceAll(configuredClaudeKey, "[REDACTED]")
+        : value;
+    const status = err !== null && typeof err === "object" && "status" in err
+      && typeof err.status === "number" ? err.status : undefined;
     logger.warn(
-      { provider, errorName: err instanceof Error ? err.name : "UnknownError" },
+      {
+        provider,
+        errorName: redact(err instanceof Error ? err.name : "UnknownError"),
+        ...(status === undefined ? {} : { status }),
+        errorMessage: redact(err instanceof Error ? err.message : "Unknown error"),
+      },
       "Configured AI provider failed, falling back to Replit integration",
     );
   }
