@@ -5,15 +5,14 @@ import { logger } from "./logger.js";
 const REPLIT_CLAUDE_MODEL = "claude-sonnet-4-6";
 
 async function callWithClaude(
-  apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number
+  apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
+  route: "direct" | "replit-proxy",
 ): Promise<string> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  // Use the Replit AI Integrations proxy URL when available so the
-  // stored key (which is the Replit dummy) routes correctly.
-  const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined;
-  // The Replit proxy only accepts its own model aliases (e.g. claude-sonnet-4-6),
-  // not the upstream versioned names (e.g. claude-sonnet-4-20250514).
-  const effectiveModel = baseURL ? REPLIT_CLAUDE_MODEL : model;
+  const baseURL = route === "replit-proxy"
+    ? process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined
+    : undefined;
+  const effectiveModel = route === "replit-proxy" ? REPLIT_CLAUDE_MODEL : model;
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const resp = await client.messages.create({
     model: effectiveModel as Parameters<typeof client.messages.create>[0]["model"],
@@ -24,6 +23,14 @@ async function callWithClaude(
   const block = resp.content[0];
   if (block.type !== "text") throw new Error("Non-text response from Claude");
   return block.text;
+}
+
+async function logSuccessfulCall(
+  call: Promise<string>, provider: string, route: "direct" | "replit-proxy", model: string,
+): Promise<string> {
+  const result = await call;
+  logger.info({ provider, route, model }, "callLLM route");
+  return result;
 }
 
 async function callWithOpenAI(
@@ -100,13 +107,9 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
     // Check custom (OpenAI-compatible) providers first
     const customProv = customProviders.find(p => p.id === provider && p.enabled);
     if (customProv && customProv.api_key) {
-      return await callWithOpenAI(
-        customProv.api_key,
-        customProv.model,
-        prompt,
-        maxTokens,
-        temperature,
-        customProv.base_url,
+      return await logSuccessfulCall(
+        callWithOpenAI(customProv.api_key, customProv.model, prompt, maxTokens, temperature, customProv.base_url),
+        provider, "direct", customProv.model,
       );
     }
 
@@ -114,20 +117,18 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
       case "openai": {
         const apiKey = await getSetting("ai_api_key_openai") ?? "";
         const model  = await getSetting("ai_model_openai") ?? "gpt-4o";
-        if (apiKey) return await callWithOpenAI(apiKey, model, prompt, maxTokens, temperature);
+        if (apiKey) return await logSuccessfulCall(
+          callWithOpenAI(apiKey, model, prompt, maxTokens, temperature), provider, "direct", model,
+        );
         break;
       }
       case "perplexity": {
         const apiKey = await getSetting("ai_api_key_perplexity") ?? "";
         const model  = await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
         if (apiKey) {
-          return await callWithOpenAI(
-            apiKey,
-            model,
-            prompt,
-            maxTokens,
-            temperature,
-            "https://api.perplexity.ai",
+          return await logSuccessfulCall(
+            callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, "https://api.perplexity.ai"),
+            provider, "direct", model,
           );
         }
         break;
@@ -135,20 +136,57 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
       case "gemini": {
         const apiKey = await getSetting("ai_api_key_gemini") ?? "";
         const model  = await getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
-        if (apiKey) return await callWithGemini(apiKey, model, prompt, temperature);
+        if (apiKey) return await logSuccessfulCall(
+          callWithGemini(apiKey, model, prompt, temperature), provider, "direct", model,
+        );
         break;
       }
       case "claude":
       default: {
         const apiKey = await getSetting("ai_api_key_claude") ?? "";
         const model  = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
-        if (apiKey) return await callWithClaude(apiKey, model, prompt, maxTokens, temperature);
-        break;
+        if (!apiKey) {
+          logger.warn("callLLM: no Claude API key configured, using Replit integration");
+          break;
+        }
+        const route = apiKey === process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY
+          ? "replit-proxy" : "direct";
+        const effectiveModel = route === "replit-proxy" ? REPLIT_CLAUDE_MODEL : model;
+        if (route === "direct") {
+          try {
+            return await logSuccessfulCall(
+              callWithClaude(apiKey, model, prompt, maxTokens, temperature, route),
+              provider, route, effectiveModel,
+            );
+          } catch (err) {
+            const redact = (value: string) => value.replaceAll(apiKey, "[REDACTED]");
+            const status = err !== null && typeof err === "object" && "status" in err
+              && typeof err.status === "number" ? err.status : undefined;
+            logger.warn({
+              provider,
+              route,
+              model,
+              errorName: redact(err instanceof Error ? err.name : "UnknownError"),
+              ...(status === undefined ? {} : { status }),
+              errorMessage: redact(err instanceof Error ? err.message : String(err)),
+            }, "Configured AI provider failed, falling back to Replit integration");
+            break;
+          }
+        }
+        return await logSuccessfulCall(
+          callWithClaude(apiKey, model, prompt, maxTokens, temperature, route),
+          provider, route, effectiveModel,
+        );
       }
     }
   } catch (err) {
-    logger.warn({ err, provider }, "Configured AI provider failed, falling back to Replit integration");
+    logger.warn(
+      { provider, errorName: err instanceof Error ? err.name : "UnknownError" },
+      "Configured AI provider failed, falling back to Replit integration",
+    );
   }
 
-  return callFallback(prompt, maxTokens, temperature);
+  const result = await callFallback(prompt, maxTokens, temperature);
+  logger.info({ provider, route: "fallback", model: REPLIT_CLAUDE_MODEL }, "callLLM route");
+  return result;
 }
