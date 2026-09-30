@@ -28,7 +28,7 @@ async function loadWithMocks(entry, mocks) {
   return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 }
 
-const state = { inputs: {}, callInputs: {}, next: 0, calls: [], answers: {}, logs: [] };
+const state = { inputs: {}, callInputs: {}, next: 0, calls: [], moduleCalls: [], answers: {}, logs: [] };
 globalThis.__llmDiscoverabilityTest = state;
 const loggerMock = `
   export const logger = {
@@ -39,10 +39,11 @@ const loggerMock = `
 `;
 const { analyzeLlmDiscoverability } = await loadWithMocks("./llm-discoverability.ts", {
   "../ai-client.js": `
-    export async function callLLM(prompt) {
+    export async function callLLM(prompt, maxTokens, temperature, options) {
       const state = globalThis.__llmDiscoverabilityTest;
       const slug = prompt.split("#")[0];
       state.calls.push(slug);
+      state.moduleCalls.push({ slug, module: options?.module, maxTokens, temperature });
       const response = state.answers[slug];
       if (response instanceof Error) throw response;
       return typeof response === "function" ? response(state.callInputs[prompt]) : response;
@@ -73,6 +74,7 @@ const reset = () => {
   state.callInputs = {};
   state.next = 0;
   state.calls = [];
+  state.moduleCalls = [];
   state.logs = [];
   state.answers = {
     [A]: JSON.stringify({ questions: ["Frage A?"] }),
@@ -259,4 +261,16 @@ test("logs actual input lengths and persists the INFO message", async () => {
       .map((block, index) => [`https://example.com/${index}`, block.length]));
   assert.deepEqual(log.rating.pages.map(({ mode, faqPairs }) => [mode, faqPairs]),
     [["full", 0], ["full", 0]]);
+});
+
+test("labels the A/B generation and rating calls separately", async () => {
+  reset();
+  await analyzeLlmDiscoverability([page(0, "Text")], "");
+  assert.deepEqual(state.moduleCalls.map(({ module }) => module).sort(), [
+    "llm-discoverability-a",
+    "llm-discoverability-b",
+    "llm-discoverability-rating-a",
+    "llm-discoverability-rating-b",
+  ]);
+  assert.ok(state.moduleCalls.every(({ maxTokens, temperature }) => maxTokens === 8192 && temperature === 0));
 });

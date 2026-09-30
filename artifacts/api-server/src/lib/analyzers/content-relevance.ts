@@ -16,6 +16,10 @@ export interface ContentRelevanceResult {
   failed?: boolean;
 }
 
+export function usableContentRelevance(result: ContentRelevanceResult): ContentRelevanceResult | null {
+  return result.failed === true ? null : result;
+}
+
 export function extractPageText(html: string, maxLen = 4000): string {
   const $ = cheerio.load(html);
   $("script, style, nav, footer, header").remove();
@@ -86,6 +90,7 @@ function validatedDimensions(value: unknown): ContentDimension[] | null {
 export async function analyzeContentRelevance(
   pages: CrawledPage[],
   questionnaireContext: string,
+  options: { module?: string } = {},
 ): Promise<ContentRelevanceResult> {
   const selectedPages = pages.slice(0, 10);
   const pageCount = selectedPages.length;
@@ -124,7 +129,7 @@ export async function analyzeContentRelevance(
       CRAWLED_CONTENT: contentSamples,
     });
 
-    const text = await callLLM(prompt, 8192);
+    const text = await callLLM(prompt, 8192, 0, { module: options.module ?? "content-relevance" });
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return defaultResult;
     const parsed = JSON.parse(jsonMatch[0]);

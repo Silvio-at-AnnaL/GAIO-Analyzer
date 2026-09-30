@@ -34,6 +34,7 @@ async function loadWithMocks(entry, mocks) {
 const state = {
   answer: "",
   prompt: "",
+  callOptions: [],
   logs: [],
   template: "",
   updates: [],
@@ -47,11 +48,13 @@ const loggerMock = `
     warn(obj, msg) { globalThis.__contentRelevanceTest.logs.push({ level: "warn", msg: msg ?? obj, obj: msg ? obj : {} }); },
   };
 `;
-const { extractMainText, extractPageText, analyzeContentRelevance } = await loadWithMocks("./content-relevance.ts", {
+const { extractMainText, extractPageText, analyzeContentRelevance, usableContentRelevance } = await loadWithMocks("./content-relevance.ts", {
   "../ai-client.js": `
-    export async function callLLM(prompt) {
-      globalThis.__contentRelevanceTest.prompt = prompt;
-      return globalThis.__contentRelevanceTest.answer;
+    export async function callLLM(prompt, maxTokens, temperature, options) {
+      const state = globalThis.__contentRelevanceTest;
+      state.prompt = prompt;
+      state.callOptions.push({ maxTokens, temperature, options });
+      return state.answer;
     }
   `,
   "../prompt-manager.js": `
@@ -101,6 +104,7 @@ function page(index, length = 20_000) {
 function reset() {
   state.answer = response(expectedKeys.map((key) => dimension(key, 5)));
   state.prompt = "";
+  state.callOptions = [];
   state.logs = [];
   state.updates = [];
   state.cleared = [];
@@ -189,6 +193,26 @@ test("three dimensions produce the existing failed result", async () => {
   const result = await analyzeContentRelevance([page(0)], "");
   assert.equal(result.failed, true);
   assert.equal(result.score, 50);
+});
+
+test("failed content relevance is unavailable, successful content relevance remains usable", () => {
+  const failed = { score: 50, dimensions: [], failed: true };
+  const succeeded = { score: 70, dimensions: [] };
+  assert.equal(usableContentRelevance(failed), null);
+  assert.equal(usableContentRelevance(succeeded), succeeded);
+});
+
+test("passes the default and a custom module label to callLLM", async () => {
+  reset();
+  await analyzeContentRelevance([page(0)], "");
+  assert.deepEqual(state.callOptions, [
+    { maxTokens: 8192, temperature: 0, options: { module: "content-relevance" } },
+  ]);
+  reset();
+  await analyzeContentRelevance([page(0)], "", { module: "competitor-content" });
+  assert.deepEqual(state.callOptions, [
+    { maxTokens: 8192, temperature: 0, options: { module: "competitor-content" } },
+  ]);
 });
 
 test("migrates only the verbatim old default and clears the cache", async () => {

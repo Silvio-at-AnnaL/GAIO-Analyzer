@@ -254,19 +254,6 @@ export async function initializeDatabase(): Promise<void> {
     logger.info("Default admin user seeded");
   }
 
-  // Auto-seed Claude API key from Replit AI Integration env vars
-  const replitKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ?? "";
-  const replitUrl = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL ?? "";
-  if (replitKey && replitUrl) {
-    const current = await getSetting("ai_api_key_claude");
-    if (!current) {
-      await setSetting("ai_api_key_claude", replitKey);
-      const currentModel = await getSetting("ai_model_claude");
-      if (!currentModel) await setSetting("ai_model_claude", "claude-sonnet-4-6");
-      logger.info("Claude API key auto-seeded from Replit AI Integration");
-    }
-  }
-
   // Auto-register missing permission entries
   const ALL_FEATURE_IDS = [
     "nutzerverwaltung", "analyseprotokoll", "geteilte_analysen", "angebots_creator",

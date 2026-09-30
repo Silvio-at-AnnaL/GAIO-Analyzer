@@ -1,56 +1,66 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { build } from "esbuild";
 
-// Bundle just the module under test, replacing its imports before they can
-// reach real SDKs, the database, or the production logger.
 const mocks = {
   "./admin-db.js": `
     export async function getSetting(key) {
-      return globalThis.__aiClientTest.settings[key] ?? null;
+      const state = globalThis.__aiClientTest;
+      if (state.settingsUnavailable && key === "ai_provider") throw new Error("Settings unavailable");
+      return state.settings[key] ?? null;
     }
   `,
   "./logger.js": `
     export const logger = {
       info(obj, msg) { globalThis.__aiClientTest.logs.push({ level: "info", obj, msg }); },
-      warn(obj, msg) {
-        globalThis.__aiClientTest.logs.push(typeof obj === "string"
-          ? { level: "warn", obj: {}, msg: obj }
-          : { level: "warn", obj, msg });
-      },
+      warn(obj, msg) { globalThis.__aiClientTest.logs.push({ level: "warn", obj, msg }); },
     };
   `,
   "@anthropic-ai/sdk": `
     export default class Anthropic {
       constructor(options) {
-        globalThis.__aiClientTest.clients.push(options);
+        const state = globalThis.__aiClientTest;
+        state.clients.push({ provider: "claude", options });
         this.messages = {
           create: async (request) => {
-            const state = globalThis.__aiClientTest;
-            state.requests.push(request);
-            if (state.directError && !("baseURL" in options)) throw state.directError;
-            if (state.proxyError && "baseURL" in options) {
-              if (state.clearKeyOnProxyError) state.settings.ai_api_key_claude = "";
-              throw state.proxyError;
-            }
-            return { content: [{ type: "text", text: "Claude response" }] };
+            state.requests.push({ provider: "claude", request });
+            if (state.sdkError) throw state.sdkError;
+            return {
+              content: [{ type: "text", text: "Claude response" }],
+              usage: { input_tokens: 15, output_tokens: 7 },
+            };
           },
         };
       }
     }
   `,
-  "@workspace/integrations-anthropic-ai": `
-    export const anthropic = {
-      messages: {
-        async create(request) {
-          globalThis.__aiClientTest.fallbackRequests.push(request);
-          return { content: [{ type: "text", text: "Fallback response" }] };
-        },
-      },
-    };
+  "openai": `
+    export default class OpenAI {
+      constructor(options) {
+        const state = globalThis.__aiClientTest;
+        state.clients.push({ provider: "openai-compatible", options });
+        this.chat = { completions: {
+          create: async (request) => {
+            state.requests.push({ provider: "openai-compatible", request });
+            if (state.sdkError) throw state.sdkError;
+            return {
+              choices: [{ message: { content: "OpenAI response" } }],
+              usage: { prompt_tokens: 22, completion_tokens: 11 },
+            };
+          },
+        } };
+      }
+    }
   `,
-  "openai": `export default class OpenAI {}`,
-  "@google/generative-ai": `export class GoogleGenerativeAI {}`,
+  "@google/generative-ai": `
+    export class GoogleGenerativeAI {
+      constructor(apiKey) { globalThis.__aiClientTest.clients.push({ provider: "gemini", apiKey }); }
+      getGenerativeModel() {
+        return { generateContent: async () => ({ response: { text: () => "Gemini response" } }) };
+      }
+    }
+  `,
 };
 
 const { outputFiles } = await build({
@@ -62,11 +72,8 @@ const { outputFiles } = await build({
   plugins: [{
     name: "mock-ai-client-imports",
     setup(builder) {
-      builder.onResolve({ filter: /.*/ }, (args) => (
-        Object.hasOwn(mocks, args.path)
-          ? { path: args.path, namespace: "ai-client-mock" }
-          : undefined
-      ));
+      builder.onResolve({ filter: /.*/ }, (args) =>
+        Object.hasOwn(mocks, args.path) ? { path: args.path, namespace: "ai-client-mock" } : undefined);
       builder.onLoad({ filter: /.*/, namespace: "ai-client-mock" }, (args) => ({
         contents: mocks[args.path],
         loader: "js",
@@ -76,131 +83,138 @@ const { outputFiles } = await build({
 });
 const { callLLM } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 
-const proxyKey = "replit-dummy-test-key";
-const directKey = "anthropic-direct-secret-test-key";
-const proxyURL = "https://proxy.example.invalid";
-const adminModel = "claude-custom-admin-model";
-
+const key = "anthropic-direct-secret-test-key";
+const model = "claude-custom-admin-model";
 function reset(settings = {}) {
-  process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = proxyKey;
-  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL = proxyURL;
   globalThis.__aiClientTest = {
-    settings: { ai_provider: "claude", ai_model_claude: adminModel, ...settings },
+    settings: { ai_provider: "claude", ai_model_claude: model, ...settings },
     clients: [],
     requests: [],
-    fallbackRequests: [],
     logs: [],
-    directError: null,
-    proxyError: null,
-    clearKeyOnProxyError: false,
+    sdkError: null,
+    settingsUnavailable: false,
   };
   return globalThis.__aiClientTest;
 }
+const routes = (state) => state.logs.filter(({ msg }) => msg === "callLLM route");
 
-function routeEntries(state) {
-  return state.logs.filter(({ level, msg }) => level === "info" && msg === "callLLM route");
-}
-
-test("a distinct admin Claude key uses Anthropic directly and the stored model", async () => {
-  const state = reset({ ai_api_key_claude: directKey });
-  assert.equal(await callLLM("prompt", 123, 0.3), "Claude response");
-  assert.deepEqual(state.clients, [{ apiKey: directKey }]);
-  assert.equal(state.requests[0].model, adminModel);
-  assert.equal(state.requests[0].max_tokens, 123);
-  assert.equal(state.requests[0].temperature, 0.3);
-  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
-    { provider: "claude", route: "direct", model: adminModel },
-  ]);
-  assert.equal(state.fallbackRequests.length, 0);
-  assert.ok(!JSON.stringify(state.logs).includes(directKey));
+test("Claude uses the stored key/model directly, with timeout/retries and usage metrics", async () => {
+  const state = reset({ ai_api_key_claude: key });
+  assert.equal(await callLLM("prompt", 123, 0.3, { module: "content-relevance" }), "Claude response");
+  assert.deepEqual(state.clients, [{
+    provider: "claude", options: { apiKey: key, timeout: 120_000, maxRetries: 2 },
+  }]);
+  assert.equal(Object.hasOwn(state.clients[0].options, "baseURL"), false);
+  assert.equal(state.requests[0].request.model, model);
+  assert.equal(state.requests[0].request.max_tokens, 123);
+  assert.equal(state.requests[0].request.temperature, 0.3);
+  assert.equal(routes(state).length, 1);
+  assert.deepEqual({ ...routes(state)[0].obj, durationMs: 0 }, {
+    provider: "claude", route: "direct", model, module: "content-relevance",
+    durationMs: 0, inputTokens: 15, outputTokens: 7,
+  });
+  assert.ok(typeof routes(state)[0].obj.durationMs === "number" && routes(state)[0].obj.durationMs >= 0);
+  assert.ok(!JSON.stringify(state.logs).includes(key));
 });
 
-test("the Replit integration key keeps proxy URL and proxy model", async () => {
-  const state = reset({ ai_api_key_claude: proxyKey });
-  assert.equal(await callLLM("prompt"), "Claude response");
-  assert.deepEqual(state.clients, [{ apiKey: proxyKey, baseURL: proxyURL }]);
-  assert.equal(state.requests[0].model, "claude-sonnet-4-6");
-  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
-    { provider: "claude", route: "replit-proxy", model: "claude-sonnet-4-6" },
-  ]);
-  assert.ok(!JSON.stringify(state.logs).includes(proxyKey));
+test("module defaults to unknown and OpenAI-compatible usage is logged", async () => {
+  const state = reset({ ai_provider: "openai", ai_api_key_openai: "openai-test-key" });
+  assert.equal(await callLLM("prompt"), "OpenAI response");
+  assert.deepEqual(state.clients[0].options, {
+    apiKey: "openai-test-key", timeout: 120_000, maxRetries: 2,
+  });
+  assert.deepEqual({ ...routes(state)[0].obj, durationMs: 0 }, {
+    provider: "openai", route: "direct", model: "gpt-4o",
+    module: "unknown", durationMs: 0, inputTokens: 22, outputTokens: 11,
+  });
 });
 
-test("missing Claude key warns and uses the existing fallback", async () => {
-  const state = reset({ ai_api_key_claude: "" });
-  assert.equal(await callLLM("prompt"), "Fallback response");
-  assert.equal(state.clients.length, 0);
-  assert.equal(state.fallbackRequests[0].model, "claude-sonnet-4-6");
-  assert.ok(state.logs.some(({ level, msg }) =>
-    level === "warn" && msg === "callLLM: no Claude API key configured, using Replit integration"
-  ));
-  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
-    { provider: "claude", route: "fallback", model: "claude-sonnet-4-6" },
-  ]);
+test("custom and Perplexity providers retain their own model and base URL", async () => {
+  const custom = reset({
+    ai_provider: "custom-1",
+    ai_custom_providers: JSON.stringify([{
+      id: "custom-1", api_key: "custom-test-key", base_url: "https://custom.example",
+      model: "custom-model", enabled: true,
+    }]),
+  });
+  assert.equal(await callLLM("prompt"), "OpenAI response");
+  assert.equal(custom.clients[0].options.baseURL, "https://custom.example");
+  assert.equal(custom.requests[0].request.model, "custom-model");
+  assert.equal(routes(custom)[0].obj.inputTokens, 22);
+  const perplexity = reset({ ai_provider: "perplexity", ai_api_key_perplexity: "perplexity-test-key" });
+  assert.equal(await callLLM("prompt"), "OpenAI response");
+  assert.equal(perplexity.clients[0].options.baseURL, "https://api.perplexity.ai");
+  assert.equal(perplexity.clients[0].options.maxRetries, 2);
 });
 
-test("direct SDK failure logs safe diagnostics then falls back", async () => {
-  const state = reset({ ai_api_key_claude: directKey });
-  const error = new Error(`Request failed for ${directKey}`);
-  error.name = `AnthropicError-${directKey}`;
+test("Gemini retains its API and reports unavailable token usage", async () => {
+  const state = reset({ ai_provider: "gemini", ai_api_key_gemini: "gemini-test-key" });
+  assert.equal(await callLLM("prompt"), "Gemini response");
+  assert.equal(routes(state)[0].obj.inputTokens, null);
+  assert.equal(routes(state)[0].obj.outputTokens, null);
+});
+
+test("missing key for each selected provider warns and throws without an SDK call", async () => {
+  for (const provider of ["claude", "openai", "perplexity", "gemini", "custom-1"]) {
+    const state = reset({ ai_provider: provider });
+    await assert.rejects(callLLM("prompt", 4096, 0, { module: "test-module" }), /No API key configured/);
+    assert.deepEqual(state.clients, []);
+    assert.deepEqual(state.requests, []);
+    assert.deepEqual(state.logs.filter(({ level, msg }) => level === "warn" && msg === "callLLM: no API key configured")
+      .map(({ obj }) => obj), [{ provider, module: "test-module" }]);
+    assert.deepEqual(routes(state), []);
+  }
+});
+
+test("SDK failure redacts the key, logs timing and module, and rethrows without another call", async () => {
+  const state = reset({ ai_api_key_claude: key });
+  const error = new Error(`Request failed for ${key}`);
+  error.name = `AnthropicError-${key}`;
   error.status = 401;
-  error.headers = { authorization: directKey };
-  state.directError = error;
-
-  assert.equal(await callLLM("prompt"), "Fallback response");
-  const warning = state.logs.find(({ level, obj }) => level === "warn" && obj.route === "direct");
-  assert.deepEqual(warning.obj, {
-    provider: "claude",
-    route: "direct",
-    model: adminModel,
-    errorName: "AnthropicError-[REDACTED]",
-    status: 401,
+  error.headers = { authorization: key };
+  state.sdkError = error;
+  await assert.rejects(callLLM("prompt", 4096, 0, { module: "faq-quality" }), (caught) => caught === error);
+  assert.equal(state.clients.length, 1);
+  assert.equal(state.requests.length, 1);
+  assert.deepEqual(routes(state), []);
+  const warning = state.logs.find(({ msg }) => msg === "callLLM provider failed");
+  assert.deepEqual({ ...warning.obj, durationMs: 0 }, {
+    provider: "claude", model, module: "faq-quality", durationMs: 0,
+    errorName: "AnthropicError-[REDACTED]", status: 401,
     errorMessage: "Request failed for [REDACTED]",
   });
-  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
-    { provider: "claude", route: "fallback", model: "claude-sonnet-4-6" },
-  ]);
-  assert.equal(state.fallbackRequests.length, 1);
-  assert.ok(!JSON.stringify(state.logs).includes(directKey));
+  assert.ok(typeof warning.obj.durationMs === "number" && warning.obj.durationMs >= 0);
+  assert.ok(!JSON.stringify(state.logs).includes(key));
   assert.ok(!JSON.stringify(state.logs).includes("headers"));
 });
 
-test("proxy SDK failure logs sanitized outer-catch diagnostics then falls back", async () => {
-  const state = reset({ ai_api_key_claude: proxyKey });
-  const error = new Error(`Proxy rejected ${proxyKey}`);
-  error.name = `ProxyError-${proxyKey}`;
-  error.status = 429;
-  error.headers = { authorization: proxyKey };
-  state.proxyError = error;
-  state.clearKeyOnProxyError = true;
-
-  assert.equal(await callLLM("prompt"), "Fallback response");
-  const warning = state.logs.find(({ level, msg }) =>
-    level === "warn" && msg === "Configured AI provider failed, falling back to Replit integration"
-  );
-  assert.deepEqual(warning.obj, {
-    provider: "claude",
-    errorName: "ProxyError-[REDACTED]",
-    status: 429,
-    errorMessage: "Proxy rejected [REDACTED]",
-  });
-  assert.deepEqual(routeEntries(state).map(({ obj }) => obj), [
-    { provider: "claude", route: "fallback", model: "claude-sonnet-4-6" },
-  ]);
-  assert.equal(state.fallbackRequests.length, 1);
-  assert.ok(!JSON.stringify(state.logs).includes(proxyKey));
-  assert.ok(!JSON.stringify(state.logs).includes("headers"));
-});
-
-test("outer catch omits a non-numeric status and keeps the fallback", async () => {
-  const state = reset({ ai_api_key_claude: proxyKey });
-  const error = new Error(`Proxy rejected ${proxyKey}`);
+test("non-numeric status is omitted and selected OpenAI key is redacted", async () => {
+  const state = reset({ ai_provider: "openai", ai_api_key_openai: "openai-test-key" });
+  const error = new Error("Rejected openai-test-key");
   error.status = "429";
-  state.proxyError = error;
+  state.sdkError = error;
+  await assert.rejects(callLLM("prompt"), (caught) => caught === error);
+  const warning = state.logs.find(({ msg }) => msg === "callLLM provider failed").obj;
+  assert.equal(Object.hasOwn(warning, "status"), false);
+  assert.equal(warning.errorMessage, "Rejected [REDACTED]");
+  assert.ok(!JSON.stringify(state.logs).includes("openai-test-key"));
+  assert.equal(state.requests.length, 1);
+});
 
-  assert.equal(await callLLM("prompt"), "Fallback response");
-  const warning = state.logs.find(({ level }) => level === "warn");
-  assert.equal(Object.hasOwn(warning.obj, "status"), false);
-  assert.equal(warning.obj.errorMessage, "Proxy rejected [REDACTED]");
-  assert.ok(!JSON.stringify(state.logs).includes(proxyKey));
+test("settings unavailable warns, defaults to Claude, and still requires a key", async () => {
+  const state = reset({ ai_api_key_claude: key });
+  state.settingsUnavailable = true;
+  assert.equal(await callLLM("prompt"), "Claude response");
+  assert.ok(state.logs.some(({ msg }) => msg === "callLLM settings unavailable — using default provider"));
+  assert.equal(routes(state)[0].obj.provider, "claude");
+  state.settings.ai_api_key_claude = "";
+  state.logs = [];
+  await assert.rejects(callLLM("prompt"), /No API key configured/);
+  assert.ok(state.logs.some(({ msg }) => msg === "callLLM: no API key configured"));
+});
+
+test("source no longer contains integration env references or the integration import", async () => {
+  const source = await readFile(new URL("./ai-client.ts", import.meta.url), "utf8");
+  assert.ok(!source.includes("AI_" + "INTEGRATIONS"));
+  assert.ok(!source.includes("integrations-" + "anthropic-ai"));
 });

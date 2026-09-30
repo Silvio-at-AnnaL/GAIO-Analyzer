@@ -418,7 +418,7 @@ export async function analyzeCompetitors(
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           try {
             const contentResult = await Promise.race([
-              analyzeContentRelevance(crawlResult.pages, questionnaireContext),
+              analyzeContentRelevance(crawlResult.pages, questionnaireContext, { module: "competitor-content" }),
               new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(
                   () => reject(new Error("Competitor content analysis timed out")),

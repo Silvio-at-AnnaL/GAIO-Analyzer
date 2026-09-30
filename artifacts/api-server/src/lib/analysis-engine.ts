@@ -2,7 +2,7 @@ import { crawlSite, fetchExplicitPages, pageLanguage, type CrawlReliability, typ
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
-import { analyzeContentRelevance } from "./analyzers/content-relevance";
+import { analyzeContentRelevance, usableContentRelevance } from "./analyzers/content-relevance";
 import { analyzeFaq, type FaqScoreParams } from "./analyzers/faq";
 import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
 import { analyzeCompetitors } from "./analyzers/competitors";
@@ -441,7 +441,11 @@ export async function runAnalysis(
       state.currentModule = "Inhaltliche Relevanz (KI-Analyse)";
       state.progress = 45;
       save();
-      state.contentRelevance = await analyzeContentRelevance(pages, questionnaireContext);
+      const result = await analyzeContentRelevance(pages, questionnaireContext);
+      state.contentRelevance = usableContentRelevance(result);
+      if (state.contentRelevance === null) {
+        logger.warn({ reason: "failed flag" }, "content relevance unavailable");
+      }
     } catch (err) {
       logger.error({ err }, "Content relevance analysis failed");
       state.errors.push("Content relevance analysis failed");

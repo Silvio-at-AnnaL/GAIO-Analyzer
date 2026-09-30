@@ -113,7 +113,7 @@ async function generateProblemQuestions(
     COMBINED_CONTENT: combinedContent,
   });
 
-  const text = await callLLM(prompt, 8192);
+  const text = await callLLM(prompt, 8192, 0, { module: "llm-discoverability-a" });
   const parsed = tryParseJson<{ questions?: string[] }>(text);
   return (Array.isArray(parsed?.questions) ? parsed.questions : [])
     .filter((question): question is string => typeof question === "string" && !!question.trim())
@@ -131,7 +131,7 @@ async function generateBrandQuestions(
     COMBINED_CONTENT: combinedContent,
   });
 
-  const text = await callLLM(prompt, 8192);
+  const text = await callLLM(prompt, 8192, 0, { module: "llm-discoverability-b" });
   const parsed = tryParseJson<{ questions?: string[] }>(text);
   return (Array.isArray(parsed?.questions) ? parsed.questions : [])
     .filter((question): question is string => typeof question === "string" && !!question.trim())
@@ -142,6 +142,7 @@ async function rateQuestionsWithSources(
   questions: string[],
   pagesDoc: string,
   urlList: string[],
+  module: "llm-discoverability-rating-a" | "llm-discoverability-rating-b",
 ): Promise<LlmQuestion[]> {
   const prompt = fillTemplate(await getPrompt("llm-discoverability-rating"), {
     PAGES_DOC: pagesDoc,
@@ -149,7 +150,7 @@ async function rateQuestionsWithSources(
     QUESTIONS: JSON.stringify(questions),
   });
 
-  const text = await callLLM(prompt, 8192);
+  const text = await callLLM(prompt, 8192, 0, { module });
   const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(text);
   const ratings = parsed?.ratings;
   if (!Array.isArray(ratings) || ratings.length !== questions.length) {
@@ -228,8 +229,8 @@ export async function analyzeLlmDiscoverability(
     if (partBQuestions.length === 0) throw new Error("Part B generated no questions");
 
     const [partARated, partBRated] = await Promise.all([
-      rateQuestionsWithSources(partAQuestions, pagesDoc, urlList),
-      rateQuestionsWithSources(partBQuestions, pagesDoc, urlList),
+      rateQuestionsWithSources(partAQuestions, pagesDoc, urlList, "llm-discoverability-rating-a"),
+      rateQuestionsWithSources(partBQuestions, pagesDoc, urlList, "llm-discoverability-rating-b"),
     ]);
 
     const partA = summarizePart("Teil A — Problem-/Kategorie-Fragen (ohne Markenname)", 0.7, partARated);

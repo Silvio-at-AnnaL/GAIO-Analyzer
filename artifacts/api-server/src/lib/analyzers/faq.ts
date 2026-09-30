@@ -182,6 +182,8 @@ export async function analyzeFaq(
       response = await callLLM(
         fillTemplate(await getPrompt("faq-quality"), { FAQ_CONTENT: faqQualityContent(pairs.distinct) }),
         8192,
+        0,
+        { module: "faq-quality" },
       );
       const parsed = parseFaqQualityResponse(response);
       if (parsed) {

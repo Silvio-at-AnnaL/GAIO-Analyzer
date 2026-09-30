@@ -1,80 +1,78 @@
 import { getSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
 
-// Model alias accepted by the Replit AI Integrations proxy.
-const REPLIT_CLAUDE_MODEL = "claude-sonnet-4-6";
+const CALL_LLM_TIMEOUT_MS = 120_000;
+const CALL_LLM_MAX_RETRIES = 2;
+
+interface ProviderResponse {
+  text: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+class MissingApiKeyError extends Error {}
 
 async function callWithClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
-  route: "direct" | "replit-proxy",
-): Promise<string> {
+): Promise<ProviderResponse> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  const baseURL = route === "replit-proxy"
-    ? process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined
-    : undefined;
-  const effectiveModel = route === "replit-proxy" ? REPLIT_CLAUDE_MODEL : model;
-  const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  const client = new Anthropic({
+    apiKey, timeout: CALL_LLM_TIMEOUT_MS, maxRetries: CALL_LLM_MAX_RETRIES,
+  });
   const resp = await client.messages.create({
-    model: effectiveModel as Parameters<typeof client.messages.create>[0]["model"],
+    model: model as Parameters<typeof client.messages.create>[0]["model"],
     max_tokens: maxTokens,
     temperature,
     messages: [{ role: "user", content: prompt }],
   });
   const block = resp.content[0];
-  if (block.type !== "text") throw new Error("Non-text response from Claude");
-  return block.text;
-}
-
-async function logSuccessfulCall(
-  call: Promise<string>, provider: string, route: "direct" | "replit-proxy", model: string,
-): Promise<string> {
-  const result = await call;
-  logger.info({ provider, route, model }, "callLLM route");
-  return result;
+  if (block?.type !== "text") throw new Error("Non-text response from Claude");
+  return {
+    text: block.text,
+    inputTokens: resp.usage?.input_tokens ?? null,
+    outputTokens: resp.usage?.output_tokens ?? null,
+  };
 }
 
 async function callWithOpenAI(
   apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number, baseURL?: string
-): Promise<string> {
+): Promise<ProviderResponse> {
   const OpenAI = (await import("openai")).default;
-  const client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  const client = new OpenAI({
+    apiKey, ...(baseURL ? { baseURL } : {}),
+    timeout: CALL_LLM_TIMEOUT_MS, maxRetries: CALL_LLM_MAX_RETRIES,
+  });
   const resp = await client.chat.completions.create({
     model,
     max_tokens: maxTokens,
     temperature,
     messages: [{ role: "user", content: prompt }],
   });
-  return resp.choices[0]?.message?.content ?? "";
+  return {
+    text: resp.choices[0]?.message?.content ?? "",
+    inputTokens: resp.usage?.prompt_tokens ?? null,
+    outputTokens: resp.usage?.completion_tokens ?? null,
+  };
 }
 
 async function callWithGemini(
   apiKey: string, model: string, prompt: string, temperature: number
-): Promise<string> {
+): Promise<ProviderResponse> {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
   const geminiModel = genAI.getGenerativeModel({ model, generationConfig: { temperature } });
   const result = await geminiModel.generateContent(prompt);
-  return result.response.text();
+  return { text: result.response.text(), inputTokens: null, outputTokens: null };
 }
 
-async function callFallback(prompt: string, maxTokens: number, temperature: number): Promise<string> {
-  const { anthropic } = await import("@workspace/integrations-anthropic-ai");
-  // Always use the Replit proxy alias here — do NOT read ai_model_claude,
-  // because that setting may contain an upstream versioned name the proxy rejects.
-  const resp = await anthropic.messages.create({
-    model: REPLIT_CLAUDE_MODEL as Parameters<typeof anthropic.messages.create>[0]["model"],
-    max_tokens: maxTokens,
-    temperature,
-    messages: [{ role: "user", content: prompt }],
-  });
-  const block = resp.content[0];
-  if (block.type !== "text") throw new Error("Non-text response from fallback");
-  return block.text;
-}
-
-export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0): Promise<string> {
+export async function callLLM(
+  prompt: string, maxTokens = 4096, temperature = 0, options: { module?: string } = {},
+): Promise<string> {
+  const startedAt = Date.now();
+  const module = options.module ?? "unknown";
   let provider = "claude";
-  let claudeKeyUsed: string | null = null;
+  let apiKey = "";
+  let model = "unknown";
   let customProviders: Array<{
     id: string;
     api_key: string;
@@ -88,7 +86,8 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
     const customJson = await getSetting("ai_custom_providers") ?? "[]";
     let configuredCustomProviders: typeof customProviders = [];
     try {
-      configuredCustomProviders = JSON.parse(customJson) as typeof customProviders;
+      const parsed: unknown = JSON.parse(customJson);
+      if (Array.isArray(parsed)) configuredCustomProviders = parsed as typeof customProviders;
     } catch {
       // Ignore malformed custom-provider configuration as before.
     }
@@ -105,110 +104,60 @@ export async function callLLM(prompt: string, maxTokens = 4096, temperature = 0)
   }
 
   try {
-    // Check custom (OpenAI-compatible) providers first
     const customProv = customProviders.find(p => p.id === provider && p.enabled);
-    if (customProv && customProv.api_key) {
-      return await logSuccessfulCall(
-        callWithOpenAI(customProv.api_key, customProv.model, prompt, maxTokens, temperature, customProv.base_url),
-        provider, "direct", customProv.model,
-      );
-    }
-
-    switch (provider) {
-      case "openai": {
-        const apiKey = await getSetting("ai_api_key_openai") ?? "";
-        const model  = await getSetting("ai_model_openai") ?? "gpt-4o";
-        if (apiKey) return await logSuccessfulCall(
-          callWithOpenAI(apiKey, model, prompt, maxTokens, temperature), provider, "direct", model,
-        );
-        break;
-      }
-      case "perplexity": {
-        const apiKey = await getSetting("ai_api_key_perplexity") ?? "";
-        const model  = await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
-        if (apiKey) {
-          return await logSuccessfulCall(
-            callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, "https://api.perplexity.ai"),
-            provider, "direct", model,
-          );
-        }
-        break;
-      }
-      case "gemini": {
-        const apiKey = await getSetting("ai_api_key_gemini") ?? "";
-        const model  = await getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
-        if (apiKey) return await logSuccessfulCall(
-          callWithGemini(apiKey, model, prompt, temperature), provider, "direct", model,
-        );
-        break;
-      }
-      case "claude":
-      default: {
-        const apiKey = await getSetting("ai_api_key_claude") ?? "";
-        claudeKeyUsed = apiKey;
-        const model  = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
-        if (!apiKey) {
-          logger.warn("callLLM: no Claude API key configured, using Replit integration");
+    let call: Promise<ProviderResponse> | undefined;
+    if (customProv) {
+      apiKey = customProv.api_key ?? "";
+      model = customProv.model;
+      if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, customProv.base_url);
+    } else {
+      switch (provider) {
+        case "openai":
+          apiKey = await getSetting("ai_api_key_openai") ?? "";
+          model = await getSetting("ai_model_openai") ?? "gpt-4o";
+          if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature);
           break;
-        }
-        const route = apiKey === process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY
-          ? "replit-proxy" : "direct";
-        const effectiveModel = route === "replit-proxy" ? REPLIT_CLAUDE_MODEL : model;
-        if (route === "direct") {
-          try {
-            return await logSuccessfulCall(
-              callWithClaude(apiKey, model, prompt, maxTokens, temperature, route),
-              provider, route, effectiveModel,
-            );
-          } catch (err) {
-            const redact = (value: string) => value.replaceAll(apiKey, "[REDACTED]");
-            const status = err !== null && typeof err === "object" && "status" in err
-              && typeof err.status === "number" ? err.status : undefined;
-            logger.warn({
-              provider,
-              route,
-              model,
-              errorName: redact(err instanceof Error ? err.name : "UnknownError"),
-              ...(status === undefined ? {} : { status }),
-              errorMessage: redact(err instanceof Error ? err.message : String(err)),
-            }, "Configured AI provider failed, falling back to Replit integration");
-            break;
-          }
-        }
-        return await logSuccessfulCall(
-          callWithClaude(apiKey, model, prompt, maxTokens, temperature, route),
-          provider, route, effectiveModel,
-        );
+        case "perplexity":
+          apiKey = await getSetting("ai_api_key_perplexity") ?? "";
+          model = await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
+          if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, "https://api.perplexity.ai");
+          break;
+        case "gemini":
+          apiKey = await getSetting("ai_api_key_gemini") ?? "";
+          model = await getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
+          if (apiKey) call = callWithGemini(apiKey, model, prompt, temperature);
+          break;
+        case "claude":
+          apiKey = await getSetting("ai_api_key_claude") ?? "";
+          model = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
+          if (apiKey) call = callWithClaude(apiKey, model, prompt, maxTokens, temperature);
+          break;
       }
     }
+    if (!apiKey) {
+      logger.warn({ provider, module }, "callLLM: no API key configured");
+      throw new MissingApiKeyError(`No API key configured for ${provider}`);
+    }
+    const response = await call!;
+    logger.info({
+      provider, route: "direct", model, module, durationMs: Date.now() - startedAt,
+      inputTokens: response.inputTokens, outputTokens: response.outputTokens,
+    }, "callLLM route");
+    return response.text;
   } catch (err) {
-    let configuredClaudeKey = claudeKeyUsed;
-    if (configuredClaudeKey === null) {
-      try {
-        configuredClaudeKey = await getSetting("ai_api_key_claude") ?? "";
-      } catch {
-        // Do not risk logging an unredacted credential if settings are unavailable.
-      }
-    }
-    const redact = (value: string) => configuredClaudeKey === null
-      ? "[REDACTED]"
-      : configuredClaudeKey
-        ? value.replaceAll(configuredClaudeKey, "[REDACTED]")
-        : value;
+    if (err instanceof MissingApiKeyError) throw err;
+    const redact = (value: string) => apiKey ? value.replaceAll(apiKey, "[REDACTED]") : "[REDACTED]";
     const status = err !== null && typeof err === "object" && "status" in err
       && typeof err.status === "number" ? err.status : undefined;
     logger.warn(
       {
-        provider,
+        provider, model, module, durationMs: Date.now() - startedAt,
         errorName: redact(err instanceof Error ? err.name : "UnknownError"),
         ...(status === undefined ? {} : { status }),
-        errorMessage: redact(err instanceof Error ? err.message : "Unknown error"),
+        errorMessage: redact(err instanceof Error ? err.message : String(err)),
       },
-      "Configured AI provider failed, falling back to Replit integration",
+      "callLLM provider failed",
     );
+    throw err;
   }
-
-  const result = await callFallback(prompt, maxTokens, temperature);
-  logger.info({ provider, route: "fallback", model: REPLIT_CLAUDE_MODEL }, "callLLM route");
-  return result;
 }

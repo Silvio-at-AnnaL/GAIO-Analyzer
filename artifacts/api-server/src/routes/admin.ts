@@ -1021,7 +1021,7 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
   });
 
   try {
-    const rawHtml = await callLLM(prompt, 6000);
+    const rawHtml = await callLLM(prompt, 6000, 0, { module: "offer-creator" });
     let html = rawHtml.trim();
     html = html.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```\s*$/, "");
     html = html.replace(/<hr\s*\/?>/gi, "<hr><br>");
