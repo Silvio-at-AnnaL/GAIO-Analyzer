@@ -1302,6 +1302,9 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
       res.status(400).json({ error: "Ungültiges Ablaufdatum" }); return;
     }
   }
+  const activeProvider = group === "ai" ? (await getSetting("ai_provider") ?? "claude") : "";
+  let activeKeyChanged = false;
+  let providerChanged = false;
   for (const [key, value] of Object.entries(body)) {
     if (!keys.includes(key)) continue;
     if (key === "competitor_source" && value !== "ai" && value !== "search") {
@@ -1322,14 +1325,25 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
           return p;
         });
         await setSetting(key, JSON.stringify(merged));
+        if (stored.some(p => p.id === activeProvider) || merged.some(p => p.id === activeProvider)) {
+          activeKeyChanged ||= stored.find(p => p.id === activeProvider)?.api_key
+            !== merged.find(p => p.id === activeProvider)?.api_key;
+        }
       } catch { /* ignore invalid JSON */ }
     } else if (SECRET_KEYS.has(key) && isPlaceholder(String(value))) {
       continue;
     } else {
+      if (key === "ai_provider") providerChanged = String(value) !== activeProvider;
+      if (key === `ai_api_key_${activeProvider}`) {
+        activeKeyChanged ||= String(value) !== (await getSetting(key) ?? "");
+      }
       await setSetting(key, String(value));
     }
   }
-  if (group === "ai") resetLlmPreflightCache();
+  if (group === "ai") {
+    if (providerChanged || activeKeyChanged) await setSetting("ai_key_valid_until", "");
+    resetLlmPreflightCache();
+  }
   res.json({ success: true });
 });
 

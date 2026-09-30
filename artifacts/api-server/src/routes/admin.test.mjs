@@ -172,6 +172,56 @@ test("successful AI settings saves reset the preflight cache", async () => {
   assert.equal(state.cacheResets, 1);
 });
 
+test("changing the active provider clears the saved key expiry date", async () => {
+  const state = reset({ ai_provider: "claude", ai_key_valid_until: "2035-06-07" });
+  const response = await request("PATCH", "/settings/:group", {
+    body: { ai_provider: "openai", ai_key_valid_until: "2035-08-01" },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(state.settings.ai_provider, "openai");
+  assert.equal(state.settings.ai_key_valid_until, "");
+  assert.equal(state.cacheResets, 1);
+
+  state.saved.length = 0;
+  await request("PATCH", "/settings/:group", { body: { ai_provider: "openai" } });
+  assert.equal(state.saved.some(([key]) => key === "ai_key_valid_until"), false);
+});
+
+test("changing the active built-in key clears expiry, but an unchanged or inactive key does not", async () => {
+  const state = reset({
+    ai_provider: "claude", ai_api_key_claude: "old-key",
+    ai_api_key_openai: "other-key", ai_key_valid_until: "2035-06-07",
+  });
+  await request("PATCH", "/settings/:group", { body: { ai_api_key_openai: "new-other-key" } });
+  assert.equal(state.settings.ai_key_valid_until, "2035-06-07");
+  await request("PATCH", "/settings/:group", { body: { ai_api_key_claude: "old-key" } });
+  assert.equal(state.settings.ai_key_valid_until, "2035-06-07");
+  await request("PATCH", "/settings/:group", { body: { ai_api_key_claude: "••••••••" } });
+  assert.equal(state.settings.ai_key_valid_until, "2035-06-07");
+  await request("PATCH", "/settings/:group", { body: { ai_api_key_claude: "new-key" } });
+  assert.equal(state.settings.ai_key_valid_until, "");
+  assert.equal(state.cacheResets, 4);
+});
+
+test("changing the active custom provider key clears expiry after preserving masked keys", async () => {
+  const custom = (api_key, name = "Custom") => [{
+    id: "custom-1", name, api_key, base_url: "https://example.test", model: "model", enabled: true,
+  }];
+  const state = reset({
+    ai_provider: "custom-1", ai_custom_providers: JSON.stringify(custom("old-key")),
+    ai_key_valid_until: "2035-06-07",
+  });
+  await request("PATCH", "/settings/:group", {
+    body: { ai_custom_providers: JSON.stringify(custom("••••••••", "Renamed")) },
+  });
+  assert.equal(state.settings.ai_key_valid_until, "2035-06-07");
+  await request("PATCH", "/settings/:group", {
+    body: { ai_custom_providers: JSON.stringify(custom("new-key", "Renamed")) },
+  });
+  assert.equal(state.settings.ai_key_valid_until, "");
+  assert.equal(state.cacheResets, 2);
+});
+
 test("ai-test requires admin auth and force-checks readiness for admins", async () => {
   const state = reset();
   const anonymous = await request("POST", "/settings/ai-test", { token: null });

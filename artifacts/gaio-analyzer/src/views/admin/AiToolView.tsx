@@ -156,7 +156,9 @@ export function AiToolView() {
     });
     setSaving(null);
     if (res.ok) {
-      setStatus(s => s ? { ...s, provider: selectedProvider } : s);
+      await load();
+      setAiTestResult(null);
+      window.dispatchEvent(new Event("ai-key-status-changed"));
       const label = allProviderOptions.find(p => p.id === selectedProvider)?.label ?? selectedProvider;
       showFeedback("provider", "ok", t("ai.provider_activated", { name: label }));
     } else {
@@ -248,6 +250,8 @@ export function AiToolView() {
     setSaving(null);
     if (res.ok) {
       await load();
+      setAiTestResult(null);
+      window.dispatchEvent(new Event("ai-key-status-changed"));
       setEditedKeys(e   => { const n = { ...e }; delete n[id]; return n; });
       setEditedModels(e => { const n = { ...e }; delete n[id]; return n; });
       showFeedback(id, "ok", t("ai.credentials_saved"));
@@ -262,6 +266,10 @@ export function AiToolView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ai_custom_providers: JSON.stringify(updated) }),
     });
+    if (res.ok) {
+      setAiTestResult(null);
+      window.dispatchEvent(new Event("ai-key-status-changed"));
+    }
     return res.ok;
   }
 
