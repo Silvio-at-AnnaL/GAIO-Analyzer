@@ -21,6 +21,7 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "llm preflight ok",
   "content relevance input built",
   "llm discoverability input built",
+  "llm discoverability passages selected",
   "Competitor findings response",
   "competitor input normalized",
   "recommendations input built",

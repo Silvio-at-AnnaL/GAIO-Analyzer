@@ -68,7 +68,7 @@ const { PERSISTED_INFO_MESSAGES } = await loadWithMocks("../system-events.ts", {
 
 const A = "llm-discoverability-a";
 const B = "llm-discoverability-b";
-const R = "llm-discoverability-rating";
+const R = "llm-discoverability-rating-v2";
 const reset = () => {
   state.inputs = {};
   state.callInputs = {};
@@ -79,7 +79,10 @@ const reset = () => {
   state.answers = {
     [A]: JSON.stringify({ questions: ["Frage A?"] }),
     [B]: JSON.stringify({ questions: ["Frage B?"] }),
-    [R]: JSON.stringify({ ratings: [{ rating: 4, gap: "Lücke", sourceUrl: "https://example.com/0" }] }),
+    [R]: JSON.stringify({ ratings: [
+      { id: "q1", rating: 4, gap: "Lücke", sourceUrl: "https://example.com/0" },
+      { id: "b1", rating: 4, gap: "Lücke", sourceUrl: "https://example.com/0" },
+    ] }),
   };
 };
 function page(index, main, extra = "", title = "  Test   Titel  ") {
@@ -121,76 +124,6 @@ test("cuts the generation excerpt before the first FAQ question near the start",
   assert.ok(!excerpt.includes(question));
 });
 
-test("uses full mode for short pages", async () => {
-  reset();
-  await analyzeLlmDiscoverability([page(0, `<h1>Produkt</h1><p>Details</p>`)], "");
-  assert.equal(inputLog().rating.pages[0].mode, "full");
-  assert.equal(state.inputs[R].PAGES_DOC, "[PAGE 1] URL: https://example.com/0\nProduktDetails");
-});
-
-test("long FAQ pages retain a 1500-character intro and <=2500-character FAQ part", async () => {
-  reset();
-  const question = "Welche Anwendung ist vorgesehen?";
-  const answer = "B".repeat(3000);
-  await analyzeLlmDiscoverability([
-    page(0, `<h1>Produkt</h1>${"I".repeat(5000)}`, faqSchema(question, answer)),
-  ], "");
-  assert.equal(inputLog().rating.pages[0].mode, "intro+faq");
-  assert.equal(inputLog().rating.pages[0].faqPairs, 1);
-  const body = state.inputs[R].PAGES_DOC.split("\n", 1)[0];
-  const ratedText = state.inputs[R].PAGES_DOC.slice(body.length + 1);
-  const [intro, faq] = ratedText.split("\n[FAQ]\n");
-  assert.equal(intro.length, 1500);
-  assert.equal(faq.length, 2500);
-  assert.ok(faq.startsWith(`F: ${question}\nA: `));
-  assert.equal(ratedText.length, 4007);
-});
-
-test("the FAQ part counts separators and keeps whole later pairs", async () => {
-  reset();
-  const q1 = "Erste Frage?";
-  const q2 = "Zweite Frage?";
-  const schema = `<script type="application/ld+json">${JSON.stringify({
-    "@type": "FAQPage",
-    mainEntity: [
-      { name: q1, acceptedAnswer: { text: "A".repeat(1200) } },
-      { name: q2, acceptedAnswer: { text: "B".repeat(1200) } },
-    ],
-  })}</script>`;
-  await analyzeLlmDiscoverability([page(0, "X".repeat(5000), schema)], "");
-  const faq = state.inputs[R].PAGES_DOC.split("\n[FAQ]\n")[1];
-  assert.ok(faq.includes(`\n\nF: ${q2}\nA: `));
-  assert.ok(faq.length <= 2500);
-});
-
-test("long pages without FAQs are truncated at 4000 characters", async () => {
-  reset();
-  await analyzeLlmDiscoverability([page(0, "X".repeat(5000))], "");
-  assert.equal(inputLog().rating.pages[0].mode, "truncated");
-  assert.equal(state.inputs[R].PAGES_DOC.split("\n").slice(1).join("\n").length, 4000);
-});
-
-test("only first ten of twelve pages are included, with no 10000/12000 global cut", async () => {
-  reset();
-  await analyzeLlmDiscoverability(Array.from({ length: 12 }, (_, i) => page(i, "X".repeat(5000))), "");
-  const log = inputLog();
-  assert.equal(log.pageCount, 10);
-  assert.equal(log.generation.pages.length, 10);
-  assert.equal(log.rating.pages.length, 10);
-  assert.ok(state.inputs[A].COMBINED_CONTENT.includes("URL: https://example.com/9"));
-  assert.ok(state.inputs[R].PAGES_DOC.includes("[PAGE 10] URL: https://example.com/9"));
-  assert.ok(!state.inputs[A].COMBINED_CONTENT.includes("URL: https://example.com/10"));
-  assert.ok(!state.inputs[R].PAGES_DOC.includes("[PAGE 11]"));
-  assert.ok(state.inputs[R].PAGES_DOC.length > 12000);
-});
-
-test("FAQ pairs are extracted per page, without cross-page deduplication", async () => {
-  reset();
-  const schema = faqSchema("Gleiche Frage?", "Gleiche Antwort.");
-  await analyzeLlmDiscoverability([page(0, "A".repeat(5000), schema), page(1, "B".repeat(5000), schema)], "");
-  assert.deepEqual(inputLog().rating.pages.map(({ faqPairs }) => faqPairs), [1, 1]);
-});
-
 test("returns null when Part A has no questions", async () => {
   reset();
   state.answers[A] = JSON.stringify({ questions: [] });
@@ -211,66 +144,138 @@ test("returns null when Part B fails or yields no questions, without fallback qu
   assert.equal(state.calls.includes(R), false);
 });
 
-test("returns null on rating count mismatch, non-numeric rating, or rating call failure", async () => {
+test("returns null for missing, duplicate, unknown, or non-numeric rating ids", async () => {
   for (const answer of [
-    JSON.stringify({ ratings: [] }),
-    JSON.stringify({ ratings: [{ rating: "3" }] }),
-    new Error("Rating failed"),
+    { ratings: [{ id: "q1", rating: 3 }] },
+    { ratings: [{ id: "q1", rating: 3 }, { id: "q1", rating: 4 }] },
+    { ratings: [{ id: "q1", rating: 3 }, { id: "unknown", rating: 4 }] },
+    { ratings: [{ id: "q1", rating: "3" }, { id: "b1", rating: 4 }] },
   ]) {
     reset();
-    state.answers[R] = answer;
+    state.answers[R] = JSON.stringify(answer);
     assert.equal(await analyzeLlmDiscoverability([page(0, "Text")], ""), null);
     assert.ok(state.logs.some(({ msg, obj }) => msg === "llm discoverability unavailable" && obj.reason));
   }
 });
 
-test("keeps original questions and score weights; clamps ratings and validates source URLs", async () => {
+test("uses one v2 rating call and formats question-specific passage blocks with ids", async () => {
   reset();
-  state.answers[A] = JSON.stringify({ questions: ["Original A1?", "Original A2?"] });
-  state.answers[B] = JSON.stringify({ questions: ["Original B?"] });
-  state.answers[R] = ({ QUESTIONS }) => {
-    const questions = JSON.parse(QUESTIONS);
-    return JSON.stringify({ ratings: questions.map((_, i) => ({
-      question: "Vom Modell ersetzt?",
-      rating: questions.length === 2 ? (i ? 3.2 : 99) : -5,
-      gap: "Erkenntnis",
-      sourceUrl: i ? "https://invalid.example" : "https://example.com/0",
-    })) });
-  };
-  const result = await analyzeLlmDiscoverability([page(0, "Text")], "");
-  assert.equal(result.partA.score, 80);
-  assert.equal(result.partB.score, 20);
-  assert.equal(result.score, Math.round(80 * 0.7 + 20 * 0.3));
-  assert.deepEqual(result.questions.map(({ question }) => question), ["Original A1?", "Original A2?", "Original B?"]);
-  assert.deepEqual(result.questions.map(({ rating }) => rating), [5, 3, 1]);
-  assert.deepEqual(result.questions.map(({ sourceUrl }) => sourceUrl),
-    ["https://example.com/0", null, "https://example.com/0"]);
-});
+  state.answers[A] = JSON.stringify({ questions: [
+    "Welche Kühlleistung bietet Thermoflex?",
+    "Welche Druckwerte bietet Flexrohr?",
+  ] });
+  state.answers[B] = JSON.stringify({ questions: ["Welche Garantie bietet Nordwerk?"] });
+  state.answers[R] = JSON.stringify({ ratings: [
+    { id: "q1", rating: 3, gap: "Kühlleistung.", sourceUrl: "https://example.com/0" },
+    { id: "q2", rating: 3, gap: "Druckwerte.", sourceUrl: "https://example.com/1" },
+    { id: "b1", rating: 3, gap: "Garantie.", sourceUrl: "https://example.com/2" },
+  ] });
+  await analyzeLlmDiscoverability([
+    page(0, "Thermoflex Kühlleistung beträgt 42 Kilowatt."),
+    page(1, "Flexrohr arbeitet mit Druckwerten bis 8 Bar."),
+    page(2, "Nordwerk gewährt Garantie für fünf Jahre."),
+  ], "");
 
-test("logs actual input lengths and persists the INFO message", async () => {
-  reset();
-  await analyzeLlmDiscoverability([page(0, "Text"), page(1, "Weitere Details")], "");
-  const log = inputLog();
-  assert.ok(PERSISTED_INFO_MESSAGES.has("llm discoverability input built"));
-  assert.equal(log.pageCount, 2);
-  assert.equal(log.generation.totalChars, state.inputs[A].COMBINED_CONTENT.length);
-  assert.equal(log.rating.totalChars, state.inputs[R].PAGES_DOC.length);
-  assert.deepEqual(log.generation.pages.map(({ url, chars }) => [url, chars]),
-    ["URL: https://example.com/0\nTitle: Test Titel\nText",
-      "URL: https://example.com/1\nTitle: Test Titel\nWeitere Details"]
-      .map((block, index) => [`https://example.com/${index}`, block.length]));
-  assert.deepEqual(log.rating.pages.map(({ mode, faqPairs }) => [mode, faqPairs]),
-    [["full", 0], ["full", 0]]);
-});
-
-test("labels the A/B generation and rating calls separately", async () => {
-  reset();
-  await analyzeLlmDiscoverability([page(0, "Text")], "");
-  assert.deepEqual(state.moduleCalls.map(({ module }) => module).sort(), [
-    "llm-discoverability-a",
-    "llm-discoverability-b",
-    "llm-discoverability-rating-a",
-    "llm-discoverability-rating-b",
+  assert.equal(state.calls.filter((slug) => slug === R).length, 1);
+  assert.deepEqual(state.moduleCalls.filter(({ module }) => module === "llm-discoverability-rating"), [
+    { slug: R, module: "llm-discoverability-rating", maxTokens: 8192, temperature: 0 },
   ]);
-  assert.ok(state.moduleCalls.every(({ maxTokens, temperature }) => maxTokens === 8192 && temperature === 0));
+  assert.equal(state.inputs[R].QUESTION_BLOCKS, [
+    "[q1] Welche Kühlleistung bietet Thermoflex?",
+    "--- Passage 1 (URL: https://example.com/0)",
+    "Thermoflex Kühlleistung beträgt 42 Kilowatt.",
+    "",
+    "[q2] Welche Druckwerte bietet Flexrohr?",
+    "--- Passage 1 (URL: https://example.com/1)",
+    "Flexrohr arbeitet mit Druckwerten bis 8 Bar.",
+    "",
+    "[b1] Welche Garantie bietet Nordwerk?",
+    "--- Passage 1 (URL: https://example.com/2)",
+    "Nordwerk gewährt Garantie für fünf Jahre.",
+  ].join("\n"));
+});
+
+test("maps ratings by id, preserves generated questions, and limits source URLs per question", async () => {
+  reset();
+  state.answers[A] = JSON.stringify({ questions: ["Wie funktioniert Kobaltfilter?"] });
+  state.answers[B] = JSON.stringify({ questions: ["Welche Werte hat Quarzpumpe?"] });
+  state.answers[R] = JSON.stringify({ ratings: [
+    { id: "b1", rating: 5, gap: "Gedeckt.", sourceUrl: "https://example.com/0" },
+    { id: "q1", rating: 1, gap: "Fehlt.", sourceUrl: "https://example.com/0" },
+  ] });
+  const result = await analyzeLlmDiscoverability([
+    page(0, "Kobaltfilter arbeitet mit Aktivkohle."),
+    page(1, "Quarzpumpe fördert Wasser mit 6 Litern."),
+  ], "");
+  assert.deepEqual(result.questions.map(({ question }) => question), [
+    "Wie funktioniert Kobaltfilter?", "Welche Werte hat Quarzpumpe?",
+  ]);
+  assert.deepEqual(result.questions.map(({ rating, sourceUrl }) => [rating, sourceUrl]), [
+    [1, "https://example.com/0"], [5, null],
+  ]);
+  assert.equal(result.partA.score, 0);
+  assert.equal(result.partB.score, 100);
+});
+
+test("a rating of three maps to a part score of 50", async () => {
+  reset();
+  state.answers[R] = JSON.stringify({ ratings: [
+    { id: "q1", rating: 3, gap: "Teilweise.", sourceUrl: null },
+    { id: "b1", rating: 3, gap: "Teilweise.", sourceUrl: null },
+  ] });
+  const result = await analyzeLlmDiscoverability([page(0, "Text")], "");
+  assert.equal(result.partA.score, 50);
+  assert.equal(result.partB.score, 50);
+});
+
+test("logs both INFO messages with their new fields and persists them", async () => {
+  reset();
+  const faqQuestion = "Welche Temperatur bietet Titanhülse?";
+  const answer = "Die Temperatur der Titanhülse beträgt 180 Grad.";
+  state.answers[A] = JSON.stringify({ questions: [faqQuestion] });
+  state.answers[B] = JSON.stringify({ questions: ["Welche Lösung bietet Zirkon?"] });
+  state.answers[R] = JSON.stringify({ ratings: [
+    { id: "q1", rating: 4, gap: "Temperatur genannt.", sourceUrl: "https://example.com/0" },
+    { id: "b1", rating: 2, gap: "Keine Angabe.", sourceUrl: null },
+  ] });
+  await analyzeLlmDiscoverability([
+    page(0, `Einleitung. ${faqQuestion} ${answer}`, faqSchema(faqQuestion, answer)),
+    page(1, "Zirkon ist eine technische Lösung."),
+  ], "");
+  const built = inputLog();
+  const selected = state.logs.find(({ msg }) => msg === "llm discoverability passages selected")?.obj;
+  assert.ok(PERSISTED_INFO_MESSAGES.has("llm discoverability input built"));
+  assert.ok(PERSISTED_INFO_MESSAGES.has("llm discoverability passages selected"));
+  assert.equal(built.pageCount, 2);
+  assert.equal(built.generation.totalChars, state.inputs[A].COMBINED_CONTENT.length);
+  assert.deepEqual(built.generation.pages, [
+    {
+      url: "https://example.com/0",
+      chars: "URL: https://example.com/0\nTitle: Test Titel\nEinleitung. ".length,
+    },
+    {
+      url: "https://example.com/1",
+      chars: "URL: https://example.com/1\nTitle: Test Titel\nZirkon ist eine technische Lösung.".length,
+    },
+  ]);
+  assert.deepEqual(Object.keys(built.rating).sort(), ["faqPassages", "pages", "passages"]);
+  assert.equal(built.rating.passages, 3);
+  assert.equal(built.rating.faqPassages, 1);
+  assert.deepEqual(built.rating.pages.map(({ url, passages, chars }) => [url, passages, chars > 0]), [
+    ["https://example.com/0", 2, true],
+    ["https://example.com/1", 1, true],
+  ]);
+  assert.deepEqual(Object.keys(selected), ["questions"]);
+  assert.deepEqual(selected.questions.map(({ id, fallback }) => [id, fallback]), [
+    ["q1", false],
+    ["b1", false],
+  ]);
+  for (const entry of selected.questions) {
+    assert.ok(Number.isInteger(entry.chars));
+    assert.ok(entry.passages.length > 0);
+    for (const passage of entry.passages) {
+      assert.ok(passage.url);
+      assert.equal(passage.score, Math.round(passage.score * 100) / 100);
+    }
+  }
 });

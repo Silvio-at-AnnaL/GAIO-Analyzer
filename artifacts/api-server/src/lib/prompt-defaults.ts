@@ -83,11 +83,49 @@ Website content sample:
 Generate exactly 6 realistic German-language questions a buyer would ask an AI assistant when researching this category.
 Hard rules:
 - Do NOT mention any specific company name, brand, or domain.
-- Frame the questions around the problem, use case, comparison criteria, or selection guidance.
-- Mix question types: capability ("Welche Anbieter bieten ...?"), comparison ("Wie unterscheiden sich ...?"), use-case ("Wie kann ich ... lösen?"), selection ("Worauf sollte ich bei ... achten?").
+- Frame the questions around the problem, use case, application fit, or technical selection criteria.
+- Each question must be answerable, at least in part, by a single vendor's own website (products, specifications, applications, processes, services, conditions). Do NOT ask for market overviews, vendor rankings, lists of suppliers, or comparisons between vendors.
+- The context describes the intended target groups. Use it to choose relevant roles, industries and applications. Do NOT turn claims from the context (figures, assortment size, market position) into questions that ask for their verification.
+- Mix question types: application ("Welche ... eignen sich für ...?"), comparison of options or technologies ("Wie unterscheiden sich ... und ...?"), use case ("Wie kann ich ... lösen?"), selection of a product or technology ("Worauf sollte ich bei der Auswahl von ... achten?").
 
 Return ONLY valid JSON:
 {"questions": ["<q1>", "<q2>", "<q3>", "<q4>", "<q5>", "<q6>"]}`,
+  },
+
+  {
+    slug: "llm-discoverability-rating-v2",
+    name: "LLM-Auffindbarkeit Bewertung (Passagen)",
+    description: "Bewertet die Beantwortbarkeit jeder Frage anhand passender Textabschnitte der Website (1–5 Sterne).",
+    module: "Analyse",
+    placeholders: [
+      { key: "{{QUESTION_BLOCKS}}", description: "Fragen mit den jeweils passenden Textabschnitten der Website" },
+    ],
+    template: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld.
+
+You assess whether a vendor's own website gives an AI assistant enough information to answer buyer questions and to name or cite this vendor in the answer.
+
+For each question below you receive the passages from the vendor's website that match it best. Use ONLY these passages.
+
+Rating scale:
+5 = The passages contain specific, citable information that directly answers the question for this vendor's offering (e.g. concrete properties, values, applications, conditions).
+4 = Substantial relevant information; only minor details are missing.
+3 = Partial information; an AI could mention the vendor but could not answer specifically.
+2 = Only generic or tangential mentions.
+1 = No usable information.
+
+Rules:
+- Judge each question from this vendor's perspective. Do NOT lower the rating because competitors, market overviews, vendor rankings or comparisons with other suppliers are missing.
+- Ignore navigation or menu remnants.
+- "sourceUrl" is the URL of the passage that best supports the answer, exactly as given; null if the rating is 1 or 2.
+- "gap" (German, one or two sentences) states concretely what is missing for a better answer, or what is covered.
+
+Questions with passages:
+{{QUESTION_BLOCKS}}
+
+Return ONLY valid JSON with exactly one entry per question id:
+{"ratings": [{"id": "<question id>", "rating": <1-5>, "gap": "<German text>", "sourceUrl": "<url>" or null}]}
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein.`,
   },
 
   {

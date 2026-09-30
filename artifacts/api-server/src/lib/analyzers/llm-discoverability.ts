@@ -5,6 +5,7 @@ import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { extractMainText } from "./content-relevance";
 import { extractFaqPairs, type FaqPair } from "./faq";
+import { buildPassages, selectForQuestion } from "./passage-retrieval";
 
 export interface LlmQuestion {
   question: string;
@@ -52,24 +53,6 @@ function generationBlock(page: PageBlock): string {
     if (index >= 0) excerpt = excerpt.slice(0, index);
   }
   return `URL: ${page.url}\nTitle: ${page.title}\n${excerpt}`;
-}
-
-function ratingBlock(page: PageBlock): { text: string; mode: "full" | "intro+faq" | "truncated" } {
-  if (page.mainText.length <= 4000) return { text: page.mainText, mode: "full" };
-  if (page.faqPairs.length === 0) return { text: page.mainText.slice(0, 4000), mode: "truncated" };
-
-  let faq = "";
-  for (const { question, answer } of page.faqPairs) {
-    const pair = `F: ${question}\nA: ${answer}`;
-    if (!faq && pair.length > 2500) {
-      faq = pair.slice(0, 2500);
-      break;
-    }
-    const next = faq ? `${faq}\n\n${pair}` : pair;
-    if (next.length > 2500) break;
-    faq = next;
-  }
-  return { text: `${page.mainText.slice(0, 1500)}\n[FAQ]\n${faq}`, mode: "intro+faq" };
 }
 
 function tryParseJson<T>(raw: string): T | null {
@@ -138,37 +121,75 @@ async function generateBrandQuestions(
     .slice(0, 4);
 }
 
-async function rateQuestionsWithSources(
-  questions: string[],
-  pagesDoc: string,
-  urlList: string[],
-  module: "llm-discoverability-rating-a" | "llm-discoverability-rating-b",
-): Promise<LlmQuestion[]> {
-  const prompt = fillTemplate(await getPrompt("llm-discoverability-rating"), {
-    PAGES_DOC: pagesDoc,
-    URL_LIST: JSON.stringify(urlList),
-    QUESTIONS: JSON.stringify(questions),
-  });
+interface SelectedQuestion {
+  id: string;
+  question: string;
+  passageUrls: Set<string>;
+}
 
-  const text = await callLLM(prompt, 8192, 0, { module });
-  const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(text);
+async function rateQuestionsWithSources(
+  partA: string[],
+  partB: string[],
+  passages: ReturnType<typeof buildPassages>,
+): Promise<{ partA: LlmQuestion[]; partB: LlmQuestion[] }> {
+  const selected: SelectedQuestion[] = [];
+  const selectedLog: Array<{
+    id: string; chars: number; fallback: boolean;
+    passages: Array<{ url: string; score: number }>;
+  }> = [];
+  const blocks = [
+    ...partA.map((question, index) => ({ id: `q${index + 1}`, question })),
+    ...partB.map((question, index) => ({ id: `b${index + 1}`, question })),
+  ].map(({ id, question }) => {
+    const selection = selectForQuestion(question, passages);
+    selected.push({ id, question, passageUrls: new Set(selection.passages.map(p => p.url)) });
+    selectedLog.push({
+      id,
+      chars: selection.passages.reduce((sum, p) => sum + p.text.length, 0),
+      fallback: selection.fallback,
+      passages: selection.passages.map(p => ({
+        url: p.url, score: Math.round(p.score * 100) / 100,
+      })),
+    });
+    return [`[${id}] ${question}`, ...selection.passages.map((passage, index) =>
+      `--- Passage ${index + 1} (URL: ${passage.url})\n${passage.text}`)].join("\n");
+  });
+  logger.info({ questions: selectedLog }, "llm discoverability passages selected");
+
+  const prompt = fillTemplate(await getPrompt("llm-discoverability-rating-v2"), {
+    QUESTION_BLOCKS: blocks.join("\n\n"),
+  });
+  const text = await callLLM(prompt, 8192, 0, { module: "llm-discoverability-rating" });
+  const parsed = tryParseJson<{
+    ratings?: Array<{ id?: unknown; rating?: unknown; gap?: unknown; sourceUrl?: unknown }>;
+  }>(text);
   const ratings = parsed?.ratings;
-  if (!Array.isArray(ratings) || ratings.length !== questions.length) {
+  if (!Array.isArray(ratings) || ratings.length !== selected.length) {
     throw new Error("rating count mismatch or no ratings");
   }
-  if (ratings.some((rating) => typeof rating?.rating !== "number" || !Number.isFinite(rating.rating))) {
-    throw new Error("non-finite or non-numeric rating");
+  const byId = new Map<string, (typeof ratings)[number]>();
+  const expected = new Set(selected.map(item => item.id));
+  for (const rating of ratings) {
+    if (!rating || typeof rating.id !== "string" || !expected.has(rating.id) || byId.has(rating.id)) {
+      throw new Error("missing, duplicate or unknown rating id");
+    }
+    if (typeof rating.rating !== "number" || !Number.isFinite(rating.rating)) {
+      throw new Error("non-finite or non-numeric rating");
+    }
+    byId.set(rating.id, rating);
   }
-  const validUrls = new Set(urlList);
-  return questions.map((question, i) => {
-    const r = ratings[i];
+  if (byId.size !== expected.size) throw new Error("missing rating id");
+  const mapped = selected.map(({ id, question, passageUrls }): LlmQuestion => {
+    const rating = byId.get(id)!;
     return {
       question,
-      rating: Math.min(5, Math.max(1, Math.round(r.rating!))),
-      gap: typeof r.gap === "string" ? r.gap : "",
-      sourceUrl: r.sourceUrl && validUrls.has(r.sourceUrl) ? r.sourceUrl : null,
+      rating: Math.min(5, Math.max(1, Math.round(rating.rating as number))),
+      gap: typeof rating.gap === "string" ? rating.gap : "",
+      sourceUrl: typeof rating.sourceUrl === "string" && passageUrls.has(rating.sourceUrl)
+        ? rating.sourceUrl : null,
     };
   });
+  return { partA: mapped.slice(0, partA.length), partB: mapped.slice(partA.length) };
 }
 
 function summarizePart(label: string, weight: number, questions: LlmQuestion[]): LlmPart {
@@ -180,7 +201,7 @@ function summarizePart(label: string, weight: number, questions: LlmQuestion[]):
     label,
     weight,
     avgRating: Math.round(avg * 100) / 100,
-    score: Math.round(avg * 20),
+    score: Math.round((avg - 1) * 25),
     questions,
   };
 }
@@ -194,17 +215,7 @@ export async function analyzeLlmDiscoverability(
     const pageBlocks = buildPageBlocks(pages);
     const generationPages = pageBlocks.map((page) => ({ url: page.url, text: generationBlock(page) }));
     const combinedContent = generationPages.map((page) => page.text).join("\n\n---\n\n");
-    const ratingPages = pageBlocks.map((page, index) => {
-      const { text, mode } = ratingBlock(page);
-      return {
-        url: page.url,
-        text: `[PAGE ${index + 1}] URL: ${page.url}\n${text}`,
-        mode,
-        faqPairs: page.faqPairs.length,
-      };
-    });
-    const pagesDoc = ratingPages.map((page) => page.text).join("\n\n");
-    const urlList = pageBlocks.map((page) => page.url);
+    const passages = buildPassages(pages);
     logger.info({
       pageCount: pageBlocks.length,
       generation: {
@@ -212,8 +223,15 @@ export async function analyzeLlmDiscoverability(
         pages: generationPages.map(({ url, text }) => ({ url, chars: text.length })),
       },
       rating: {
-        totalChars: pagesDoc.length,
-        pages: ratingPages.map(({ url, text, mode, faqPairs }) => ({ url, chars: text.length, mode, faqPairs })),
+        passages: passages.length,
+        faqPassages: passages.filter(p => p.kind === "faq").length,
+        pages: pageBlocks.map(page => {
+          const pagePassages = passages.filter(p => p.url === page.url);
+          return {
+            url: page.url, passages: pagePassages.length,
+            chars: pagePassages.reduce((sum, p) => sum + p.text.length, 0),
+          };
+        }),
       },
     }, "llm discoverability input built");
 
@@ -228,10 +246,8 @@ export async function analyzeLlmDiscoverability(
     if (partAQuestions.length === 0) throw new Error("Part A generated no questions");
     if (partBQuestions.length === 0) throw new Error("Part B generated no questions");
 
-    const [partARated, partBRated] = await Promise.all([
-      rateQuestionsWithSources(partAQuestions, pagesDoc, urlList, "llm-discoverability-rating-a"),
-      rateQuestionsWithSources(partBQuestions, pagesDoc, urlList, "llm-discoverability-rating-b"),
-    ]);
+    const { partA: partARated, partB: partBRated } =
+      await rateQuestionsWithSources(partAQuestions, partBQuestions, passages);
 
     const partA = summarizePart("Teil A — Problem-/Kategorie-Fragen (ohne Markenname)", 0.7, partARated);
     const partB = summarizePart("Teil B — Marken-Verifikationsfragen", 0.3, partBRated);

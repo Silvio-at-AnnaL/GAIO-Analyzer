@@ -757,6 +757,16 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   return html;
 }
 
+const LLM_EXPORT_TEXTS = {
+  partALabel: "Kategorie-Fragen (Teil A · 70%)",
+  partBLabel: "Marken-Fragen (Teil B · 30%)",
+  partAExplainer: "Käufer kennt das Unternehmen noch nicht — prüft, ob Ihre Seiten die Informationen liefern, die eine KI braucht, um Sie bei Kategorie- und Problemfragen als Anbieter zu nennen.",
+  partBExplainer: "Käufer kennt das Unternehmen bereits — prüft, wie konkret Ihre Seiten Fragen zu Ihrem Unternehmen beantworten.",
+  faqName: "LLM-Auffindbarkeit",
+  faqCheck: "Generierte Käuferfragen (ohne und mit Firmennamen); für jede Frage bewertet eine KI anhand der passenden Textabschnitte Ihrer Seiten, wie gut sie beantwortbar ist (1–5 Sterne; 1 Stern = 0, 5 Sterne = 100 Punkte)",
+  faqWhy: "Zeigt, zu welchen Käuferfragen Ihre Website einer KI keine verwertbaren Informationen liefert",
+} as const;
+
 function renderLlmSection(report: Record<string, unknown>): string {
   const llm = report.llmDiscoverability as Record<string, unknown> | null;
   if (!llm) return `${divider("LLM-Auffindbarkeit")}<h2>LLM-Auffindbarkeit</h2><p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${MODULE_UNAVAILABLE_TEXT.note}</p>`;
@@ -770,13 +780,17 @@ function renderLlmSection(report: Record<string, unknown>): string {
   let html = divider("LLM-Auffindbarkeit");
   html += `<h2>LLM-Auffindbarkeit</h2>
   <div class="score-grid">
-    ${partA ? `<div class="score-card"><div class="label">Teil A – Auffindbarkeit (70%) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partA.score)}">${partA.score}</div><div class="meta">Ø ${partA.avgRating.toFixed(2)} / 5</div></div>` : ""}
-    ${partB ? `<div class="score-card"><div class="label">Teil B – Informationstiefe (30%) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partB.score)}">${partB.score}</div><div class="meta">Ø ${partB.avgRating.toFixed(2)} / 5</div></div>` : ""}
+    ${partA ? `<div class="score-card"><div class="label">${LLM_EXPORT_TEXTS.partALabel} ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partA.score)}">${partA.score}</div><div class="meta">Ø ${partA.avgRating.toFixed(2)} / 5</div></div>` : ""}
+    ${partB ? `<div class="score-card"><div class="label">${LLM_EXPORT_TEXTS.partBLabel} ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(partB.score)}">${partB.score}</div><div class="meta">Ø ${partB.avgRating.toFixed(2)} / 5</div></div>` : ""}
     <div class="score-card"><div class="label">Gesamt (gewichtet) ${SCORE_INFO_LINK}</div><div class="val" style="color:${scoreColor(llmScore)}">${llmScore}</div><div class="meta">Ø ${avgRating.toFixed(2)} / 5</div></div>
   </div>`;
 
-  const renderPartQuestions = (part: LlmPart): string => `
+  const renderPartQuestions = (
+    part: LlmPart,
+    explainer: "partAExplainer" | "partBExplainer",
+  ): string => `
   <h3>${esc(part.label)}</h3>
+  <p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${LLM_EXPORT_TEXTS[explainer]}</p>
   <p style="font-size:11px;color:${C.textMuted};margin-bottom:8px;">Gewichtung: ${Math.round(part.weight * 100)}% · Ø ${part.avgRating.toFixed(2)} / 5 · Score ${part.score}/100</p>
   ${part.questions.map((q) => `
   <div class="question">
@@ -786,8 +800,8 @@ function renderLlmSection(report: Record<string, unknown>): string {
   </div>`).join("")}`;
 
   if (partA || partB) {
-    if (partA) html += renderPartQuestions(partA);
-    if (partB) html += renderPartQuestions(partB);
+    if (partA) html += renderPartQuestions(partA, "partAExplainer");
+    if (partB) html += renderPartQuestions(partB, "partBExplainer");
   } else if (qs.length > 0) {
     html += qs.map((q) => `
     <div class="question">
@@ -1010,7 +1024,7 @@ ${divider("FAQ / So funktioniert's")}
     <tr id="faq-modul-headings"><td>Heading-Struktur</td><td>H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
     <tr id="faq-modul-inhalt"><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
     <tr id="faq-modul-faq"><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
-    <tr id="faq-modul-llm"><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
+    <tr id="faq-modul-llm"><td>${LLM_EXPORT_TEXTS.faqName}</td><td>${LLM_EXPORT_TEXTS.faqCheck}</td><td>${LLM_EXPORT_TEXTS.faqWhy}</td></tr>
   </tbody>
 </table>
 <div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
@@ -1257,7 +1271,7 @@ export function buildFaqDocumentHtml(): string {
       <tr><td>Heading-Struktur</td><td>H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften</td><td>Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet</td></tr>
       <tr><td>Inhaltliche Relevanz (KI-gestützt)</td><td>Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken</td><td>LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten</td></tr>
       <tr><td>FAQ-Qualität</td><td>Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe</td><td>FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit</td></tr>
-      <tr><td>LLM-Sichtbarkeits-Simulation</td><td>Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)</td><td>Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben</td></tr>
+      <tr><td>${LLM_EXPORT_TEXTS.faqName}</td><td>${LLM_EXPORT_TEXTS.faqCheck}</td><td>${LLM_EXPORT_TEXTS.faqWhy}</td></tr>
     </tbody>
   </table>
   <div style="background:#f8f9fa;border-left:3px solid #dde0e8;border-radius:6px;padding:14px 16px;margin-top:8px;">
@@ -1365,7 +1379,7 @@ export function buildFaqPanelHtml(): string {
       ${row(["Heading-Struktur","H1 pro Seite, Hierarchie ohne übersprungene Ebenen, Gliederung in H2-Abschnitte, beschreibende Überschriften","Strukturierte Inhalte werden von LLMs bevorzugt als Quellen verarbeitet"])}
       ${row(["Inhaltliche Relevanz (KI-gestützt)","Anwendungsszenarien, technische Tiefe, Beantwortung von Käufer-Fragetypen, identifizierte Inhaltslücken","LLMs zitieren Seiten häufiger, wenn diese echte Nutzerfragen vollständig beantworten"])}
       ${row(["FAQ-Qualität","Erkannte FAQ-Strukturen, Anzahl der Einträge, Qualität der Frageformulierungen und Antworttiefe","FAQPage-Schema ist einer der stärksten Einzelhebel für LLM-Sichtbarkeit"])}
-      ${row(["LLM-Sichtbarkeits-Simulation","Generierte Käufer-Fragen (ohne und mit Markenbezug) + prognostizierte Antwortqualität (1–5 Sterne)","Zeigt direkt, welche Informationslücken LLMs bei Anfragen zu diesem Unternehmen haben"], true)}
+      ${row([LLM_EXPORT_TEXTS.faqName, LLM_EXPORT_TEXTS.faqCheck, LLM_EXPORT_TEXTS.faqWhy], true)}
     </tbody>
   </table>
   <div style="background:#f8f9fa;border-left:3px solid ${bdr};border-radius:6px;padding:14px 16px;margin-top:8px;">

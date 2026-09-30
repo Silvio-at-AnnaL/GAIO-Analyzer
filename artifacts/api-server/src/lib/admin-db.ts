@@ -28,6 +28,23 @@ Return a JSON object (no markdown formatting) with this structure:
 
 WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
+// Verbatim previous default: a custom admin-edited template must not be overwritten.
+export const PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE = `You are simulating a B2B buyer in early research mode who does NOT yet know any specific vendor.
+Based on the website content below, infer the product category, industry, and key use cases.
+
+{{QUESTIONNAIRE_CONTEXT}}
+Website content sample:
+{{COMBINED_CONTENT}}
+
+Generate exactly 6 realistic German-language questions a buyer would ask an AI assistant when researching this category.
+Hard rules:
+- Do NOT mention any specific company name, brand, or domain.
+- Frame the questions around the problem, use case, comparison criteria, or selection guidance.
+- Mix question types: capability ("Welche Anbieter bieten ...?"), comparison ("Wie unterscheiden sich ...?"), use-case ("Wie kann ich ... lösen?"), selection ("Worauf sollte ich bei ... achten?").
+
+Return ONLY valid JSON:
+{"questions": ["<q1>", "<q2>", "<q3>", "<q4>", "<q5>", "<q6>"]}`;
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 const CREATE_TABLES = `
@@ -217,6 +234,31 @@ export async function migrateContentRelevancePrompt(): Promise<void> {
   }
 }
 
+export async function migrateLlmDiscoverabilityAPrompt(): Promise<void> {
+  const current = PROMPT_DEFAULTS.find((prompt) => prompt.slug === "llm-discoverability-a")!;
+  try {
+    const updated = await query(
+      `UPDATE prompts SET template = $1, description = $2, placeholders = $3, updated_at = NOW()
+       WHERE slug = $4 AND template = $5 RETURNING slug`,
+      [current.template, current.description, JSON.stringify(current.placeholders),
+        current.slug, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE],
+    );
+    if (updated.rows.length) {
+      logger.info("llm-discoverability-a prompt migrated");
+    } else {
+      const stored = await query<{ template: string }>(
+        "SELECT template FROM prompts WHERE slug = $1",
+        [current.slug],
+      );
+      if (stored.rows[0]?.template !== current.template) {
+        logger.warn("llm-discoverability-a prompt customized – not migrated");
+      }
+    }
+  } finally {
+    clearPromptCache(current.slug);
+  }
+}
+
 // ── Public init ───────────────────────────────────────────────────────────────
 
 export async function initializeDatabase(): Promise<void> {
@@ -241,6 +283,7 @@ export async function initializeDatabase(): Promise<void> {
     );
   }
   await migrateContentRelevancePrompt();
+  await migrateLlmDiscoverabilityAPrompt();
 
   // Seed default admin user if no users exist
   const countResult = await query<{ c: string }>("SELECT COUNT(*)::int as c FROM users");
