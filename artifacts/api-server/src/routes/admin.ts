@@ -12,6 +12,7 @@ import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } 
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
+import { checkLlmReady, resetLlmPreflightCache } from "../lib/llm-preflight.js";
 import { getPrompt, fillTemplate, clearPromptCache } from "../lib/prompt-manager.js";
 import { PROMPT_DEFAULTS_MAP } from "../lib/prompt-defaults.js";
 import { SCORE_PROFILES, getScoreParams, setScoreParam, resetScoreParams } from "../lib/score-config.js";
@@ -1039,7 +1040,7 @@ adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Req
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
 const SETTINGS_GROUPS: Record<string, string[]> = {
-  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers","competitor_source","search_provider","search_api_key"],
+  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers","ai_key_valid_until","competitor_source","search_provider","search_api_key"],
   mail:     ["mail_host","mail_port","mail_secure","mail_user","mail_password","mail_from_name","mail_from_address"],
   delivery: ["delivery_mode","delivery_bcc","delivery_require_email"],
 };
@@ -1177,7 +1178,17 @@ adminRouter.get("/settings/ai-status", requireAuth, requireAdmin, async (_req: R
   const lastRow = (await query<{ completed_at: string }>(
     "SELECT completed_at FROM analysis_log WHERE status='completed' ORDER BY completed_at DESC LIMIT 1",
   )).rows[0];
-  res.json({ provider, hasApiKey, lastCompletedAt: lastRow?.completed_at ?? null });
+  const keyValidUntil = await getSetting("ai_key_valid_until") || null;
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const keyDaysLeft = keyValidUntil
+    ? Math.round((Date.parse(`${keyValidUntil}T00:00:00Z`) - Date.parse(`${todayUtc}T00:00:00Z`)) / 86_400_000)
+    : null;
+  res.json({ provider, hasApiKey, lastCompletedAt: lastRow?.completed_at ?? null, keyValidUntil, keyDaysLeft });
+});
+
+// POST /api/admin/settings/ai-test
+adminRouter.post("/settings/ai-test", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  res.json(await checkLlmReady({ force: true }));
 });
 
 // POST /api/admin/settings/test-mail
@@ -1283,6 +1294,14 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
 
   const body = req.body as Record<string, string>;
+  if (group === "ai" && "ai_key_valid_until" in body) {
+    const date = body.ai_key_valid_until;
+    if (typeof date !== "string" || (date !== "" &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`)) ||
+        new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date))) {
+      res.status(400).json({ error: "Ungültiges Ablaufdatum" }); return;
+    }
+  }
   for (const [key, value] of Object.entries(body)) {
     if (!keys.includes(key)) continue;
     if (key === "competitor_source" && value !== "ai" && value !== "search") {
@@ -1310,6 +1329,7 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
       await setSetting(key, String(value));
     }
   }
+  if (group === "ai") resetLlmPreflightCache();
   res.json({ success: true });
 });
 

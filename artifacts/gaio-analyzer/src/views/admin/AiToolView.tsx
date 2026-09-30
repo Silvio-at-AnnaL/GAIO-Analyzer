@@ -17,13 +17,20 @@ interface AiSettings {
   competitor_source: string;
   search_provider: string;
   search_api_key: string;
+  ai_key_valid_until?: string;
 }
 
 interface AiStatus {
   provider: string;
   hasApiKey: { claude: boolean; openai: boolean; perplexity: boolean; gemini: boolean };
   lastCompletedAt: string | null;
+  keyValidUntil: string | null;
+  keyDaysLeft: number | null;
 }
+
+type AiTestResult =
+  | { ok: true; provider: string; model: string; durationMs: number }
+  | { ok: false; provider: string; reason: "no_key" | "provider_error"; status?: number };
 
 interface CustomProvider {
   id: string;
@@ -73,6 +80,9 @@ export function AiToolView() {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ key: string; type: "ok" | "err"; msg: string } | null>(null);
+  const [keyValidUntil, setKeyValidUntil] = useState("");
+  const [aiTestLoading, setAiTestLoading] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<AiTestResult | null>(null);
 
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [activeTab, setActiveTab]   = useState<string>("claude");
@@ -96,6 +106,7 @@ export function AiToolView() {
       if (sRes.ok) {
         const s = await sRes.json() as AiSettings;
         setSettings(s);
+        setKeyValidUntil(s.ai_key_valid_until ?? "");
         let cps: CustomProvider[] = [];
         try { cps = JSON.parse(s.ai_custom_providers || "[]") as CustomProvider[]; } catch { /* ignore */ }
         setCustomProviders(cps);
@@ -103,6 +114,7 @@ export function AiToolView() {
       if (stRes.ok) {
         const st = await stRes.json() as AiStatus;
         setStatus(st);
+        setKeyValidUntil(st.keyValidUntil ?? "");
         setSelectedProvider(prev => prev || (st.provider ?? "claude"));
       }
     } finally {
@@ -149,6 +161,53 @@ export function AiToolView() {
       showFeedback("provider", "ok", t("ai.provider_activated", { name: label }));
     } else {
       showFeedback("provider", "err", t("delivery.save_error"));
+    }
+  }
+
+  async function testAiConnection() {
+    setAiTestLoading(true);
+    setAiTestResult(null);
+    try {
+      const response = await adminFetch("/api/admin/settings/ai-test", { method: "POST" });
+      if (!response.ok) {
+        setAiTestResult({
+          ok: false,
+          provider: allProviderOptions.find(p => p.id === currentProvider)?.label ?? currentProvider,
+          reason: "provider_error",
+          status: response.status,
+        });
+        return;
+      }
+      const result = await response.json() as AiTestResult;
+      setAiTestResult(result);
+    } catch {
+      setAiTestResult({
+        ok: false,
+        provider: allProviderOptions.find(p => p.id === currentProvider)?.label ?? currentProvider,
+        reason: "provider_error",
+      });
+    } finally {
+      setAiTestLoading(false);
+    }
+  }
+
+  async function saveKeyValidUntil() {
+    setSaving("key-valid-until");
+    try {
+      const response = await adminFetch("/api/admin/settings/ai", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ai_key_valid_until: keyValidUntil }),
+      });
+      if (!response.ok) throw new Error("Could not save API key expiry date");
+      setStatus(s => s ? { ...s, keyValidUntil: keyValidUntil || null } : s);
+      window.dispatchEvent(new Event("ai-key-status-changed"));
+      await load();
+      showFeedback("key-valid-until", "ok", t("ai.credentials_saved"));
+    } catch {
+      showFeedback("key-valid-until", "err", t("delivery.save_error"));
+    } finally {
+      setSaving(null);
     }
   }
 
@@ -338,6 +397,61 @@ export function AiToolView() {
         )}
 
         {feedback?.key === "provider" && <FeedbackLine type={feedback.type} msg={feedback.msg} />}
+
+        <div className="space-y-3 border-t pt-4" style={{ borderColor: "hsl(var(--border))" }}>
+          <button
+            data-testid="button-test-ai-connection"
+            onClick={() => void testAiConnection()}
+            disabled={aiTestLoading}
+            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+            style={{ border: "1px solid hsl(var(--border))" }}
+          >
+            {aiTestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            {aiTestLoading ? t("ai.test_running") : t("ai.test_button")}
+          </button>
+          {aiTestResult && (
+            <p data-testid="status-ai-connection-test" className={`text-sm ${aiTestResult.ok ? "text-blue-400" : "text-amber-400"}`}>
+              {aiTestResult.ok
+                ? t("ai.test_ok", { provider: aiTestResult.provider, model: aiTestResult.model, ms: aiTestResult.durationMs })
+                : aiTestResult.reason === "no_key"
+                  ? t("ai.test_failed_no_key", { provider: aiTestResult.provider })
+                  : t("ai.test_failed_provider", { provider: aiTestResult.provider, status: aiTestResult.status ?? "–" })}
+            </p>
+          )}
+          <div className="space-y-2">
+            <label htmlFor="ai-key-valid-until" className="block text-sm font-medium">{t("ai.valid_until_label")}</label>
+            <div className="flex flex-wrap gap-2">
+              <input
+                id="ai-key-valid-until"
+                data-testid="input-ai-key-valid-until"
+                type="date"
+                value={keyValidUntil}
+                onChange={event => setKeyValidUntil(event.target.value)}
+                className="px-3 py-2 rounded-md text-sm border"
+                style={inputStyle}
+              />
+              <button
+                data-testid="button-save-ai-key-valid-until"
+                onClick={() => void saveKeyValidUntil()}
+                disabled={saving === "key-valid-until"}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+              >
+                {saving === "key-valid-until" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {t("ai.save_credentials_button")}
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{t("ai.valid_until_hint")}</p>
+            {status?.keyDaysLeft !== null && status?.keyDaysLeft !== undefined && status.keyDaysLeft <= 7 && status.keyValidUntil && (
+              <p data-testid="warning-ai-key-valid-until" className="text-sm text-amber-500">
+                {status.keyDaysLeft < 0
+                  ? t("ai.valid_until_expired", { date: new Date(`${status.keyValidUntil}T00:00:00`).toLocaleDateString(intlLocale) })
+                  : t("ai.valid_until_warning", { date: new Date(`${status.keyValidUntil}T00:00:00`).toLocaleDateString(intlLocale), days: status.keyDaysLeft })}
+              </p>
+            )}
+            {feedback?.key === "key-valid-until" && <FeedbackLine type={feedback.type} msg={feedback.msg} />}
+          </div>
+        </div>
       </div>
 
       {/* ── SECTION 2: API credentials ────────────────────────────────────── */}

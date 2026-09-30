@@ -10,14 +10,29 @@ interface ProviderResponse {
   outputTokens: number | null;
 }
 
-class MissingApiKeyError extends Error {}
+export class MissingApiKeyError extends Error {}
+
+interface LlmConfig {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseURL?: string;
+  kind: "claude" | "openai" | "gemini";
+}
+
+interface LlmCallOptions {
+  module?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
+}
 
 async function callWithClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
+  timeoutMs: number, maxRetries: number,
 ): Promise<ProviderResponse> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({
-    apiKey, timeout: CALL_LLM_TIMEOUT_MS, maxRetries: CALL_LLM_MAX_RETRIES,
+    apiKey, timeout: timeoutMs, maxRetries,
   });
   const resp = await client.messages.create({
     model: model as Parameters<typeof client.messages.create>[0]["model"],
@@ -35,12 +50,13 @@ async function callWithClaude(
 }
 
 async function callWithOpenAI(
-  apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number, baseURL?: string
+  apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
+  timeoutMs: number, maxRetries: number, baseURL?: string,
 ): Promise<ProviderResponse> {
   const OpenAI = (await import("openai")).default;
   const client = new OpenAI({
     apiKey, ...(baseURL ? { baseURL } : {}),
-    timeout: CALL_LLM_TIMEOUT_MS, maxRetries: CALL_LLM_MAX_RETRIES,
+    timeout: timeoutMs, maxRetries,
   });
   const resp = await client.chat.completions.create({
     model,
@@ -65,14 +81,8 @@ async function callWithGemini(
   return { text: result.response.text(), inputTokens: null, outputTokens: null };
 }
 
-export async function callLLM(
-  prompt: string, maxTokens = 4096, temperature = 0, options: { module?: string } = {},
-): Promise<string> {
-  const startedAt = Date.now();
-  const module = options.module ?? "unknown";
+async function resolveLlmConfigInternal(): Promise<LlmConfig> {
   let provider = "claude";
-  let apiKey = "";
-  let model = "unknown";
   let customProviders: Array<{
     id: string;
     api_key: string;
@@ -103,42 +113,62 @@ export async function callLLM(
     customProviders = [];
   }
 
+  const customProv = customProviders.find(p => p.id === provider && p.enabled);
+  if (customProv) return {
+    provider, model: customProv.model, apiKey: customProv.api_key ?? "", baseURL: customProv.base_url,
+    kind: "openai",
+  };
+  switch (provider) {
+    case "openai":
+      return { provider, apiKey: await getSetting("ai_api_key_openai") ?? "",
+        model: await getSetting("ai_model_openai") ?? "gpt-4o", kind: "openai" };
+    case "perplexity":
+      return { provider, apiKey: await getSetting("ai_api_key_perplexity") ?? "",
+        model: await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online",
+        baseURL: "https://api.perplexity.ai", kind: "openai" };
+    case "gemini":
+      return { provider, apiKey: await getSetting("ai_api_key_gemini") ?? "",
+        model: await getSetting("ai_model_gemini") ?? "gemini-1.5-pro", kind: "gemini" };
+    case "claude":
+      return { provider, apiKey: await getSetting("ai_api_key_claude") ?? "",
+        model: await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514", kind: "claude" };
+    default:
+      return { provider, apiKey: "", model: "unknown", kind: "claude" };
+  }
+}
+
+export async function resolveLlmConfig(): Promise<{ provider: string; model: string; hasKey: boolean }> {
+  const { provider, model, apiKey } = await resolveLlmConfigInternal();
+  return { provider, model, hasKey: !!apiKey };
+}
+
+export async function callLLM(
+  prompt: string, maxTokens = 4096, temperature = 0, options: LlmCallOptions = {},
+): Promise<string> {
+  const startedAt = Date.now();
+  const module = options.module ?? "unknown";
+  const timeoutMs = options.timeoutMs ?? CALL_LLM_TIMEOUT_MS;
+  const maxRetries = options.maxRetries ?? CALL_LLM_MAX_RETRIES;
+  let provider = "claude";
+  let apiKey = "";
+  let model = "unknown";
   try {
-    const customProv = customProviders.find(p => p.id === provider && p.enabled);
-    let call: Promise<ProviderResponse> | undefined;
-    if (customProv) {
-      apiKey = customProv.api_key ?? "";
-      model = customProv.model;
-      if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, customProv.base_url);
-    } else {
-      switch (provider) {
-        case "openai":
-          apiKey = await getSetting("ai_api_key_openai") ?? "";
-          model = await getSetting("ai_model_openai") ?? "gpt-4o";
-          if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature);
-          break;
-        case "perplexity":
-          apiKey = await getSetting("ai_api_key_perplexity") ?? "";
-          model = await getSetting("ai_model_perplexity") ?? "llama-3.1-sonar-large-128k-online";
-          if (apiKey) call = callWithOpenAI(apiKey, model, prompt, maxTokens, temperature, "https://api.perplexity.ai");
-          break;
-        case "gemini":
-          apiKey = await getSetting("ai_api_key_gemini") ?? "";
-          model = await getSetting("ai_model_gemini") ?? "gemini-1.5-pro";
-          if (apiKey) call = callWithGemini(apiKey, model, prompt, temperature);
-          break;
-        case "claude":
-          apiKey = await getSetting("ai_api_key_claude") ?? "";
-          model = await getSetting("ai_model_claude") ?? "claude-sonnet-4-20250514";
-          if (apiKey) call = callWithClaude(apiKey, model, prompt, maxTokens, temperature);
-          break;
-      }
-    }
+    const config = await resolveLlmConfigInternal();
+    ({ provider, model, apiKey } = config);
     if (!apiKey) {
       logger.warn({ provider, module }, "callLLM: no API key configured");
       throw new MissingApiKeyError(`No API key configured for ${provider}`);
     }
-    const response = await call!;
+    let response: ProviderResponse;
+    if (config.kind === "openai") {
+      response = await callWithOpenAI(
+        apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries, config.baseURL,
+      );
+    } else if (config.kind === "gemini") {
+      response = await callWithGemini(apiKey, model, prompt, temperature);
+    } else {
+      response = await callWithClaude(apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries);
+    }
     logger.info({
       provider, route: "direct", model, module, durationMs: Date.now() - startedAt,
       inputTokens: response.inputTokens, outputTokens: response.outputTokens,

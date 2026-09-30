@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, User, Users, Server, ArrowLeftRight,
-  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText,
+  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText, AlertTriangle,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
-import { useAuth, canAccess, type Permissions } from "@/store/authStore";
+import { adminFetch, useAuth, canAccess, type Permissions } from "@/store/authStore";
 import { useBranding } from "@/store/brandingStore";
 import { ADMIN_NAV_GROUPS, ADMIN_FEATURES } from "@/config/adminFeatures";
 import { useLabelContext, useT } from "@/lib/LabelProvider";
@@ -76,13 +76,14 @@ function NavButton({
 }
 
 function NavGroup({
-  group, activeView, navigate, role, permissions,
+  group, activeView, navigate, role, permissions, keyWarning,
 }: {
   group: typeof ADMIN_NAV_GROUPS[number];
   activeView: ActiveView;
   navigate: (id: ActiveView) => void;
   role: string;
   permissions: Permissions;
+  keyWarning: boolean;
 }) {
   const t = useT();
   const accessibleItems = group.items.filter(
@@ -166,6 +167,11 @@ function NavGroup({
               <span className="flex items-center gap-2">
                 {ItemIcon && <ItemIcon style={{ width: 14, height: 14 }} />}
                 {t(label)}
+                {itemId === "ki_tool" && keyWarning && (
+                  <span title={t("ai.nav_key_warning")} className="inline-flex" data-testid="warning-ai-key-nav">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-label={t("ai.nav_key_warning")} />
+                  </span>
+                )}
               </span>
             </button>
           );
@@ -220,6 +226,30 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, isAuthenticated, permissions } = useAuth();
   const branding = useBranding();
   const t = useT();
+  const [keyDaysLeft, setKeyDaysLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user?.role !== "admin") {
+      setKeyDaysLeft(null);
+      return;
+    }
+    let active = true;
+    const refreshKeyStatus = () => {
+      void adminFetch("/api/admin/settings/ai-status")
+        .then(async response => {
+          if (!response.ok) throw new Error("Unable to load AI key status");
+          return response.json() as Promise<{ keyDaysLeft: number | null }>;
+        })
+        .then(status => { if (active) setKeyDaysLeft(status.keyDaysLeft); })
+        .catch(() => { if (active) setKeyDaysLeft(null); });
+    };
+    window.addEventListener("ai-key-status-changed", refreshKeyStatus);
+    refreshKeyStatus();
+    return () => {
+      active = false;
+      window.removeEventListener("ai-key-status-changed", refreshKeyStatus);
+    };
+  }, [user?.role]);
 
   function navigate(id: ActiveView) {
     if (id === 22) setSystemLogAnalysisId(null);
@@ -273,6 +303,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             navigate={navigate}
             role={role}
             permissions={permissions}
+            keyWarning={role === "admin" && keyDaysLeft !== null && keyDaysLeft <= 7}
           />
         ))}
 

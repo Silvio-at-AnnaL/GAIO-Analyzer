@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { StartAnalysisBody, GetAnalysisReportParams } from "@workspace/api-zod";
 import { runAnalysis, getAnalysis, listAnalyses } from "../lib/analysis-engine";
+import { checkLlmReady } from "../lib/llm-preflight.js";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,16 @@ router.post("/analyze", async (req, res): Promise<void> => {
 
   if (mode === "html" && (!html || html.trim().length === 0)) {
     res.status(400).json({ error: "HTML content is required for HTML mode" });
+    return;
+  }
+
+  const readiness = await checkLlmReady();
+  if (!readiness.ok) {
+    req.log.warn(
+      { reason: readiness.reason, provider: readiness.provider, status: readiness.status },
+      "analysis blocked: llm preflight failed",
+    );
+    res.status(503).json({ error: "LLM provider unavailable", code: "LLM_UNAVAILABLE" });
     return;
   }
 

@@ -19,6 +19,7 @@ export function HtmlAnalyseView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"code" | "upload">("code");
   const [error, setError] = useState<string | null>(null);
+  const [llmUnavailable, setLlmUnavailable] = useState(false);
   const [dragging, setDragging] = useState(false);
   const t = useT();
 
@@ -52,6 +53,7 @@ export function HtmlAnalyseView() {
       return;
     }
     setError(null);
+    setLlmUnavailable(false);
 
     startAnalysis.mutate(
       { data: { mode: "html", html } },
@@ -61,7 +63,14 @@ export function HtmlAnalyseView() {
           setAnalysisStatus("running");
           setActiveView(3);
         },
-        onError: () => {
+        onError: (failure) => {
+          if (failure instanceof Error && failure.name === "ApiError") {
+            const apiError = failure as Error & { status?: number; data?: { code?: string } };
+            if (apiError.status === 503 && apiError.data?.code === "LLM_UNAVAILABLE") {
+              setLlmUnavailable(true);
+              return;
+            }
+          }
           setAnalysisStatus("failed");
           setError(t("html.error_start_failed"));
         },
@@ -157,6 +166,11 @@ export function HtmlAnalyseView() {
 
       {error && (
         <p className="text-sm text-destructive">{error}</p>
+      )}
+      {llmUnavailable && (
+        <p data-testid="error-llm-unavailable" role="alert" className="text-sm text-destructive">
+          {t("domain.error_llm_unavailable")}
+        </p>
       )}
 
       <Button

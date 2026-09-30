@@ -18,6 +18,7 @@ const EXCLUDED_CONTEXT_KEYS = new Set([
 export const PERSISTED_INFO_MESSAGES = new Set([
   "Analysis completed",
   "callLLM route",
+  "llm preflight ok",
   "content relevance input built",
   "llm discoverability input built",
   "Competitor findings response",

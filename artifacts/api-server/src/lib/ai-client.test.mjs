@@ -81,7 +81,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { callLLM } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+const { callLLM, resolveLlmConfig, MissingApiKeyError } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 
 const key = "anthropic-direct-secret-test-key";
 const model = "claude-custom-admin-model";
@@ -217,4 +217,26 @@ test("source no longer contains integration env references or the integration im
   const source = await readFile(new URL("./ai-client.ts", import.meta.url), "utf8");
   assert.ok(!source.includes("AI_" + "INTEGRATIONS"));
   assert.ok(!source.includes("integrations-" + "anthropic-ai"));
+});
+
+test("resolveLlmConfig exposes provider, model and key presence but never the key", async () => {
+  reset({ ai_api_key_claude: key });
+  assert.deepEqual(await resolveLlmConfig(), { provider: "claude", model, hasKey: true });
+  const state = reset({ ai_provider: "openai" });
+  assert.deepEqual(await resolveLlmConfig(), { provider: "openai", model: "gpt-4o", hasKey: false });
+  assert.equal(state.clients.length, 0);
+  await assert.rejects(callLLM("prompt"), MissingApiKeyError);
+});
+
+test("per-call timeout and retry overrides reach Anthropic and OpenAI constructors", async () => {
+  const claude = reset({ ai_api_key_claude: key });
+  await callLLM("prompt", 16, 0, { module: "preflight", timeoutMs: 15_000, maxRetries: 0 });
+  assert.deepEqual(claude.clients[0].options, {
+    apiKey: key, timeout: 15_000, maxRetries: 0,
+  });
+  const openai = reset({ ai_provider: "openai", ai_api_key_openai: "test-openai-key" });
+  await callLLM("prompt", 16, 0, { timeoutMs: 15_000, maxRetries: 0 });
+  assert.deepEqual(openai.clients[0].options, {
+    apiKey: "test-openai-key", timeout: 15_000, maxRetries: 0,
+  });
 });

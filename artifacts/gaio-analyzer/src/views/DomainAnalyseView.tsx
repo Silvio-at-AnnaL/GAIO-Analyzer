@@ -27,6 +27,7 @@ export function DomainAnalyseView() {
   const [showAllPages, setShowAllPages] = useState(false);
   const [phase2Visible, setPhase2Visible] = useState(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
+  const [llmUnavailable, setLlmUnavailable] = useState(false);
   const [competitorVerified, setCompetitorVerified] = useState<Record<string, boolean>>({});
   const [competitorReasons, setCompetitorReasons] = useState<Record<string, string>>({});
 
@@ -235,6 +236,7 @@ export function DomainAnalyseView() {
 
   const handleStart = () => {
     if (!validate()) return;
+    setLlmUnavailable(false);
 
     const ownKey = competitorKey(domainForm.url);
     const seenKeys = new Set<string>();
@@ -270,7 +272,14 @@ export function DomainAnalyseView() {
           setAnalysisStatus("running");
           setActiveView(3);
         },
-        onError: () => {
+        onError: (error) => {
+          if (error instanceof Error && error.name === "ApiError") {
+            const apiError = error as Error & { status?: number; data?: { code?: string } };
+            if (apiError.status === 503 && apiError.data?.code === "LLM_UNAVAILABLE") {
+              setLlmUnavailable(true);
+              return;
+            }
+          }
           setAnalysisStatus("failed");
         },
       },
@@ -724,6 +733,11 @@ export function DomainAnalyseView() {
           </section>
 
           {/* CTA */}
+          {llmUnavailable && (
+            <p data-testid="error-llm-unavailable" role="alert" className="text-sm text-destructive">
+              {t("domain.error_llm_unavailable")}
+            </p>
+          )}
           <Button
             size="lg"
             className="w-full"
