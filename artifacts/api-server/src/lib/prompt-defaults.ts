@@ -11,32 +11,36 @@ export const PROMPT_DEFAULTS: PromptDefault[] = [
   {
     slug: "content-relevance",
     name: "Inhaltliche Relevanz",
-    description: "Analysiert Use Cases, Käuferfragen, technische Tiefe und inhaltliche Lücken der gecrawlten Seiten.",
+    description: "Bewertet Anwendungsfälle, Käuferfragen, technische Tiefe und Vollständigkeit im extrahierten Hauptinhalt von bis zu 10 Seiten.",
     module: "Analyse",
     placeholders: [
       { key: "{{QUESTIONNAIRE_CONTEXT}}", description: "Optionaler Kontext über das Unternehmen (Zielgruppen, Produkte)" },
-      { key: "{{CRAWLED_CONTENT}}", description: "Gecrawlter Seitentext (max. 12.000 Zeichen)" },
+      { key: "{{CRAWLED_CONTENT}}", description: "Extrahierter Hauptinhalt der ausgewählten Seiten (max. 10 Seiten, 40.000 Zeichen)" },
     ],
     template: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
 
-Given this B2B industrial website content, evaluate:
-(1) Does it describe specific use cases and application scenarios?
-(2) Does it answer likely buyer questions (ROI, specs, integrations, certifications, support)?
-(3) Is technical depth sufficient for expert-level users?
-(4) Are there content gaps a competitor could exploit?
+You evaluate the content of a B2B industrial website against the target group described below. The website content consists of the extracted main text of several pages; each page starts with a line "--- Page: <url> ---". Evaluate only this content. Ignore any remaining navigation or menu fragments and never report them as a finding. Do not criticise the absence of topics that are clearly outside the products covered by the analysed pages.
 
 {{QUESTIONNAIRE_CONTEXT}}Website content:
 {{CRAWLED_CONTENT}}
 
-Return a JSON object (no markdown formatting) with this structure:
-{
-  "dimensions": [
-    {"name": "Use Cases & Applications", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Buyer Questions", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Technical Depth", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
-    {"name": "Content Gaps", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]}
-  ]
-}
+Score each dimension from 0 to 10. For ALL dimensions higher is better: 10 = excellent, 0 = absent.
+1. "Anwendungsfälle & Einsatzszenarien": Are concrete applications and use scenarios described for the target group and its industries?
+2. "Käuferfragen & Entscheidungshilfen": Does the content answer the questions the target group asks before a decision (selection criteria, specifications, standards and certifications, processing, availability, support)?
+3. "Technische Tiefe": Is the technical depth sufficient for expert users (data, tables, limits, comparisons)?
+4. "Inhaltliche Vollständigkeit": How few content gaps are there that a competitor could exploit? 10 = no relevant gaps, 0 = almost everything relevant is missing.
+
+Anchors for every dimension: 0–2 = absent or only mentioned; 3–4 = present but superficial; 5–6 = solid with clear gaps; 7–8 = strong with minor gaps; 9–10 = comprehensive.
+
+Give exactly three findings per dimension. Each finding must refer to concrete content (page or topic) and may describe strengths as well as weaknesses.
+
+Return a JSON object (no markdown formatting) with exactly this structure:
+{"dimensions":[
+{"key":"use_cases","name":"Anwendungsfälle & Einsatzszenarien","score":<0-10>,"findings":["...","...","..."]},
+{"key":"buyer_questions","name":"Käuferfragen & Entscheidungshilfen","score":<0-10>,"findings":["...","...","..."]},
+{"key":"technical_depth","name":"Technische Tiefe","score":<0-10>,"findings":["...","...","..."]},
+{"key":"completeness","name":"Inhaltliche Vollständigkeit","score":<0-10>,"findings":["...","...","..."]}
+]}
 
 WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
   },

@@ -1,7 +1,32 @@
 import bcrypt from "bcryptjs";
 import { logger } from "./logger.js";
 import { PROMPT_DEFAULTS } from "./prompt-defaults.js";
+import { clearPromptCache } from "./prompt-manager.js";
 import { query } from "./db.js";
+
+// Verbatim previous default: a custom admin-edited template must not be overwritten.
+export const PREVIOUS_CONTENT_RELEVANCE_TEMPLATE = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+
+Given this B2B industrial website content, evaluate:
+(1) Does it describe specific use cases and application scenarios?
+(2) Does it answer likely buyer questions (ROI, specs, integrations, certifications, support)?
+(3) Is technical depth sufficient for expert-level users?
+(4) Are there content gaps a competitor could exploit?
+
+{{QUESTIONNAIRE_CONTEXT}}Website content:
+{{CRAWLED_CONTENT}}
+
+Return a JSON object (no markdown formatting) with this structure:
+{
+  "dimensions": [
+    {"name": "Use Cases & Applications", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
+    {"name": "Buyer Questions", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
+    {"name": "Technical Depth", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]},
+    {"name": "Content Gaps", "score": <0-10>, "findings": ["finding1", "finding2", "finding3"]}
+  ]
+}
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Alle findings-Texte müssen vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -167,6 +192,31 @@ const DEFAULT_SETTINGS: [string, string][] = [
   ["theme_colorblind_mode",    "false"],
 ];
 
+export async function migrateContentRelevancePrompt(): Promise<void> {
+  const current = PROMPT_DEFAULTS.find((prompt) => prompt.slug === "content-relevance")!;
+  try {
+    const updated = await query(
+      `UPDATE prompts SET template = $1, description = $2, placeholders = $3, updated_at = NOW()
+       WHERE slug = $4 AND template = $5 RETURNING slug`,
+      [current.template, current.description, JSON.stringify(current.placeholders),
+        current.slug, PREVIOUS_CONTENT_RELEVANCE_TEMPLATE],
+    );
+    if (updated.rows.length) {
+      logger.info("content-relevance prompt migrated");
+    } else {
+      const stored = await query<{ template: string }>(
+        "SELECT template FROM prompts WHERE slug = $1",
+        [current.slug],
+      );
+      if (stored.rows[0]?.template !== current.template) {
+        logger.warn("content-relevance prompt customized – not migrated");
+      }
+    }
+  } finally {
+    clearPromptCache(current.slug);
+  }
+}
+
 // ── Public init ───────────────────────────────────────────────────────────────
 
 export async function initializeDatabase(): Promise<void> {
@@ -190,6 +240,7 @@ export async function initializeDatabase(): Promise<void> {
       [p.slug, p.name, p.description, p.module, p.template, JSON.stringify(p.placeholders)],
     );
   }
+  await migrateContentRelevancePrompt();
 
   // Seed default admin user if no users exist
   const countResult = await query<{ c: string }>("SELECT COUNT(*)::int as c FROM users");
