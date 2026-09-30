@@ -74,6 +74,30 @@ test("ignores German and English stopwords", () => {
   assert.deepEqual(normalizeTokens("What should you use for this?"), []);
 });
 
+test("excludes exact normalized company tokens while retaining subject terms", () => {
+  const passages = [
+    { url: "/footer", kind: "text", text: "Rotima GmbH, Kaufbeuren." },
+    { url: "/product", kind: "text", text: "Silikonschrumpfschläuche isolieren Leitungen." },
+  ];
+  const options = { excludeTerms: ["Rotima GmbH, Kaufbeuren"] };
+  const scores = scorePassages("Welche Silikonschrumpfschläuche bietet Rotima GmbH in Kaufbeuren?", passages, options);
+  assert.deepEqual(normalizeTokens("Rotima GmbH, Kaufbeuren"), ["rotima", "gmbh", "kaufbeur"]);
+  assert.equal(scores[0].score, 0);
+  assert.ok(scores[1].score > 0);
+  assert.equal(selectForQuestion("Welche Silikonschrumpfschläuche bietet Rotima GmbH in Kaufbeuren?", passages, options).passages[0].url, "/product");
+  assert.ok(scorePassages("Silikonschrumpfschlauch", passages, { excludeTerms: ["Silikon"] })[1].score > 0);
+});
+
+test("uses fallback when all normalized query tokens are excluded", () => {
+  const passages = buildPassages([page("/company", "Rotima GmbH Kaufbeuren.")]);
+  assert.equal(selectForQuestion("Rotima GmbH Kaufbeuren", passages, {
+    excludeTerms: ["Rotima GmbH, Kaufbeuren"],
+  }).fallback, true);
+  assert.deepEqual(selectForQuestion("Rotima GmbH Kaufbeuren", passages, {
+    excludeTerms: ["Rotima GmbH, Kaufbeuren"],
+  }).passages.map(({ url }) => url), ["/company"]);
+});
+
 test("keeps an FAQ pair as one passage and removes question and answer from text passages", () => {
   const question = "Welche Temperatur ist möglich?";
   const answer = "Die Temperatur beträgt bis zu 200 Grad.";

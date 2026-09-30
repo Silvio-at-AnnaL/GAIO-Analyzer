@@ -179,8 +179,13 @@ function tokenMatches(queryToken: string, passageToken: string): boolean {
       && (queryToken.includes(passageToken) || passageToken.includes(queryToken)));
 }
 
-export function scorePassages(question: string, passages: Passage[]): ScoredPassage[] {
-  const queryTokens = normalizeTokens(question);
+export function scorePassages(
+  question: string,
+  passages: Passage[],
+  options: { excludeTerms?: string[] } = {},
+): ScoredPassage[] {
+  const excluded = new Set((options.excludeTerms ?? []).flatMap(normalizeTokens));
+  const queryTokens = normalizeTokens(question).filter((token) => !excluded.has(token));
   const tokenized = passages.map((passage) => normalizeTokens(passage.text));
   const count = passages.length;
   const averageLength = count
@@ -220,8 +225,12 @@ export function scorePassages(question: string, passages: Passage[]): ScoredPass
  * passage matches, returns up to the first 400 characters of each page's
  * earliest text passage in page order, marked as fallback.
  */
-export function selectForQuestion(question: string, passages: Passage[]): PassageSelection {
-  const scored = scorePassages(question, passages);
+export function selectForQuestion(
+  question: string,
+  passages: Passage[],
+  options: { excludeTerms?: string[] } = {},
+): PassageSelection {
+  const scored = scorePassages(question, passages, options);
   const ranked = scored.filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score);
   if (ranked.length) {

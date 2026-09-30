@@ -5,7 +5,7 @@ import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { extractMainText } from "./content-relevance";
 import { extractFaqPairs, type FaqPair } from "./faq";
-import { buildPassages, selectForQuestion } from "./passage-retrieval";
+import { buildPassages, normalizeTokens, selectForQuestion } from "./passage-retrieval";
 
 export interface LlmQuestion {
   question: string;
@@ -131,17 +131,22 @@ async function rateQuestionsWithSources(
   partA: string[],
   partB: string[],
   passages: ReturnType<typeof buildPassages>,
+  excludeTerms: string[],
 ): Promise<{ partA: LlmQuestion[]; partB: LlmQuestion[] }> {
   const selected: SelectedQuestion[] = [];
   const selectedLog: Array<{
     id: string; chars: number; fallback: boolean;
     passages: Array<{ url: string; score: number }>;
   }> = [];
-  const blocks = [
+  const questions = [
     ...partA.map((question, index) => ({ id: `q${index + 1}`, question })),
     ...partB.map((question, index) => ({ id: `b${index + 1}`, question })),
-  ].map(({ id, question }) => {
-    const selection = selectForQuestion(question, passages);
+  ];
+  const excluded = new Set(excludeTerms.flatMap(normalizeTokens));
+  const excludedTerms = [...new Set(questions.flatMap(({ question }) =>
+    normalizeTokens(question).filter((token) => excluded.has(token))))];
+  const blocks = questions.map(({ id, question }) => {
+    const selection = selectForQuestion(question, passages, { excludeTerms });
     selected.push({ id, question, passageUrls: new Set(selection.passages.map(p => p.url)) });
     selectedLog.push({
       id,
@@ -154,7 +159,7 @@ async function rateQuestionsWithSources(
     return [`[${id}] ${question}`, ...selection.passages.map((passage, index) =>
       `--- Passage ${index + 1} (URL: ${passage.url})\n${passage.text}`)].join("\n");
   });
-  logger.info({ questions: selectedLog }, "llm discoverability passages selected");
+  logger.info({ questions: selectedLog, excludedTerms }, "llm discoverability passages selected");
 
   const prompt = fillTemplate(await getPrompt("llm-discoverability-rating-v2"), {
     QUESTION_BLOCKS: blocks.join("\n\n"),
@@ -238,6 +243,10 @@ export async function analyzeLlmDiscoverability(
     const company = (options.companyName ?? "").trim() || "das Unternehmen";
     let domain = "";
     try { domain = options.url ? new URL(options.url).hostname : ""; } catch { /* ignore */ }
+    const excludeTerms = [
+      ...(company.toLowerCase() === "das unternehmen" ? [] : [company]),
+      ...domain.split(".").slice(0, -1).filter((part) => part.toLowerCase() !== "www"),
+    ];
 
     const [partAQuestions, partBQuestions] = await Promise.all([
       generateProblemQuestions(combinedContent, questionnaireContext),
@@ -247,7 +256,7 @@ export async function analyzeLlmDiscoverability(
     if (partBQuestions.length === 0) throw new Error("Part B generated no questions");
 
     const { partA: partARated, partB: partBRated } =
-      await rateQuestionsWithSources(partAQuestions, partBQuestions, passages);
+      await rateQuestionsWithSources(partAQuestions, partBQuestions, passages, excludeTerms);
 
     const partA = summarizePart("Teil A — Problem-/Kategorie-Fragen (ohne Markenname)", 0.7, partARated);
     const partB = summarizePart("Teil B — Marken-Verifikationsfragen", 0.3, partBRated);

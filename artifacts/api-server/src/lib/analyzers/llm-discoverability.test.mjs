@@ -265,7 +265,8 @@ test("logs both INFO messages with their new fields and persists them", async ()
     ["https://example.com/0", 2, true],
     ["https://example.com/1", 1, true],
   ]);
-  assert.deepEqual(Object.keys(selected), ["questions"]);
+  assert.deepEqual(Object.keys(selected), ["questions", "excludedTerms"]);
+  assert.deepEqual(selected.excludedTerms, []);
   assert.deepEqual(selected.questions.map(({ id, fallback }) => [id, fallback]), [
     ["q1", false],
     ["b1", false],
@@ -278,4 +279,45 @@ test("logs both INFO messages with their new fields and persists them", async ()
       assert.equal(passage.score, Math.round(passage.score * 100) / 100);
     }
   }
+});
+
+test("excludes company and hostname terms from both parts and logs only removed tokens", async () => {
+  for (const { url, company, expected } of [
+    { url: "https://www.rotima.ch", company: "Rotima GmbH, Kaufbeuren", expected: ["rotima", "gmbh", "kaufbeur"] },
+    { url: "https://de.farnell.com", company: "", expected: ["farnell"] },
+  ]) {
+    reset();
+    const brand = company || "Farnell";
+    const subject = "Silikonschrumpfschläuche";
+    state.answers[A] = JSON.stringify({ questions: [`Welche ${subject} bietet ${brand}?`] });
+    state.answers[B] = JSON.stringify({ questions: [`Welche ${subject} bietet ${brand}?`] });
+    state.answers[R] = JSON.stringify({ ratings: [
+      { id: "q1", rating: 4, gap: "Erklärt.", sourceUrl: null },
+      { id: "b1", rating: 4, gap: "Erklärt.", sourceUrl: null },
+    ] });
+    const pages = [
+      page(0, company ? "Rotima GmbH, Kaufbeuren." : "Farnell Ltd, London."),
+      page(1, `${subject} isolieren elektrische Leitungen.`),
+    ];
+    const result = await analyzeLlmDiscoverability(pages, "", { companyName: company, url });
+    assert.ok(result);
+    const selected = state.logs.find(({ msg }) => msg === "llm discoverability passages selected")?.obj;
+    assert.deepEqual(selected.excludedTerms, expected);
+    for (const question of selected.questions) {
+      assert.equal(question.fallback, false);
+      assert.equal(question.passages[0].url, pages[1].url);
+      assert.ok(!question.passages.some(({ url: passageUrl }) => passageUrl === pages[0].url));
+    }
+  }
+});
+
+test("excludes a hostname token without excluding a generic company placeholder", async () => {
+  reset();
+  state.answers[A] = JSON.stringify({ questions: ["Was bietet das Unternehmen bei Farnell?"] });
+  state.answers[B] = JSON.stringify({ questions: ["Was bietet de.farnell.com?"] });
+  await analyzeLlmDiscoverability([page(0, "Farnell führt Leitungen.")], "", {
+    url: "https://de.farnell.com",
+  });
+  const selected = state.logs.find(({ msg }) => msg === "llm discoverability passages selected")?.obj;
+  assert.deepEqual(selected.excludedTerms, ["farnell"]);
 });
