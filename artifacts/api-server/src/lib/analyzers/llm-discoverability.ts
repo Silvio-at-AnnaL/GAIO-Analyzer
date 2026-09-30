@@ -3,6 +3,8 @@ import type { CrawledPage } from "../crawler";
 import { callLLM } from "../ai-client.js";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
+import { extractMainText } from "./content-relevance";
+import { extractFaqPairs, type FaqPair } from "./faq";
 
 export interface LlmQuestion {
   question: string;
@@ -29,20 +31,45 @@ export interface LlmDiscoverabilityResult {
 
 interface PageBlock {
   url: string;
-  text: string;
+  title: string;
+  mainText: string;
+  faqPairs: FaqPair[];
 }
 
-function extractPageText(html: string, maxLen = 3000): string {
-  const $ = cheerio.load(html);
-  $("script, style, nav, footer").remove();
-  return $("body").text().replace(/\s+/g, " ").trim().slice(0, maxLen);
-}
-
-function buildPageBlocks(pages: CrawledPage[], perPage = 1500, totalCap = 8): PageBlock[] {
-  return pages.slice(0, totalCap).map((p) => ({
-    url: p.url,
-    text: extractPageText(p.html, perPage),
+function buildPageBlocks(pages: CrawledPage[]): PageBlock[] {
+  return pages.slice(0, 10).map((page) => ({
+    url: page.url,
+    title: cheerio.load(page.html)("title").first().text().replace(/\s+/g, " ").trim(),
+    mainText: extractMainText(page.html, Number.MAX_SAFE_INTEGER),
+    faqPairs: extractFaqPairs([page]).distinct,
   }));
+}
+
+function generationBlock(page: PageBlock): string {
+  let excerpt = page.mainText.slice(0, 600);
+  if (page.faqPairs.length > 0) {
+    const index = excerpt.indexOf(page.faqPairs[0].question);
+    if (index >= 0) excerpt = excerpt.slice(0, index);
+  }
+  return `URL: ${page.url}\nTitle: ${page.title}\n${excerpt}`;
+}
+
+function ratingBlock(page: PageBlock): { text: string; mode: "full" | "intro+faq" | "truncated" } {
+  if (page.mainText.length <= 4000) return { text: page.mainText, mode: "full" };
+  if (page.faqPairs.length === 0) return { text: page.mainText.slice(0, 4000), mode: "truncated" };
+
+  let faq = "";
+  for (const { question, answer } of page.faqPairs) {
+    const pair = `F: ${question}\nA: ${answer}`;
+    if (!faq && pair.length > 2500) {
+      faq = pair.slice(0, 2500);
+      break;
+    }
+    const next = faq ? `${faq}\n\n${pair}` : pair;
+    if (next.length > 2500) break;
+    faq = next;
+  }
+  return { text: `${page.mainText.slice(0, 1500)}\n[FAQ]\n${faq}`, mode: "intro+faq" };
 }
 
 function tryParseJson<T>(raw: string): T | null {
@@ -83,17 +110,14 @@ async function generateProblemQuestions(
 ): Promise<string[]> {
   const prompt = fillTemplate(await getPrompt("llm-discoverability-a"), {
     QUESTIONNAIRE_CONTEXT: context ? `Context:\n${context}\n\n` : "",
-    COMBINED_CONTENT: combinedContent.slice(0, 4000),
+    COMBINED_CONTENT: combinedContent,
   });
 
-  try {
-    const text = await callLLM(prompt, 8192);
-    const parsed = tryParseJson<{ questions?: string[] }>(text);
-    return (parsed?.questions ?? []).slice(0, 6);
-  } catch (err) {
-    logger.warn({ err }, "LLM Part A generation failed");
-    return [];
-  }
+  const text = await callLLM(prompt, 8192);
+  const parsed = tryParseJson<{ questions?: string[] }>(text);
+  return (Array.isArray(parsed?.questions) ? parsed.questions : [])
+    .filter((question): question is string => typeof question === "string" && !!question.trim())
+    .slice(0, 6);
 }
 
 async function generateBrandQuestions(
@@ -104,71 +128,46 @@ async function generateBrandQuestions(
   const prompt = fillTemplate(await getPrompt("llm-discoverability-b"), {
     COMPANY_NAME: company,
     DOMAIN: domain,
-    COMBINED_CONTENT: combinedContent.slice(0, 4000),
+    COMBINED_CONTENT: combinedContent,
   });
 
-  try {
-    const text = await callLLM(prompt, 8192);
-    const parsed = tryParseJson<{ questions?: string[] }>(text);
-    const qs = (parsed?.questions ?? []).slice(0, 4);
-    if (qs.length === 0) throw new Error("empty");
-    return qs;
-  } catch (err) {
-    logger.warn({ err }, "LLM Part B generation failed; using fallbacks");
-    return [
-      `Welche Zertifizierungen hat ${company}?`,
-      `Welche Produkte bietet ${company} an?`,
-      `Wie ist der Support bei ${company}?`,
-      `Welche typischen Lieferzeiten bietet ${company}?`,
-    ];
-  }
+  const text = await callLLM(prompt, 8192);
+  const parsed = tryParseJson<{ questions?: string[] }>(text);
+  return (Array.isArray(parsed?.questions) ? parsed.questions : [])
+    .filter((question): question is string => typeof question === "string" && !!question.trim())
+    .slice(0, 4);
 }
 
 async function rateQuestionsWithSources(
   questions: string[],
-  pageBlocks: PageBlock[],
+  pagesDoc: string,
+  urlList: string[],
 ): Promise<LlmQuestion[]> {
-  if (questions.length === 0) return [];
-
-  const pagesDoc = pageBlocks
-    .map((p, i) => `[PAGE ${i + 1}] URL: ${p.url}\n${p.text}`)
-    .join("\n\n")
-    .slice(0, 12000);
-
-  const urlList = pageBlocks.map((p) => p.url);
-
   const prompt = fillTemplate(await getPrompt("llm-discoverability-rating"), {
     PAGES_DOC: pagesDoc,
     URL_LIST: JSON.stringify(urlList),
     QUESTIONS: JSON.stringify(questions),
   });
 
-  try {
-    const text = await callLLM(prompt, 8192);
-    const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(text);
-    const ratings = parsed?.ratings ?? [];
-    if (ratings.length === 0) throw new Error("empty ratings");
-    const validUrls = new Set(urlList);
-    return questions.map((q, i) => {
-      const r = ratings[i] ?? {};
-      const src = r.sourceUrl && validUrls.has(r.sourceUrl) ? r.sourceUrl : null;
-      const rating = typeof r.rating === "number" ? Math.min(5, Math.max(1, Math.round(r.rating))) : 3;
-      return {
-        question: typeof r.question === "string" && r.question.length > 0 ? r.question : q,
-        rating,
-        gap: typeof r.gap === "string" ? r.gap : "",
-        sourceUrl: src,
-      };
-    });
-  } catch (err) {
-    logger.warn({ err }, "LLM rating failed; using neutral fallback");
-    return questions.map((q) => ({
-      question: q,
-      rating: 3,
-      gap: "Analyse nicht verfügbar",
-      sourceUrl: null,
-    }));
+  const text = await callLLM(prompt, 8192);
+  const parsed = tryParseJson<{ ratings?: Array<Partial<LlmQuestion>> }>(text);
+  const ratings = parsed?.ratings;
+  if (!Array.isArray(ratings) || ratings.length !== questions.length) {
+    throw new Error("rating count mismatch or no ratings");
   }
+  if (ratings.some((rating) => typeof rating?.rating !== "number" || !Number.isFinite(rating.rating))) {
+    throw new Error("non-finite or non-numeric rating");
+  }
+  const validUrls = new Set(urlList);
+  return questions.map((question, i) => {
+    const r = ratings[i];
+    return {
+      question,
+      rating: Math.min(5, Math.max(1, Math.round(r.rating!))),
+      gap: typeof r.gap === "string" ? r.gap : "",
+      sourceUrl: r.sourceUrl && validUrls.has(r.sourceUrl) ? r.sourceUrl : null,
+    };
+  });
 }
 
 function summarizePart(label: string, weight: number, questions: LlmQuestion[]): LlmPart {
@@ -189,32 +188,48 @@ export async function analyzeLlmDiscoverability(
   pages: CrawledPage[],
   questionnaireContext: string,
   options: { companyName?: string | null; url?: string | null } = {},
-): Promise<LlmDiscoverabilityResult> {
-  const pageBlocks = buildPageBlocks(pages);
-  const combinedContent = pageBlocks.map((b) => b.text).join("\n\n---\n\n").slice(0, 10000);
-
-  const company = (options.companyName ?? "").trim() || "das Unternehmen";
-  let domain = "";
-  try { domain = options.url ? new URL(options.url).hostname : ""; } catch { /* ignore */ }
-
-  const defaultPart: LlmPart = { label: "", weight: 0, avgRating: 0, score: 0, questions: [] };
-  const defaultResult: LlmDiscoverabilityResult = {
-    score: 50,
-    avgRating: 2.5,
-    questions: [],
-    partA: { ...defaultPart, label: "Teil A — Problem-/Kategorie-Fragen (ohne Markenname)", weight: 0.7 },
-    partB: { ...defaultPart, label: "Teil B — Marken-Verifikationsfragen", weight: 0.3 },
-  };
-
+): Promise<LlmDiscoverabilityResult | null> {
   try {
+    const pageBlocks = buildPageBlocks(pages);
+    const generationPages = pageBlocks.map((page) => ({ url: page.url, text: generationBlock(page) }));
+    const combinedContent = generationPages.map((page) => page.text).join("\n\n---\n\n");
+    const ratingPages = pageBlocks.map((page, index) => {
+      const { text, mode } = ratingBlock(page);
+      return {
+        url: page.url,
+        text: `[PAGE ${index + 1}] URL: ${page.url}\n${text}`,
+        mode,
+        faqPairs: page.faqPairs.length,
+      };
+    });
+    const pagesDoc = ratingPages.map((page) => page.text).join("\n\n");
+    const urlList = pageBlocks.map((page) => page.url);
+    logger.info({
+      pageCount: pageBlocks.length,
+      generation: {
+        totalChars: combinedContent.length,
+        pages: generationPages.map(({ url, text }) => ({ url, chars: text.length })),
+      },
+      rating: {
+        totalChars: pagesDoc.length,
+        pages: ratingPages.map(({ url, text, mode, faqPairs }) => ({ url, chars: text.length, mode, faqPairs })),
+      },
+    }, "llm discoverability input built");
+
+    const company = (options.companyName ?? "").trim() || "das Unternehmen";
+    let domain = "";
+    try { domain = options.url ? new URL(options.url).hostname : ""; } catch { /* ignore */ }
+
     const [partAQuestions, partBQuestions] = await Promise.all([
       generateProblemQuestions(combinedContent, questionnaireContext),
       generateBrandQuestions(combinedContent, company, domain),
     ]);
+    if (partAQuestions.length === 0) throw new Error("Part A generated no questions");
+    if (partBQuestions.length === 0) throw new Error("Part B generated no questions");
 
     const [partARated, partBRated] = await Promise.all([
-      rateQuestionsWithSources(partAQuestions, pageBlocks),
-      rateQuestionsWithSources(partBQuestions, pageBlocks),
+      rateQuestionsWithSources(partAQuestions, pagesDoc, urlList),
+      rateQuestionsWithSources(partBQuestions, pagesDoc, urlList),
     ]);
 
     const partA = summarizePart("Teil A — Problem-/Kategorie-Fragen (ohne Markenname)", 0.7, partARated);
@@ -234,7 +249,7 @@ export async function analyzeLlmDiscoverability(
       partB,
     };
   } catch (err) {
-    logger.warn({ err }, "LLM discoverability analysis failed");
-    return defaultResult;
+    logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "llm discoverability unavailable");
+    return null;
   }
 }

@@ -19,6 +19,7 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "Analysis completed",
   "callLLM route",
   "content relevance input built",
+  "llm discoverability input built",
   "Competitor findings response",
   "competitor input normalized",
   "recommendations input built",
