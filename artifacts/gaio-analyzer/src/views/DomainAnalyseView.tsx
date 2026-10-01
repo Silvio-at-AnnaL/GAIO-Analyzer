@@ -18,7 +18,7 @@ export function DomainAnalyseView() {
     domainForm, setDomainForm,
     setAnalysisId, setAnalysisStatus, setActiveView,
     crawledPages, selectedPages, setSelectedPages,
-    setupImportNotice,
+    setupImportNotice, setSetupImportNotice,
   } = useAppStore();
 
   const startAnalysis = useStartAnalysis();
@@ -283,6 +283,7 @@ export function DomainAnalyseView() {
     const hasEditableList = editablePages.length > 0;
     const explicitUrls = hasEditableList && selectedPages.length > 0 ? selectedPages : null;
 
+    setSetupImportNotice(null);
     startAnalysis.mutate(
       {
         data: {

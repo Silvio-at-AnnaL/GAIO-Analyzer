@@ -68,6 +68,7 @@ const uiMocks = {
     export const Plus = "svg", X = "svg", Loader2 = "svg", ChevronDown = "svg";
     export const ChevronUp = "svg", Pencil = "svg", Check = "svg", Sparkles = "svg";
     export const Globe = "svg", CheckCircle2 = "svg", AlertTriangle = "svg";
+    export const Bot = "svg", Radar = "svg", ListChecks = "svg";
   `,
   "@workspace/api-client-react": `
     export const useStartAnalysis = () => globalThis.__setupImportContext.startAnalysis;
@@ -113,6 +114,7 @@ async function bundleEntry(entry, { includeViewMocks = false } = {}) {
 
 const { SetupImportLink } = await bundleEntry("../components/SetupImportLink.tsx");
 const { DomainAnalyseView } = await bundleEntry("../views/DomainAnalyseView.tsx", { includeViewMocks: true });
+const { WelcomeView } = await bundleEntry("../views/WelcomeView.tsx", { includeViewMocks: true });
 
 function makeHarness() {
   return {
@@ -300,9 +302,43 @@ test("the real import link is hidden without access and visible to admins or exp
     const context = makeContext({ auth });
     const harness = makeHarness();
     installHarness(harness, context);
-    const tree = harness.render(SetupImportLink);
+    const tree = harness.render(SetupImportLink, { prefix: "welcome.prefill_prefix " });
     assert.equal(Boolean(byTestId(tree, "button-setup-import")), visible);
     assert.equal(Boolean(byTestId(tree, "input-setup-import")), visible);
+    assert.equal(textContent(tree).includes("welcome.prefill_prefix"), visible);
+    if (visible) {
+      const button = byTestId(tree, "button-setup-import");
+      assert.deepEqual(button.props.style, {
+        fontSize: "inherit", fontFamily: "inherit", lineHeight: "inherit",
+        padding: 0, background: "none", border: "none", textUnderlineOffset: "2px",
+      });
+    }
+  }
+});
+
+test("welcome hints use a centered field-width container and a separate permission-gated import line", () => {
+  const context = makeContext();
+  installHarness(makeHarness(), context);
+  const tree = globalThis.__setupImportHarness.render(WelcomeView, { onDismiss() {} });
+  const hints = findElement(tree, node => node.props?.style?.fontSize === "0.775rem");
+  assert.equal(hints.props.style.maxWidth, 560);
+  assert.equal(hints.props.style.textAlign, "center");
+  assert.equal(hints.props.style.color, "hsl(var(--muted-foreground))");
+  const [prefillLine, importLine] = hints.props.children;
+  assert.equal(prefillLine.type, "div");
+  assert.equal(textContent(prefillLine), "welcome.prefill_prefix welcome.prefill_link welcome.prefill_suffix");
+  assert.equal(importLine.props.className, "mt-1");
+  assert.equal(textContent(importLine.props.prefix), "welcome.prefill_prefix ");
+  for (const [auth, visible] of [
+    [{ isAuthenticated: false, user: null, permissions: {} }, false],
+    [{ isAuthenticated: true, user: { role: "user" }, permissions: {} }, false],
+    [{ isAuthenticated: true, user: { role: "admin" }, permissions: {} }, true],
+  ]) {
+    context.auth = auth;
+    installHarness(makeHarness(), context);
+    const renderedLine = globalThis.__setupImportHarness.render(importLine.type, importLine.props);
+    assert.equal(textContent(renderedLine).includes("welcome.prefill_prefix"), visible);
+    assert.equal(Boolean(byTestId(renderedLine, "button-setup-import")), visible);
   }
 });
 

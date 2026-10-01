@@ -10,7 +10,7 @@ interface WelcomeViewProps {
 }
 
 export function WelcomeView({ onDismiss }: WelcomeViewProps) {
-  const { domainForm, setDomainForm } = useAppStore();
+  const { domainForm, setDomainForm, setSetupImportNotice } = useAppStore();
   const [companyInput, setCompanyInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const t = useT();
@@ -25,6 +25,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
   }
 
   function handleStart() {
+    setSetupImportNotice(null);
     applyAndDismiss();
   }
 
@@ -161,28 +162,33 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
 
         <div style={{
           marginTop: "0.6rem",
+          maxWidth: 560,
+          textAlign: "center",
           fontSize: "0.775rem",
           color: "hsl(var(--muted-foreground))",
         }}>
-          {t("welcome.prefill_prefix")}{" "}
-          <button
-            onClick={handleKiPrefill}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              color: "hsl(var(--primary))",
-              fontSize: "inherit",
-              textDecoration: "underline",
-              textUnderlineOffset: "2px",
-            }}
-          >
-            {t("welcome.prefill_link")}
-          </button>
-          {" "}{t("welcome.prefill_suffix")}
+          <div>
+            {t("welcome.prefill_prefix")}{" "}
+            <button
+              onClick={handleKiPrefill}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                color: "hsl(var(--primary))",
+                fontSize: "inherit",
+                textDecoration: "underline",
+                textUnderlineOffset: "2px",
+              }}
+            >
+              {t("welcome.prefill_link")}
+            </button>
+            {" "}{t("welcome.prefill_suffix")}
+          </div>
           <SetupImportLink
-            className="ml-3"
+            className="mt-1"
+            prefix={<>{t("welcome.prefill_prefix")}{" "}</>}
             hasAdditionalContent={Boolean(companyInput.trim() || urlInput.trim())}
             onImported={onDismiss}
           />

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { canAccess, useAuth } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { useT } from "@/lib/LabelProvider";
@@ -31,12 +31,13 @@ function readFile(file: File): Promise<string> {
 }
 
 export function SetupImportLink({
-  onBeforeApply, onImported, hasAdditionalContent = false, className = "",
+  onBeforeApply, onImported, hasAdditionalContent = false, className = "", prefix,
 }: {
   onBeforeApply?: () => void;
   onImported?: () => void;
   hasAdditionalContent?: boolean;
   className?: string;
+  prefix?: ReactNode;
 }) {
   const auth = useAuth();
   const store = useAppStore();
@@ -84,9 +85,19 @@ export function SetupImportLink({
   const notice = store.setupImportNotice;
   return (
     <span className={`inline-block ${className}`}>
+      {prefix}
       <button
         type="button"
         className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors disabled:opacity-50"
+        style={{
+          fontSize: "inherit",
+          fontFamily: "inherit",
+          lineHeight: "inherit",
+          padding: 0,
+          background: "none",
+          border: "none",
+          textUnderlineOffset: "2px",
+        }}
         disabled={busy}
         onClick={() => picker.current?.click()}
         data-testid="button-setup-import"
