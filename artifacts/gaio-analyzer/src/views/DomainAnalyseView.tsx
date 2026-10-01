@@ -9,6 +9,7 @@ import { useAppStore } from "@/store/appStore";
 import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client-react";
 import { competitorKey, normalizeUrl } from "@/lib/utils";
 import { useT } from "@/lib/LabelProvider";
+import { SetupImportLink } from "@/components/SetupImportLink";
 
 const MAX_VISIBLE_PAGES = 15;
 
@@ -17,6 +18,7 @@ export function DomainAnalyseView() {
     domainForm, setDomainForm,
     setAnalysisId, setAnalysisStatus, setActiveView,
     crawledPages, selectedPages, setSelectedPages,
+    setupImportNotice,
   } = useAppStore();
 
   const startAnalysis = useStartAnalysis();
@@ -25,7 +27,7 @@ export function DomainAnalyseView() {
 
   const [errors, setErrors] = useState<{ companyName?: string; url?: string }>({});
   const [showAllPages, setShowAllPages] = useState(false);
-  const [phase2Visible, setPhase2Visible] = useState(false);
+  const [phase2Visible, setPhase2Visible] = useState(Boolean(setupImportNotice));
   const [prefillError, setPrefillError] = useState<string | null>(null);
   const [llmUnavailable, setLlmUnavailable] = useState(false);
   const [competitorVerified, setCompetitorVerified] = useState<Record<string, boolean>>({});
@@ -39,6 +41,31 @@ export function DomainAnalyseView() {
   const editInputRef = useRef<HTMLInputElement>(null);
   const newUrlInputRef = useRef<HTMLInputElement>(null);
   const phase2Ref = useRef<HTMLDivElement>(null);
+  const prefillGeneration = useRef(0);
+
+  const invalidatePrefillForImport = () => {
+    // Must run before import setters, not only in the later reset effect.
+    prefillGeneration.current += 1;
+    prefillMutation.reset();
+  };
+
+  useEffect(() => {
+    if (!setupImportNotice) return;
+    // Discard old mutation output and any response still in flight at import time.
+    prefillGeneration.current += 1;
+    prefillMutation.reset();
+    setPrefillError(null);
+    setCompetitorVerified({});
+    setCompetitorReasons({});
+    setErrors({});
+    setLlmUnavailable(false);
+    setEditingIndex(null);
+    setEditingValue("");
+    setAddingNew(false);
+    setNewUrlValue("");
+    setShowAllPages(false);
+    setPhase2Visible(true);
+  }, [setupImportNotice]);
 
   useEffect(() => {
     const hasData =
@@ -127,6 +154,7 @@ export function DomainAnalyseView() {
     if (!validatePhase1()) return;
     setPrefillError(null);
     setCompetitorReasons({});
+    const generation = ++prefillGeneration.current;
 
     prefillMutation.mutate(
       {
@@ -137,6 +165,7 @@ export function DomainAnalyseView() {
       },
       {
         onSuccess: (result) => {
+          if (generation !== prefillGeneration.current) return;
           const ownKey = competitorKey(domainForm.url);
           const seenKeys = new Set<string>();
           const filteredCompetitors = result.competitors.filter((competitor) => {
@@ -166,6 +195,7 @@ export function DomainAnalyseView() {
           setPhase2Visible(true);
         },
         onError: () => {
+          if (generation !== prefillGeneration.current) return;
           setPrefillError(t("domain.error_prefill_failed"));
           setPhase2Visible(true);
         },
@@ -370,6 +400,11 @@ export function DomainAnalyseView() {
             </p>
           </div>
         )}
+
+        <SetupImportLink
+          className="w-full text-xs text-center"
+          onBeforeApply={invalidatePrefillForImport}
+        />
 
         {/* Switch back to KI mode — MODE B only */}
         {phase2Visible && (

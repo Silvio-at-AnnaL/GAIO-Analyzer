@@ -3,6 +3,7 @@ import { Bot, Radar, ListChecks } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { normalizeUrl } from "@/lib/utils";
 import { useT } from "@/lib/LabelProvider";
+import { SetupImportLink } from "@/components/SetupImportLink";
 
 interface WelcomeViewProps {
   onDismiss: () => void;
@@ -158,7 +159,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           </div>
         </div>
 
-        <p style={{
+        <div style={{
           marginTop: "0.6rem",
           fontSize: "0.775rem",
           color: "hsl(var(--muted-foreground))",
@@ -180,7 +181,12 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
             {t("welcome.prefill_link")}
           </button>
           {" "}{t("welcome.prefill_suffix")}
-        </p>
+          <SetupImportLink
+            className="ml-3"
+            hasAdditionalContent={Boolean(companyInput.trim() || urlInput.trim())}
+            onImported={onDismiss}
+          />
+        </div>
       </div>
 
       {/* Section 3 — Divider */}

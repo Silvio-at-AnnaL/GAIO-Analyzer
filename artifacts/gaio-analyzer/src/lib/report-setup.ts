@@ -19,7 +19,7 @@ export type ReportSetupResult =
     }
   | {
       ok: false;
-      reason: "not_a_report" | "html_mode" | "no_setup_data";
+      reason: "not_a_report" | "html_mode" | "no_setup_data" | "failed_report" | "no_pages";
     };
 
 type DataBlock = {
@@ -206,10 +206,52 @@ function oldBlockString(block: Record<string, unknown> | null, key: string): str
 }
 
 function requestedPagesWarning(requestedPages: string[] | null, pages: string[]): boolean {
-  return requestedPages !== null && requestedPages.some((page) => !pages.includes(page));
+  if (requestedPages === null) return false;
+  const analyzedPages = new Set(pages.map(normalizePageUrl));
+  return requestedPages.some((page) => !analyzedPages.has(normalizePageUrl(page)));
+}
+
+/**
+ * Normalizes only URL scheme/host/default-port/path-root equivalences used when
+ * comparing requested and analyzed pages. Path suffixes, queries and fragments
+ * are kept byte-for-byte rather than being serialized through URL.
+ */
+export function normalizePageUrl(url: string): string {
+  const match = /^([a-z][a-z\d+.-]*):\/\/([^/?#]*)([^?#]*)([\s\S]*)$/i.exec(url);
+  if (!match) return url;
+
+  const scheme = match[1].toLowerCase();
+  const authority = match[2];
+  const atIndex = authority.lastIndexOf("@");
+  const userInfo = atIndex === -1 ? "" : authority.slice(0, atIndex + 1);
+  const hostPort = authority.slice(atIndex + 1);
+
+  let host: string;
+  let port: string;
+  if (hostPort.startsWith("[")) {
+    const closingBracket = hostPort.indexOf("]");
+    if (closingBracket === -1) return url;
+    host = hostPort.slice(0, closingBracket + 1);
+    port = hostPort.slice(closingBracket + 1);
+  } else {
+    const portSeparator = hostPort.lastIndexOf(":");
+    if (portSeparator !== -1 && /^\:\d+$/.test(hostPort.slice(portSeparator))) {
+      host = hostPort.slice(0, portSeparator);
+      port = hostPort.slice(portSeparator);
+    } else {
+      host = hostPort;
+      port = "";
+    }
+  }
+
+  const isDefaultPort = (scheme === "http" && /^:80$/.test(port))
+    || (scheme === "https" && /^:443$/.test(port));
+  const path = match[3] || "/";
+  return `${scheme}://${userInfo}${host.toLowerCase()}${isDefaultPort ? "" : port}${path}${match[4]}`;
 }
 
 function parseVersionTwo(block: Record<string, unknown>): ReportSetupResult {
+  if (block.status === "failed") return { ok: false, reason: "failed_report" };
   if (block.mode === "html") return { ok: false, reason: "html_mode" };
 
   const url = nullableString(block.url);
@@ -220,6 +262,7 @@ function parseVersionTwo(block: Record<string, unknown>): ReportSetupResult {
   const requestedPages = block.requestedPages === null
     ? null
     : stringArray(block.requestedPages);
+  if (pages.length === 0) return { ok: false, reason: "no_pages" };
   const persona = nullableString(block.persona);
   const warnings: string[] = [];
 
@@ -227,6 +270,7 @@ function parseVersionTwo(block: Record<string, unknown>): ReportSetupResult {
     warnings.push("requested_pages_not_analyzed");
   }
   if (persona === null) warnings.push("persona_not_found");
+  if (competitors.length > 5) warnings.push("competitors_truncated");
 
   return {
     ok: true,
@@ -260,15 +304,17 @@ function parseFallback(
     ?? oldBlockString(block, "url")
     ?? oldBlockString(block, "domain");
   if (url === null) return { ok: false, reason: "no_setup_data" };
+  if (crawled.pages.length === 0) return { ok: false, reason: "no_pages" };
 
   const visibleCompanyName = textFromRow(parameterRows, "Unternehmensname");
   const persona = textFromRow(parameterRows, "Zielgruppen / Käuferpersonas");
+  const competitors = competitorsFromRow(parameterRows);
   const warnings: string[] = [];
   if (crawled.count !== null && crawled.count !== crawled.pages.length) {
     warnings.push("page_count_mismatch");
   }
-  if (!crawled.listFound) warnings.push("pages_not_found");
   if (persona === null) warnings.push("persona_not_found");
+  if (competitors.length > 5) warnings.push("competitors_truncated");
 
   return {
     ok: true,
@@ -277,7 +323,7 @@ function parseFallback(
       url,
       companyName: visibleCompanyName ?? oldBlockString(block, "companyName"),
       persona,
-      competitors: competitorsFromRow(parameterRows),
+      competitors,
       pages: crawled.pages,
       requestedPages: null,
       pageSelection: null,

@@ -349,7 +349,7 @@ export async function initializeDatabase(): Promise<void> {
 
   // Auto-register missing permission entries
   const ALL_FEATURE_IDS = [
-    "nutzerverwaltung", "analyseprotokoll", "geteilte_analysen", "angebots_creator",
+    "nutzerverwaltung", "analyseprotokoll", "setup_import", "geteilte_analysen", "angebots_creator",
     "erscheinungsbild", "kontakt_daten", "rechtemanagement",
     "ki_tool", "mailserver", "versand_analyse",
   ];

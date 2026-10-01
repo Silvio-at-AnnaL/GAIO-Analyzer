@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 
-const { parseReportSetup } = await (async () => {
+const { parseReportSetup, normalizePageUrl } = await (async () => {
   const { outputFiles } = await build({
     entryPoints: [new URL("./report-setup.ts", import.meta.url).pathname],
     bundle: true,
@@ -78,6 +78,48 @@ test("parses version 2 setup fields and warns when a requested page was not anal
     },
     warnings: ["requested_pages_not_analyzed"],
   });
+});
+
+test("normalizes only scheme, host, default ports, and empty root paths", () => {
+  assert.equal(
+    normalizePageUrl("HTTPS://WWW.THUMM-ONLINE.DE"),
+    "https://www.thumm-online.de/",
+  );
+  assert.equal(
+    normalizePageUrl("HTTP://Example.TEST:80/a/../b?Q=%2f#Frag"),
+    "http://example.test/a/../b?Q=%2f#Frag",
+  );
+  assert.equal(
+    normalizePageUrl("https://Example.TEST:443/%2e/../path?x=1#Part"),
+    "https://example.test/%2e/../path?x=1#Part",
+  );
+  assert.equal(
+    normalizePageUrl("https://Example.TEST:8443/path"),
+    "https://example.test:8443/path",
+  );
+});
+
+test("does not warn when requested and analyzed URLs differ only by scheme/host case, default port, or root slash", () => {
+  const result = parseReportSetup(blockHtml(v2Block({
+    pages: ["https://www.thumm-online.de/"],
+    requestedPages: ["HTTPS://WWW.THUMM-ONLINE.DE:443"],
+  })));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.setup.pages, ["https://www.thumm-online.de/"]);
+});
+
+test("warns when more than five competitors are present while preserving all parser data", () => {
+  const competitors = Array.from(
+    { length: 6 },
+    (_, index) => `https://rival-${index + 1}.example.test`,
+  );
+  const result = parseReportSetup(blockHtml(v2Block({ competitors, requestedPages: null })));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.setup.competitors, competitors);
+  assert.deepEqual(result.warnings, ["competitors_truncated"]);
 });
 
 test("uses the old block and exact visible markup for fallback fields and ordered pages", () => {
@@ -163,7 +205,7 @@ test("does not throw on malformed blocks and falls back to visible report data",
 test("validates malformed v2 fields without throwing or accepting an invalid page selection", () => {
   const result = parseReportSetup(blockHtml(v2Block({
     competitors: ["https://valid.example.test", 23],
-    pages: "not-an-array",
+    pages: ["https://example.test/valid"],
     requestedPages: ["https://example.test/missing", null],
     pageSelection: "unexpected",
     persona: 42,
@@ -171,7 +213,7 @@ test("validates malformed v2 fields without throwing or accepting an invalid pag
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.deepEqual(result.setup.competitors, []);
-  assert.deepEqual(result.setup.pages, []);
+  assert.deepEqual(result.setup.pages, ["https://example.test/valid"]);
   assert.equal(result.setup.requestedPages, null);
   assert.equal(result.setup.pageSelection, null);
   assert.equal(result.setup.persona, null);
@@ -189,16 +231,24 @@ test("treats unknown block versions as legacy fallback instead of v2", () => {
   assert.equal(result.setup.pageSelection, null);
 });
 
-test("warns when fallback has no page list or persona", () => {
+test("rejects version 2 and fallback reports with no pages", () => {
+  assert.deepEqual(
+    parseReportSetup(blockHtml(v2Block({ pages: [] }))),
+    { ok: false, reason: "no_pages" },
+  );
+
   const html = fallbackReport({ pages: null, persona: "" }).replace(
     /<ul\b[^>]*>[\s\S]*?<\/ul>/,
     "",
   );
-  const result = parseReportSetup(html);
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.deepEqual(result.setup.pages, []);
-  assert.deepEqual(result.warnings, ["page_count_mismatch", "pages_not_found", "persona_not_found"]);
+  assert.deepEqual(parseReportSetup(html), { ok: false, reason: "no_pages" });
+});
+
+test("rejects failed v2 reports", () => {
+  assert.deepEqual(
+    parseReportSetup(blockHtml(v2Block({ status: "failed" }))),
+    { ok: false, reason: "failed_report" },
+  );
 });
 
 test("decodes decimal and hexadecimal character references in hrefs and visible text", () => {

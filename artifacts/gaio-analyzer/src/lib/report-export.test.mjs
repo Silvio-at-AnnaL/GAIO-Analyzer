@@ -70,6 +70,7 @@ test("real HTML export round-trips the server setup safely and keeps existing bl
   });
   assert.deepEqual(result.warnings, ["requested_pages_not_analyzed"]);
   assert.equal(data.blockVersion, 2);
+  assert.equal(data.status, "completed");
   assert.equal(data.inputsSource, "server");
   assert.equal(data.mode, "url");
   assert.equal(data.domain, report.url);
@@ -141,12 +142,20 @@ test("legacy fallback parses visible markup from a real generated document", asy
 });
 
 test("failed and HTML-mode exports also carry a v2 block", async () => {
-  const failed = block(await exportReport({ ...report, status: "failed", errors: ["Synthetic failure"] }));
+  const failedHtml = await exportReport({ ...report, status: "failed", errors: ["Synthetic failure"] });
+  const failed = block(failedHtml);
   assert.equal(failed.blockVersion, 2);
   assert.equal(failed.analysisId, report.id);
+  assert.equal(failed.status, "failed");
+  assert.deepEqual(parseReportSetup(failedHtml), { ok: false, reason: "failed_report" });
   assert.deepEqual(parseReportSetup(await exportReport({ ...report, mode: "html", url: null })), {
     ok: false, reason: "html_mode",
   });
+});
+
+test("exports a null status when the report status is not a string", async () => {
+  const data = block(await exportReport({ ...report, status: undefined }));
+  assert.equal(data.status, null);
 });
 
 test("the actual frontend fetch transport preserves unknown report.inputs", async () => {

@@ -1,6 +1,7 @@
 export const ADMIN_FEATURES = [
   { id: "nutzerverwaltung",  label: "nav.admin_nutzerverwaltung",   icon: "Users",             defaultRoles: ["admin"] },
   { id: "analyseprotokoll",  label: "nav.admin_analyseprotokoll",   icon: "ClipboardList",     defaultRoles: ["admin"] },
+  { id: "setup_import",      label: "nav.admin_setup_import",       icon: "FileDown",          defaultRoles: ["admin"] },
   { id: "geteilte_analysen", label: "nav.admin_geteilte_analysen",  icon: "Share2",            defaultRoles: ["admin"] },
   { id: "angebots_creator",  label: "nav.admin_angebots_creator",   icon: "FileText",          defaultRoles: ["admin"] },
   { id: "versand_analyse",   label: "nav.admin_versand_analyse",    icon: "Send",              defaultRoles: ["admin"] },

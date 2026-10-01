@@ -1661,6 +1661,7 @@ export async function generateHtmlReport(
     requestedPages: inputParams.requestedPages,
     pageSelection: inputParams.pageSelection,
     inputsSource: inputParams.inputsSource,
+    status: typeof report.status === "string" ? report.status : null,
   };
   const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify(analysisData).replace(/</g, "\\u003c")}</script>`;
   const baseUrl = (import.meta.env.BASE_URL as string ?? "/").replace(/\/$/, "");

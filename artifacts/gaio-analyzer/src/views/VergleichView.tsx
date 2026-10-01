@@ -236,6 +236,10 @@ function FileDropZone({ onLoad, loaded }: { onLoad: (snap: AnalysisSnapshot) => 
         setError(t("compare.error_no_embed_data"));
         return;
       }
+      if (data.status === "failed") {
+        setError(t("compare.error_failed_report"));
+        return;
+      }
       const snap: AnalysisSnapshot = {
         domain:      String(data.domain ?? ""),
         companyName: data.companyName ? String(data.companyName) : null,
