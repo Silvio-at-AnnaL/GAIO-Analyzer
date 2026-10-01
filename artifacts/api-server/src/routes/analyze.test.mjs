@@ -22,7 +22,6 @@ const mocks = {
   "../lib/analysis-engine": `
     export function runAnalysis(...args) { globalThis.__analyzeTest.runs.push(args); }
     export function getAnalysis() { return null; }
-    export function listAnalyses() { return []; }
   `,
   "../lib/llm-preflight.js": `
     export async function checkLlmReady() {
@@ -73,6 +72,13 @@ async function postAnalyze() {
   await handlers.at(-1)(req, res);
   return res;
 }
+
+test("does not register the analysis list but preserves anonymous result and event routes", () => {
+  const routes = globalThis.__analyzeTestRoutes;
+  assert.equal(routes.has("GET /analyses"), false);
+  assert.equal(routes.has("GET /analyze/:id"), true);
+  assert.equal(routes.has("GET /analyze/:id/events"), true);
+});
 
 test("failed LLM preflight responds 503 and does not start analysis", async () => {
   const state = reset({ ok: false, provider: "claude", reason: "provider_error", status: 503 });

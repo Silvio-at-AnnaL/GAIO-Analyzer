@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { StartAnalysisBody, GetAnalysisReportParams } from "@workspace/api-zod";
-import { runAnalysis, getAnalysis, listAnalyses } from "../lib/analysis-engine";
+import { runAnalysis, getAnalysis } from "../lib/analysis-engine";
 import { checkLlmReady } from "../lib/llm-preflight.js";
 
 const router: IRouter = Router();
@@ -57,11 +57,6 @@ router.get("/analyze/:id", async (req, res): Promise<void> => {
   }
 
   res.json(analysis);
-});
-
-router.get("/analyses", async (_req, res): Promise<void> => {
-  const items = listAnalyses();
-  res.json({ items, total: items.length });
 });
 
 router.get("/analyze/:id/events", async (req, res): Promise<void> => {

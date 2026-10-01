@@ -91,30 +91,6 @@ export function getAnalysis(id: string): AnalysisState | undefined {
   return analysisStore.get(id)?.state;
 }
 
-export function listAnalyses(): Array<{
-  id: string;
-  status: string;
-  url: string | null;
-  mode: string;
-  overallScore: number | null;
-  progress: number;
-  crawledPagesCount: number;
-  startedAt: string;
-}> {
-  return Array.from(analysisStore.entries())
-    .map(([, entry]) => ({
-      id: entry.state.id,
-      status: entry.state.status,
-      url: entry.state.url,
-      mode: entry.state.mode,
-      overallScore: entry.state.overallScore,
-      progress: entry.state.progress,
-      crawledPagesCount: entry.state.crawledPages.length,
-      startedAt: entry.startedAt,
-    }))
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-}
-
 interface QuestionnaireInput {
   companyPitch?: string | null;
   companyName?: string | null;
