@@ -27,7 +27,7 @@ async function loadAdminDb() {
   return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 }
 
-const state = { template: "", logs: [], updates: [], cleared: [] };
+const state = { template: "", logs: [], updates: [], deletes: [], cleared: [] };
 globalThis.__adminDbMigrationTest = state;
 const mocks = {
   "bcryptjs": `export default { hash: async () => "not-used" };`,
@@ -43,7 +43,15 @@ const mocks = {
         return { rows: [] };
       }
       if (sql.includes("SELECT template FROM prompts")) {
-        return { rows: [{ template: state.template }] };
+        return { rows: state.template === null ? [] : [{ template: state.template }] };
+      }
+      if (sql.includes("DELETE FROM prompts")) {
+        state.deletes.push({ sql, params });
+        if (state.template === params[0]) {
+          state.template = null;
+          return { rows: [{ slug: "llm-discoverability-rating" }] };
+        }
+        return { rows: [] };
       }
       throw new Error("Unexpected SQL in migration test");
     }
@@ -69,12 +77,16 @@ const mocks = {
     }
   `,
 };
-const { migrateLlmDiscoverabilityAPrompt, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE } = await loadAdminDb();
+const {
+  migrateLlmDiscoverabilityAPrompt, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE,
+  removeLegacyLlmDiscoverabilityRatingPrompt, PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE,
+} = await loadAdminDb();
 
 function reset(template) {
   state.template = template;
   state.logs = [];
   state.updates = [];
+  state.deletes = [];
   state.cleared = [];
 }
 
@@ -102,4 +114,43 @@ test("leaves a customized Part A template unchanged and warns", async () => {
   assert.ok(state.logs.some(({ level, msg }) =>
     level === "warn" && msg === "llm-discoverability-a prompt customized – not migrated"));
   assert.deepEqual(state.cleared, ["llm-discoverability-a"]);
+});
+
+test("removes only the verbatim legacy rating prompt and logs its deletion", async () => {
+  reset(PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE);
+  await removeLegacyLlmDiscoverabilityRatingPrompt();
+  assert.equal(state.template, null);
+  assert.equal(state.deletes.length, 1);
+  assert.match(state.deletes[0].sql, /WHERE slug = 'llm-discoverability-rating' AND template = \$1 RETURNING slug/);
+  assert.deepEqual(state.deletes[0].params, [PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE]);
+  assert.deepEqual(state.logs, [{ level: "info", msg: "legacy llm-discoverability-rating prompt removed" }]);
+  assert.deepEqual(state.cleared, ["llm-discoverability-rating"]);
+});
+
+test("keeps a customized legacy rating prompt and warns", async () => {
+  reset("Custom legacy rating prompt");
+  await removeLegacyLlmDiscoverabilityRatingPrompt();
+  assert.equal(state.template, "Custom legacy rating prompt");
+  assert.deepEqual(state.logs, [{ level: "warn", msg: "legacy llm-discoverability-rating prompt customized – not removed" }]);
+  assert.deepEqual(state.cleared, ["llm-discoverability-rating"]);
+});
+
+test("does nothing when the legacy prompt is absent, including on repeat startup", async () => {
+  reset(null);
+  await removeLegacyLlmDiscoverabilityRatingPrompt();
+  await removeLegacyLlmDiscoverabilityRatingPrompt();
+  assert.equal(state.template, null);
+  assert.deepEqual(state.logs, []);
+  assert.deepEqual(state.updates, []);
+  assert.deepEqual(state.cleared, ["llm-discoverability-rating", "llm-discoverability-rating"]);
+});
+
+test("prompt defaults no longer contain the legacy rating slug", async () => {
+  const { outputFiles } = await build({
+    entryPoints: [new URL("./prompt-defaults.ts", import.meta.url).pathname],
+    bundle: true, platform: "node", format: "esm", write: false,
+  });
+  const { PROMPT_DEFAULTS } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+  assert.ok(!PROMPT_DEFAULTS.some(({ slug }) => slug === "llm-discoverability-rating"));
+  assert.ok(PROMPT_DEFAULTS.some(({ slug }) => slug === "llm-discoverability-rating-v2"));
 });

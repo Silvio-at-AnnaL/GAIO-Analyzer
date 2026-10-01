@@ -156,42 +156,6 @@ Return ONLY valid JSON:
   },
 
   {
-    slug: "llm-discoverability-rating",
-    name: "LLM-Auffindbarkeit Bewertung",
-    description: "Bewertet die Beantwortbarkeit jeder Frage anhand der gecrawlten Seiten (1–5 Sterne) und identifiziert die beste Quellseite.",
-    module: "Analyse",
-    placeholders: [
-      { key: "{{PAGES_DOC}}", description: "Gecrawlte Seiten als nummeriertes Dokument" },
-      { key: "{{URL_LIST}}", description: "JSON-Array aller verfügbaren URLs" },
-      { key: "{{QUESTIONS}}", description: "JSON-Array der zu bewertenden Fragen" },
-    ],
-    template: `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
-
-Using ONLY the crawled website pages below as your knowledge source,
-rate how completely you could answer each question (1=cannot answer at all, 5=fully and specifically answerable).
-
-For each question, also identify the SINGLE best-matching page URL that supports the answer.
-If no page covers the question adequately (rating 1 or 2), set "sourceUrl" to null.
-The sourceUrl MUST be one of the exact URLs listed in the pages, or null.
-
-Crawled pages:
-{{PAGES_DOC}}
-
-Available URLs (must pick exactly one of these or null):
-{{URL_LIST}}
-
-Questions to rate:
-{{QUESTIONS}}
-
-Return ONLY valid JSON:
-{"ratings": [
-  {"question": "<q>", "rating": <1-5>, "gap": "<kurze deutsche Erklärung was fehlt oder warum die Bewertung so ist>", "sourceUrl": <"url" or null>}
-]}
-
-WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`,
-  },
-
-  {
     slug: "recommendations",
     name: "Empfehlungen generieren",
     description: "Erstellt priorisierte Handlungsempfehlungen in drei Stufen: Kritisch, Hoher Hebel, Nachgeordnet.",

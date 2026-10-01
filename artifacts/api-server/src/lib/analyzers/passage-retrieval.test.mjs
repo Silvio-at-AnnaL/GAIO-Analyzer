@@ -25,7 +25,7 @@ async function loadWithMocks(entry, mocks) {
   return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 }
 
-const { buildPassages, normalizeTokens, scorePassages, selectForQuestion } = await loadWithMocks(
+const { buildPassages, normalizeTokens, scorePassages, selectForQuestion, tokenMatches } = await loadWithMocks(
   "./passage-retrieval.ts",
   {
     "./content-relevance": `
@@ -67,6 +67,45 @@ test("matches compound words in either direction", () => {
   assert.ok(scorePassages("Silikonschrumpfschlauch", [
     { url: "/produkt", kind: "text", text: "schrumpfschlauch" },
   ])[0].score > 0);
+});
+
+test("matches related word forms without matching unrelated compounds", () => {
+  const matchingPairs = [
+    ["Zertifizierungen", "zertifiziert"],
+    ["Zertifikat", "Zertifizierung"],
+    ["Zertifikate", "zertifiziert"],
+    ["Hydraulik", "hydraulisch"],
+    ["Elektronik", "elektronisch"],
+  ];
+  const nonMatchingPairs = [
+    ["Einsatzbereich", "Einsatztemperatur"],
+    ["Betriebstemperatur", "Betriebsanleitung"],
+    ["Schrumpfschlauch", "Schrumpftemperatur"],
+    ["Lieferzeiten", "Lieferanten"],
+  ];
+  const matches = (left, right) => {
+    const normalizedLeft = normalizeTokens(left);
+    const normalizedRight = normalizeTokens(right);
+    assert.equal(normalizedLeft.length, 1);
+    assert.equal(normalizedRight.length, 1);
+    return tokenMatches(normalizedLeft[0], normalizedRight[0]);
+  };
+
+  for (const [left, right] of matchingPairs) {
+    assert.equal(matches(left, right), true, `${left} should match ${right}`);
+  }
+  for (const [left, right] of nonMatchingPairs) {
+    assert.equal(matches(left, right), false, `${left} should not match ${right}`);
+  }
+});
+
+test("scores certification passages for certification questions only", () => {
+  const scores = scorePassages("Welche Zertifizierungen hat die Firma?", [
+    { url: "/certifications", kind: "text", text: "Wir sind nach ISO 9001 und ISO 14001 zertifiziert." },
+    { url: "/unrelated", kind: "text", text: "Kontaktieren Sie uns für weitere Informationen." },
+  ]);
+  assert.ok(scores[0].score > 0);
+  assert.equal(scores[1].score, 0);
 });
 
 test("ignores German and English stopwords", () => {

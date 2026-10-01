@@ -173,10 +173,27 @@ export function normalizeTokens(text: string): string[] {
     .map(stemToken);
 }
 
-function tokenMatches(queryToken: string, passageToken: string): boolean {
+const PREFIX_MATCH_MIN_LENGTH = 7;
+const PREFIX_MATCH_MAX_REMAINDER = 3;
+
+export function tokenMatches(queryToken: string, passageToken: string): boolean {
+  let commonPrefixLength = 0;
+  while (
+    commonPrefixLength < queryToken.length
+    && commonPrefixLength < passageToken.length
+    && queryToken[commonPrefixLength] === passageToken[commonPrefixLength]
+  ) {
+    commonPrefixLength += 1;
+  }
+
+  const shorterLength = Math.min(queryToken.length, passageToken.length);
+  const namedPrefixMatch = commonPrefixLength >= PREFIX_MATCH_MIN_LENGTH
+    && shorterLength - commonPrefixLength <= PREFIX_MATCH_MAX_REMAINDER;
+
   return queryToken === passageToken
     || (queryToken.length >= 6 && passageToken.length >= 6
-      && (queryToken.includes(passageToken) || passageToken.includes(queryToken)));
+      && (queryToken.includes(passageToken) || passageToken.includes(queryToken)))
+    || namedPrefixMatch;
 }
 
 export function scorePassages(

@@ -45,6 +45,32 @@ Hard rules:
 Return ONLY valid JSON:
 {"questions": ["<q1>", "<q2>", "<q3>", "<q4>", "<q5>", "<q6>"]}`;
 
+// Verbatim legacy default: preserve custom admin-edited templates.
+export const PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
+
+Using ONLY the crawled website pages below as your knowledge source,
+rate how completely you could answer each question (1=cannot answer at all, 5=fully and specifically answerable).
+
+For each question, also identify the SINGLE best-matching page URL that supports the answer.
+If no page covers the question adequately (rating 1 or 2), set "sourceUrl" to null.
+The sourceUrl MUST be one of the exact URLs listed in the pages, or null.
+
+Crawled pages:
+{{PAGES_DOC}}
+
+Available URLs (must pick exactly one of these or null):
+{{URL_LIST}}
+
+Questions to rate:
+{{QUESTIONS}}
+
+Return ONLY valid JSON:
+{"ratings": [
+  {"question": "<q>", "rating": <1-5>, "gap": "<kurze deutsche Erklärung was fehlt oder warum die Bewertung so ist>", "sourceUrl": <"url" or null>}
+]}
+
+WIEDERHOLUNG: Antworte ausschließlich auf Deutsch. Das gap-Feld muss vollständig auf Deutsch sein. Englische Ausgaben sind nicht akzeptabel.`;
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 const CREATE_TABLES = `
@@ -259,6 +285,29 @@ export async function migrateLlmDiscoverabilityAPrompt(): Promise<void> {
   }
 }
 
+export async function removeLegacyLlmDiscoverabilityRatingPrompt(): Promise<void> {
+  const slug = "llm-discoverability-rating";
+  try {
+    const deleted = await query(
+      `DELETE FROM prompts WHERE slug = 'llm-discoverability-rating' AND template = $1 RETURNING slug`,
+      [PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE],
+    );
+    if (deleted.rows.length) {
+      logger.info("legacy llm-discoverability-rating prompt removed");
+    } else {
+      const stored = await query(
+        "SELECT template FROM prompts WHERE slug = $1",
+        [slug],
+      );
+      if (stored.rows.length) {
+        logger.warn("legacy llm-discoverability-rating prompt customized – not removed");
+      }
+    }
+  } finally {
+    clearPromptCache(slug);
+  }
+}
+
 // ── Public init ───────────────────────────────────────────────────────────────
 
 export async function initializeDatabase(): Promise<void> {
@@ -284,6 +333,7 @@ export async function initializeDatabase(): Promise<void> {
   }
   await migrateContentRelevancePrompt();
   await migrateLlmDiscoverabilityAPrompt();
+  await removeLegacyLlmDiscoverabilityRatingPrompt();
 
   // Seed default admin user if no users exist
   const countResult = await query<{ c: string }>("SELECT COUNT(*)::int as c FROM users");

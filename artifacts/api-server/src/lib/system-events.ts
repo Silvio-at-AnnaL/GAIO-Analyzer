@@ -10,7 +10,10 @@ const FLUSH_SIZE = 50;
 const MAX_CONTEXT_CHARS = 4_000;
 const ERROR_REPORT_INTERVAL_MS = 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const REDACTED_KEY_PATTERN = /pass(word)?|secret|token|api[_-]?key|authorization|cookie/i;
+const SENSITIVE_KEY_WORDS = new Set([
+  "password", "passwords", "passwd", "pwd", "pass", "secret", "secrets",
+  "token", "authorization", "cookie", "cookies", "apikey",
+]);
 const EXCLUDED_CONTEXT_KEYS = new Set([
   "analysisId", "req", "res", "time", "pid", "hostname", "level", "msg",
 ]);
@@ -51,6 +54,19 @@ let droppedEntries = 0;
 let lastFlushErrorAt = 0;
 let lastRetentionErrorAt = 0;
 
+export function isSensitiveKey(key: string): boolean {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .split(/[_\-.]|\s+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+
+  return words.some((word, index) =>
+    SENSITIVE_KEY_WORDS.has(word) ||
+    (word === "api" && words[index + 1] === "key"));
+}
+
 function reportError(kind: "flush" | "retention", error: unknown): void {
   const now = Date.now();
   const lastReported = kind === "flush" ? lastFlushErrorAt : lastRetentionErrorAt;
@@ -78,7 +94,7 @@ function reduceValue(value: unknown, seen: WeakSet<object>): unknown {
     seen.add(value);
     const reduced: Record<string, unknown> = {};
     for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-      reduced[key] = key !== "passt" && REDACTED_KEY_PATTERN.test(key) &&
+      reduced[key] = isSensitiveKey(key) &&
         nestedValue !== null && typeof nestedValue !== "number" && typeof nestedValue !== "boolean"
         ? "[redacted]"
         : reduceValue(nestedValue, seen);
