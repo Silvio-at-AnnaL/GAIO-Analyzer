@@ -16,12 +16,21 @@ import {
 import { getScoreParams } from "./score-config.js";
 import { runWithAnalysisContext } from "./log-context.js";
 
+export interface AnalysisInputs {
+  companyName: string | null;
+  buyerPersonas: string | null;
+  competitors: string[];
+  requestedPages: string[] | null;
+  pageSelection: "manual" | "auto";
+}
+
 export interface AnalysisState {
   id: string;
   logId: number | null;
   status: "pending" | "running" | "completed" | "failed";
   url: string | null;
   mode: "url" | "html";
+  inputs: AnalysisInputs | null;
   overallScore: number | null;
   currentModule: string | null;
   progress: number;
@@ -114,6 +123,27 @@ interface QuestionnaireInput {
   kpis?: string | null;
   weightingPreferences?: string | null;
   plannedCampaigns?: string | null;
+}
+
+export function buildAnalysisInputs(
+  questionnaire?: QuestionnaireInput | null,
+  explicitUrls?: string[] | null,
+): AnalysisInputs {
+  const companyName = questionnaire?.companyName?.trim() || null;
+  const buyerPersonas = questionnaire?.buyerPersonas?.trim() || null;
+  const competitors = questionnaire?.competitors
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean) ?? [];
+  const requestedPages = explicitUrls?.length ? [...explicitUrls] : null;
+
+  return {
+    companyName,
+    buyerPersonas,
+    competitors,
+    requestedPages,
+    pageSelection: requestedPages ? "manual" : "auto",
+  };
 }
 
 function buildQuestionnaireContext(q?: QuestionnaireInput | null): string {
@@ -229,6 +259,7 @@ export async function runAnalysis(
     status: "running",
     url,
     mode,
+    inputs: buildAnalysisInputs(questionnaire, mode === "html" ? null : explicitUrls),
     overallScore: null,
     currentModule: null,
     progress: 0,

@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { RadarDimensions } from "@/components/charts/RadarDimensions";
-import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, formatRedirectUrl, type InputParams, type ContactData } from "@/lib/report-export";
+import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, formatRedirectUrl, type ContactData } from "@/lib/report-export";
+import { buildReportInputParams } from "@/lib/report-input-params";
 import { useBranding } from "@/store/brandingStore";
 import {
   ResponsiveContainer,
@@ -123,14 +124,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
       ctaText:    (contactResponse as Record<string, string>).ctaText    ?? "",
       ctaSubtext: (contactResponse as Record<string, string>).ctaSubtext ?? "",
     };
-    const inputParams: InputParams = {
-      domainUrl: String(report.url ?? ""),
-      companyName: domainForm.companyName.trim() || null,
-      targetAudience: domainForm.personas.trim() || null,
-      competitors: domainForm.competitors.filter((competitor) => competitor.trim()),
-      analysisDate: new Date().toLocaleString("de-DE"),
-      crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
-    };
+    const inputParams = buildReportInputParams(report, domainForm);
 
     return generateHtmlReport(report as unknown as Record<string, unknown>, {
       profileSrc: contactData.photoSrc,
@@ -891,14 +885,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
           ctaSubtext: (_asContR as Record<string, string>).ctaSubtext ?? "",
         };
 
-        const htmlInputParams: InputParams = {
-          domainUrl: String(report.url ?? ""),
-          companyName: domainForm.companyName.trim() || null,
-          targetAudience: domainForm.personas.trim() || null,
-          competitors: domainForm.competitors.filter((c) => c.trim()),
-          analysisDate: new Date().toLocaleString("de-DE"),
-          crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
-        };
+        const htmlInputParams = buildReportInputParams(report, domainForm);
 
         const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
           profileSrc:  asContactData.photoSrc,
@@ -1700,14 +1687,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       }
 
       // ── Capture Analyseparameter page via iframe ──────────────────────────────
-      const pdfInputParams: InputParams = {
-        domainUrl: String(report.url ?? ""),
-        companyName: domainForm.companyName.trim() || null,
-        targetAudience: domainForm.personas.trim() || null,
-        competitors: domainForm.competitors.filter((c) => c.trim()),
-        analysisDate: new Date().toLocaleString(locale),
-        crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
-      };
+      const pdfInputParams = buildReportInputParams(report, domainForm, new Date().toLocaleString(locale));
 
       type AnalyseparameterCapture = { imgData: string; captureHeightPx: number } | null;
       let analyseparameterCapture: AnalyseparameterCapture = null;
@@ -1947,14 +1927,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         ctaSubtext: (_htContR as Record<string, string>).ctaSubtext ?? "",
       };
 
-      const htmlInputParams: InputParams = {
-        domainUrl: String(report.url ?? ""),
-        companyName: domainForm.companyName.trim() || null,
-        targetAudience: domainForm.personas.trim() || null,
-        competitors: domainForm.competitors.filter((c) => c.trim()),
-        analysisDate: new Date().toLocaleString("de-DE"),
-        crawledPagesCount: (report.crawledPages as string[])?.length ?? 0,
-      };
+      const htmlInputParams = buildReportInputParams(report, domainForm);
 
       const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
         profileSrc:  htContactData.photoSrc,

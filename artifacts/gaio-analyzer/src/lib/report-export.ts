@@ -1,4 +1,5 @@
 import { getHeadingSummary } from "./heading-summary";
+import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1577,6 +1578,7 @@ function buildFailedReportShell(
   logoHtml: string,
   opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData },
   reportDocumentShell: ReportDocumentShell,
+  analysisDataScript: string,
 ): string {
   const url = String(report.url ?? "Unbekannte URL");
   const companyName = opts.inputParams?.companyName?.trim() ?? "";
@@ -1621,13 +1623,46 @@ function buildFailedReportShell(
   ${renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData)}
 `;
 
-  return reportDocumentShell(titleTarget, failedBodyContent);
+  return reportDocumentShell(titleTarget, failedBodyContent, analysisDataScript);
 }
 
 export async function generateHtmlReport(
   report: Record<string, unknown>,
   opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
 ): Promise<string> {
+  const inputParams = buildReportInputParams(report, {
+    companyName: opts.inputParams?.companyName ?? "",
+    personas: opts.inputParams?.targetAudience ?? "",
+    competitors: opts.inputParams?.competitors ?? [],
+  }, opts.inputParams?.analysisDate);
+  if (opts.inputParams || readAnalysisInputs(report.inputs)) {
+    opts = { ...opts, inputParams: { ...opts.inputParams, ...inputParams } };
+  }
+  const analysisData = {
+    domain: String(report.url ?? ""),
+    companyName: inputParams.companyName ?? null,
+    exportDate: new Date().toISOString(),
+    gaioScore: (report.overallScore as number) ?? 0,
+    scores: {
+      technical: (report.technicalSeo as { score?: number } | null)?.score ?? null,
+      schema: (report.schemaOrg as { score?: number } | null)?.score ?? null,
+      headings: (report.headingStructure as { score?: number } | null)?.score ?? null,
+      content: (report.contentRelevance as { score?: number } | null)?.score ?? null,
+      faq: (report.faqQuality as { score?: number } | null)?.score ?? null,
+      llm: (report.llmDiscoverability as { score?: number } | null)?.score ?? null,
+    },
+    blockVersion: 2,
+    analysisId: typeof report.id === "string" ? report.id : null,
+    mode: typeof report.mode === "string" ? report.mode : null,
+    url: typeof report.url === "string" ? report.url : null,
+    persona: inputParams.targetAudience ?? null,
+    competitors: inputParams.competitors ?? [],
+    pages: Array.isArray(report.crawledPages) ? report.crawledPages : [],
+    requestedPages: inputParams.requestedPages,
+    pageSelection: inputParams.pageSelection,
+    inputsSource: inputParams.inputsSource,
+  };
+  const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify(analysisData).replace(/</g, "\\u003c")}</script>`;
   const baseUrl = (import.meta.env.BASE_URL as string ?? "/").replace(/\/$/, "");
   let logoHtml = "";
   try {
@@ -1643,7 +1678,7 @@ export async function generateHtmlReport(
   } catch { /* ignore */ }
 
   if (report.status === "failed") {
-    return buildFailedReportShell(report, logoHtml, opts, reportDocumentShell);
+    return buildFailedReportShell(report, logoHtml, opts, reportDocumentShell, analysisDataScript);
   }
 
   const overallScore = (report.overallScore as number) ?? 0;
@@ -1841,7 +1876,6 @@ ${analysisDataScript}
 
   ${bodyContent}
 `;
-  const analysisDataScript = `<script type="application/json" id="gaio-analysis-data">${JSON.stringify({ domain: String(report.url ?? ""), companyName: opts.inputParams?.companyName ?? null, exportDate: new Date().toISOString(), gaioScore: overallScore, scores: { technical: scoreDefs[0]?.score ?? null, schema: scoreDefs[1]?.score ?? null, headings: scoreDefs[2]?.score ?? null, content: scoreDefs[3]?.score ?? null, faq: scoreDefs[4]?.score ?? null, llm: scoreDefs[5]?.score ?? null } })}</script>`;
   const titleTarget = opts.inputParams?.companyName?.trim()
     ? opts.inputParams.companyName.trim()
     : url;
