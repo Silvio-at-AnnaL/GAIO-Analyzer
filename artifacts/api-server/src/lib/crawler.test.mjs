@@ -419,6 +419,7 @@ test("Site A switches from a short English declaration to German, re-admits in f
     assert.ok(result.pages.some(page => page.url.endsWith("/news/short")));
     const determined = logs.filter(log => log.msg === "site language determined");
     assert.equal(determined.length, 1);
+    assert.equal(determined[0].obj.host, new URL(origin).hostname);
     assert.equal(determined[0].obj.switched, true);
     assert.equal(determined[0].obj.readmittedPages, 2);
   });

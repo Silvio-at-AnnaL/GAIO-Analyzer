@@ -335,12 +335,19 @@ const CRAWL_SKIPPED_TEXT = {
 function renderCrawlReliabilityHtml(
   reliability: Record<string, unknown> | null | undefined,
   skipped?: Record<string, unknown> | null,
+  evaluated = 0,
+  siteLanguage?: Record<string, unknown> | null,
 ): string {
   const T = {
     heading: "Crawl-Zuverlässigkeit",
     intro: "Auf welcher Datengrundlage diese Analyse durchgeführt wurde.",
     attempted: "Seiten versucht",
-    succeeded: "Erfolgreich analysiert",
+    succeeded: "Erfolgreich abgerufen",
+    evaluated: "Davon bewertet",
+    sortedOut: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache oder identischer Inhalt).",
+    langMismatch: "Die Sprachangabe der Website (lang=\"{declared}\") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt.",
+    langNameDe: "Deutsch",
+    langNameEn: "Englisch",
     failed: "Fehlgeschlagen",
     failuresTitle: "Fehlgeschlagene Seiten",
     colUrl: "URL",
@@ -364,6 +371,9 @@ function renderCrawlReliabilityHtml(
   if (!reliability || attempted === 0) return "";
 
   const succeeded = Number(reliability.succeeded ?? 0);
+  const sortedOut = Math.max(0, succeeded - evaluated);
+  const contentName = siteLanguage?.lang === "de" ? T.langNameDe
+    : siteLanguage?.lang === "en" ? T.langNameEn : null;
   const failed = Number(reliability.failed ?? 0);
   const failures = Array.isArray(reliability.failures)
     ? reliability.failures as Array<Record<string, unknown>>
@@ -387,8 +397,18 @@ function renderCrawlReliabilityHtml(
     <div class="detail-grid">
       <div class="detail-item"><div class="label">${T.attempted}</div><div class="val">${attempted}</div></div>
       <div class="detail-item"><div class="label">${T.succeeded}</div><div class="val" style="color:#22c55e;">✓ ${succeeded}</div></div>
+      <div class="detail-item"><div class="label">${T.evaluated}</div><div class="val">${evaluated}</div></div>
       <div class="detail-item"><div class="label">${T.failed}</div><div class="val"${failed > 0 ? ' style="color:#ef4444;"' : ""}>${failed > 0 ? "✗ " : ""}${failed}</div></div>
     </div>`;
+
+  if (sortedOut > 0) {
+    html += `<p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${T.sortedOut.replace("{n}", String(sortedOut))}</p>`;
+  }
+  if (siteLanguage?.mismatch === true && contentName) {
+    html += `<p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${T.langMismatch
+      .replace("{declared}", () => esc(String(siteLanguage.declared ?? "")))
+      .replace("{content}", contentName)}</p>`;
+  }
 
   const skippedLang = Number(skipped?.otherLanguage ?? 0);
   const skippedPath = Number(skipped?.excludedPath ?? 0);
@@ -475,6 +495,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   html += renderCrawlReliabilityHtml(
     report.crawlReliability as Record<string, unknown> | null | undefined,
     report.crawlSkipped as Record<string, unknown> | null | undefined,
+    crawledPages.length,
+    report.siteLanguage as Record<string, unknown> | null | undefined,
   );
 
   if (crawledPages.length > 0) {
@@ -1620,7 +1642,12 @@ function buildFailedReportShell(
 
   ${divider("Crawl-Zuverlässigkeit")}
   <h2>Crawl-Zuverlässigkeit</h2>
-  ${renderOwnRedirectInfoHtml(report)}${renderCrawlReliabilityHtml(limitedReliability, report.crawlSkipped as Record<string, unknown> | null | undefined)}
+  ${renderOwnRedirectInfoHtml(report)}${renderCrawlReliabilityHtml(
+    limitedReliability,
+    report.crawlSkipped as Record<string, unknown> | null | undefined,
+    ((report.crawledPages as string[] | undefined) ?? []).filter((url) => url !== "uploaded-page").length,
+    report.siteLanguage as Record<string, unknown> | null | undefined,
+  )}
 
   ${divider("Nächste Schritte")}
   <h2>Nächste Schritte</h2>

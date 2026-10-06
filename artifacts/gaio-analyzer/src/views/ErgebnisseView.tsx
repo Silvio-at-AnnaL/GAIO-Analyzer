@@ -1024,6 +1024,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const technicalSeo = report.technicalSeo as Record<string, unknown> | null;
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
   const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
+  const siteLanguage = (report as unknown as Record<string, unknown>).siteLanguage as Record<string, unknown> | null | undefined;
   const homepageRedirect = (report as unknown as Record<string, unknown>).homepageRedirect as
     | { from: string; to: string }
     | null
@@ -2200,6 +2201,10 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
           {crawlReliability && Number(crawlReliability.attempted) > 0 && (() => {
             const attempted = Number(crawlReliability.attempted);
             const succeeded = Number(crawlReliability.succeeded ?? 0);
+            const evaluated = ((report.crawledPages as string[] | undefined) ?? []).filter((url) => url !== "uploaded-page").length;
+            const sortedOut = Math.max(0, succeeded - evaluated);
+            const contentName = siteLanguage?.lang === "de" ? t("results.lang_name_de")
+              : siteLanguage?.lang === "en" ? t("results.lang_name_en") : null;
             const failed = Number(crawlReliability.failed ?? 0);
             const skippedLang = Number(crawlSkipped?.otherLanguage ?? 0);
             const skippedPath = Number(crawlSkipped?.excludedPath ?? 0);
@@ -2235,7 +2240,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 <CardContent className="space-y-3">
                   <p className="text-xs text-muted-foreground">{t("results.crawl_reliability_intro")}</p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div className="rounded-md border border-border/50 bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">{t("results.crawl_attempted")}</p>
                       <p className="mt-1 font-mono text-lg font-semibold">{attempted}</p>
@@ -2245,12 +2250,25 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                       <p className="mt-1 font-mono text-lg font-semibold">{succeeded}</p>
                     </div>
                     <div className="rounded-md border border-border/50 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">{t("results.crawl_evaluated")}</p>
+                      <p className="mt-1 font-mono text-lg font-semibold">{evaluated}</p>
+                    </div>
+                    <div className="rounded-md border border-border/50 bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">{t("results.crawl_failed")}</p>
                       <p className={`mt-1 font-mono text-lg font-semibold ${failed > 0 ? "text-red-500" : "text-muted-foreground"}`}>
                         {failed}
                       </p>
                     </div>
                   </div>
+
+                  {sortedOut > 0 && (
+                    <p className="text-xs text-muted-foreground">{t("results.crawl_sorted_out", { n: sortedOut })}</p>
+                  )}
+                  {siteLanguage?.mismatch === true && contentName && (
+                    <p className="text-xs text-muted-foreground">{t("results.crawl_lang_mismatch", {
+                      declared: String(siteLanguage.declared ?? ""), content: contentName,
+                    })}</p>
+                  )}
 
                   {crawlSkipped && skippedLang + skippedPath + skippedDuplicate > 0 && (
                     <div className="space-y-1.5 border-t border-border/30 pt-3 text-xs text-muted-foreground">

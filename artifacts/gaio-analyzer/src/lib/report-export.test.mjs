@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 async function load(entry) {
   const { outputFiles } = await build({
@@ -189,4 +191,158 @@ test("the actual frontend fetch transport preserves unknown report.inputs", asyn
   } finally {
     globalThis.fetch = fetchBefore;
   }
+});
+
+const { labelDefaults } = await load("./labelDefaults.ts");
+const languageFixture = { lang: "de", source: "content", declared: "en", mismatch: true };
+function reliabilityFixture(succeeded = 27, evaluated = 11, siteLanguage) {
+  return {
+    ...report,
+    crawledPages: Array.from({ length: evaluated }, (_, index) => `https://example.test/page-${index}`),
+    crawlReliability: { attempted: succeeded, succeeded, failed: 0, failures: [] },
+    ...(siteLanguage ? { siteLanguage } : {}),
+  };
+}
+function exportedCard(html) {
+  const start = html.indexOf(">Crawl-Zuverlässigkeit</div>");
+  assert.ok(start >= 0);
+  return html.slice(start, html.indexOf(">Gecrawlte Seiten", start));
+}
+
+test("HTML reliability distinguishes 27 fetched from 11 evaluated pages, in the requested tile order", async () => {
+  const html = exportedCard(await exportReport(reliabilityFixture()));
+  assert.match(html, /Erfolgreich abgerufen<\/div><div class="val" style="color:#22c55e;">✓ 27<\/div>/);
+  assert.match(html, /Davon bewertet<\/div><div class="val">11<\/div>/);
+  assert.match(html, /16 abgerufene Seite\(n\) nach dem Abruf aussortiert \(andere Sprache oder identischer Inhalt\)\./);
+  const positions = ["Seiten versucht", "Erfolgreich abgerufen", "Davon bewertet", "Fehlgeschlagen"].map(text => html.indexOf(text));
+  assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1])));
+});
+
+test("HTML sorted-out line is absent for equal counts and clamped when evaluated exceeds succeeded", async () => {
+  for (const evaluated of [16, 17]) {
+    const html = exportedCard(await exportReport(reliabilityFixture(16, evaluated)));
+    assert.ok(!html.includes("nach dem Abruf aussortiert"));
+    assert.match(html, new RegExp(`Davon bewertet</div><div class="val">${evaluated}</div>`));
+  }
+});
+
+test("HTML evaluated count excludes uploaded-page and handles missing crawledPages", async () => {
+  for (const crawledPages of [["uploaded-page", "https://example.test/one"], undefined]) {
+    const html = await exportReport({ ...reliabilityFixture(1, 0), crawledPages });
+    assert.match(html, new RegExp(`Davon bewertet</div><div class="val">${crawledPages ? 1 : 0}</div>`));
+  }
+});
+
+test("HTML mismatch line uses the exact default text and recognized German or English name", async () => {
+  for (const [lang, declared, content] of [["de", "en", "Deutsch"], ["en", "de", "Englisch"]]) {
+    const html = exportedCard(await exportReport(reliabilityFixture(27, 11, { ...languageFixture, lang, declared })));
+    const expected = labelDefaults["results.crawl_lang_mismatch"].de
+      .replace("{declared}", declared).replace("{content}", content);
+    assert.ok(html.includes(expected));
+    assert.ok(html.indexOf("nach dem Abruf aussortiert") < html.indexOf(expected));
+    assert.match(html, /<p style="font-size:12px;color:[^;]+;margin-bottom:12px;">Die Sprachangabe der Website/);
+  }
+});
+
+test("HTML omits mismatch text for false, missing, or unrecognized language metadata", async () => {
+  for (const siteLanguage of [undefined, { ...languageFixture, mismatch: false }, { ...languageFixture, lang: "fr" }, { ...languageFixture, lang: null }]) {
+    const html = await exportReport(reliabilityFixture(16, 16, siteLanguage));
+    assert.ok(!html.includes("Die Sprachangabe der Website"));
+  }
+});
+
+test("HTML escapes the declared language value", async () => {
+  const declared = 'en"><img src=x onerror="alert(1)">&$&';
+  const html = exportedCard(await exportReport(reliabilityFixture(27, 11, { ...languageFixture, declared })));
+  assert.ok(html.includes('lang="en&quot;&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;$&amp;"'));
+  assert.ok(!html.includes("<img src=x"));
+  assert.ok(!html.includes("{declared}"));
+});
+
+test("failed HTML reports pass evaluated count and language metadata to the same card", async () => {
+  const html = await exportReport({ ...reliabilityFixture(27, 11, languageFixture), status: "failed", errors: ["Fixture failure"] });
+  assert.match(html, /Davon bewertet<\/div><div class="val">11<\/div>/);
+  assert.match(html, /16 abgerufene Seite\(n\) nach dem Abruf aussortiert/);
+  assert.ok(html.includes('lang="en") passt nicht zum erkannten Inhalt (Deutsch)'));
+});
+
+test("results defaults add exactly five labels and change only the succeeded default", () => {
+  assert.equal(Object.keys(labelDefaults).length, 1073 + 5);
+  for (const [key, de] of Object.entries({
+    crawl_succeeded: "Erfolgreich abgerufen",
+    crawl_evaluated: "Davon bewertet",
+    crawl_sorted_out: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache oder identischer Inhalt).",
+    crawl_lang_mismatch: 'Die Sprachangabe der Website (lang="{declared}") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt.',
+    lang_name_de: "Deutsch",
+    lang_name_en: "Englisch",
+  })) {
+    assert.deepEqual(labelDefaults[`results.${key}`], { group: "results", de });
+  }
+});
+
+// Render the real live-card expression, without the rest of the view or an API.
+const resultsSource = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+const cardStart = resultsSource.indexOf("{crawlReliability && Number(");
+const cardEnd = resultsSource.indexOf("})()}", cardStart);
+assert.ok(cardStart >= 0 && cardEnd > cardStart);
+const cardExpression = resultsSource.slice(cardStart, cardEnd + "})()}".length);
+globalThis.__crawlCardReact = React;
+const { outputFiles: liveFiles } = await build({
+  stdin: {
+    loader: "tsx",
+    contents: `
+      const React = globalThis.__crawlCardReact;
+      const Card = ({ children, ...props }) => React.createElement("section", props, children);
+      const CardHeader = Card, CardTitle = Card, CardContent = Card;
+      const CheckCircle2 = () => React.createElement("svg");
+      export function LiveCard({ report, t }) {
+        const crawlReliability = report.crawlReliability;
+        const crawlSkipped = report.crawlSkipped;
+        const siteLanguage = report.siteLanguage;
+        return <>${cardExpression}</>;
+      }
+    `,
+  },
+  write: false, format: "esm", jsx: "transform",
+});
+const { LiveCard } = await import(`data:text/javascript;base64,${Buffer.from(liveFiles[0].contents).toString("base64")}`);
+function liveCard(value, overrides = {}) {
+  const t = (key, vars = {}) => (overrides[key] ?? labelDefaults[key]?.de ?? key)
+    .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
+  return renderToStaticMarkup(React.createElement(LiveCard, { report: value, t }));
+}
+
+test("live card has four responsive tiles and renders both conditional lines with the new labels", () => {
+  const html = liveCard(reliabilityFixture(27, 11, languageFixture));
+  assert.match(html, /grid-cols-1 sm:grid-cols-4/);
+  assert.match(html, /Erfolgreich abgerufen<\/p><p[^>]*>27<\/p>/);
+  assert.match(html, /Davon bewertet<\/p><p[^>]*>11<\/p>/);
+  assert.match(html, /16 abgerufene Seite\(n\) nach dem Abruf aussortiert/);
+  assert.ok(html.includes('lang=&quot;en&quot;) passt nicht zum erkannten Inhalt (Deutsch)'));
+  assert.match(html, /<p class="text-xs text-muted-foreground">Die Sprachangabe/);
+  assert.match(cardExpression, /t\("results\.lang_name_en"\)/);
+});
+
+test("live card omits sorted-out and mismatch lines when their conditions are not met", () => {
+  for (const siteLanguage of [undefined, { ...languageFixture, mismatch: false }, { ...languageFixture, lang: "fr" }]) {
+    const html = liveCard(reliabilityFixture(16, 16, siteLanguage));
+    assert.ok(!html.includes("nach dem Abruf aussortiert"));
+    assert.ok(!html.includes("Die Sprachangabe der Website"));
+  }
+});
+
+test("live evaluated count excludes uploaded-page and mismatch declaration is rendered as text", () => {
+  const html = liveCard({
+    ...reliabilityFixture(2, 0, { ...languageFixture, declared: '<img src=x onerror="alert(1)">' }),
+    crawledPages: ["uploaded-page", "https://example.test/page"],
+  });
+  assert.match(html, /Davon bewertet<\/p><p[^>]*>1<\/p>/);
+  assert.ok(html.includes("&lt;img"));
+  assert.ok(!html.includes("<img"));
+});
+
+test("live card continues to use label overrides", () => {
+  const html = liveCard(reliabilityFixture(16, 16), { "results.crawl_succeeded": "Admin override" });
+  assert.ok(html.includes("Admin override"));
+  assert.ok(!html.includes("Erfolgreich abgerufen"));
 });

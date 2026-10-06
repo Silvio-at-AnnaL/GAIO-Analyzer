@@ -1143,7 +1143,7 @@ export async function crawlSite(
   let switchedLanguage = false;
   let readmittedPages = 0;
   const logSiteLanguage = () => {
-    logger.info({ siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
+    logger.info({ host: baseDomain, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
   };
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {

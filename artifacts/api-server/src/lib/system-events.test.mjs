@@ -25,7 +25,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { buildContext, isSensitiveKey } = await import(
+const { buildContext, isSensitiveKey, shouldPersist, PERSISTED_INFO_MESSAGES } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 
@@ -36,6 +36,19 @@ test("isSensitiveKey recognizes sensitive words and API key forms", () => {
   ]) {
     assert.equal(isSensitiveKey(key), true, `${key} should be sensitive`);
   }
+});
+
+test("site language determined persists at info level with hostname and language metadata", () => {
+  const obj = {
+    host: "example.test",
+    siteLanguage: { lang: "de", source: "content", declared: "en", mismatch: true },
+    switched: true, readmittedPages: 2,
+  };
+  assert.ok(PERSISTED_INFO_MESSAGES.has("site language determined"));
+  assert.equal(shouldPersist({ level: 30, msg: "site language determined", obj }), true);
+  assert.equal(shouldPersist({ level: 20, msg: "site language determined", obj }), false);
+  assert.equal(shouldPersist({ level: 30, msg: "unlisted info message", obj }), false);
+  assert.deepEqual(buildContext(obj), obj);
 });
 
 test("isSensitiveKey does not redact unrelated or near-match words", () => {

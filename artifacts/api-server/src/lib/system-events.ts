@@ -27,6 +27,7 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "llm discoverability passages selected",
   "Competitor findings response",
   "competitor input normalized",
+  "site language determined",
   "recommendations input built",
   "AI recommendations response",
   "recommendations generation finished",
