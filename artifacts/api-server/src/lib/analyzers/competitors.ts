@@ -324,7 +324,12 @@ export async function analyzeCompetitors(
       // B2: Crawl at least 3 pages (homepage + 2 subpages); use 5 to allow
       //     priority scoring to select the best subpages.
       const crawlStartedAt = Date.now();
-      const crawlResult = await crawlSite(normalizedUrl, COMPETITOR_MAX_PAGES, { deadlineMs: CRAWL_DEADLINE_MS, preferredLang: mainSiteLang ?? undefined });
+      const crawlResult = await crawlSite(normalizedUrl, COMPETITOR_MAX_PAGES, {
+        deadlineMs: CRAWL_DEADLINE_MS,
+        techPhaseBudgetMs: 20_000,
+        minPagePhaseMs: 20_000,
+        preferredLang: mainSiteLang ?? undefined,
+      });
       redirectedTo = crawlResult.homepageRedirect?.to;
 
       if (crawlResult.pages.length === 0) {
@@ -372,6 +377,8 @@ export async function analyzeCompetitors(
             skippedExcludedPath: crawlResult.skipped.excludedPath,
             skippedDuplicate: crawlResult.skipped.duplicate,
             durationMs: Date.now() - crawlStartedAt,
+            techPhaseMs: crawlResult.techPhaseMs,
+            pagePhaseMs: crawlResult.pagePhaseMs,
           },
           "Competitor crawl returned fewer pages than requested",
         );

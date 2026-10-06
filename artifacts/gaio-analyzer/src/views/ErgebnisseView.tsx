@@ -2207,6 +2207,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               bot_protection: "results.crawl_reason_bot_protection",
               parked_domain: "results.crawl_reason_parked_domain",
               unknown: "results.crawl_reason_unknown",
+              redirect_loop: "results.crawl_reason_redirect_loop",
             };
 
             return (

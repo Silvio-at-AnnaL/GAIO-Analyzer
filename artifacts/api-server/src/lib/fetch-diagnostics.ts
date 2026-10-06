@@ -13,6 +13,7 @@ export type CrawlFailReason =
   | "dns"
   | "refused"
   | "timeout"
+  | "redirect_loop"
   | "http_error"
   | "bot_protection"
   | "parked_domain"
@@ -81,11 +82,14 @@ export function classifyHttpStatus(_status: number): CrawlFailReason {
 }
 
 export function classifyFetchError(err: unknown): CrawlFailReason {
-  const e = err as { name?: string; code?: string; cause?: { code?: string } } | null;
+  const e = err as { name?: string; message?: string; code?: string; cause?: { code?: string; message?: string } } | null;
+  if (/redirect count exceeded/i.test(`${e?.message ?? ""} ${e?.cause?.message ?? ""}`)) return "redirect_loop";
   if (e?.name === "AbortError") return "timeout";
 
   const code = e?.cause?.code ?? e?.code;
   switch (code) {
+    case "REDIRECT_LOOP":
+      return "redirect_loop";
     // Server sent the leaf certificate but not the intermediate(s).
     // Browsers paper over this (cached intermediates / AIA fetching), Node does not.
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":

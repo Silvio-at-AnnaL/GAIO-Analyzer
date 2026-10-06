@@ -354,6 +354,7 @@ function renderCrawlReliabilityHtml(
     reason_bot_protection: "Bot-Schutz blockiert den Zugriff",
     reason_parked_domain: "Park- bzw. Verkaufsseite",
     reason_unknown: "Unbekannt",
+    reason_redirect_loop: "Weiterleitungsschleife",
     allOk: "Alle abgerufenen Seiten waren erfolgreich.",
     first25Only: "Es werden nur die ersten 25 fehlgeschlagenen Seiten angezeigt.",
   } as const;
@@ -376,6 +377,7 @@ function renderCrawlReliabilityHtml(
     bot_protection: T.reason_bot_protection,
     parked_domain: T.reason_parked_domain,
     unknown: T.reason_unknown,
+    redirect_loop: T.reason_redirect_loop,
   };
 
   let html = `

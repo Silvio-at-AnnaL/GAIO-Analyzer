@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 
 async function load(entry) {
   const { outputFiles } = await build({
@@ -83,6 +84,24 @@ test("real HTML export round-trips the server setup safely and keeps existing bl
   assert.ok(html.includes("Engineers &lt;/script&gt;&lt;b&gt;&amp;"));
   assert.ok(!html.includes("Browser Company"));
   console.log("V2 round-trip block:\n" + JSON.stringify(data, null, 2));
+});
+
+test("redirect_loop has the same German label in results and HTML export renderers", async () => {
+  const { labelDefaults } = await load("./labelDefaults.ts");
+  assert.deepEqual(labelDefaults["results.crawl_reason_redirect_loop"], {
+    group: "results", de: "Weiterleitungsschleife",
+  });
+  const resultsSource = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+  assert.match(resultsSource, /redirect_loop:\s*"results\.crawl_reason_redirect_loop"/);
+  const html = await exportReport({
+    ...report,
+    crawlReliability: {
+      attempted: 2, succeeded: 1, failed: 1,
+      failures: [{ url: "https://example.test/redirect-loop", reason: "redirect_loop" }],
+    },
+  });
+  assert.match(html, /Weiterleitungsschleife/);
+  assert.match(html, /https:\/\/example\.test\/redirect-loop/);
 });
 
 test("shared helper prefers validated inputs, including nulls, and preserves old form fallback", () => {

@@ -53,6 +53,8 @@ export interface CrawlResult {
   homepageFailReason?: CrawlFailReason | null;
   homepageRedirect?: { from: string; to: string } | null;
   timedOut: boolean;
+  techPhaseMs?: number;
+  pagePhaseMs?: number;
   robotsTxt: string | null;
   sitemapXml: string | null;
   sitemapResolution?: SitemapResolution | null;
@@ -79,6 +81,7 @@ export type SiteTechFiles = Pick<CrawlResult,
 export type TechnicalFileStatus = "found" | "missing" | "error";
 
 type FetchTimingResult = Awaited<ReturnType<typeof fetchWithTiming>>;
+type TechnicalFetchGuard = (url: string) => boolean;
 
 export interface TechFileFetchResult {
   status: TechnicalFileStatus;
@@ -279,7 +282,7 @@ function sortCategoryQueue(q: QueueEntry[]): void {
 
 // ─── Fetching ─────────────────────────────────────────────────────────────────
 
-async function fetchWithTiming(
+export async function fetchWithTiming(
   url: string,
   timeoutMs = 15000,
 ): Promise<{ html: string; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
@@ -297,23 +300,50 @@ async function fetchWithTiming(
     });
 
     const work = (async () => {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "GAIOAnalyzer/1.0 (Website Audit Tool)",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-        redirect: "follow",
-      });
-      ttfb = Date.now() - start;
-      const html = await response.text();
-      return {
-        html,
-        statusCode: response.status,
-        responseTime: Date.now() - start,
-        ttfb,
-        finalUrl: response.url || url,
-      };
+      const cookies = new Map<string, Map<string, string>>();
+      let currentUrl = url;
+      let redirects = 0;
+      while (true) {
+        controller.signal.throwIfAborted();
+        const hostname = new URL(currentUrl).hostname;
+        const jar = cookies.get(hostname);
+        const response = await fetch(currentUrl, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "GAIOAnalyzer/1.0 (Website Audit Tool)",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ...(jar?.size ? { Cookie: [...jar].map(([name, value]) => `${name}=${value}`).join("; ") } : {}),
+          },
+          redirect: "manual",
+        });
+        for (const cookie of response.headers.getSetCookie()) {
+          const pair = cookie.split(";", 1)[0];
+          const equals = pair.indexOf("=");
+          if (equals <= 0) continue;
+          const hostCookies = cookies.get(hostname) ?? new Map<string, string>();
+          hostCookies.set(pair.slice(0, equals).trim(), pair.slice(equals + 1).trim());
+          cookies.set(hostname, hostCookies);
+        }
+        const location = response.headers.get("location");
+        if ([301, 302, 303, 307, 308].includes(response.status) && location) {
+          await response.body?.cancel();
+          if (redirects >= 10) {
+            throw new Error("Redirect hop limit exceeded", { cause: { code: "REDIRECT_LOOP" } });
+          }
+          redirects++;
+          currentUrl = new URL(location, currentUrl).href;
+          continue;
+        }
+        ttfb = Date.now() - start;
+        const html = await response.text();
+        return {
+          html,
+          statusCode: response.status,
+          responseTime: Date.now() - start,
+          ttfb,
+          finalUrl: response.url || currentUrl,
+        };
+      }
     })();
 
     return await Promise.race([work, timeoutPromise]);
@@ -325,12 +355,17 @@ async function fetchWithTiming(
 export async function fetchTechFile(
   url: string,
   timeoutMs: number,
+  canFetch?: TechnicalFetchGuard,
 ): Promise<TechFileFetchResult> {
   const startedAt = Date.now();
   let attempts = 0;
   let result: TechFileFetchResult | null = null;
 
   while (attempts < 2) {
+    if (canFetch && !canFetch(url)) {
+      if (result) break;
+      return { status: "missing", durationMs: Date.now() - startedAt };
+    }
     attempts++;
     try {
       const resp = await fetchWithTiming(url, timeoutMs);
@@ -359,9 +394,11 @@ export async function fetchTechFile(
       const classified = classifyFetchError(err);
       const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classified;
       result = { status: "error", reason, durationMs: Date.now() - startedAt };
+      if (["redirect_loop", "dns", "tls_chain", "tls_other"].includes(reason)) break;
     }
 
     if (attempts < 2) {
+      if (canFetch && !canFetch(url)) break;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
   }
@@ -625,6 +662,7 @@ async function resolveSitemapIndex(
   indexUrl: string,
   indexXml: string,
   preferredLang: string | null,
+  canFetch?: TechnicalFetchGuard,
 ): Promise<{ mergedXml: string; resolution: SitemapResolution }> {
   const start = Date.now();
   const topEntries = prioritizeSitemapEntries(sitemapEntries(indexXml), preferredLang);
@@ -646,6 +684,7 @@ async function resolveSitemapIndex(
     while (next < queue.length && inFlight.size < 4 &&
            filesStarted < SITEMAP_MAX_FILES && charsRead < SITEMAP_MAX_CHARS &&
            Date.now() - start < SITEMAP_TIME_BUDGET_MS && !urlCapHit) {
+      if (canFetch && !canFetch(queue[next].url)) break;
       const order = next++;
       const { url, level } = queue[order];
       filesStarted++;
@@ -701,6 +740,9 @@ async function resolveSitemapIndex(
     await Promise.race(inFlight);
   }
   resolution.filesSkipped += queue.length - next;
+  if (canFetch) {
+    for (const { url } of queue.slice(next)) canFetch(url);
+  }
   resolution.pageUrlCount = pages.size;
   resolution.complete = resolution.filesFailed === 0 && resolution.filesSkipped === 0 && !urlCapHit;
   const lines = [...pages].map(([loc, lastmod]) =>
@@ -724,6 +766,7 @@ async function discoverSitemap(
   homepageHtml: string,
   homepageUrl: string,
   preferredLang: string | null,
+  canFetch?: TechnicalFetchGuard,
 ): Promise<SitemapDiscoveryResult> {
   const none: SitemapDiscoveryResult = {
     sitemapXml: null, sitemapResolution: null, htmlSitemapHtml: null, htmlSitemapUrl: null,
@@ -733,7 +776,7 @@ async function discoverSitemap(
 
   // Step 1: /sitemap.xml
   {
-    const fetched = await fetchTechFile(`${origin}/sitemap.xml`, 10000);
+    const fetched = await fetchTechFile(`${origin}/sitemap.xml`, 10000, canFetch);
     hadError ||= fetched.status === "error";
     const resp = fetched.resp;
     if (fetched.status === "found" && resp) {
@@ -741,7 +784,7 @@ async function discoverSitemap(
         return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
       }
       if (resp.html.includes("<sitemapindex")) {
-        const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap.xml`, resp.html, preferredLang);
+        const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap.xml`, resp.html, preferredLang, canFetch);
         return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
       }
     }
@@ -749,11 +792,11 @@ async function discoverSitemap(
 
   // Step 2: /sitemap_index.xml
   {
-    const fetched = await fetchTechFile(`${origin}/sitemap_index.xml`, 10000);
+    const fetched = await fetchTechFile(`${origin}/sitemap_index.xml`, 10000, canFetch);
     hadError ||= fetched.status === "error";
     const resp = fetched.resp;
     if (fetched.status === "found" && resp?.html.includes("<sitemapindex")) {
-      const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap_index.xml`, resp.html, preferredLang);
+      const { mergedXml, resolution } = await resolveSitemapIndex(`${origin}/sitemap_index.xml`, resp.html, preferredLang, canFetch);
       return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
     }
   }
@@ -761,12 +804,13 @@ async function discoverSitemap(
   // Step 3: robots.txt Sitemap: declarations
   if (robotsTxt) {
     for (const sitemapUrl of parseSitemapDeclarations(robotsTxt)) {
+      if (canFetch && !canFetch(sitemapUrl)) continue;
       try {
         const resp = await fetchWithTiming(sitemapUrl, 10000);
         if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
         if (resp.statusCode === 200) {
           if (resp.html.includes("<sitemapindex")) {
-            const { mergedXml, resolution } = await resolveSitemapIndex(sitemapUrl, resp.html, preferredLang);
+            const { mergedXml, resolution } = await resolveSitemapIndex(sitemapUrl, resp.html, preferredLang, canFetch);
             return { ...none, sitemapXml: mergedXml, sitemapResolution: resolution, sitemapXmlExists: true, sitemapType: "xml_index", sitemapStatus: "found" };
           }
           if (resp.html.includes("<urlset")) {
@@ -787,6 +831,7 @@ async function discoverSitemap(
   ];
   for (const path of htmlPaths) {
     const url = `${origin}${path}`;
+    if (canFetch && !canFetch(url)) continue;
     try {
       const resp = await fetchWithTiming(url, 8000);
       if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
@@ -813,7 +858,7 @@ async function discoverSitemap(
         try { foundUrl = new URL(href, homepageUrl).href; } catch { /* skip */ }
       }
     });
-    if (foundUrl) {
+    if (foundUrl && (!canFetch || canFetch(foundUrl))) {
       try {
         const resp = await fetchWithTiming(foundUrl, 8000);
         if (resp.statusCode === 429 || resp.statusCode >= 500) hadError = true;
@@ -966,7 +1011,13 @@ export async function fetchExplicitPages(
 export async function crawlSite(
   inputUrl: string,
   maxPages = 16,
-  opts?: { deadlineMs?: number; preferredLang?: string; onProgress?: (done: number, total: number) => void },
+  opts?: {
+    deadlineMs?: number;
+    techPhaseBudgetMs?: number;
+    minPagePhaseMs?: number;
+    preferredLang?: string;
+    onProgress?: (done: number, total: number) => void;
+  },
 ): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
@@ -987,6 +1038,14 @@ export async function crawlSite(
   };
   const CRAWL_DEADLINE_MS = opts?.deadlineMs ?? 90_000;
   const crawlStart = Date.now();
+  const skippedTechnicalUrls = new Set<string>();
+  const canFetchTechnical: TechnicalFetchGuard | undefined = opts?.techPhaseBudgetMs === undefined
+    ? undefined
+    : (url) => {
+      if (Date.now() - crawlStart <= opts.techPhaseBudgetMs!) return true;
+      skippedTechnicalUrls.add(url);
+      return false;
+    };
   // Rule 4: path ceiling — normalise to no trailing slash
   const startPath = base.pathname.replace(/\/+$/, "") || "/";
 
@@ -1044,7 +1103,7 @@ export async function crawlSite(
 
   // ── robots.txt ────────────────────────────────────────────────────────────
   {
-    const robotsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/robots.txt`, 10000);
+    const robotsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/robots.txt`, 10000, canFetchTechnical);
     result.robotsTxtStatus = robotsResult.status;
     const robotsResp = robotsResult.resp;
     if (robotsResult.status === "found" && robotsResp && robotsResp.html.length < 100_000) {
@@ -1055,7 +1114,7 @@ export async function crawlSite(
 
   // ── llms.txt ──────────────────────────────────────────────────────────────
   {
-    const llmsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/llms.txt`, 10000);
+    const llmsResult = await fetchTechFile(`${base.protocol}//${baseDomain}/llms.txt`, 10000, canFetchTechnical);
     result.llmsTxtStatus = llmsResult.status;
     const llmsResp = llmsResult.resp;
     if (
@@ -1190,7 +1249,7 @@ export async function crawlSite(
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
   {
     const origin = `${canonicalProtocol}//${canonicalHost}`;
-    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, targetLang);
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, targetLang, canFetchTechnical);
     result.sitemapXml = sd.sitemapXml;
     result.sitemapResolution = sd.sitemapResolution;
     result.sitemapXmlExists = sd.sitemapXmlExists;
@@ -1254,8 +1313,17 @@ export async function crawlSite(
 
   let pagesLeft = maxPages - result.pages.length; // homepage already in result
 
+  const pageLoopStart = Date.now();
+  const pageDeadline = opts?.minPagePhaseMs === undefined
+    ? crawlStart + CRAWL_DEADLINE_MS
+    : Math.max(crawlStart + CRAWL_DEADLINE_MS, pageLoopStart + opts.minPagePhaseMs);
+  const trackPhases = opts?.techPhaseBudgetMs !== undefined || opts?.minPagePhaseMs !== undefined;
+  if (trackPhases) result.techPhaseMs = pageLoopStart - crawlStart;
+  if (skippedTechnicalUrls.size > 0) {
+    logger.info({ skipped: [...skippedTechnicalUrls], techPhaseMs: pageLoopStart - crawlStart }, "technical phase budget exhausted");
+  }
   while (pagesLeft > 0 && result.reliability.attempted < maxPages + EXTRA_FETCH_ALLOWANCE) {
-    if (Date.now() - crawlStart > CRAWL_DEADLINE_MS) {
+    if (Date.now() > pageDeadline) {
       result.timedOut = true;
       break;
     }
@@ -1376,6 +1444,7 @@ export async function crawlSite(
     }
   }
 
+  if (trackPhases) result.pagePhaseMs = Date.now() - pageLoopStart;
   if (result.pages.length < 2 && skippedLanguagePages.length > 0) {
     const added = Math.min(2 - result.pages.length, skippedLanguagePages.length);
     const fallbackPages = skippedLanguagePages.slice(0, added);
