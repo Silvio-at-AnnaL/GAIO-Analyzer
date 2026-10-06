@@ -4,9 +4,10 @@ import { build } from "esbuild";
 
 const mocks = {
   "./crawler": `
-    export const crawlSite = async () => ({});
-    export const fetchExplicitPages = async () => ({});
+    export const crawlSite = async () => globalThis.__analysisLanguageTest?.crawlResult ?? {};
+    export const fetchExplicitPages = async () => globalThis.__analysisLanguageTest?.crawlResult ?? {};
     export const pageLanguage = () => "en";
+    export const determineSiteLanguage = () => globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
   `,
   "./analyzers/technical-seo": `export const analyzeTechnicalSeo = () => null;`,
   "./analyzers/schema-org": `export const analyzeSchemaOrg = () => null;`,
@@ -17,8 +18,18 @@ const mocks = {
   `,
   "./analyzers/faq": `export const analyzeFaq = async () => null;`,
   "./analyzers/llm-discoverability": `export const analyzeLlmDiscoverability = async () => null;`,
-  "./analyzers/competitors": `export const analyzeCompetitors = async () => null;`,
-  "./analyzers/recommendations": `export const generateRecommendations = async () => [];`,
+  "./analyzers/competitors": `
+    export const analyzeCompetitors = async (...args) => {
+      globalThis.__analysisLanguageTest.competitorCalls.push(args);
+      return null;
+    };
+  `,
+  "./analyzers/recommendations": `
+    export const generateRecommendations = async (modules) => {
+      globalThis.__analysisLanguageTest.modules = modules;
+      return [];
+    };
+  `,
   "./logger": `
     export const logger = {
       error() {},
@@ -56,7 +67,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { buildAnalysisInputs } = await import(
+const { buildAnalysisInputs, runAnalysis, getAnalysis } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`,
 );
 
@@ -72,6 +83,29 @@ test("normalizes empty company name and buyer personas to null", () => {
     pageSelection: "auto",
   });
 });
+
+for (const mode of ["auto", "manual"]) {
+  test(`${mode} result retains siteLanguage and passes its corrected language to competitors and recommendations`, async () => {
+    const language = { lang: "de", source: "content", declared: "en", mismatch: true };
+    const state = globalThis.__analysisLanguageTest = {
+      language, competitorCalls: [],
+      crawlResult: {
+        siteLanguage: language,
+        pages: [{ url: "http://127.0.0.1/home", html: '<html lang="en"><body>Kurz</body></html>', statusCode: 200 }],
+        reliability: { attempted: 1, succeeded: 1, failed: 0, failures: [] },
+        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+      },
+    };
+    await runAnalysis(`synthetic-language-${mode}`, "url", "http://127.0.0.1/home", null,
+      { competitors: "http://localhost/rival" }, mode === "manual" ? ["http://127.0.0.1/home"] : null);
+    const result = getAnalysis(`synthetic-language-${mode}`);
+    assert.equal(result.status, "completed");
+    assert.deepEqual(result.siteLanguage, language);
+    assert.equal(state.competitorCalls.length, 1);
+    assert.equal(state.competitorCalls[0][3], "de", "must not use the homepage declaration");
+    assert.deepEqual(state.modules.siteLanguage, language);
+  });
+}
 
 test("splits competitor lines, trims values, and drops blank lines without reordering", () => {
   assert.deepEqual(buildAnalysisInputs({

@@ -17,6 +17,18 @@ export interface Recommendation {
 
 export function generateRuleBasedRecommendations(moduleResults: Record<string, unknown>): Recommendation[] {
   const recs: Recommendation[] = [];
+  const siteLanguage = moduleResults.siteLanguage as { mismatch?: boolean; declared?: string | null; lang?: string | null } | null;
+  if (siteLanguage?.mismatch && siteLanguage.declared &&
+      (siteLanguage.lang === "de" || siteLanguage.lang === "en")) {
+    const { declared, lang } = siteLanguage;
+    const contentName = lang === "de" ? "deutsch" : "englisch";
+    recs.push({
+      tier: "high_leverage",
+      finding: `Sprachangabe im Quelltext passt nicht zum Inhalt: Die Seiten sind als lang="${declared}" gekennzeichnet, der Text ist ${contentName}.`,
+      whyItMatters: "Das lang-Attribut im <html>-Tag teilt Browsern, Screenreadern, Übersetzungsfunktionen sowie Such- und KI-Crawlern mit, in welcher Sprache eine Seite verfasst ist. Weicht es vom tatsächlichen Inhalt ab, können Systeme, die sich auf diese Angabe stützen, die Inhalte der falschen Sprache zuordnen.",
+      fixInstruction: `Setzen Sie im <html>-Tag aller ${contentName}sprachigen Seiten lang="${lang}" statt lang="${declared}". In den meisten CMS steuert das die eingestellte Standardsprache der Website.`,
+    });
+  }
   const techSeo = moduleResults.technicalSeo as Record<string, unknown> | null;
   if (!techSeo) return recs;
 
@@ -253,6 +265,10 @@ const RULE_BASED_TOPIC_RULE = {
   id: "rule_based_topic",
   pattern: /(robots\.txt|robots-txt|sitemap|llms\.txt|llms-txt)/,
 } as const;
+const LANG_ATTRIBUTE_RULE = {
+  id: "lang_attribute_rule_based",
+  pattern: /(\blang[\s-]+attribut|\blang\s*=|\bhtml[\s>]+lang\b|\bsprachattribut\b|sprachangabe im quelltext)/,
+} as const;
 const SCHEMA_TOTAL_ABSENCE_RULE = {
   id: "schema_total_absence",
   subject: /(strukturierte\w*[\s-]+daten|schema\.org|schema-markup|json-ld)/,
@@ -312,6 +328,8 @@ export function filterImplausibleRecommendations(
   const hreflang = asRecord(technicalSeo?.hreflang);
   const hreflangLanguages = Array.isArray(hreflang?.languages) ? hreflang.languages : [];
   const languageVariants = Array.isArray(moduleResults.languageVariants) ? moduleResults.languageVariants : [];
+  const hasLangAttributeRule = generateRuleBasedRecommendations(moduleResults)
+    .some((rec) => rec.finding.startsWith("Sprachangabe im Quelltext passt nicht zum Inhalt:"));
   const dropped: Array<{ rule: string; finding: string }> = [];
   const kept: Recommendation[] = [];
 
@@ -321,7 +339,11 @@ export function filterImplausibleRecommendations(
     const finding = rec.finding.toLowerCase();
     let rule: string | undefined;
 
-    if (RULE_BASED_TOPIC_RULE.pattern.test(headline)) {
+    if (hasLangAttributeRule && !headline.includes("hreflang") && LANG_ATTRIBUTE_RULE.pattern.test(
+      `${rec.finding} ${rec.whyItMatters} ${rec.fixInstruction}`.toLowerCase(),
+    )) {
+      rule = LANG_ATTRIBUTE_RULE.id;
+    } else if (RULE_BASED_TOPIC_RULE.pattern.test(headline)) {
       rule = RULE_BASED_TOPIC_RULE.id;
     } else if (
       detectedTypes.length > 0

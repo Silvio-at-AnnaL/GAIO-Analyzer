@@ -23,7 +23,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { fetchWithTiming, fetchTechFile, crawlSite } = await import(
+const { fetchWithTiming, fetchTechFile, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 const diagnosticsBundle = await build({
@@ -360,4 +360,166 @@ test("only competitor calls opt into both budgets, retaining five pages and a 45
   assert.match(warning, /pagePhaseMs: crawlResult\.pagePhaseMs/);
   const mainSource = await readFile(new URL("./analysis-engine.ts", import.meta.url), "utf8");
   assert.doesNotMatch(mainSource, /techPhaseBudgetMs|minPagePhaseMs/);
+});
+
+const germanText = "Wir bieten die Produkte und Leistungen für unsere Kunden an. Die Lösungen werden mit einer sicheren Technik auf den Bedarf unserer Kunden abgestimmt. ";
+const englishText = "The products and services are designed for you and your team with our technology. We offer the solutions that you have been looking for with more information about our company. ";
+function languageHtml(declared, text, links = []) {
+  return `<html${declared ? ` lang="${declared}"` : ""}><body><nav>${links.map(url => `<a href="${url}">${url}</a>`).join("")}</nav><main>${text}</main></body></html>`;
+}
+const languagePaths = [
+  "/products/one", "/products/two", "/products/three",
+  "/services/four", "/company/short", "/news/short",
+];
+function languageSite({ declared = "en", longHomepage = false, englishUrl = false, duplicate = false, mixedVotes = false } = {}) {
+  const links = [...languagePaths, ...(englishUrl ? ["/en/english"] : [])];
+  return (req, res) => {
+    if (req.url === "/") {
+      res.end(languageHtml(declared, longHomepage ? `${germanText.repeat(4)} Homepage` : "Willkommen", links));
+    } else if (languagePaths.includes(req.url)) {
+      const index = languagePaths.indexOf(req.url);
+      const text = index >= 4 ? `Kurz ${index}` :
+        `${(mixedVotes && (index === 1 || index === 3) ? englishText : germanText).repeat(4)} Seite ${duplicate && index === 1 ? 0 : index}`;
+      res.end(languageHtml(declared, text));
+    } else if (req.url === "/en/english") {
+      res.end(languageHtml("en", englishText.repeat(4)));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  };
+}
+
+test("detailed detection retains the original language decisions and exposes declaration and source", () => {
+  for (const [html, expected] of [
+    [languageHtml("en", germanText.repeat(4)), { lang: "de", source: "content", declared: "en" }],
+    [languageHtml("DE-at", "Kurz"), { lang: "de", source: "declared", declared: "de" }],
+    [languageHtml("en-US", "Short"), { lang: "en", source: "declared", declared: "en" }],
+    [languageHtml("fr", "Court"), { lang: null, source: null, declared: "fr" }],
+    [languageHtml(null, "Kurz"), { lang: null, source: null, declared: null }],
+    [languageHtml("de", "xyz ".repeat(80)), { lang: null, source: null, declared: "de" }],
+  ]) {
+    assert.deepEqual(detectPageLanguageDetailed(html), expected);
+    assert.equal(detectPageLanguage(html), expected.lang);
+  }
+});
+
+test("Site A switches from a short English declaration to German, re-admits in fetch order without refetch and keeps short pages", async () => {
+  await withServer(languageSite(), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "en", mismatch: true });
+    assert.equal(result.pages.length, 7);
+    assert.equal(result.skipped.otherLanguage, 0);
+    const fetched = requests.filter(req => languagePaths.includes(req.url)).map(req => req.url);
+    assert.equal(fetched.length, 6);
+    assert.equal(new Set(fetched).size, 6);
+    assert.deepEqual(result.pages.slice(1).map(page => new URL(page.url).pathname), fetched);
+    assert.ok(result.pages.some(page => page.url.endsWith("/products/three")), "foreign branch hits must be cleared");
+    assert.ok(result.pages.some(page => page.url.endsWith("/company/short")));
+    assert.ok(result.pages.some(page => page.url.endsWith("/news/short")));
+    const determined = logs.filter(log => log.msg === "site language determined");
+    assert.equal(determined.length, 1);
+    assert.equal(determined[0].obj.switched, true);
+    assert.equal(determined[0].obj.readmittedPages, 2);
+  });
+});
+
+test("Site B with a long German homepage preserves the page list and has no mismatch", async () => {
+  await withServer(languageSite({ declared: "de", longHomepage: true }), async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    const fixedTarget = await crawlSite(origin, 16, { preferredLang: "de" });
+    assert.deepEqual(result.pages.map(page => page.url), fixedTarget.pages.map(page => page.url));
+    assert.deepEqual(result.skipped, fixedTarget.skipped);
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "de", mismatch: false });
+    assert.equal(result.pages.length, 7);
+    assert.ok(logs.filter(log => log.msg === "site language determined").every(log => !log.obj.switched));
+  });
+});
+
+test("Site C confirms a short German homepage from two content detections without changing the page list", async () => {
+  await withServer(languageSite({ declared: "de" }), async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    const fixedTarget = await crawlSite(origin, 16, { preferredLang: "de" });
+    assert.deepEqual(result.pages.map(page => page.url), fixedTarget.pages.map(page => page.url));
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "de", mismatch: false });
+    assert.ok(logs.filter(log => log.msg === "site language determined").every(log => !log.obj.switched));
+  });
+});
+
+test("Site D still skips English URL-language pages on a German multilingual site", async () => {
+  await withServer(languageSite({ declared: "de", longHomepage: true, englishUrl: true }), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.pages.length, 7);
+    assert.equal(result.skipped.otherLanguage, 1);
+    assert.ok(result.skipped.urls.some(url => url.endsWith("/en/english")));
+    assert.ok(!requests.some(req => req.url === "/en/english"));
+    assert.equal(result.siteLanguage.mismatch, false);
+  });
+});
+
+test("preferredLang preserves declaration-only filtering and never runs provisional switching", async () => {
+  await withServer(languageSite(), async ({ origin }) => {
+    const result = await crawlSite(origin, 16, { preferredLang: "de" });
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "preferred", declared: "en", mismatch: false });
+    assert.equal(result.pages.length, 5);
+    assert.equal(result.skipped.otherLanguage, 2);
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.switched, false);
+  });
+});
+
+test("a content-confirmed mismatch on the homepage also keeps declaration-only subpages", async () => {
+  await withServer(languageSite({ longHomepage: true }), async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "en", mismatch: true });
+    assert.equal(result.pages.length, 7);
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.switched, false);
+  });
+});
+
+test("mixed first two content votes retain the provisional declaration", async () => {
+  await withServer(languageSite({ declared: "de", mixedVotes: true }), async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "declared", declared: "de", mismatch: false });
+    assert.equal(result.skipped.otherLanguage, 2);
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.switched, false);
+  });
+});
+
+test("re-admission uses duplicate fingerprints and respects the maximum page count", async () => {
+  await withServer(languageSite({ duplicate: true }), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.pages.length, 6);
+    assert.equal(result.skipped.duplicate, 1);
+    assert.equal(result.skipped.otherLanguage, 0);
+    assert.equal(requests.filter(req => req.url === "/products/one").length, 1);
+    assert.equal(requests.filter(req => req.url === "/products/two").length, 1);
+    const capped = await crawlSite(origin, 2);
+    assert.equal(capped.pages.length, 2);
+    assert.equal(capped.siteLanguage.lang, "de");
+    assert.equal(capped.skipped.otherLanguage, 0);
+  });
+});
+
+test("explicit language uses content majority in the first five pages and detects declaration mismatches", () => {
+  const de = declared => ({ html: languageHtml(declared, germanText.repeat(4)) });
+  const en = declared => ({ html: languageHtml(declared, englishText.repeat(4)) });
+  assert.deepEqual(determineSiteLanguage([de("en"), de("en")]), { lang: "de", source: "content", declared: "en", mismatch: true });
+  assert.deepEqual(determineSiteLanguage([de("de"), de("de")]), { lang: "de", source: "content", declared: "de", mismatch: false });
+  assert.deepEqual(determineSiteLanguage([de("en")]), { lang: "de", source: "content", declared: "en", mismatch: true });
+  assert.equal(determineSiteLanguage([de("en"), de("en"), en("en"), en("en"), en("en")]).lang, "en");
+  assert.deepEqual(determineSiteLanguage([de("en"), de("en"), en("en"), en("en")]), { lang: "en", source: "declared", declared: "en", mismatch: false });
+  assert.deepEqual(determineSiteLanguage([de(null), en(null)]), { lang: null, source: null, declared: null, mismatch: false });
+  assert.equal(determineSiteLanguage([de("en"), de("en"), de("en"), en("en"), en("en"), en("en"), en("en")]).lang, "de");
+  assert.deepEqual(determineSiteLanguage([], languageHtml("de", "Kurz")), { lang: "de", source: "declared", declared: "de", mismatch: false });
+  assert.deepEqual(determineSiteLanguage([en("de"), en("de")], languageHtml("en", "Home")), { lang: "en", source: "content", declared: "en", mismatch: false });
+});
+
+test("explicit fetch mode records site language but never filters selected pages", async () => {
+  await withServer(languageSite(), async ({ origin }) => {
+    const result = await fetchExplicitPages(origin, languagePaths.map(path => `${origin}${path}`));
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "en", mismatch: true });
+    assert.equal(result.pages.length, 6);
+    assert.deepEqual(result.pages.map(page => new URL(page.url).pathname), languagePaths);
+    assert.equal(result.skipped.otherLanguage, 0);
+  });
 });

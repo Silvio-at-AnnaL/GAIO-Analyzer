@@ -1,4 +1,4 @@
-import { crawlSite, fetchExplicitPages, pageLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchExplicitPages, determineSiteLanguage, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
@@ -48,6 +48,7 @@ export interface AnalysisState {
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
   crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] } | null;
+  siteLanguage: SiteLanguage | null;
   homepageRedirect: { from: string; to: string } | null;
 }
 
@@ -283,6 +284,7 @@ export async function runAnalysis(
     hreflangVariants: [],
     crawlReliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
     crawlSkipped: null,
+    siteLanguage: null,
     homepageRedirect: null,
   };
 
@@ -340,6 +342,7 @@ export async function runAnalysis(
       state.homepageRedirect = crawlResult.homepageRedirect ?? null;
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
       state.crawlReliability = crawlResult.reliability;
+      state.siteLanguage = crawlResult.siteLanguage;
       if (!explicitUrls?.length) state.crawlSkipped = crawlResult.skipped;
 
       if (pages.length === 0) {
@@ -378,6 +381,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
+        siteLanguage: determineSiteLanguage(pages, html),
         skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
         timedOut: false,
         robotsTxt: null,
@@ -395,6 +399,7 @@ export async function runAnalysis(
       state.crawledPages = ["uploaded-page"];
       state.crawlReliability = crawlResult.reliability;
       state.crawlSkipped = crawlResult.skipped;
+      state.siteLanguage = crawlResult.siteLanguage;
     } else {
       state.status = "failed";
       state.errors.push("Invalid input: provide URL or HTML");
@@ -504,7 +509,7 @@ export async function runAnalysis(
           competitorUrls,
           mainSiteScores,
           questionnaireContext,
-          pages[0] ? pageLanguage(pages[0].html) : null,
+          state.siteLanguage?.lang ?? null,
         );
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
@@ -522,6 +527,7 @@ export async function runAnalysis(
 
       const moduleResults = {
         crawlReliability: state.crawlReliability,
+        siteLanguage: state.siteLanguage,
         languageVariants: state.hreflangVariants,
         technicalSeo: state.technicalSeo,
         schemaOrg: state.schemaOrg,

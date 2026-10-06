@@ -50,6 +50,7 @@ export interface SitemapResolution {
 export interface CrawlResult {
   pages: CrawledPage[];
   skipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] };
+  siteLanguage: SiteLanguage;
   homepageFailReason?: CrawlFailReason | null;
   homepageRedirect?: { from: string; to: string } | null;
   timedOut: boolean;
@@ -145,11 +146,25 @@ export function contentFingerprint(html: string): string | null {
   return text.length < 200 ? null : createHash("sha1").update(text).digest("hex");
 }
 
+export interface PageLanguageDetection {
+  lang: "de" | "en" | null;
+  source: "content" | "declared" | null;
+  declared: string | null;
+}
+
+export interface SiteLanguage {
+  lang: "de" | "en" | null;
+  source: "content" | "declared" | "preferred" | null;
+  declared: string | null;
+  mismatch: boolean;
+}
+
 /** Classify the visible main text; short pages use their declared language. */
-export function detectPageLanguage(html: string): "de" | "en" | null {
+export function detectPageLanguageDetailed(html: string): PageLanguageDetection {
+  let declared: string | null = null;
   try {
     const $ = cheerio.load(html);
-    const declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0];
+    declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0] || null;
     $("script, style, noscript, iframe, nav, header, footer").remove();
     $("[class], [id]").each((_, el) => {
       if (BOILERPLATE_PATTERN.test(`${$(el).attr("class") ?? ""} ${$(el).attr("id") ?? ""}`)) {
@@ -162,7 +177,10 @@ export function detectPageLanguage(html: string): "de" | "en" | null {
         ? $("article").first()
         : $("body").first();
     const text = content.text().replace(/\s+/g, " ").trim();
-    if (text.length < 200) return declared === "de" || declared === "en" ? declared : null;
+    if (text.length < 200) {
+      const lang = declared === "de" || declared === "en" ? declared : null;
+      return { lang, source: lang ? "declared" : null, declared };
+    }
 
     let deTotal = 0;
     let enTotal = 0;
@@ -178,12 +196,31 @@ export function detectPageLanguage(html: string): "de" | "en" | null {
         enWords.add(word);
       }
     }
-    if (deTotal >= enTotal * 1.5 && deTotal >= 5 && deWords.size >= 4) return "de";
-    if (enTotal >= deTotal * 1.5 && enTotal >= 5 && enWords.size >= 4) return "en";
-    return null;
+    if (deTotal >= enTotal * 1.5 && deTotal >= 5 && deWords.size >= 4) return { lang: "de", source: "content", declared };
+    if (enTotal >= deTotal * 1.5 && enTotal >= 5 && enWords.size >= 4) return { lang: "en", source: "content", declared };
+    return { lang: null, source: null, declared };
   } catch {
-    return null;
+    return { lang: null, source: null, declared };
   }
+}
+
+export function detectPageLanguage(html: string): "de" | "en" | null {
+  return detectPageLanguageDetailed(html).lang;
+}
+
+/** Explicit selection is never filtered; use the first five pages as evidence. */
+export function determineSiteLanguage(pages: Array<Pick<CrawledPage, "html">>, homepageHtml?: string): SiteLanguage {
+  const declared = detectPageLanguageDetailed(homepageHtml ?? pages[0]?.html ?? "").declared;
+  const votes = { de: 0, en: 0 };
+  for (const page of pages.slice(0, 5)) {
+    const detection = detectPageLanguageDetailed(page.html);
+    if (detection.source === "content" && detection.lang) votes[detection.lang]++;
+  }
+  const lang = votes.de === votes.en
+    ? (declared === "de" || declared === "en" ? declared : null)
+    : votes.de > votes.en ? "de" : "en";
+  const source = votes.de !== votes.en ? "content" : lang ? "declared" : null;
+  return { lang, source, declared, mismatch: source === "content" && declared !== null && declared !== lang };
 }
 
 // Existing analysis-engine import uses this name for the main site's language.
@@ -881,7 +918,10 @@ async function discoverSitemap(
   return finalResult;
 }
 
-export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFiles> {
+export async function fetchSiteTechFiles(
+  inputUrl: string,
+  opts?: { onHomepage?: (html: string) => void },
+): Promise<SiteTechFiles> {
   const base = new URL(inputUrl);
   const result: SiteTechFiles = {
     homepageRedirect: null,
@@ -936,6 +976,7 @@ export async function fetchSiteTechFiles(inputUrl: string): Promise<SiteTechFile
       }
       canonicalHomepageUrl = homePage.finalUrl;
       homepageHtml = homePage.html;
+      opts?.onHomepage?.(homepageHtml);
     }
   } catch {
     // Continue sitemap discovery with the input origin and no homepage HTML.
@@ -968,6 +1009,7 @@ export async function fetchExplicitPages(
   );
   const result: CrawlResult = {
     pages,
+    siteLanguage: determineSiteLanguage(pages),
     skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
     timedOut: false,
     robotsTxt: null,
@@ -1004,7 +1046,13 @@ export async function fetchExplicitPages(
     },
   };
 
-  if (pages.length > 0) Object.assign(result, await fetchSiteTechFiles(inputUrl));
+  if (pages.length > 0) {
+    let homepageHtml: string | undefined;
+    Object.assign(result, await fetchSiteTechFiles(inputUrl, {
+      onHomepage: (html) => { homepageHtml = html; },
+    }));
+    result.siteLanguage = determineSiteLanguage(pages, homepageHtml);
+  }
   return result;
 }
 
@@ -1051,6 +1099,7 @@ export async function crawlSite(
 
   const result: CrawlResult = {
     pages: [],
+    siteLanguage: { lang: null, source: null, declared: null, mismatch: false },
     skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
     homepageFailReason: null,
     homepageRedirect: null,
@@ -1088,7 +1137,14 @@ export async function crawlSite(
     result.skipped.otherLanguage++;
     if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
   };
-  let targetLang: string | null = null;
+  let targetLang: "de" | "en" | null = null;
+  let provisionalLanguage = false;
+  const contentLanguageVotes: Array<"de" | "en"> = [];
+  let switchedLanguage = false;
+  let readmittedPages = 0;
+  const logSiteLanguage = () => {
+    logger.info({ siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
+  };
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
     result.reliability.failed++;
@@ -1198,8 +1254,18 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homePage.finalUrl);
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
-    const preferred = opts?.preferredLang ?? detectPageLanguage(homepageHtml);
+    const detection = detectPageLanguageDetailed(homepageHtml);
+    const preferred = opts?.preferredLang ?? (detection.source === "content"
+      ? detection.lang
+      : detection.declared);
     targetLang = preferred === "de" || preferred === "en" ? preferred : null;
+    const source = opts?.preferredLang !== undefined ? "preferred"
+      : detection.source === "content" ? "content" : targetLang ? "declared" : null;
+    provisionalLanguage = opts?.preferredLang === undefined && source !== "content";
+    result.siteLanguage = {
+      lang: targetLang, source, declared: detection.declared,
+      mismatch: source === "content" && detection.declared !== null && detection.declared !== targetLang,
+    };
     const blocked = detectBlockedContent(homepageHtml, homePage.finalUrl);
     if (homePage.statusCode < 400 && blocked === null) {
       const fingerprint = contentFingerprint(homepageHtml);
@@ -1222,6 +1288,7 @@ export async function crawlSite(
         { url: canonicalHomepageUrl, reason, statusCode: homePage.statusCode },
         "Homepage could not be analysed",
       );
+      logSiteLanguage();
       return result;
     }
 
@@ -1242,6 +1309,7 @@ export async function crawlSite(
       reason === "tls_chain" ||
       reason === "tls_other"
     ) {
+      logSiteLanguage();
       return result;
     }
   }
@@ -1312,6 +1380,44 @@ export async function crawlSite(
   // which would silently allow a category to exceed its cap.
 
   let pagesLeft = maxPages - result.pages.length; // homepage already in result
+
+  const readmitLanguagePages = () => {
+    for (let index = 0; index < skippedLanguagePages.length; index++) {
+      const page = skippedLanguagePages[index];
+      const detection = detectPageLanguageDetailed(page.html);
+      const urlLanguage = urlLang(new URL(page.url).pathname);
+      if (detection.source !== "content" || detection.lang !== targetLang ||
+          (urlLanguage && urlLanguage !== targetLang)) continue;
+      skippedLanguagePages.splice(index--, 1);
+      if (skippedLanguageUrls.delete(page.url)) result.skipped.otherLanguage--;
+      result.skipped.urls = result.skipped.urls.filter((url) => url !== page.url);
+      if (pagesLeft <= 0) continue;
+      const fingerprint = contentFingerprint(page.html);
+      const originalUrl = fingerprint ? seenFingerprints.get(fingerprint) : undefined;
+      if (originalUrl) {
+        result.skipped.duplicate++;
+        if (result.skipped.urls.length < 10) result.skipped.urls.push(page.url);
+        logger.debug({ url: page.url, originalUrl }, "duplicate page skipped");
+        continue;
+      }
+      if (fingerprint) seenFingerprints.set(fingerprint, page.url);
+      result.pages.push(page);
+      readmittedPages++;
+      pagesLeft--;
+      const pathname = new URL(page.url).pathname;
+      acceptedBranches.add(firstPathSegment(pathname));
+      const category = extractCategory(pathname, startPath);
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+      opts?.onProgress?.(result.pages.length, maxPages);
+      quarantineHreflang(extractHreflangVariants(page.html, page.url));
+      if (pagesLeft > 0) {
+        const links = extractInternalLinks(page.html, page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
+        for (const { url } of links) {
+          addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+        }
+      }
+    }
+  };
 
   const pageLoopStart = Date.now();
   const pageDeadline = opts?.minPagePhaseMs === undefined
@@ -1391,16 +1497,38 @@ export async function crawlSite(
           ttfb: page.ttfb,
         };
         result.reliability.succeeded++;
-        const urlLanguage = targetLang ? urlLang(pathname) : null;
-        const lang = targetLang ? urlLanguage ?? detectPageLanguage(page.html) : null;
-        if (targetLang && lang && lang !== targetLang) {
+        const detection = detectPageLanguageDetailed(page.html);
+        const urlLanguage = urlLang(pathname);
+        const lang = targetLang ? urlLanguage ??
+          (result.siteLanguage.mismatch && detection.source === "declared" ? null : detection.lang) : null;
+        const held = targetLang !== null && lang !== null && lang !== targetLang;
+        if (held) {
           recordOtherLanguage(url);
           skippedLanguagePages.push(crawledPage);
           if (!urlLanguage && url !== homepageUrl && url !== canonicalHomepageUrl && branch) {
             foreignBranchHits.set(branch, (foreignBranchHits.get(branch) ?? 0) + 1);
           }
-          continue;
         }
+        if (provisionalLanguage && !urlLanguage && detection.source === "content" && detection.lang) {
+          contentLanguageVotes.push(detection.lang);
+          if (contentLanguageVotes.length === 2) {
+            provisionalLanguage = false;
+            if (contentLanguageVotes[0] === contentLanguageVotes[1]) {
+              const contentLang = contentLanguageVotes[0];
+              switchedLanguage = contentLang !== targetLang;
+              targetLang = contentLang;
+              result.siteLanguage = {
+                lang: contentLang, source: "content", declared: result.siteLanguage.declared,
+                mismatch: result.siteLanguage.declared !== null && result.siteLanguage.declared !== contentLang,
+              };
+              if (switchedLanguage) {
+                foreignBranchHits.clear();
+                readmitLanguagePages();
+              }
+            }
+          }
+        }
+        if (held) continue;
         const fingerprint = contentFingerprint(page.html);
         const originalUrl = fingerprint ? seenFingerprints.get(fingerprint) : undefined;
         if (originalUrl) {
@@ -1513,5 +1641,6 @@ export async function crawlSite(
     "Crawl complete",
   );
 
+  logSiteLanguage();
   return result;
 }
