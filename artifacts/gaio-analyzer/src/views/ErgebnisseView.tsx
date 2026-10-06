@@ -23,6 +23,7 @@ import {
 import { useAuth, adminFetch } from "@/store/authStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
 import { getHeadingSummary } from "@/lib/heading-summary";
+import { isLimitedCompetitor } from "@/lib/competitor-comparability";
 
 /**
  * Computes consistent PDF page and image dimensions from a pixel capture.
@@ -511,6 +512,7 @@ function CompetitorCard({ competitor, mainScores, excludedModules = [] }: Compet
   const hasExcludedMark = metrics.some((m) => excludedModules.includes(m.key) && m.comp !== null);
 
   const badgeColor = scoreBadgeColor(competitor.compositeScore);
+  const isLimited = isLimitedCompetitor(competitor);
 
   return (
     <Card>
@@ -525,13 +527,25 @@ function CompetitorCard({ competitor, mainScores, excludedModules = [] }: Compet
             />
             <span className="font-bold text-base truncate">{competitor.name}</span>
           </div>
-          <div
-            className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide"
-            style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}40` }}
-          >
-            {competitor.compositeScore} · {t(scoreLabel(competitor.compositeScore))}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div
+              className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide"
+              style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}40` }}
+            >
+              {competitor.compositeScore} · {t(scoreLabel(competitor.compositeScore))}
+            </div>
+            {isLimited && (
+              <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-amber-50 text-amber-800 border border-amber-200">
+                {t("results.competitor_limited_badge")}
+              </span>
+            )}
           </div>
         </div>
+        {isLimited && (
+          <p className="text-xs text-muted-foreground">
+            {t("results.competitor_limited_note", { count: competitor.crawledPagesCount })}
+          </p>
+        )}
         {competitor.redirectedTo && (
           <p className="text-xs text-muted-foreground">
             {t("results.redirect_info_competitor", { to: formatRedirectUrl(competitor.redirectedTo) })}
@@ -1042,6 +1056,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
     mainComparisonScore?: number;
     excludedModules?: string[];
   } | null;
+  const limitedCompetitors = competitorComparison?.competitors.filter(isLimitedCompetitor) ?? [];
   const competitorInput = (report as unknown as Record<string, unknown>).competitorInput as {
     provided?: unknown;
     analysed?: unknown;
@@ -3088,6 +3103,13 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   {typeof competitorComparison.mainComparisonScore === "number" && (
                     <p className="text-xs text-muted-foreground mt-2">
                       {t("results.competitor_value_note")}
+                    </p>
+                  )}
+                  {limitedCompetitors.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {t("results.competitor_limited_overview", {
+                        names: limitedCompetitors.map((competitor) => competitor.name).join(", "),
+                      })}
                     </p>
                   )}
                   {hasCompetitorInput && (

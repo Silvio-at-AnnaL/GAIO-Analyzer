@@ -1,5 +1,6 @@
 import { getHeadingSummary } from "./heading-summary";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
+import { isLimitedCompetitor } from "./competitor-comparability";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -825,6 +826,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
   } | null;
   if (!cc || cc.competitors.length === 0) return "";
   const excludedModules = cc.excludedModules ?? [];
+  const limitedCompetitors = cc.competitors.filter(isLimitedCompetitor);
 
   const CI = {
     summary: (provided: number, analysed: number) =>
@@ -845,7 +847,11 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
     js: "Nicht auswertbar",
     jsDesc: "Diese Website lädt ihre Inhalte erst per JavaScript nach. Eine automatisierte Bewertung wäre nicht aussagekräftig.",
     valueNote: "Vergleichswert: gleiche Gewichtung wie der GAIO-Score, jedoch ohne LLM-Prüfung, die für Wettbewerber nicht durchgeführt wird. Ihr GAIO-Gesamtscore kann daher abweichen.",
+    limitedBadge: "Eingeschränkt vergleichbar",
+    limitedNote: "Nur {count} Seite(n) analysiert – die Werte beruhen auf einer kleinen Stichprobe und sind nur eingeschränkt vergleichbar.",
+    limitedOverview: "Eingeschränkt vergleichbar (weniger als 3 analysierte Seiten): {names}",
   } as const;
+  const limitedBadgeHtml = `<span style="font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:3px;padding:1px 5px;">${esc(CE.limitedBadge)}</span>`;
   const competitorErrorText = (competitor: CompetitorEntry) =>
     competitor.errorReason === "bot_protection"
       ? { badge: CE.blocked, description: CE.blockedDesc }
@@ -922,7 +928,7 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
     ...cc.competitors.map((c) => ({
       compositeScore: c.compositeScore,
       html: `<tr>
-        <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">${esc(competitorErrorText(c).badge)}</span>` : ""}</td>
+        <td>${esc(c.name)}${c.error ? ` <span style="font-size:10px;background:#fef2f2;color:#ef4444;border:1px solid #fca5a5;border-radius:3px;padding:1px 5px;">${esc(competitorErrorText(c).badge)}</span>` : isLimitedCompetitor(c) ? ` ${limitedBadgeHtml}` : ""}</td>
         <td${c.error ? "" : ` style="color:${scoreColor(c.compositeScore)}"`}><strong>${c.error ? "—" : c.compositeScore}</strong></td>
         ${competitorScoreCell(c.technicalScore, "technical", c.error)}
         ${competitorScoreCell(c.schemaScore, "schema", c.error)}
@@ -942,14 +948,16 @@ function renderCompetitorSection(report: Record<string, unknown>): string {
       ${sortedRows.map((r) => r.html).join("")}
     </tbody>
   </table>
-  ${hasMainComparisonScore ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.valueNote)}</p>` : ""}${hasExcludedMark ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${COMPETITOR_EXCLUDED_TEXT.footnote}</p>` : ""}`;
+  ${hasMainComparisonScore ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.valueNote)}</p>` : ""}${hasExcludedMark ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${COMPETITOR_EXCLUDED_TEXT.footnote}</p>` : ""}
+  ${limitedCompetitors.length > 0 ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 0;">${esc(CE.limitedOverview.replace("{names}", limitedCompetitors.map((c) => c.name).join(", ")))}</p>` : ""}`;
 
   html += cc.competitors.map((c) => `
   <div class="comp-card">
     <div class="comp-header">
-      <strong style="font-size:15px;">${esc(c.name)}</strong>
+      <strong style="font-size:15px;">${esc(c.name)}${isLimitedCompetitor(c) ? ` ${limitedBadgeHtml}` : ""}</strong>
       <a href="${esc(c.url)}" target="_blank" rel="noreferrer" style="font-size:12px;color:${C.accent};word-break:break-all;">${esc(c.url)}</a>
     </div>
+    ${isLimitedCompetitor(c) ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${esc(CE.limitedNote.replace("{count}", String(c.crawledPagesCount)))}</p>` : ""}
     ${c.redirectedTo ? `<p style="font-size:12px;color:${C.textMuted};margin:6px 0;">${esc(REDIRECT_INFO_TEXT.competitor(formatRedirectUrl(c.redirectedTo)))}</p>` : ""}${c.error
       ? `<p style="font-size:12px;color:${C.textMuted};margin-top:6px;">${esc(competitorErrorText(c).description)}</p>`
       : `
