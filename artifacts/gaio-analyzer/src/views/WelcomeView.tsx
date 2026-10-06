@@ -189,6 +189,7 @@ export function WelcomeView({ onDismiss }: WelcomeViewProps) {
           <SetupImportLink
             className="mt-1"
             prefix={<>{t("welcome.prefill_prefix")}{" "}</>}
+            note={t("welcome.import_setup_legacy_note")}
             hasAdditionalContent={Boolean(companyInput.trim() || urlInput.trim())}
             onImported={onDismiss}
           />

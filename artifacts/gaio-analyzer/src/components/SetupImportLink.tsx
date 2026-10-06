@@ -31,13 +31,14 @@ function readFile(file: File): Promise<string> {
 }
 
 export function SetupImportLink({
-  onBeforeApply, onImported, hasAdditionalContent = false, className = "", prefix,
+  onBeforeApply, onImported, hasAdditionalContent = false, className = "", prefix, note,
 }: {
   onBeforeApply?: () => void;
   onImported?: () => void;
   hasAdditionalContent?: boolean;
   className?: string;
   prefix?: ReactNode;
+  note?: ReactNode;
 }) {
   const auth = useAuth();
   const store = useAppStore();
@@ -118,6 +119,7 @@ export function SetupImportLink({
           if (file) void handleFile(file);
         }}
       />
+      {note && <span className="block" style={{ marginTop: 2 }}>{note}</span>}
       {error && <span role="alert" className="block mt-2 text-xs text-destructive">{t(error)}</span>}
       {!error && notice && (
         <span role="status" className="block mt-2 space-y-1 text-xs text-muted-foreground">

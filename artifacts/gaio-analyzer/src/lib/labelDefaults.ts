@@ -18,6 +18,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "welcome.prefill_prefix":    { group: "welcome", de: "Oder" },
   "welcome.prefill_link":      { group: "welcome", de: "mit KI vorausfüllen" },
   "welcome.prefill_suffix":    { group: "welcome", de: "— Zielgruppen & Wettbewerber werden automatisch ermittelt." },
+  "welcome.import_setup_legacy_note": { group: "welcome", de: "(Analysen vor dem 4. Mai 2026 sind nicht einlesbar.)" },
   "welcome.tile1_title":       { group: "welcome", de: "LLM-Sichtbarkeit messen" },
   "welcome.tile1_desc":        { group: "welcome", de: "Wir simulieren, wie ChatGPT, Gemini und Claude Ihre Website wahrnehmen — und wo Informationen fehlen." },
   "welcome.tile2_title":       { group: "welcome", de: "Wettbewerb vergleichen" },

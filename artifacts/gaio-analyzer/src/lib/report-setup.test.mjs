@@ -154,6 +154,51 @@ test("uses the old block and exact visible markup for fallback fields and ordere
   assert.deepEqual(result.warnings, []);
 });
 
+test("parses legacy h3 page-list headings without a data block and preserves page order", () => {
+  const html = fallbackReport().replace(
+    /<div\b[^>]*>Gecrawlte Seiten \(3\)<\/div>/,
+    "<h3>Gecrawlte Seiten (3)</h3>",
+  );
+  const result = parseReportSetup(html);
+  assert.equal(result.ok, true);
+  assert.equal(result.source, "fallback");
+  assert.deepEqual(result.setup.pages, [
+    "https://example.test/one?a=1&b=2",
+    "https://example.test/two?x=<ok>",
+    'https://example.test/three?quote="yes"',
+  ]);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("accepts every matching heading tag and retains page-count mismatch warnings", () => {
+  for (let level = 1; level <= 6; level += 1) {
+    const html = fallbackReport({ pageCount: 4 }).replace(
+      /<div\b[^>]*>Gecrawlte Seiten \(4\)<\/div>/,
+      `<h${level}>Gecrawlte Seiten (4)</h${level}>`,
+    );
+    const result = parseReportSetup(html);
+    assert.equal(result.ok, true);
+    assert.equal(result.setup.pages.length, 3);
+    assert.deepEqual(result.warnings, ["page_count_mismatch"]);
+  }
+});
+
+test("rejects non-exact or mismatched headings and a list not immediately following the heading", () => {
+  for (const heading of [
+    "<h3>Gecrawlte Seiten (3) extra</h3>",
+    "<h3>Gecrawlte Seiten (3)</h2>",
+    "<h3>Gecrawlte Seiten (3)</h3><p>Intervening text</p>",
+  ]) {
+    const html = fallbackReport().replace(
+      /<div\b[^>]*>Gecrawlte Seiten \(3\)<\/div>/,
+      heading,
+    );
+    const result = parseReportSetup(html);
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "no_pages");
+  }
+});
+
 test("reports a fallback page count mismatch without confusing the table count row for a list", () => {
   const result = parseReportSetup(fallbackReport({ pageCount: 4 }));
   assert.equal(result.ok, true);

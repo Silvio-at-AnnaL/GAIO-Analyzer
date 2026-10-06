@@ -177,15 +177,15 @@ function readCrawledPages(html: string): {
   count: number | null;
   listFound: boolean;
 } {
-  const divPattern = /<div\b[^>]*>([\s\S]*?)<\/div\s*>/gi;
-  let divMatch: RegExpExecArray | null;
+  const elementPattern = /<(div|h[1-6])\b[^>]*>([\s\S]*?)<\/\1\s*>/gi;
+  let elementMatch: RegExpExecArray | null;
 
-  while ((divMatch = divPattern.exec(html)) !== null) {
-    const text = htmlText(divMatch[1]).replace(/\s+/g, " ");
+  while ((elementMatch = elementPattern.exec(html)) !== null) {
+    const text = htmlText(elementMatch[2]).replace(/\s+/g, " ");
     const headingMatch = /^Gecrawlte Seiten\s*\((\d+)\)$/.exec(text);
     if (!headingMatch) continue;
 
-    const afterHeading = html.slice(divMatch.index + divMatch[0].length);
+    const afterHeading = html.slice(elementMatch.index + elementMatch[0].length);
     const listMatch = /^\s*<ul\b[^>]*>([\s\S]*?)<\/ul\s*>/i.exec(afterHeading);
     if (!listMatch) {
       return { pages: [], count: Number(headingMatch[1]), listFound: false };

@@ -302,10 +302,14 @@ test("the real import link is hidden without access and visible to admins or exp
     const context = makeContext({ auth });
     const harness = makeHarness();
     installHarness(harness, context);
-    const tree = harness.render(SetupImportLink, { prefix: "welcome.prefill_prefix " });
+    const tree = harness.render(SetupImportLink, {
+      prefix: "welcome.prefill_prefix ",
+      note: "welcome.import_setup_legacy_note",
+    });
     assert.equal(Boolean(byTestId(tree, "button-setup-import")), visible);
     assert.equal(Boolean(byTestId(tree, "input-setup-import")), visible);
     assert.equal(textContent(tree).includes("welcome.prefill_prefix"), visible);
+    assert.equal(textContent(tree).includes("welcome.import_setup_legacy_note"), visible);
     if (visible) {
       const button = byTestId(tree, "button-setup-import");
       assert.deepEqual(button.props.style, {
@@ -329,6 +333,7 @@ test("welcome hints use a centered field-width container and a separate permissi
   assert.equal(textContent(prefillLine), "welcome.prefill_prefix welcome.prefill_link welcome.prefill_suffix");
   assert.equal(importLine.props.className, "mt-1");
   assert.equal(textContent(importLine.props.prefix), "welcome.prefill_prefix ");
+  assert.equal(importLine.props.note, "welcome.import_setup_legacy_note");
   for (const [auth, visible] of [
     [{ isAuthenticated: false, user: null, permissions: {} }, false],
     [{ isAuthenticated: true, user: { role: "user" }, permissions: {} }, false],
@@ -338,8 +343,45 @@ test("welcome hints use a centered field-width container and a separate permissi
     installHarness(makeHarness(), context);
     const renderedLine = globalThis.__setupImportHarness.render(importLine.type, importLine.props);
     assert.equal(textContent(renderedLine).includes("welcome.prefill_prefix"), visible);
+    assert.equal(textContent(renderedLine).includes("welcome.import_setup_legacy_note"), visible);
     assert.equal(Boolean(byTestId(renderedLine, "button-setup-import")), visible);
   }
+});
+
+test("the welcome import note inherits typography, precedes notices, and is absent from the domain form", () => {
+  const context = makeContext({
+    store: makeStore({
+      setupImportNotice: { source: "block-v2", warnings: [], exportDate: null, count: 3 },
+    }),
+  });
+  const viewHarness = makeHarness();
+  installHarness(viewHarness, context);
+  const welcome = viewHarness.render(WelcomeView, { onDismiss() {} });
+  const importLine = findElement(welcome, node => typeof node.type === "function"
+    && node.props?.note === "welcome.import_setup_legacy_note");
+  assert.ok(importLine);
+  const importHarness = makeHarness();
+  installHarness(importHarness, context);
+  const link = importHarness.render(importLine.type, importLine.props);
+  const note = findElement(link, node => node.type === "span"
+    && node.props?.children === "welcome.import_setup_legacy_note");
+  assert.ok(note);
+  assert.deepEqual(note.props.style, { marginTop: 2 });
+  assert.equal(note.props.className, "block");
+  const children = link.props.children;
+  assert.ok(children.indexOf(note) > children.indexOf(byTestId(link, "button-setup-import")));
+  assert.ok(children.indexOf(note) < children.indexOf(findElement(link, node => node.props?.role === "status")));
+
+  const domainHarness = makeHarness();
+  installHarness(domainHarness, context);
+  const domain = domainHarness.render(DomainAnalyseView);
+  const domainImport = findElement(domain, node => typeof node.type === "function"
+    && typeof node.props?.onBeforeApply === "function");
+  assert.ok(domainImport);
+  assert.equal(domainImport.props.note, undefined);
+  installHarness(makeHarness(), context);
+  const domainLink = globalThis.__setupImportHarness.render(domainImport.type, domainImport.props);
+  assert.equal(textContent(domainLink).includes("welcome.import_setup_legacy_note"), false);
 });
 
 test("a valid HTML or HTM import replaces the form and preserves report page order and notices", async () => {
