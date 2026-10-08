@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
+import { createServer } from "node:http";
 
 const mocks = {
   "./crawler": `
@@ -8,19 +9,36 @@ const mocks = {
       const state = globalThis.__analysisLanguageTest;
       (state.crawlCalls ??= []).push(args);
       if (state.fillError) throw state.fillError;
+      if (state.realCrawl) return state.realCrawl(...args);
       args[2]?.onHomepage?.(state.homepageHtml ?? "");
       return state.fillResult ?? state.crawlResult ?? {};
     };
     export const fetchExplicitPages = async (...args) => {
       const state = globalThis.__analysisLanguageTest;
       (state.explicitCalls ??= []).push(args);
+      if (state.realSelection) return state.realSelection(...args);
       return state.selectedResult ?? state.crawlResult ?? {};
+    };
+    export const fetchSiteTechFiles = async (...args) => {
+      const state = globalThis.__analysisLanguageTest;
+      (state.techCalls ??= []).push(args);
+      if (state.techError) throw state.techError;
+      if (state.realTechFiles) return state.realTechFiles(...args);
+      return state.techResult ?? {
+        robotsTxt: "Recovered robots", robotsTxtExists: true, robotsTxtStatus: "found",
+        sitemapXml: "<urlset/>", sitemapXmlExists: true, sitemapStatus: "found",
+        llmsTxt: "Recovered llms", llmsTxtExists: true, llmsTxtStatus: "found",
+      };
     };
     export const normalizeUrl = value => new URL(value).href.replace(/\\/$/, "");
     export const pageLanguage = () => "en";
     export const determineSiteLanguage = () => globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
   `,
-  "./analyzers/technical-seo": `export const analyzeTechnicalSeo = () => null;`,
+  "./analyzers/technical-seo": `export const analyzeTechnicalSeo = (...args) => {
+    const state = globalThis.__analysisLanguageTest;
+    state.technicalCrawl = args[0];
+    return state.realTechnicalSeo ? state.realTechnicalSeo(...args) : null;
+  };`,
   "./analyzers/schema-org": `export const analyzeSchemaOrg = () => null;`,
   "./analyzers/headings": `export const analyzeHeadings = () => null;`,
   "./analyzers/content-relevance": `
@@ -38,6 +56,7 @@ const mocks = {
   "./analyzers/recommendations": `
     export const generateRecommendations = async (modules) => {
       globalThis.__analysisLanguageTest.modules = modules;
+      if (globalThis.__analysisLanguageTest.realRules) return globalThis.__analysisLanguageTest.realRules(modules);
       return [];
     };
   `,
@@ -45,6 +64,7 @@ const mocks = {
     export const logger = {
       error() {},
       info() {},
+      debug() {},
       warn(obj, msg) { (globalThis.__analysisLanguageTest.warnings ??= []).push({ obj, msg }); },
     };
   `,
@@ -208,6 +228,7 @@ test("mixed analysis merges both phases and exposes only newly evaluated URLs as
   assert.equal(state.crawlCalls[0][1], 16);
   assert.equal(state.crawlCalls[0][2].preferredLang, "de");
   assert.deepEqual(state.crawlCalls[0][2].seedPages, [selectedPage]);
+  assert.equal(state.techCalls, undefined, "successful fill must not refetch technical files");
 });
 
 for (const failure of ["throw", "homepage"]) {
@@ -223,5 +244,110 @@ for (const failure of ["throw", "homepage"]) {
     assert.equal(result.inputs.pageSelection, "mixed");
     assert.deepEqual(result.inputs.autoAddedPages, []);
     assert.ok(state.warnings.some(entry => entry.msg === "page fill failed"));
+    assert.equal(state.techCalls.length, 1);
+    assert.equal(state.technicalCrawl.robotsTxt, "Recovered robots");
+    assert.equal(state.technicalCrawl.sitemapStatus, "found");
+    assert.equal(state.technicalCrawl.llmsTxt, "Recovered llms");
+  });
+  test(`fill failure (${failure}) with a failed technical recovery reports error, not missing`, async () => {
+    const state = mixedState();
+    if (failure === "throw") state.fillError = new Error("Synthetic fill failure");
+    else state.fillResult.homepageFailReason = "bot_protection";
+    state.techError = new Error("Synthetic technical recovery failure");
+    const id = `synthetic-tech-failure-${failure}`;
+    await runAnalysis(id, "url", "http://127.0.0.1/", null, null, [selectedPage.url], null, { fillToMax: true });
+    assert.equal(getAnalysis(id).status, "completed");
+    assert.deepEqual(getAnalysis(id).crawledPages, [selectedPage.url]);
+    for (const key of ["robotsTxtStatus", "sitemapStatus", "llmsTxtStatus"]) {
+      assert.equal(state.technicalCrawl[key], "error");
+    }
+    assert.equal(state.techCalls.length, 1);
+  });
+}
+
+// Real HTTP crawling/technical files and rule-based analysis; AI and DB remain stubbed.
+const helperBundle = await build({
+  stdin: {
+    contents: `
+      export { crawlSite, fetchExplicitPages, fetchSiteTechFiles } from "./crawler.ts";
+      export { analyzeTechnicalSeo } from "./analyzers/technical-seo.ts";
+      export { generateRuleBasedRecommendations } from "./analyzers/recommendations.ts";
+    `,
+    resolveDir: new URL(".", import.meta.url).pathname,
+    loader: "ts",
+  },
+  bundle: true, platform: "node", format: "esm", write: false,
+  plugins: [{
+    name: "local-fill-helpers",
+    setup(builder) {
+      const helperMocks = {
+        "./logger": mocks["./logger"],
+        "../logger": mocks["./logger"],
+        "@workspace/integrations-anthropic-ai": "export const anthropic = {};",
+        "../prompt-manager.js": "export const getPrompt = async () => ''; export const fillTemplate = () => '';",
+        "./recommendation-input.js": "export const buildRecommendationInput = () => ({});",
+      };
+      builder.onResolve({ filter: /^cheerio$/ }, () => ({ path: import.meta.resolve("cheerio"), external: true }));
+      builder.onResolve({ filter: /.*/ }, args => Object.hasOwn(helperMocks, args.path)
+        ? { path: args.path, namespace: "fill-helper" } : undefined);
+      builder.onLoad({ filter: /.*/, namespace: "fill-helper" }, args => ({
+        contents: helperMocks[args.path], loader: "js",
+      }));
+    },
+  }],
+});
+const realHelpers = await import(`data:text/javascript;base64,${Buffer.from(helperBundle.outputFiles[0].contents).toString("base64")}`);
+
+for (const failure of ["throw", "homepage"]) {
+  test(`local HTTP fill failure (${failure}) recovers technical files and prevents false missing-robots recommendations`, async () => {
+    const requests = [];
+    const server = createServer((req, res) => {
+      requests.push(req.url);
+      if (req.url === "/robots.txt") res.end(`User-agent: *\nAllow: /\nSitemap: http://${req.headers.host}/sitemap.xml`);
+      else if (req.url === "/llms.txt") res.end("# Synthetic German product documentation");
+      else if (req.url === "/sitemap.xml") res.end("<urlset></urlset>");
+      else if (req.url === "/de/selected" || (req.url === "/" && failure === "throw")) {
+        res.end(`<html lang="de"><head><title>Produktinformationen</title></head><body><main>${"Die Produkte und die Informationen für unsere Kunden sind für die Anwendung wichtig. ".repeat(10)}</main></body></html>`);
+      } else { res.writeHead(req.url === "/" ? 403 : 404); res.end(); }
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    const origin = `http://127.0.0.1:${port}`;
+    const originalFetch = globalThis.fetch;
+    // Preserve existing portless robots/llms construction while prohibiting external requests.
+    globalThis.fetch = (url, options) => {
+      const target = new URL(url);
+      assert.equal(target.hostname, "127.0.0.1");
+      if (!target.port) target.port = String(port);
+      assert.equal(target.port, String(port));
+      return originalFetch(target, options);
+    };
+    try {
+      const state = mixedState();
+      state.realSelection = realHelpers.fetchExplicitPages;
+      state.realTechFiles = realHelpers.fetchSiteTechFiles;
+      state.realCrawl = realHelpers.crawlSite;
+      state.realTechnicalSeo = realHelpers.analyzeTechnicalSeo;
+      state.realRules = realHelpers.generateRuleBasedRecommendations;
+      if (failure === "throw") state.fillError = new Error("Injected fill failure");
+      const id = `local-http-fill-${failure}`;
+      await runAnalysis(id, "url", origin, null, null, [`${origin}/de/selected`], null, { fillToMax: true });
+      const result = getAnalysis(id);
+      assert.equal(result.status, "completed");
+      assert.deepEqual(result.crawledPages, [`${origin}/de/selected`]);
+      assert.equal(result.inputs.pageSelection, "mixed");
+      assert.deepEqual(result.inputs.autoAddedPages, []);
+      for (const key of ["robotsTxtStatus", "sitemapStatus", "llmsTxtStatus"]) assert.equal(state.technicalCrawl[key], "found");
+      assert.match(state.technicalCrawl.robotsTxt, /User-agent/);
+      assert.match(state.technicalCrawl.sitemapXml, /urlset/);
+      assert.match(state.technicalCrawl.llmsTxt, /documentation/);
+      assert.equal(state.techCalls.length, 1);
+      assert.ok(requests.includes("/robots.txt") && requests.includes("/sitemap.xml") && requests.includes("/llms.txt"));
+      assert.ok(!result.recommendations.some(rec => rec.finding === "robots.txt fehlt vollständig"));
+    } finally {
+      globalThis.fetch = originalFetch;
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
   });
 }

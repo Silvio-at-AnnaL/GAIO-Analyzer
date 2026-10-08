@@ -529,6 +529,19 @@ function extractHreflangVariants(html: string, baseUrl: string): HreflangVariant
   return variants;
 }
 
+function htmlLinkBase($: cheerio.CheerioAPI, finalUrl: string): string {
+  const href = $("base").first().attr("href");
+  if (href !== undefined) {
+    try {
+      const resolved = new URL(href, finalUrl);
+      if (resolved.protocol === "http:" || resolved.protocol === "https:") return resolved.href;
+    } catch {
+      // Ignore an invalid base; subsequent base elements do not override it.
+    }
+  }
+  return finalUrl;
+}
+
 function extractInternalLinks(
   html: string,
   baseUrl: string,
@@ -537,8 +550,10 @@ function extractInternalLinks(
   startPath: string,
   excludedUrls: Set<string>,
   onExcludedPath: (url: string) => void,
+  isExcludedUrl?: (url: string) => boolean,
 ): Array<{ url: string }> {
   const $ = cheerio.load(html);
+  const linkBase = htmlLinkBase($, baseUrl);
   const seen = new Set<string>();
   const results: Array<{ url: string }> = [];
 
@@ -546,7 +561,7 @@ function extractInternalLinks(
     const href = $(el).attr("href");
     if (!href) return;
     try {
-      const resolved = new URL(href, baseUrl);
+      const resolved = new URL(href, linkBase);
       if (hostKey(resolved.hostname) !== siteKey) return;
       if (!resolved.protocol.startsWith("http")) return;
 
@@ -555,6 +570,10 @@ function extractInternalLinks(
       if (seen.has(url)) return;
       seen.add(url);
       if (excludedUrls.has(url)) return;
+      if (isExcludedUrl?.(url)) {
+        onExcludedPath(url);
+        return;
+      }
 
       // Rule 4: path ceiling
       const pathname = new URL(url).pathname;
@@ -921,6 +940,7 @@ async function discoverSitemap(
   // Step 4B: HTML sitemap — homepage link search
   if (homepageHtml) {
     const $ = cheerio.load(homepageHtml);
+    const linkBase = htmlLinkBase($, homepageUrl);
     let foundUrl: string | null = null;
     $("a[href]").each((_, el) => {
       if (foundUrl) return;
@@ -930,7 +950,10 @@ async function discoverSitemap(
         href.toLowerCase().includes("sitemap") &&
         /sitemap|site\s*map|seitenübersicht|übersicht/i.test(text)
       ) {
-        try { foundUrl = new URL(href, homepageUrl).href; } catch { /* skip */ }
+        try {
+          const resolved = new URL(href, linkBase);
+          if (resolved.protocol === "http:" || resolved.protocol === "https:") foundUrl = resolved.href;
+        } catch { /* skip */ }
       }
     });
     if (foundUrl && (!canFetch || canFetch(foundUrl))) {
@@ -1242,8 +1265,20 @@ export async function crawlSite(
   const visited = new Set<string>();
   const seedMode = opts?.seedPages !== undefined;
   const excludedUrls = new Set((opts?.excludeUrls ?? []).map(normalizeUrl));
-  const isExcluded = (url: string) => excludedUrls.has(normalizeUrl(url));
-  const seeds = (opts?.seedPages ?? []).filter((page) => !isExcluded(page.url) && !(page.finalUrl && isExcluded(page.finalUrl))).slice(0, maxPages);
+  const excludedPaths = new Set([...excludedUrls].flatMap((url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.search ? [] : [`${parsed.origin}${parsed.pathname}`];
+    } catch {
+      return [];
+    }
+  }));
+  const isExcluded = (url: string) => {
+    const normalized = normalizeUrl(url);
+    const parsed = new URL(normalized);
+    return excludedUrls.has(normalized) || excludedPaths.has(`${parsed.origin}${parsed.pathname}`);
+  };
+  const seeds = (opts?.seedPages ?? []).slice(0, maxPages);
   result.pages.push(...seeds);
   for (const page of seeds) {
     visited.add(canon(page.url));
@@ -1301,6 +1336,7 @@ export async function crawlSite(
   visited.add(canon(homepageUrl));
 
   let homepageHtml = "";
+  let homepageFinalUrl = homepageUrl;
   let canonicalHomepageUrl = canon(homepageUrl);
   const homeSeed = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(homepageUrl) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(homepageUrl)));
   const fetchDiscoveryPage = async (url: string, timeoutMs = 15000) => {
@@ -1338,6 +1374,7 @@ export async function crawlSite(
       // Keep the input origin.
     }
     canonicalHomepageUrl = canon(homePage.finalUrl);
+    homepageFinalUrl = homePage.finalUrl;
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
     let detection = detectPageLanguageDetailed(homepageHtml);
@@ -1410,6 +1447,7 @@ export async function crawlSite(
               startPath = new URL(variant.url).pathname.replace(/\/+$/, "") || "/";
               startPathHasLangPrefix = LANG_PREFIX_RE.test(startPath + "/");
               canonicalHomepageUrl = canon(variantPage.finalUrl);
+              homepageFinalUrl = variantPage.finalUrl;
               visited.add(canon(homepageUrl));
               visited.add(canonicalHomepageUrl);
               detection = detectPageLanguageDetailed(homepageHtml);
@@ -1440,6 +1478,7 @@ export async function crawlSite(
         if (fingerprint) seenFingerprints.set(fingerprint, canonicalHomepageUrl);
         result.pages.push({
         url: canonicalHomepageUrl,
+        finalUrl: homepageFinalUrl,
         html: homepageHtml,
         contentType: homePage.contentType,
         statusCode: homePage.statusCode,
@@ -1500,7 +1539,7 @@ export async function crawlSite(
   }
   {
     const origin = `${canonicalProtocol}//${canonicalHost}`;
-    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, result.languageVariant?.to ?? canonicalHomepageUrl, targetLang, canFetchTechnical);
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, homepageFinalUrl, targetLang, canFetchTechnical);
     result.sitemapXml = sd.sitemapXml;
     result.sitemapResolution = sd.sitemapResolution;
     result.sitemapXmlExists = sd.sitemapXmlExists;
@@ -1515,19 +1554,20 @@ export async function crawlSite(
 
   // Homepage links
   for (const page of seeds) {
-    for (const { url } of extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath)) {
+    for (const { url } of extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded)) {
       addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
     }
   }
   if (homepageHtml) {
     const links = extractInternalLinks(
       homepageHtml,
-      result.languageVariant?.to ?? canonicalHomepageUrl,
+      homepageFinalUrl,
       siteKey,
       canon,
       startPath,
       hreflangUrlSet,
       recordExcludedPath,
+      isExcluded,
     );
     for (const { url } of links) {
       addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
@@ -1540,6 +1580,10 @@ export async function crawlSite(
     for (const u of sitemapUrls) {
       try {
         const parsed = new URL(u);
+        if (isExcluded(u)) {
+          recordExcludedPath(u);
+          continue;
+        }
         if (!isWithinStartPath(parsed.pathname, startPath)) continue;
         if (EXCLUDED_KEYWORD_PATTERN.test(u) || isExcludedContentUrl(u)) {
           recordExcludedPath(u);
@@ -1599,7 +1643,7 @@ export async function crawlSite(
       opts?.onProgress?.(result.pages.length, maxPages);
       quarantineHreflang(extractHreflangVariants(page.html, page.url));
       if (pagesLeft > 0) {
-        const links = extractInternalLinks(page.html, page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
+        const links = extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded);
         for (const { url } of links) {
           addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
         }
@@ -1681,6 +1725,7 @@ export async function crawlSite(
       if (page.statusCode < 400 && blocked === null) {
         const crawledPage: CrawledPage = {
           url,
+          finalUrl: page.finalUrl,
           html: page.html,
           contentType: page.contentType,
           statusCode: page.statusCode,
@@ -1753,7 +1798,7 @@ export async function crawlSite(
 
         // Discover new links and add to per-category queues (Rule 5 Step 5)
         if (pagesLeft > 0) {
-          const links = extractInternalLinks(page.html, url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath);
+          const links = extractInternalLinks(page.html, page.finalUrl ?? url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded);
           for (const { url: linkUrl } of links) {
             addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
           }

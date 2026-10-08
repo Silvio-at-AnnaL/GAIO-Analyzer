@@ -1,4 +1,4 @@
-import { crawlSite, fetchExplicitPages, determineSiteLanguage, normalizeUrl, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchExplicitPages, fetchSiteTechFiles, determineSiteLanguage, normalizeUrl, type SiteTechFiles, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
@@ -339,6 +339,20 @@ export async function runAnalysis(
         if (fillOptions?.fillToMax) {
           const selectedResult = crawlResult;
           let homepageHtml: string | undefined;
+          const fetchFallbackTechFiles = async (): Promise<Partial<SiteTechFiles>> => {
+            try {
+              return await fetchSiteTechFiles(url);
+            } catch (err) {
+              logger.warn({ url, err }, "page fill technical files failed");
+              return {
+                robotsTxt: null, robotsTxtExists: false, robotsTxtStatus: "error",
+                llmsTxt: null, llmsTxtExists: false, llmsTxtStatus: "error",
+                sitemapXml: null, sitemapXmlExists: false, sitemapStatus: "error",
+                sitemapType: "none", sitemapResolution: null,
+                htmlSitemapHtml: null, htmlSitemapUrl: null,
+              };
+            }
+          };
           try {
             const selectionLanguage = determineSiteLanguage(pages).lang;
             const filled = await crawlSite(url, 16, {
@@ -373,12 +387,14 @@ export async function runAnalysis(
               },
               siteLanguage: determineSiteLanguage(pages, homepageHtml),
             };
+            if (fillFailed) Object.assign(crawlResult, await fetchFallbackTechFiles());
             const selectedUrls = new Set(explicitUrls.map(normalizeUrl));
             if (state.inputs) state.inputs.autoAddedPages = fillFailed ? [] : pages.filter((page) => !selectedUrls.has(normalizeUrl(page.url))).map((page) => page.url);
           } catch (err) {
             logger.warn({ url, err }, "page fill failed");
             crawlResult = selectedResult;
             pages = selectedResult.pages;
+            Object.assign(crawlResult, await fetchFallbackTechFiles());
           }
         }
       } else {

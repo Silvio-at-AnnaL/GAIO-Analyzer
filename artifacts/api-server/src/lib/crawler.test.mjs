@@ -86,6 +86,103 @@ function fillFixture(req, res) {
   res.end(languageHtml("de", `${path} ${germanText.repeat(4)}`, path === "/" ? ["/products/removed", ...links] : []));
 }
 
+test("queryless exclusions cover query variants from homepage links and XML sitemap candidates", async () => {
+  const blocked = "/de/kontakt?productid=1&cHash=x";
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), [blocked, "/de/kontakt-extra"]));
+    else if (req.url === "/sitemap.xml") res.end(`<urlset><url><loc>http://${req.headers.host}/de/kontakt?productid=2&amp;cHash=y</loc></url></urlset>`);
+    else if (req.url === "/de/selected" || req.url === "/de/kontakt-extra") res.end(languageHtml("de", `${req.url} ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/de/selected`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, excludeUrls: [`${origin}/de/kontakt/#fragment`], preferredLang: "de" });
+    assert.ok(!requests.some(request => request.url.startsWith("/de/kontakt?")));
+    assert.ok(!result.pages.some(page => new URL(page.url).pathname === "/de/kontakt"));
+    assert.ok(result.pages.some(page => page.url === `${origin}/de/kontakt-extra`), "path matching must not be a prefix match");
+    assert.ok(result.skipped.excludedPath >= 2);
+    assert.ok(result.skipped.urls.includes(`${origin}${blocked}`));
+  });
+});
+
+test("query-specific exclusions leave other queries on the same path allowed", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/de/x?a=1", "/de/x?a=2"]));
+    else if (req.url === "/de/x?a=2") res.end(languageHtml("de", `Second query ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 4, { excludeUrls: [`${origin}/de/x?a=1#ignored`] });
+    assert.ok(!requests.some(request => request.url === "/de/x?a=1"));
+    assert.ok(requests.some(request => request.url === "/de/x?a=2"));
+    assert.ok(result.pages.some(page => page.url === `${origin}/de/x?a=2`));
+    assert.ok(result.skipped.excludedPath >= 1);
+  });
+});
+
+test("exclusions do not remove selected seeds, including selected query variants", async () => {
+  await withServer(fillFixture, async ({ origin }) => {
+    const seed = { url: `${origin}/de/kontakt?a=2`, html: languageHtml("de", germanText.repeat(4)), statusCode: 200 };
+    const result = await crawlSite(origin, 1, { seedPages: [seed], excludeUrls: [`${origin}/de/kontakt`] });
+    assert.deepEqual(result.pages, [seed]);
+  });
+});
+
+for (const source of ["homepage", "page loop"]) {
+  test(`${source} discovery resolves relative links against the redirect destination with its trailing slash`, async () => {
+    await withServer((req, res) => {
+      if (req.url === "/de") { res.writeHead(302, { Location: "/de/" }); res.end(); }
+      else if (req.url === "/") res.end(languageHtml("de", `Root ${germanText.repeat(4)}`, ["/de"]));
+      else if (req.url === "/de/") res.end(languageHtml("de", `Directory ${germanText.repeat(4)}`, ["produkte"]));
+      else if (req.url === "/de/produkte") res.end(languageHtml("de", `Products ${germanText.repeat(4)}`));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin, requests }) => {
+      const result = await crawlSite(source === "homepage" ? `${origin}/de` : origin, 5);
+      assert.ok(requests.some(request => request.url === "/de/produkte"));
+      assert.ok(!requests.some(request => request.url === "/produkte"));
+      assert.ok(result.pages.some(page => page.url === `${origin}/de/produkte`));
+      assert.equal(result.pages.find(page => page.url === `${origin}/de`)?.finalUrl, `${origin}/de/`);
+    });
+  });
+}
+
+for (const base of ["absolute", "relative", "non-http", "first only", "invalid first"]) {
+  test(`HTML link discovery honours ${base} base href on a crawled page`, async () => {
+    await withServer((req, res) => {
+      if (req.url === "/") res.end(languageHtml("de", `Root ${germanText.repeat(4)}`, ["/de/start/x"]));
+      else if (req.url === "/de/start/x") {
+        const bases = {
+          absolute: `<base href="http://${req.headers.host}/de/">`,
+          relative: '<base href="../">',
+          "non-http": '<base href="javascript:alert(1)">',
+          "first only": '<base href="/de/"><base href="/wrong/">',
+          "invalid first": '<base href="mailto:test@example.test"><base href="/de/">',
+        };
+        res.end(`<html lang="de"><head>${bases[base]}</head><body><h1>Start</h1><p>${germanText.repeat(4)}</p><a href="produkte">Produkte</a></body></html>`);
+      } else if (req.url === "/de/produkte" || req.url === "/de/start/produkte") res.end(languageHtml("de", `Products ${germanText.repeat(4)}`));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin, requests }) => {
+      const expected = ["non-http", "invalid first"].includes(base) ? "/de/start/produkte" : "/de/produkte";
+      const result = await crawlSite(origin, 5);
+      assert.ok(requests.some(request => request.url === expected));
+      assert.ok(result.pages.some(page => page.url === `${origin}${expected}`));
+      assert.ok(!requests.some(request => request.url.startsWith("/wrong/")));
+    });
+  });
+}
+
+test("HTML sitemap link lookup uses the document base resolved against the final homepage URL", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/de") { res.writeHead(302, { Location: "/de/start/" }); res.end(); }
+    else if (req.url === "/de/start/") res.end(`<html lang="de"><head><base href="../"></head><body>${germanText.repeat(4)}<a href="sitemap-custom.html">Seitenübersicht</a></body></html>`);
+    else if (req.url === "/de/sitemap-custom.html") res.end(languageHtml("de", `Sitemap ${germanText.repeat(5)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(`${origin}/de`, 3);
+    assert.equal(result.sitemapType, "html");
+    assert.equal(result.htmlSitemapUrl, `${origin}/de/sitemap-custom.html`);
+    assert.ok(requests.some(request => request.url === "/de/sitemap-custom.html"));
+  });
+});
+
 test("fill seeds stay first, are not refetched, and excluded normalized links never return", async () => {
   await withServer(fillFixture, async ({ origin, requests }) => {
     const urls = [`${origin}/products/0`, `${origin}/services/0`];
