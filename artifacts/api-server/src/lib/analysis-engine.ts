@@ -338,7 +338,6 @@ export async function runAnalysis(
         pages = crawlResult.pages;
         if (fillOptions?.fillToMax) {
           const selectedResult = crawlResult;
-          let homepageHtml: string | undefined;
           const fetchFallbackTechFiles = async (): Promise<Partial<SiteTechFiles>> => {
             try {
               return await fetchSiteTechFiles(url);
@@ -360,7 +359,6 @@ export async function runAnalysis(
               seedPages: pages,
               excludeUrls: state.inputs?.excludedPages ?? [],
               ...(selectionLanguage ? { preferredLang: selectionLanguage } : {}),
-              onHomepage: (html) => { homepageHtml = html; },
               onProgress: (done, total) => {
                 state.progress = 5 + Math.round((done / Math.max(1, total)) * 15);
                 save();
@@ -385,7 +383,7 @@ export async function runAnalysis(
                 nonContent: selectedResult.skipped.nonContent + filled.skipped.nonContent,
                 urls: [...new Set([...selectedResult.skipped.urls, ...filled.skipped.urls])].slice(0, 10),
               },
-              siteLanguage: determineSiteLanguage(pages, homepageHtml),
+              siteLanguage: determineSiteLanguage(pages),
             };
             if (fillFailed) Object.assign(crawlResult, await fetchFallbackTechFiles());
             const selectedUrls = new Set(explicitUrls.map(normalizeUrl));
@@ -453,7 +451,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
-        siteLanguage: determineSiteLanguage(pages, html),
+        siteLanguage: determineSiteLanguage(pages),
         languageVariant: null,
         skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
         timedOut: false,

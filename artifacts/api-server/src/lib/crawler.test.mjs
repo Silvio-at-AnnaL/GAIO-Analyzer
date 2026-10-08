@@ -24,7 +24,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { fetchWithTiming, fetchTechFile, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage, isNonContentPage, isThinPage } = await import(
+const { fetchWithTiming, fetchTechFile, fetchPage, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage, isNonContentPage, isThinPage } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 const diagnosticsBundle = await build({
@@ -736,9 +736,174 @@ test("explicit language uses content majority in the first five pages and detect
   assert.deepEqual(determineSiteLanguage([de("en"), de("en"), en("en"), en("en")]), { lang: "en", source: "declared", declared: "en", mismatch: false });
   assert.deepEqual(determineSiteLanguage([de(null), en(null)]), { lang: null, source: null, declared: null, mismatch: false });
   assert.equal(determineSiteLanguage([de("en"), de("en"), de("en"), en("en"), en("en"), en("en"), en("en")]).lang, "de");
-  assert.deepEqual(determineSiteLanguage([], languageHtml("de", "Kurz")), { lang: "de", source: "declared", declared: "de", mismatch: false });
-  assert.deepEqual(determineSiteLanguage([en("de"), en("de")], languageHtml("en", "Home")), { lang: "en", source: "content", declared: "en", mismatch: false });
+  assert.deepEqual(determineSiteLanguage([]), { lang: null, source: null, declared: null, mismatch: false });
+  assert.deepEqual(determineSiteLanguage([en("de"), en("de")]), { lang: "en", source: "content", declared: "de", mismatch: true });
 });
+
+test("evaluated declarations use the first-five majority and the first evaluated page on ties", () => {
+  const de = declared => ({ html: languageHtml(declared, germanText.repeat(4)) });
+  assert.deepEqual(determineSiteLanguage(Array.from({ length: 5 }, () => de("de"))), { lang: "de", source: "content", declared: "de", mismatch: false });
+  assert.deepEqual(determineSiteLanguage(Array.from({ length: 5 }, () => de("en"))), { lang: "de", source: "content", declared: "en", mismatch: true });
+  assert.equal(determineSiteLanguage([de("en"), de("de"), de("de"), de(null), de("de")]).declared, "de");
+  assert.equal(determineSiteLanguage([de("en"), de("de"), de("de"), de("en")]).declared, "en");
+  assert.equal(determineSiteLanguage([de("de"), de("en"), de("en"), de("de")]).declared, "de");
+  assert.equal(determineSiteLanguage([de(null), de("en"), de("de")]).declared, null);
+  assert.equal(determineSiteLanguage(Array.from({ length: 5 }, () => de(null))).declared, null);
+  assert.equal(determineSiteLanguage([de("en"), de("de"), de("de"), de("de"), de("de"), ...Array.from({ length: 6 }, () => de("en"))]).declared, "de");
+});
+
+test("explicit German pages ignore the English root declaration", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("en", englishText.repeat(4)));
+    else if (req.url.startsWith("/de/page")) res.end(languageHtml("de", `${req.url} ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const result = await fetchExplicitPages(origin, Array.from({ length: 5 }, (_, index) => `${origin}/de/page${index}`));
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "de", mismatch: false });
+    assert.ok(requests.some(request => request.url === "/"), "technical discovery still fetches the entered root");
+  });
+});
+
+test("connection reset codes and socket messages are classified without changing existing mappings", () => {
+  for (const code of ["ECONNRESET", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_CLOSED"]) {
+    assert.equal(classifyFetchError(Object.assign(new Error("failure"), { code })), "connection_reset");
+    assert.equal(classifyFetchError(new Error("fetch failed", { cause: Object.assign(new Error("failure"), { code }) })), "connection_reset");
+  }
+  for (const message of ["other side closed", "socket hang up"]) {
+    assert.equal(classifyFetchError(new Error(message)), "connection_reset");
+    assert.equal(classifyFetchError(new Error("fetch failed", { cause: new Error(message) })), "connection_reset");
+  }
+  for (const [code, reason] of [
+    ["ECONNREFUSED", "refused"], ["ENOTFOUND", "dns"], ["ETIMEDOUT", "timeout"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls_chain"], ["CERT_HAS_EXPIRED", "tls_other"],
+    ["REDIRECT_LOOP", "redirect_loop"], ["UNRECOGNIZED", "unknown"],
+  ]) assert.equal(classifyFetchError({ cause: { code } }), reason);
+  assert.equal(classifyFetchError(new Error("fetch-timeout")), "timeout");
+});
+
+for (const mode of ["explicit", "crawl", "homepage"]) {
+  test(`${mode} page fetch retries one socket reset and counts a recovered page once`, async () => {
+    let pageHits = 0;
+    const path = mode === "homepage" ? "/" : "/de/produkte";
+    await withServer((req, res) => {
+      res.setHeader("Connection", "close");
+      if (req.url === path) {
+        if (++pageHits === 1) { req.socket.destroy(); return; }
+        res.end(languageHtml("de", `Recovered ${germanText.repeat(4)}`));
+      } else if (req.url === "/") res.end(languageHtml("de", `Root ${germanText.repeat(4)}`, [path]));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const result = mode === "explicit"
+        ? await fetchExplicitPages(origin, [`${origin}${path}`], seedOptions)
+        : await crawlSite(origin, mode === "homepage" ? 1 : 2);
+      assert.equal(pageHits, 2);
+      assert.ok(result.pages.some(page => new URL(page.url).href === new URL(`${origin}${path}`).href));
+      assert.equal(result.reliability.attempted, mode === "crawl" ? 2 : 1);
+      assert.equal(result.reliability.succeeded, result.reliability.attempted);
+      assert.equal(result.reliability.failed, 0);
+      assert.equal(logs.filter(log => log.msg === "Retrying page fetch" && new URL(log.obj.url).href === new URL(`${origin}${path}`).href).length, 1);
+    });
+  });
+}
+
+for (const mode of ["explicit", "crawl", "technical"]) {
+  test(`${mode} persistent socket resets retain the classified failure and underlying cause code`, async () => {
+    let pageHits = 0;
+    await withServer((req, res) => {
+      res.setHeader("Connection", "close");
+      if (req.url === "/de/produkte") { pageHits++; req.socket.destroy(); }
+      else if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/de/produkte"]));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const result = mode === "explicit" ? await fetchExplicitPages(origin, [`${origin}/de/produkte`], seedOptions)
+        : mode === "crawl" ? await crawlSite(origin, 2) : await fetchTechFile(`${origin}/de/produkte`, 1000);
+      assert.equal(pageHits, 2);
+      if (mode === "technical") assert.equal(result.reason, "connection_reset");
+      else {
+        assert.equal(result.reliability.failures[0].reason, "connection_reset");
+        assert.equal(result.reliability.attempted, mode === "crawl" ? 2 : 1);
+        assert.equal(result.reliability.failed, 1);
+      }
+      const failureLog = logs.find(log => log.level === "warn" && log.obj.reason === "connection_reset");
+      assert.ok(failureLog);
+      assert.match(failureLog.obj.cause.code, /^(ECONNRESET|EPIPE|UND_ERR_SOCKET|UND_ERR_CLOSED)$/);
+      assert.equal(typeof failureLog.obj.cause.message, "string");
+    });
+  });
+}
+
+test("HTTP 404 and 500 page responses are not retried in explicit or automatic mode", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/de/404", "/de/500"]));
+    else { res.writeHead(req.url === "/de/500" ? 500 : 404); res.end(); }
+  }, async ({ origin, requests }) => {
+    await crawlSite(origin, 3);
+    const explicit = await fetchExplicitPages(origin, [`${origin}/de/404`, `${origin}/de/500`], seedOptions);
+    for (const path of ["/de/404", "/de/500"]) assert.equal(requests.filter(request => request.url === path).length, 2, "once per mode");
+    assert.deepEqual(explicit.reliability.failures.map(failure => failure.reason), ["http_error", "http_error"]);
+    assert.ok(!logs.some(log => log.msg === "Retrying page fetch"));
+  });
+});
+
+test("HTML sitemap network failure includes its underlying cause in the technical-file log", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4)));
+    else if (req.url === "/sitemap") req.socket.destroy();
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 1);
+    assert.equal(result.sitemapStatus, "error");
+    const entry = logs.find(log => log.msg === "technical file not retrieved" && log.obj.file === "Sitemap");
+    assert.ok(entry);
+    assert.match(entry.obj.cause.code, /^(ECONNRESET|EPIPE|UND_ERR_SOCKET|UND_ERR_CLOSED)$/);
+    assert.equal(typeof entry.obj.cause.message, "string");
+  });
+});
+
+test("ECONNREFUSED is classified and never retried for explicit pages", async () => {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  await new Promise(resolve => server.close(resolve));
+  const previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (url, options) => {
+    assert.equal(new URL(url).origin, origin);
+    calls++;
+    return previousFetch(url, options);
+  };
+  try {
+    const result = await fetchExplicitPages(origin, [`${origin}/de/produkte`], seedOptions);
+    assert.equal(result.reliability.failures[0].reason, "refused");
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+for (const mode of ["explicit", "crawl", "competitor"]) {
+  test(`${mode} skips retry after its deadline is exhausted`, async () => {
+    let pageHits = 0;
+    await withServer((req, res) => {
+      if (req.url === "/de/produkte") { pageHits++; req.socket.destroy(); }
+      else if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/de/produkte"]));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const realNow = Date.now;
+      const localFetch = globalThis.fetch;
+      globalThis.fetch = async (url, options) => {
+        try { return await localFetch(url, options); }
+        catch (err) { Date.now = () => realNow() + 200_000; throw err; }
+      };
+      try {
+        const result = mode === "explicit" ? await fetchExplicitPages(origin, [`${origin}/de/produkte`], seedOptions)
+          : await crawlSite(origin, 2, mode === "competitor"
+            ? { deadlineMs: 100, techPhaseBudgetMs: 50, minPagePhaseMs: 5000 } : { deadlineMs: 5000 });
+        assert.equal(pageHits, 1);
+        assert.equal(result.reliability.failures[0].reason, "connection_reset");
+        assert.ok(!logs.some(log => log.msg === "Retrying page fetch"));
+      } finally { Date.now = realNow; globalThis.fetch = localFetch; }
+    });
+  });
+}
 
 test("explicit fetch mode records site language but never filters selected pages", async () => {
   await withServer(languageSite(), async ({ origin }) => {

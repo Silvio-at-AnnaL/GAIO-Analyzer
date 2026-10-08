@@ -32,7 +32,9 @@ const mocks = {
     };
     export const normalizeUrl = value => new URL(value).href.replace(/\\/$/, "");
     export const pageLanguage = () => "en";
-    export const determineSiteLanguage = () => globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
+    export const determineSiteLanguage = (...args) => globalThis.__analysisLanguageTest?.realDetermine
+      ? globalThis.__analysisLanguageTest.realDetermine(...args)
+      : globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
   `,
   "./analyzers/technical-seo": `export const analyzeTechnicalSeo = (...args) => {
     const state = globalThis.__analysisLanguageTest;
@@ -269,7 +271,7 @@ for (const failure of ["throw", "homepage"]) {
 const helperBundle = await build({
   stdin: {
     contents: `
-      export { crawlSite, fetchExplicitPages, fetchSiteTechFiles } from "./crawler.ts";
+      export { crawlSite, fetchExplicitPages, fetchSiteTechFiles, determineSiteLanguage } from "./crawler.ts";
       export { analyzeTechnicalSeo } from "./analyzers/technical-seo.ts";
       export { generateRuleBasedRecommendations } from "./analyzers/recommendations.ts";
     `,
@@ -297,6 +299,49 @@ const helperBundle = await build({
   }],
 });
 const realHelpers = await import(`data:text/javascript;base64,${Buffer.from(helperBundle.outputFiles[0].contents).toString("base64")}`);
+
+for (const mode of ["manual", "fill"]) {
+  test(`${mode} analysis uses evaluated German declarations despite an English root and emits no false language recommendation`, async () => {
+    const server = createServer((req, res) => {
+      if (req.url === "/") res.end('<html lang="en"><body>' + "The products and services for our customers are available with detailed information. ".repeat(8) + "</body></html>");
+      else if (req.url.startsWith("/de/page")) res.end(`<html lang="de"><head><title>Produktinformationen</title></head><body><h1>${req.url}</h1><p>${"Die Produkte und die Informationen für unsere Kunden sind für die Anwendung wichtig. ".repeat(8)}</p></body></html>`);
+      else if (req.url === "/robots.txt") res.end("User-agent: *\nAllow: /");
+      else { res.writeHead(404); res.end(); }
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    const origin = `http://127.0.0.1:${port}`;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (url, options) => {
+      const target = new URL(url);
+      assert.equal(target.hostname, "127.0.0.1");
+      if (!target.port) target.port = String(port);
+      assert.equal(target.port, String(port));
+      return originalFetch(target, options);
+    };
+    try {
+      const state = mixedState();
+      state.realSelection = realHelpers.fetchExplicitPages;
+      state.realCrawl = realHelpers.crawlSite;
+      state.realDetermine = realHelpers.determineSiteLanguage;
+      state.realTechnicalSeo = realHelpers.analyzeTechnicalSeo;
+      state.realRules = realHelpers.generateRuleBasedRecommendations;
+      const selected = Array.from({ length: 5 }, (_, index) => `${origin}/de/page${index}`);
+      const id = `evaluated-language-${mode}`;
+      await runAnalysis(id, "url", origin, null, null, selected, null, mode === "fill" ? { fillToMax: true } : undefined);
+      const result = getAnalysis(id);
+      assert.equal(result.status, "completed");
+      assert.deepEqual(result.crawledPages, selected);
+      assert.deepEqual(result.siteLanguage, { lang: "de", source: "content", declared: "de", mismatch: false });
+      assert.ok(!result.recommendations.some(rec => rec.finding.startsWith("Sprachangabe im Quelltext passt nicht")));
+      assert.equal(state.techCalls, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+}
 
 for (const failure of ["throw", "homepage"]) {
   test(`local HTTP fill failure (${failure}) recovers technical files and prevents false missing-robots recommendations`, async () => {

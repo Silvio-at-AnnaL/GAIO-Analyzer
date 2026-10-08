@@ -507,6 +507,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.crawl_reason_bot_protection": { group: "results", de: "Bot-Schutz blockiert den Zugriff" },
   "results.crawl_reason_parked_domain":  { group: "results", de: "Park- bzw. Verkaufsseite" },
   "results.crawl_reason_unknown":       { group: "results", de: "Unbekannt" },
+  "results.crawl_reason_connection_reset": { group: "results", de: "Verbindung unterbrochen" },
   "results.crawl_reason_redirect_loop": { group: "results", de: "Weiterleitungsschleife" },
   "results.content_relevance_title":    { group: "results", de: "Inhaltliche Relevanz" },
   "results.headings_card_title":        { group: "results", de: "Heading-Struktur" },

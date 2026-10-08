@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 import { logger } from "./logger";
 import {
   classifyFetchError,
+  fetchErrorCause,
   classifyHttpStatus,
   detectBlockedContent,
   type CrawlFailReason,
@@ -242,11 +243,17 @@ export function detectPageLanguage(html: string): "de" | "en" | null {
 }
 
 /** Explicit selection is never filtered; use the first five pages as evidence. */
-export function determineSiteLanguage(pages: Array<Pick<CrawledPage, "html">>, homepageHtml?: string): SiteLanguage {
-  const declared = detectPageLanguageDetailed(homepageHtml ?? pages[0]?.html ?? "").declared;
+export function determineSiteLanguage(pages: Array<Pick<CrawledPage, "html">>): SiteLanguage {
+  const detections = pages.slice(0, 5).map((page) => detectPageLanguageDetailed(page.html));
+  const declarations = new Map<string, number>();
+  for (const detection of detections) {
+    if (detection.declared !== null) declarations.set(detection.declared, (declarations.get(detection.declared) ?? 0) + 1);
+  }
+  const ranked = [...declarations].sort((a, b) => b[1] - a[1]);
+  const declared = ranked.length === 0 ? null
+    : ranked[0][1] === ranked[1]?.[1] ? detections[0]?.declared ?? null : ranked[0][0];
   const votes = { de: 0, en: 0 };
-  for (const page of pages.slice(0, 5)) {
-    const detection = detectPageLanguageDetailed(page.html);
+  for (const detection of detections) {
     if (detection.source === "content" && detection.lang) votes[detection.lang]++;
   }
   const lang = votes.de === votes.en
@@ -435,6 +442,7 @@ export async function fetchTechFile(
   const startedAt = Date.now();
   let attempts = 0;
   let result: TechFileFetchResult | null = null;
+  let cause: ReturnType<typeof fetchErrorCause> | undefined;
 
   while (attempts < 2) {
     if (canFetch && !canFetch(url)) {
@@ -444,6 +452,7 @@ export async function fetchTechFile(
     attempts++;
     try {
       const resp = await fetchWithTiming(url, timeoutMs);
+      cause = undefined;
       if (resp.statusCode === 200) {
         result = { status: "found", resp, statusCode: resp.statusCode, durationMs: Date.now() - startedAt };
         break;
@@ -466,9 +475,11 @@ export async function fetchTechFile(
         durationMs: Date.now() - startedAt,
       };
     } catch (err) {
+      cause = fetchErrorCause(err);
       const classified = classifyFetchError(err);
       const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classified;
       result = { status: "error", reason, durationMs: Date.now() - startedAt };
+      logger.debug({ url, reason, cause, err }, "Technical file fetch failed");
       if (["redirect_loop", "dns", "tls_chain", "tls_other"].includes(reason)) break;
     }
 
@@ -497,6 +508,7 @@ export async function fetchTechFile(
       reason: finalResult.reason,
       durationMs: finalResult.durationMs,
       attempts,
+      cause,
     };
     if (finalResult.status === "error") {
       logger.warn(fields, "technical file not retrieved");
@@ -700,11 +712,38 @@ function urlLang(pathname: string): string | null {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function fetchPage(url: string): Promise<CrawledPage | null> {
+async function fetchPageWithRetry(
+  url: string,
+  timeoutMs = 15000,
+  canFetchUrl?: (url: string) => boolean,
+  deadline?: number,
+): Promise<FetchTimingResult> {
   try {
-    const data = await fetchWithTiming(url);
+    return await fetchWithTiming(url, timeoutMs, canFetchUrl);
+  } catch (err) {
+    const reason = classifyFetchError(err);
+    if ((err as { code?: string })?.code === "PAGE_FETCH_BLOCKED" ||
+      !["timeout", "connection_reset", "unknown"].includes(reason) ||
+      (deadline !== undefined && Date.now() + 1000 >= deadline)) throw err;
+    logger.debug({ url, reason, cause: fetchErrorCause(err) }, "Retrying page fetch");
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (deadline !== undefined && Date.now() >= deadline) throw err;
+    const retryTimeout = deadline === undefined ? timeoutMs : Math.min(timeoutMs, deadline - Date.now());
+    return fetchWithTiming(url, retryTimeout, canFetchUrl);
+  }
+}
+
+export async function fetchPage(
+  url: string,
+  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason) => void },
+): Promise<CrawledPage | null> {
+  try {
+    const data = await fetchPageWithRetry(url, 15000, undefined, opts?.deadline);
     return { url, ...data };
-  } catch {
+  } catch (err) {
+    const reason = classifyFetchError(err);
+    opts?.onFailure?.(reason);
+    logger.warn({ url, reason, cause: fetchErrorCause(err), err }, "Failed to fetch page");
     return null;
   }
 }
@@ -867,6 +906,7 @@ async function discoverSitemap(
     sitemapXmlExists: false, sitemapType: "none", sitemapStatus: "missing",
   };
   let hadError = false;
+  let cause: ReturnType<typeof fetchErrorCause> | undefined;
 
   // Step 1: /sitemap.xml
   {
@@ -911,7 +951,8 @@ async function discoverSitemap(
             return { ...none, sitemapXml: resp.html, sitemapXmlExists: true, sitemapType: "xml", sitemapStatus: "found" };
           }
         }
-      } catch {
+      } catch (err) {
+        cause = fetchErrorCause(err);
         hadError = true;
       }
     }
@@ -932,7 +973,8 @@ async function discoverSitemap(
       if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
         return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: url, sitemapType: "html", sitemapStatus: "found" };
       }
-    } catch {
+    } catch (err) {
+      cause = fetchErrorCause(err);
       hadError = true;
     }
   }
@@ -963,14 +1005,15 @@ async function discoverSitemap(
         if (resp.statusCode === 200 && resp.html.toLowerCase().includes("<html") && resp.html.length > 500) {
           return { ...none, htmlSitemapHtml: resp.html, htmlSitemapUrl: foundUrl, sitemapType: "html", sitemapStatus: "found" };
         }
-      } catch {
+      } catch (err) {
+        cause = fetchErrorCause(err);
         hadError = true;
       }
     }
   }
 
   const finalResult = { ...none, sitemapStatus: hadError ? "error" as const : "missing" as const };
-  const fields = { file: "Sitemap", url: origin, status: finalResult.sitemapStatus };
+  const fields = { file: "Sitemap", url: origin, status: finalResult.sitemapStatus, cause };
   if (finalResult.sitemapStatus === "error") {
     logger.warn(fields, "technical file not retrieved");
   } else {
@@ -1055,12 +1098,16 @@ export async function fetchExplicitPages(
   const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20_000, 180_000);
   const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
   const completed = new Array<boolean>(explicitUrls.length).fill(false);
+  const failureReasons = new Map<number, CrawlFailReason>();
   const loopStart = Date.now();
   let done = 0;
 
   for (const [index, pageUrl] of explicitUrls.entries()) {
     if (Date.now() - loopStart >= BATCH_DEADLINE_MS) break;
-    results[index] = await fetchPage(pageUrl);
+    results[index] = await fetchPage(pageUrl, {
+      deadline: loopStart + BATCH_DEADLINE_MS,
+      onFailure: (reason) => { failureReasons.set(index, reason); },
+    });
     completed[index] = true;
     opts?.onProgress?.(++done, explicitUrls.length);
   }
@@ -1104,7 +1151,7 @@ export async function fetchExplicitPages(
           return [{ url: explicitUrls[index], reason: "timeout" as const }];
         }
         if (page === null) {
-          return [{ url: explicitUrls[index], reason: "unknown" as const }];
+          return [{ url: explicitUrls[index], reason: failureReasons.get(index) ?? "unknown" }];
         }
         if (page.statusCode >= 400) {
           return [{
@@ -1119,11 +1166,7 @@ export async function fetchExplicitPages(
   };
 
   if (pages.length > 0 && !opts?.skipTechFiles) {
-    let homepageHtml: string | undefined;
-    Object.assign(result, await fetchSiteTechFiles(inputUrl, {
-      onHomepage: (html) => { homepageHtml = html; },
-    }));
-    result.siteLanguage = determineSiteLanguage(pages, homepageHtml);
+    Object.assign(result, await fetchSiteTechFiles(inputUrl));
   }
   logger.info({ host: new URL(inputUrl).hostname, siteLanguage: result.siteLanguage, switched: false, readmittedPages: 0 }, "site language determined");
   return result;
@@ -1342,10 +1385,10 @@ export async function crawlSite(
   const fetchDiscoveryPage = async (url: string, timeoutMs = 15000) => {
     let cachedDestination: CrawledPage | undefined;
     try {
-      return await fetchWithTiming(url, timeoutMs, seedMode ? (target) => {
+      return await fetchPageWithRetry(url, timeoutMs, seedMode ? (target) => {
         cachedDestination = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(target) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(target)));
         return !cachedDestination;
-      } : undefined);
+      } : undefined, crawlStart + CRAWL_DEADLINE_MS);
     } catch (error) {
       if ((error as { code?: string })?.code === "PAGE_FETCH_BLOCKED" && cachedDestination) {
         return { ...cachedDestination, finalUrl: cachedDestination.finalUrl ?? cachedDestination.url };
@@ -1459,7 +1502,7 @@ export async function crawlSite(
           } catch (err) {
             const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classifyFetchError(err);
             recordFailure(variant.url, reason);
-            logger.warn({ ...context, reason, err }, "language variant unavailable");
+            logger.warn({ ...context, reason, cause: fetchErrorCause(err), err }, "language variant unavailable");
           }
         }
       }
@@ -1511,7 +1554,7 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homepageUrl);
     recordFailure(canonicalHomepageUrl, reason);
     result.homepageFailReason = reason;
-    logger.warn({ url: canonicalHomepageUrl, reason, err }, "Failed to fetch homepage");
+    logger.warn({ url: canonicalHomepageUrl, reason, cause: fetchErrorCause(err), err }, "Failed to fetch homepage");
     if (
       reason === "dns" ||
       reason === "refused" ||
@@ -1718,9 +1761,9 @@ export async function crawlSite(
 
     result.reliability.attempted++;
     try {
-      const page = await fetchWithTiming(url, 15000, seedMode || excludedUrls.size > 0
+      const page = await fetchPageWithRetry(url, 15000, seedMode || excludedUrls.size > 0
         ? (target) => !isExcluded(target) && !excludedPageUrls.has(canon(target)) && !seededPageUrls.has(canon(target))
-        : undefined);
+        : undefined, pageDeadline);
       const blocked = detectBlockedContent(page.html, page.finalUrl);
       if (page.statusCode < 400 && blocked === null) {
         const crawledPage: CrawledPage = {
@@ -1820,7 +1863,7 @@ export async function crawlSite(
       }
       const reason = classifyFetchError(err);
       recordFailure(url, reason);
-      logger.warn({ url, reason, err }, "Failed to crawl page");
+      logger.warn({ url, reason, cause: fetchErrorCause(err), err }, "Failed to crawl page");
     }
   }
 

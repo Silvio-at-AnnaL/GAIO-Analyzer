@@ -12,6 +12,7 @@ export type CrawlFailReason =
   | "tls_other"
   | "dns"
   | "refused"
+  | "connection_reset"
   | "timeout"
   | "redirect_loop"
   | "http_error"
@@ -84,7 +85,7 @@ export function classifyHttpStatus(_status: number): CrawlFailReason {
 export function classifyFetchError(err: unknown): CrawlFailReason {
   const e = err as { name?: string; message?: string; code?: string; cause?: { code?: string; message?: string } } | null;
   if (/redirect count exceeded/i.test(`${e?.message ?? ""} ${e?.cause?.message ?? ""}`)) return "redirect_loop";
-  if (e?.name === "AbortError") return "timeout";
+  if (e?.name === "AbortError" || e?.message === "fetch-timeout") return "timeout";
 
   const code = e?.cause?.code ?? e?.code;
   switch (code) {
@@ -105,14 +106,25 @@ export function classifyFetchError(err: unknown): CrawlFailReason {
     case "EAI_AGAIN":
       return "dns";
     case "ECONNREFUSED":
-    case "ECONNRESET":
       return "refused";
+    case "ECONNRESET":
+    case "EPIPE":
+    case "UND_ERR_SOCKET":
+    case "UND_ERR_CLOSED":
+      return "connection_reset";
     case "UND_ERR_CONNECT_TIMEOUT":
     case "UND_ERR_HEADERS_TIMEOUT":
     case "UND_ERR_BODY_TIMEOUT":
     case "ETIMEDOUT":
       return "timeout";
     default:
+      if (/other side closed|socket hang up/i.test(`${e?.message ?? ""} ${e?.cause?.message ?? ""}`)) return "connection_reset";
       return "unknown";
   }
+}
+
+export function fetchErrorCause(err: unknown): { code: string | null; message: string | null } {
+  const error = err as { code?: string; message?: string; cause?: { code?: string; message?: string } } | null;
+  const cause = error?.cause ?? error;
+  return { code: cause?.code ?? null, message: cause?.message ?? null };
 }

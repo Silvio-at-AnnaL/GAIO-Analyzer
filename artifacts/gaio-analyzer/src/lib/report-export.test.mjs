@@ -209,6 +209,21 @@ function exportedCard(html) {
   return html.slice(start, html.indexOf(">Gecrawlte Seiten", start));
 }
 
+test("connection_reset uses its German label in HTML and the live renderer mapping", async () => {
+  const value = {
+    ...reliabilityFixture(1, 1),
+    crawlReliability: {
+      attempted: 2, succeeded: 1, failed: 1,
+      failures: [{ url: "https://example.test/reset", reason: "connection_reset" }],
+    },
+  };
+  const html = exportedCard(await exportReport(value));
+  assert.ok(html.includes("Verbindung unterbrochen"));
+  const source = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+  assert.match(source, /connection_reset:\s*"results\.crawl_reason_connection_reset"/);
+  assert.match(source, /t\(reasonLabels\[failure\.reason\]\s*\?\?\s*reasonLabels\.unknown\)/);
+});
+
 test("HTML reliability distinguishes 27 fetched from 11 evaluated pages, in the requested tile order", async () => {
   const html = exportedCard(await exportReport(reliabilityFixture()));
   assert.match(html, /Erfolgreich abgerufen<\/div><div class="val" style="color:#22c55e;">✓ 27<\/div>/);
@@ -267,7 +282,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1080 + 2);
+  assert.equal(Object.keys(labelDefaults).length, 1080 + 3);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -278,6 +293,7 @@ test("results defaults add one language-variant label and retain the crawl text 
     lang_name_en: "Englisch",
     lang_variant_info: "Die eingegebene Adresse zeigt die Sprachversion „{fromLang}“. Analysiert wurde die deutsche Sprachversion: {to}",
     page_auto_added: "(automatisch ergänzt)",
+    crawl_reason_connection_reset: "Verbindung unterbrochen",
   })) {
     assert.deepEqual(labelDefaults[`results.${key}`], { group: "results", de });
   }

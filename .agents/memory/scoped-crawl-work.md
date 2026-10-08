@@ -27,3 +27,11 @@ Manual selection means exactly the selected pages by default. Filling remaining 
 **Why:** The user uses manual selections for reproducible comparison runs.
 
 **How to apply:** Preserve exact-selection defaults when extending crawling, selection controls or report imports.
+
+## Timing-sensitive verification
+
+Before treating a small wall-clock budget fixture failure as a crawler regression, compare the committed and modified crawler with that fixture in isolation.
+
+**Why:** Combined runs produced budget failures while isolated checks of both versions passed; a later complete serial suite also passed without changing production budgets.
+
+**How to apply:** Use focused baseline/current comparisons and serial whole-suite verification when timing failures occur. Do not change reservations or timer origins just to accommodate test-process scheduling.
