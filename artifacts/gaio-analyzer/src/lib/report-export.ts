@@ -327,6 +327,7 @@ const CRAWL_SKIPPED_TEXT = {
   lang: "Seite(n) in einer anderen Sprache",
   path: "technische Seite(n) (z. B. Impressum, Konto, Formulare, Seitenfragmente)",
   duplicate: "Seite(n) mit identischem Inhalt (dieselbe Seite unter mehreren Adressen)",
+  nonContent: "Seite(n) ohne verwertbaren Inhalt (z. B. Bildanzeige, Datei, kaum Text)",
   note: "Diese Seiten fließen nicht in die Bewertung ein, damit nur vergleichbare Inhalte in derselben Sprache gemessen werden.",
   examples: "Beispiele:",
   more: "… und {n} weitere",
@@ -344,7 +345,7 @@ function renderCrawlReliabilityHtml(
     attempted: "Seiten versucht",
     succeeded: "Erfolgreich abgerufen",
     evaluated: "Davon bewertet",
-    sortedOut: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache oder identischer Inhalt).",
+    sortedOut: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache, identischer Inhalt oder keine Inhaltsseite, z. B. Bild oder Datei).",
     langMismatch: "Die Sprachangabe der Website (lang=\"{declared}\") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt.",
     langNameDe: "Deutsch",
     langNameEn: "Englisch",
@@ -413,7 +414,8 @@ function renderCrawlReliabilityHtml(
   const skippedLang = Number(skipped?.otherLanguage ?? 0);
   const skippedPath = Number(skipped?.excludedPath ?? 0);
   const skippedDuplicate = Number(skipped?.duplicate ?? 0);
-  if (skipped && skippedLang + skippedPath + skippedDuplicate > 0) {
+  const skippedNonContent = Number(skipped?.nonContent ?? 0);
+  if (skipped && skippedLang + skippedPath + skippedDuplicate + skippedNonContent > 0) {
     const urls = Array.isArray(skipped.urls)
       ? skipped.urls.filter((url): url is string => typeof url === "string")
       : [];
@@ -422,6 +424,7 @@ function renderCrawlReliabilityHtml(
       ${skippedLang > 0 ? `<p>${skippedLang} ${CRAWL_SKIPPED_TEXT.lang}</p>` : ""}
       ${skippedPath > 0 ? `<p>${skippedPath} ${CRAWL_SKIPPED_TEXT.path}</p>` : ""}
       ${skippedDuplicate > 0 ? `<p>${skippedDuplicate} ${CRAWL_SKIPPED_TEXT.duplicate}</p>` : ""}
+      ${skippedNonContent > 0 ? `<p>${skippedNonContent} ${CRAWL_SKIPPED_TEXT.nonContent}</p>` : ""}
       <p>${CRAWL_SKIPPED_TEXT.note}</p>
       ${urls.length > 0 ? `<details><summary>${CRAWL_SKIPPED_TEXT.examples}</summary>
         <ul style="padding-left:18px;">${urls.slice(0, 5).map((url) => `<li style="word-break:break-all;">${esc(url)}</li>`).join("")}</ul>

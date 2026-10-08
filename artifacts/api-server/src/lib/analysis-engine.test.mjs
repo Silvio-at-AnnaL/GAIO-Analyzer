@@ -93,7 +93,7 @@ for (const mode of ["auto", "manual"]) {
         siteLanguage: language,
         pages: [{ url: "http://127.0.0.1/home", html: '<html lang="en"><body>Kurz</body></html>', statusCode: 200 }],
         reliability: { attempted: 1, succeeded: 1, failed: 0, failures: [] },
-        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: mode === "manual" ? 1 : 0, urls: [] },
       },
     };
     await runAnalysis(`synthetic-language-${mode}`, "url", "http://127.0.0.1/home", null,
@@ -101,6 +101,7 @@ for (const mode of ["auto", "manual"]) {
     const result = getAnalysis(`synthetic-language-${mode}`);
     assert.equal(result.status, "completed");
     assert.deepEqual(result.siteLanguage, language);
+    assert.deepEqual(result.crawlSkipped, state.crawlResult.skipped);
     assert.equal(state.competitorCalls.length, 1);
     assert.equal(state.competitorCalls[0][3], "de", "must not use the homepage declaration");
     assert.deepEqual(state.modules.siteLanguage, language);

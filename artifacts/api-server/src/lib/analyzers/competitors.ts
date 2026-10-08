@@ -329,6 +329,7 @@ export async function analyzeCompetitors(
         techPhaseBudgetMs: 20_000,
         minPagePhaseMs: 20_000,
         preferredLang: mainSiteLang ?? undefined,
+        minTextChars: 50,
       });
       redirectedTo = crawlResult.homepageRedirect?.to;
 

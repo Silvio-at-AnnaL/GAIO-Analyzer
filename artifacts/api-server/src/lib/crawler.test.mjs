@@ -23,7 +23,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { fetchWithTiming, fetchTechFile, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage } = await import(
+const { fetchWithTiming, fetchTechFile, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage, isNonContentPage, isThinPage } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 const diagnosticsBundle = await build({
@@ -351,6 +351,7 @@ test("HTML sitemap lookup starts no additional fetch after its in-flight request
 
 test("only competitor calls opt into both budgets, retaining five pages and a 45-second deadline", async () => {
   const source = await readFile(new URL("./analyzers/competitors.ts", import.meta.url), "utf8");
+  assert.match(source, /minTextChars:\s*50/);
   assert.match(source, /COMPETITOR_MAX_PAGES = 5/);
   assert.match(source, /CRAWL_DEADLINE_MS = 45_000/);
   assert.match(source, /techPhaseBudgetMs: 20_000/);
@@ -522,5 +523,190 @@ test("explicit fetch mode records site language but never filters selected pages
     assert.equal(result.pages.length, 6);
     assert.deepEqual(result.pages.map(page => new URL(page.url).pathname), languagePaths);
     assert.equal(result.skipped.otherLanguage, 0);
+  });
+});
+
+test("non-content detection distinguishes MIME types and image-only body text at the exact threshold", () => {
+  const image = '<html><head><title>Image</title><meta name="robots" content="noindex"></head><body><script>Lots of invisible text</script><style>body { color: red }</style><noscript>Invisible fallback</noscript><img src="photo.jpg"></body></html>';
+  for (const contentType of ["image/jpeg", "application/pdf", "text/plain"]) {
+    assert.equal(isNonContentPage({ html: germanText.repeat(4), contentType }), "non_html");
+  }
+  for (const contentType of ["text/html", "application/xhtml+xml", null]) {
+    assert.equal(isNonContentPage({ html: image, contentType }), "image_only");
+    assert.equal(isNonContentPage({ html: '<body><img src="a">12345678901234567890</body>', contentType }), null);
+    assert.equal(isNonContentPage({ html: "<body>Kurz</body>", contentType }), null);
+  }
+  assert.equal(isNonContentPage({ html: '<body><img src="a">1234567890123456789</body>', contentType: null }), "image_only");
+});
+
+test("thin-page detection uses the language detector's main text and removes boilerplate", () => {
+  assert.equal(isThinPage(languageHtml("de", "x".repeat(49)), 50), true);
+  assert.equal(isThinPage(languageHtml("de", "x".repeat(50)), 50), false);
+  assert.equal(isThinPage(`<body><header>${germanText.repeat(5)}</header><nav>${englishText.repeat(5)}</nav><main>${"x".repeat(30)}<div class="cookie-banner">${germanText.repeat(5)}</div></main></body>`, 50), true);
+  assert.equal(isThinPage(`<body><article>${"x".repeat(50)}</article></body>`, 50), false);
+  assert.equal(isThinPage(`<body>${"x".repeat(50)}</body>`, 50), false);
+});
+
+test("fetchWithTiming returns normalized Content-Type from the final response, or null if absent", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/start") {
+      res.writeHead(302, { Location: "/final", "Content-Type": "application/pdf" });
+      res.end();
+    } else if (req.url === "/final") {
+      res.writeHead(200, { "Content-Type": "Text/HTML; charset=UTF-8" });
+      res.end("<body>Final response</body>");
+    } else {
+      res.end("No Content-Type");
+    }
+  }, async ({ origin }) => {
+    const result = await fetchWithTiming(`${origin}/start`);
+    assert.equal(result.contentType, "text/html");
+    assert.equal(result.finalUrl, `${origin}/final`);
+    assert.equal((await fetchWithTiming(`${origin}/absent`)).contentType, null);
+  });
+});
+
+const contentPaths = ["/products/popup", "/services/photo", "/news/document", "/company/thin"];
+function contentSite(req, res) {
+  if (req.url === "/") {
+    res.end(languageHtml("de", germanText.repeat(4), contentPaths));
+  } else if (req.url === contentPaths[0]) {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end('<html><head><title>Image</title><meta name="robots" content="noindex"></head><body><img src="photo.jpg"></body></html>');
+  } else if (req.url === contentPaths[1]) {
+    res.writeHead(200, { "Content-Type": "image/jpeg" });
+    res.end("Synthetic image data");
+  } else if (req.url === contentPaths[2]) {
+    res.writeHead(200, { "Content-Type": "application/pdf" });
+    res.end("%PDF synthetic file");
+  } else if (req.url === contentPaths[3]) {
+    res.end(languageHtml("de", "x".repeat(30)));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}
+
+test("automatic crawl counts image-only, extensionless image and PDF as successful fetches but not evaluated pages", async () => {
+  await withServer(contentSite, async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.reliability.succeeded, 5);
+    assert.equal(result.reliability.failed, 0);
+    assert.equal(result.pages.length, 2);
+    assert.equal(result.skipped.nonContent, 3);
+    assert.deepEqual(new Set(result.skipped.urls.map(url => new URL(url).pathname)), new Set(contentPaths.slice(0, 3)));
+    assert.ok(result.pages.some(page => page.url.endsWith("/company/thin")), "main crawl has no thin-page rule");
+  });
+});
+
+test("segment-anchored legal/account/widget and query exclusions are counted without fetching, while similarly named content stays", async () => {
+  const excluded = [
+    "/imprint", "/disclaimer", "/legal-notice", "/legal-information", "/data-protection", "/data-privacy",
+    "/account", "/widget/x", "/widgets/x",
+    "/action?eID=tx_cms_showpic&file=photo", "/action?add-to-cart=1", "/action?add_to_cart=1",
+    "/action?add-to-quote=1", "/action?add-to-wishlist=1", "/action?fwp_x=1", "/action?fwp%5Fx=2",
+  ];
+  const kept = ["/accounting-software", "/imprinting-machines", "/widgetry", "/articles/imprint-history"];
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), [...excluded, ...kept]));
+    else if (kept.includes(req.url)) res.end(languageHtml("de", `${germanText.repeat(3)} ${req.url}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.skipped.excludedPath, excluded.length);
+    assert.equal(result.skipped.nonContent, 0);
+    assert.equal(result.pages.length, kept.length + 1);
+    assert.ok(!requests.some(request => excluded.includes(request.url)));
+    assert.ok(kept.every(path => result.pages.some(page => new URL(page.url).pathname === path)));
+  });
+});
+
+test("minTextChars drops a 30-character subpage but never a short homepage; main crawl keeps that subpage", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", "Willkommen", ["/products/short", "/services/long"]));
+    else if (req.url === "/products/short") res.end(languageHtml("de", "x".repeat(30)));
+    else if (req.url === "/services/long") res.end(languageHtml("de", germanText.repeat(4)));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const main = await crawlSite(origin, 16);
+    assert.equal(main.pages.length, 3);
+    assert.equal(main.skipped.nonContent, 0);
+    const competitor = await crawlSite(origin, 5, { minTextChars: 50, preferredLang: "de" });
+    assert.equal(competitor.pages.length, 2);
+    assert.equal(competitor.reliability.succeeded, 3);
+    assert.equal(competitor.skipped.nonContent, 1);
+    assert.equal(competitor.pages[0].url, `${origin}/`);
+  });
+});
+
+test("explicit mode drops non-content pages, keeps thin pages, preserves successful-fetch counts and logs language with host", async () => {
+  await withServer(contentSite, async ({ origin }) => {
+    const result = await fetchExplicitPages(origin, [`${origin}/`, ...contentPaths.map(path => `${origin}${path}`)]);
+    assert.equal(result.pages.length, 2);
+    assert.equal(result.reliability.succeeded, 5);
+    assert.equal(result.reliability.failed, 0);
+    assert.equal(result.skipped.nonContent, 3);
+    assert.ok(result.pages.some(page => page.url.endsWith("/company/thin")));
+    const determined = logs.filter(log => log.msg === "site language determined");
+    assert.equal(determined.length, 1);
+    assert.deepEqual(determined[0].obj, { host: "127.0.0.1", siteLanguage: result.siteLanguage, switched: false, readmittedPages: 0 });
+    const firstExempt = await fetchExplicitPages(origin, [`${origin}${contentPaths[0]}`, `${origin}${contentPaths[3]}`]);
+    assert.equal(firstExempt.pages.length, 2);
+    assert.equal(firstExempt.skipped.nonContent, 0);
+  });
+});
+
+test("automatic homepage remains exempt even when its response is image-only", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end('<body><img src="photo.jpg"></body>');
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 5, { minTextChars: 50 });
+    assert.equal(result.pages.length, 1);
+    assert.equal(result.skipped.nonContent, 0);
+  });
+});
+
+test("competitor /de/ start path overrides requested English with source url", async () => {
+  const paths = ["/de/products/one", "/de/services/two"];
+  await withServer((req, res) => {
+    if (req.url === "/de/") res.end(languageHtml("de", `${germanText.repeat(4)} Home`, paths));
+    else if (paths.includes(req.url)) res.end(languageHtml("de", `${germanText.repeat(4)} ${req.url}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const result = await crawlSite(`${origin}/de/`, 5, { preferredLang: "en", minTextChars: 50 });
+    assert.equal(result.pages.length, 3);
+    assert.equal(result.siteLanguage.lang, "de");
+    assert.equal(result.siteLanguage.source, "url");
+    const determined = logs.find(log => log.msg === "site language determined");
+    assert.equal(determined.obj.requestedLang, "en");
+    assert.equal(determined.obj.host, "127.0.0.1");
+  });
+});
+
+test("competitor without a requested-language hreflang uses its own homepage content language", async () => {
+  await withServer(languageSite({ declared: "de", longHomepage: true }), async ({ origin }) => {
+    const result = await crawlSite(origin, 5, { preferredLang: "en", minTextChars: 50 });
+    assert.equal(result.siteLanguage.lang, "de");
+    assert.equal(result.siteLanguage.source, "content");
+    assert.ok(result.pages.length >= 3);
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.requestedLang, "en");
+  });
+});
+
+test("competitor with an English hreflang variant retains requested English and evaluates English subpages", async () => {
+  const paths = ["/products/german", "/services/english", "/company/english-two"];
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(`<html lang="de"><head><link rel="alternate" hreflang="en-US" href="/en/"></head><body><nav>${paths.map(path => `<a href="${path}">${path}</a>`).join("")}</nav><main>${germanText.repeat(4)} Home</main></body></html>`);
+    else if (paths.includes(req.url)) res.end(languageHtml(req.url === paths[0] ? "de" : "en", `${(req.url === paths[0] ? germanText : englishText).repeat(4)} ${req.url}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 5, { preferredLang: "en", minTextChars: 50 });
+    assert.equal(result.siteLanguage.lang, "en");
+    assert.equal(result.siteLanguage.source, "preferred");
+    assert.equal(result.pages.length, 3);
+    assert.equal(result.skipped.otherLanguage, 1);
+    assert.ok(!result.pages.some(page => page.url.endsWith("/products/german")));
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.requestedLang, "en");
   });
 });

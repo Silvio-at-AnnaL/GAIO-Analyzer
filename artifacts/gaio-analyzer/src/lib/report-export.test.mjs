@@ -213,7 +213,7 @@ test("HTML reliability distinguishes 27 fetched from 11 evaluated pages, in the 
   const html = exportedCard(await exportReport(reliabilityFixture()));
   assert.match(html, /Erfolgreich abgerufen<\/div><div class="val" style="color:#22c55e;">✓ 27<\/div>/);
   assert.match(html, /Davon bewertet<\/div><div class="val">11<\/div>/);
-  assert.match(html, /16 abgerufene Seite\(n\) nach dem Abruf aussortiert \(andere Sprache oder identischer Inhalt\)\./);
+  assert.match(html, /16 abgerufene Seite\(n\) nach dem Abruf aussortiert \(andere Sprache, identischer Inhalt oder keine Inhaltsseite, z\. B\. Bild oder Datei\)\./);
   const positions = ["Seiten versucht", "Erfolgreich abgerufen", "Davon bewertet", "Fehlgeschlagen"].map(text => html.indexOf(text));
   assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1])));
 });
@@ -266,12 +266,13 @@ test("failed HTML reports pass evaluated count and language metadata to the same
   assert.ok(html.includes('lang="en") passt nicht zum erkannten Inhalt (Deutsch)'));
 });
 
-test("results defaults add exactly five labels and change only the succeeded default", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1073 + 5);
+test("results defaults include exactly one new non-content label and the updated sorted-out text", () => {
+  assert.equal(Object.keys(labelDefaults).length, 1078 + 1);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
-    crawl_sorted_out: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache oder identischer Inhalt).",
+    crawl_sorted_out: "{n} abgerufene Seite(n) nach dem Abruf aussortiert (andere Sprache, identischer Inhalt oder keine Inhaltsseite, z. B. Bild oder Datei).",
+    crawl_skipped_noncontent: "{n} Seite(n) ohne verwertbaren Inhalt (z. B. Bildanzeige, Datei, kaum Text)",
     crawl_lang_mismatch: 'Die Sprachangabe der Website (lang="{declared}") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt.',
     lang_name_de: "Deutsch",
     lang_name_en: "Englisch",
@@ -345,4 +346,30 @@ test("live card continues to use label overrides", () => {
   const html = liveCard(reliabilityFixture(16, 16), { "results.crawl_succeeded": "Admin override" });
   assert.ok(html.includes("Admin override"));
   assert.ok(!html.includes("Erfolgreich abgerufen"));
+});
+
+test("non-content skips alone show the skipped block and identical new text in live and HTML cards", async () => {
+  const value = {
+    ...reliabilityFixture(3, 1),
+    crawlSkipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 2, urls: [] },
+  };
+  const expected = "2 Seite(n) ohne verwertbaren Inhalt (z. B. Bildanzeige, Datei, kaum Text)";
+  for (const html of [liveCard(value), await exportReport(value)]) {
+    assert.ok(html.includes("Nicht bewertete Seiten"));
+    assert.ok(html.includes(expected));
+    assert.ok(html.includes("andere Sprache, identischer Inhalt oder keine Inhaltsseite, z. B. Bild oder Datei"));
+  }
+});
+
+test("both renderers omit the non-content line for zero or absent counts, including older skipped metadata", async () => {
+  for (const nonContent of [0, undefined]) {
+    const value = {
+      ...reliabilityFixture(3, 2),
+      crawlSkipped: { otherLanguage: 1, excludedPath: 0, duplicate: 0, nonContent, urls: [] },
+    };
+    for (const html of [liveCard(value), await exportReport(value)]) {
+      assert.ok(html.includes("Nicht bewertete Seiten"));
+      assert.ok(!html.includes("Seite(n) ohne verwertbaren Inhalt"));
+    }
+  }
 });

@@ -6,3 +6,4 @@
 - [Recommendation output protocol](recommendation-tool-output.md) — tool use was abandoned; recommendations use a delimiter-based plain-text protocol with JSON fallback.
 - [Stored prompt ownership](stored-prompt-ownership.md) — treat admin-stored prompts as production data; changing a code default does not authorize rewriting an existing prompt.
 - [AI key expiry ownership](ai-key-expiry-ownership.md) — expiry belongs to the active key, not the provider; switching providers or replacing that key clears the single saved date.
+- [Scoped crawl work](scoped-crawl-work.md) — repeated branch, local-verification, and no-publishing boundaries for crawl fixes.

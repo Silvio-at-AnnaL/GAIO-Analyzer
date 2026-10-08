@@ -47,7 +47,7 @@ export interface AnalysisState {
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
-  crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] } | null;
+  crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; nonContent: number; urls: string[] } | null;
   siteLanguage: SiteLanguage | null;
   homepageRedirect: { from: string; to: string } | null;
 }
@@ -343,7 +343,7 @@ export async function runAnalysis(
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
       state.crawlReliability = crawlResult.reliability;
       state.siteLanguage = crawlResult.siteLanguage;
-      if (!explicitUrls?.length) state.crawlSkipped = crawlResult.skipped;
+      state.crawlSkipped = crawlResult.skipped;
 
       if (pages.length === 0) {
         state.status = "failed";
@@ -374,6 +374,7 @@ export async function runAnalysis(
         {
           url: "uploaded-page",
           html,
+          contentType: null,
           statusCode: 200,
           responseTime: 0,
           ttfb: 0,
@@ -382,7 +383,7 @@ export async function runAnalysis(
       crawlResult = {
         pages,
         siteLanguage: determineSiteLanguage(pages, html),
-        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
         timedOut: false,
         robotsTxt: null,
         sitemapXml: null,

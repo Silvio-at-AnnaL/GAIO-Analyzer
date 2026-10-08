@@ -11,6 +11,7 @@ import {
 export interface CrawledPage {
   url: string;
   html: string;
+  contentType: string | null;
   statusCode: number;
   responseTime: number;
   ttfb: number;
@@ -49,7 +50,7 @@ export interface SitemapResolution {
 
 export interface CrawlResult {
   pages: CrawledPage[];
-  skipped: { otherLanguage: number; excludedPath: number; duplicate: number; urls: string[] };
+  skipped: { otherLanguage: number; excludedPath: number; duplicate: number; nonContent: number; urls: string[] };
   siteLanguage: SiteLanguage;
   homepageFailReason?: CrawlFailReason | null;
   homepageRedirect?: { from: string; to: string } | null;
@@ -112,6 +113,17 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
 const EXCLUDED_KEYWORD_PATTERN =
   /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search|reviews?_write|review-write|bewertung-schreiben|gaestebuch|guestbook|print\.php|druckansicht|printview|[?&]print=/i;
 
+const EXCLUDED_CONTENT_PATH_PATTERN =
+  /(?:^|\/)(?:imprint|disclaimer|legal-notice|legal-information|data-protection|data-privacy|account|widgets?)(?:\/|$)/i;
+const EXCLUDED_CONTENT_QUERY_PATTERN =
+  /^(?:eID|add-to-cart|add_to_cart|add-to-quote|add-to-wishlist|fwp_.*)$/i;
+
+function isExcludedContentUrl(url: string): boolean {
+  const parsed = new URL(url);
+  return EXCLUDED_CONTENT_PATH_PATTERN.test(parsed.pathname) ||
+    [...parsed.searchParams.keys()].some((key) => EXCLUDED_CONTENT_QUERY_PATTERN.test(key));
+}
+
 const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
 const EXTRA_FETCH_ALLOWANCE = 12;
 
@@ -121,7 +133,7 @@ const EXCLUDED_TRACKING_PARAMS = /[?&](utm_|fbclid|gclid)/i;
 const LANG_PREFIX_RE = /^\/([a-z]{2,3}(?:-[a-z]{2,4})?)(?:\/|$)/i;
 
 function scoreUrl(urlStr: string): number {
-  if (EXCLUDED_KEYWORD_PATTERN.test(urlStr)) return 0;
+  if (EXCLUDED_KEYWORD_PATTERN.test(urlStr) || isExcludedContentUrl(urlStr)) return 0;
   if (EXCLUDED_EXTENSION_PATTERN.test(urlStr)) return 0;
   if (EXCLUDED_TRACKING_PARAMS.test(urlStr)) return 0;
   for (const { score, pattern } of PRIORITY_PATTERNS) {
@@ -154,9 +166,39 @@ export interface PageLanguageDetection {
 
 export interface SiteLanguage {
   lang: "de" | "en" | null;
-  source: "content" | "declared" | "preferred" | null;
+  source: "content" | "declared" | "preferred" | "url" | null;
   declared: string | null;
   mismatch: boolean;
+}
+
+function extractMainText($: cheerio.CheerioAPI): string {
+  $("script, style, noscript, iframe, nav, header, footer").remove();
+  $("[class], [id]").each((_, el) => {
+    if (BOILERPLATE_PATTERN.test(`${$(el).attr("class") ?? ""} ${$(el).attr("id") ?? ""}`)) {
+      $(el).remove();
+    }
+  });
+  const content = $("main").first().length
+    ? $("main").first()
+    : $("article").first().length
+      ? $("article").first()
+      : $("body").first();
+  return content.text().replace(/\s+/g, " ").trim();
+}
+
+export function isThinPage(html: string, minChars: number): boolean {
+  return extractMainText(cheerio.load(html)).length < minChars;
+}
+
+export function isNonContentPage(page: { html: string; contentType: string | null }): "non_html" | "image_only" | null {
+  if (page.contentType !== null && page.contentType !== "text/html" && page.contentType !== "application/xhtml+xml") {
+    return "non_html";
+  }
+  const $ = cheerio.load(page.html);
+  $("script, style, noscript").remove();
+  const body = $("body");
+  const text = body.text().replace(/\s+/g, " ").trim();
+  return text.length < 20 && body.find("img").length > 0 ? "image_only" : null;
 }
 
 /** Classify the visible main text; short pages use their declared language. */
@@ -165,18 +207,7 @@ export function detectPageLanguageDetailed(html: string): PageLanguageDetection 
   try {
     const $ = cheerio.load(html);
     declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0] || null;
-    $("script, style, noscript, iframe, nav, header, footer").remove();
-    $("[class], [id]").each((_, el) => {
-      if (BOILERPLATE_PATTERN.test(`${$(el).attr("class") ?? ""} ${$(el).attr("id") ?? ""}`)) {
-        $(el).remove();
-      }
-    });
-    const content = $("main").first().length
-      ? $("main").first()
-      : $("article").first().length
-        ? $("article").first()
-        : $("body").first();
-    const text = content.text().replace(/\s+/g, " ").trim();
+    const text = extractMainText($);
     if (text.length < 200) {
       const lang = declared === "de" || declared === "en" ? declared : null;
       return { lang, source: lang ? "declared" : null, declared };
@@ -322,7 +353,7 @@ function sortCategoryQueue(q: QueueEntry[]): void {
 export async function fetchWithTiming(
   url: string,
   timeoutMs = 15000,
-): Promise<{ html: string; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
+): Promise<{ html: string; contentType: string | null; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
   const start = Date.now();
   let ttfb = 0;
   const controller = new AbortController();
@@ -375,6 +406,7 @@ export async function fetchWithTiming(
         const html = await response.text();
         return {
           html,
+          contentType: response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? null,
           statusCode: response.status,
           responseTime: Date.now() - start,
           ttfb,
@@ -523,7 +555,7 @@ function extractInternalLinks(
       if (!isWithinStartPath(pathname, startPath)) return;
 
       // Score must be non-zero (excludes blacklisted/binary URLs)
-      if (EXCLUDED_KEYWORD_PATTERN.test(url)) {
+      if (EXCLUDED_KEYWORD_PATTERN.test(url) || isExcludedContentUrl(url)) {
         onExcludedPath(url);
         return;
       }
@@ -1004,13 +1036,23 @@ export async function fetchExplicitPages(
     opts?.onProgress?.(++done, explicitUrls.length);
   }
 
-  const pages = results.filter(
+  const skipped: CrawlResult["skipped"] = { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] };
+  const successfulFetches = results.filter(
     (page): page is CrawledPage => page !== null && page.statusCode < 400,
   );
+  const pages = results.filter((page, index): page is CrawledPage => {
+    if (page === null || page.statusCode >= 400) return false;
+    if (index !== 0 && normalizeUrl(page.url) !== normalizeUrl(inputUrl) && isNonContentPage(page) !== null) {
+      skipped.nonContent++;
+      if (skipped.urls.length < 10) skipped.urls.push(page.url);
+      return false;
+    }
+    return true;
+  });
   const result: CrawlResult = {
     pages,
     siteLanguage: determineSiteLanguage(pages),
-    skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+    skipped,
     timedOut: false,
     robotsTxt: null,
     sitemapXml: null,
@@ -1025,8 +1067,8 @@ export async function fetchExplicitPages(
     hreflangVariants: [],
     reliability: {
       attempted: explicitUrls.length,
-      succeeded: pages.length,
-      failed: explicitUrls.length - pages.length,
+      succeeded: successfulFetches.length,
+      failed: explicitUrls.length - successfulFetches.length,
       failures: results.flatMap<CrawlFailure>((page, index) => {
         if (!completed[index]) {
           return [{ url: explicitUrls[index], reason: "timeout" as const }];
@@ -1053,6 +1095,7 @@ export async function fetchExplicitPages(
     }));
     result.siteLanguage = determineSiteLanguage(pages, homepageHtml);
   }
+  logger.info({ host: new URL(inputUrl).hostname, siteLanguage: result.siteLanguage, switched: false, readmittedPages: 0 }, "site language determined");
   return result;
 }
 
@@ -1064,6 +1107,7 @@ export async function crawlSite(
     techPhaseBudgetMs?: number;
     minPagePhaseMs?: number;
     preferredLang?: string;
+    minTextChars?: number;
     onProgress?: (done: number, total: number) => void;
   },
 ): Promise<CrawlResult> {
@@ -1100,7 +1144,7 @@ export async function crawlSite(
   const result: CrawlResult = {
     pages: [],
     siteLanguage: { lang: null, source: null, declared: null, mismatch: false },
-    skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, urls: [] },
+    skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
     homepageFailReason: null,
     homepageRedirect: null,
     timedOut: false,
@@ -1143,7 +1187,7 @@ export async function crawlSite(
   let switchedLanguage = false;
   let readmittedPages = 0;
   const logSiteLanguage = () => {
-    logger.info({ host: baseDomain, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
+    logger.info({ host: baseDomain, requestedLang: opts?.preferredLang ?? null, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
   };
 
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
@@ -1255,12 +1299,24 @@ export async function crawlSite(
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
     const detection = detectPageLanguageDetailed(homepageHtml);
-    const preferred = opts?.preferredLang ?? (detection.source === "content"
+    let preferred = opts?.preferredLang ?? (detection.source === "content"
       ? detection.lang
       : detection.declared);
+    let source: SiteLanguage["source"] = opts?.preferredLang !== undefined ? "preferred"
+      : detection.source === "content" ? "content" : (preferred === "de" || preferred === "en") ? "declared" : null;
+    if (opts?.preferredLang !== undefined) {
+      const inputLanguage = urlLang(base.pathname);
+      const hasPreferredVariant = extractHreflangVariants(homepageHtml, homePage.finalUrl)
+        .some((variant) => variant.lang.trim().toLowerCase().split("-")[0] === opts.preferredLang?.toLowerCase());
+      if (inputLanguage === "de" || inputLanguage === "en") {
+        preferred = inputLanguage;
+        source = "url";
+      } else if (detection.source === "content" && detection.lang !== opts.preferredLang && !hasPreferredVariant) {
+        preferred = detection.lang;
+        source = "content";
+      }
+    }
     targetLang = preferred === "de" || preferred === "en" ? preferred : null;
-    const source = opts?.preferredLang !== undefined ? "preferred"
-      : detection.source === "content" ? "content" : targetLang ? "declared" : null;
     provisionalLanguage = opts?.preferredLang === undefined && source !== "content";
     result.siteLanguage = {
       lang: targetLang, source, declared: detection.declared,
@@ -1273,6 +1329,7 @@ export async function crawlSite(
       result.pages.push({
         url: canonicalHomepageUrl,
         html: homepageHtml,
+        contentType: homePage.contentType,
         statusCode: homePage.statusCode,
         responseTime: homePage.responseTime,
         ttfb: homePage.ttfb,
@@ -1353,7 +1410,7 @@ export async function crawlSite(
       try {
         const parsed = new URL(u);
         if (!isWithinStartPath(parsed.pathname, startPath)) continue;
-        if (EXCLUDED_KEYWORD_PATTERN.test(u)) {
+        if (EXCLUDED_KEYWORD_PATTERN.test(u) || isExcludedContentUrl(u)) {
           recordExcludedPath(u);
           continue;
         }
@@ -1492,11 +1549,17 @@ export async function crawlSite(
         const crawledPage: CrawledPage = {
           url,
           html: page.html,
+          contentType: page.contentType,
           statusCode: page.statusCode,
           responseTime: page.responseTime,
           ttfb: page.ttfb,
         };
         result.reliability.succeeded++;
+        if (isNonContentPage(page) !== null || (opts?.minTextChars !== undefined && isThinPage(page.html, opts.minTextChars))) {
+          result.skipped.nonContent++;
+          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+          continue;
+        }
         const detection = detectPageLanguageDetailed(page.html);
         const urlLanguage = urlLang(pathname);
         const lang = targetLang ? urlLanguage ??
