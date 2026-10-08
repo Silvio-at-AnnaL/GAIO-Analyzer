@@ -83,42 +83,6 @@ export interface QuestionnaireData {
   plannedCampaigns?: string | null;
 }
 
-export type AnalysisSummaryStatus =
-  (typeof AnalysisSummaryStatus)[keyof typeof AnalysisSummaryStatus];
-
-export const AnalysisSummaryStatus = {
-  pending: "pending",
-  running: "running",
-  completed: "completed",
-  failed: "failed",
-} as const;
-
-export type AnalysisSummaryMode =
-  (typeof AnalysisSummaryMode)[keyof typeof AnalysisSummaryMode];
-
-export const AnalysisSummaryMode = {
-  url: "url",
-  html: "html",
-} as const;
-
-export interface AnalysisSummary {
-  id: string;
-  status: AnalysisSummaryStatus;
-  /** @nullable */
-  url?: string | null;
-  mode: AnalysisSummaryMode;
-  /** @nullable */
-  overallScore?: number | null;
-  progress: number;
-  crawledPagesCount: number;
-  startedAt: string;
-}
-
-export interface AnalysesListResponse {
-  items: AnalysisSummary[];
-  total: number;
-}
-
 export type StartAnalysisBodyMode =
   (typeof StartAnalysisBodyMode)[keyof typeof StartAnalysisBodyMode];
 
@@ -136,6 +100,10 @@ export interface StartAnalysisBody {
   questionnaire?: QuestionnaireData;
   /** If provided, skip auto-crawl and use these URLs directly */
   explicitUrls?: string[] | null;
+  /** @nullable */
+  fillToMax?: boolean | null;
+  /** @nullable */
+  excludedUrls?: string[] | null;
 }
 
 export interface AnalysisStarted {

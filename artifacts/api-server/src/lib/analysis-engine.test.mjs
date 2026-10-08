@@ -4,8 +4,19 @@ import { build } from "esbuild";
 
 const mocks = {
   "./crawler": `
-    export const crawlSite = async () => globalThis.__analysisLanguageTest?.crawlResult ?? {};
-    export const fetchExplicitPages = async () => globalThis.__analysisLanguageTest?.crawlResult ?? {};
+    export const crawlSite = async (...args) => {
+      const state = globalThis.__analysisLanguageTest;
+      (state.crawlCalls ??= []).push(args);
+      if (state.fillError) throw state.fillError;
+      args[2]?.onHomepage?.(state.homepageHtml ?? "");
+      return state.fillResult ?? state.crawlResult ?? {};
+    };
+    export const fetchExplicitPages = async (...args) => {
+      const state = globalThis.__analysisLanguageTest;
+      (state.explicitCalls ??= []).push(args);
+      return state.selectedResult ?? state.crawlResult ?? {};
+    };
+    export const normalizeUrl = value => new URL(value).href.replace(/\\/$/, "");
     export const pageLanguage = () => "en";
     export const determineSiteLanguage = () => globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
   `,
@@ -34,7 +45,7 @@ const mocks = {
     export const logger = {
       error() {},
       info() {},
-      warn() {},
+      warn(obj, msg) { (globalThis.__analysisLanguageTest.warnings ??= []).push({ obj, msg }); },
     };
   `,
   "./admin-db.js": `
@@ -81,6 +92,8 @@ test("normalizes empty company name and buyer personas to null", () => {
     competitors: [],
     requestedPages: null,
     pageSelection: "auto",
+    excludedPages: null,
+    autoAddedPages: [],
   });
 });
 
@@ -133,6 +146,8 @@ test("preserves explicit URL order and selects manual versus auto pages", () => 
     competitors: [],
     requestedPages: explicitUrls,
     pageSelection: "manual",
+    excludedPages: null,
+    autoAddedPages: [],
   });
   assert.deepEqual(buildAnalysisInputs({}, []), {
     companyName: null,
@@ -140,5 +155,73 @@ test("preserves explicit URL order and selects manual versus auto pages", () => 
     competitors: [],
     requestedPages: null,
     pageSelection: "auto",
+    excludedPages: null,
+    autoAddedPages: [],
   });
 });
+
+const selectedPage = { url: "http://127.0.0.1/de/selected", html: "<html lang='de'><body>Auswahl</body></html>", statusCode: 200 };
+function mixedState() {
+  return globalThis.__analysisLanguageTest = {
+    language: { lang: "de", source: "content", declared: "en", mismatch: true },
+    competitorCalls: [],
+    selectedResult: {
+      pages: [selectedPage],
+      languageVariant: null,
+      reliability: { attempted: 2, succeeded: 2, failed: 0, failures: [] },
+      skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 1, urls: ["http://127.0.0.1/image"] },
+    },
+    fillResult: {
+      pages: [selectedPage, { ...selectedPage, url: "http://127.0.0.1/de/added" }],
+      languageVariant: { from: "http://127.0.0.1/", to: "http://127.0.0.1/de/", fromLang: "en", toLang: "de" },
+      robotsTxt: "Crawl phase robots", llmsTxt: "Crawl phase llms", sitemapXml: "<urlset/>",
+      reliability: { attempted: 3, succeeded: 2, failed: 1, failures: [{ url: "http://127.0.0.1/fail", reason: "http_error" }] },
+      skipped: { otherLanguage: 1, excludedPath: 2, duplicate: 0, nonContent: 0, urls: ["http://127.0.0.1/excluded"] },
+    },
+  };
+}
+
+test("mixed inputs keep the requested selection and exclusions without enabling mixed for empty selection", () => {
+  const inputs = buildAnalysisInputs(null, [selectedPage.url], { fillToMax: true, excludedUrls: ["http://127.0.0.1/excluded"] });
+  assert.equal(inputs.pageSelection, "mixed");
+  assert.deepEqual(inputs.requestedPages, [selectedPage.url]);
+  assert.deepEqual(inputs.excludedPages, ["http://127.0.0.1/excluded"]);
+  assert.deepEqual(inputs.autoAddedPages, []);
+  assert.equal(buildAnalysisInputs(null, [], { fillToMax: true }).pageSelection, "auto");
+});
+
+test("mixed analysis merges both phases and exposes only newly evaluated URLs as automatic additions", async () => {
+  const state = mixedState();
+  await runAnalysis("synthetic-mixed", "url", "http://127.0.0.1/", null, null,
+    [selectedPage.url, "http://127.0.0.1/image"], null, { fillToMax: true, excludedUrls: ["http://127.0.0.1/excluded"] });
+  const result = getAnalysis("synthetic-mixed");
+  assert.equal(result.status, "completed");
+  assert.equal(result.inputs.pageSelection, "mixed");
+  assert.deepEqual(result.inputs.requestedPages, [selectedPage.url, "http://127.0.0.1/image"]);
+  assert.deepEqual(result.inputs.excludedPages, ["http://127.0.0.1/excluded"]);
+  assert.deepEqual(result.inputs.autoAddedPages, ["http://127.0.0.1/de/added"]);
+  assert.deepEqual(result.crawlReliability, { attempted: 5, succeeded: 4, failed: 1, failures: state.fillResult.reliability.failures });
+  assert.equal(result.crawlSkipped.nonContent, 1);
+  assert.equal(result.crawlSkipped.excludedPath, 2);
+  assert.deepEqual(result.languageVariant, state.fillResult.languageVariant);
+  assert.equal(state.explicitCalls[0][2].skipTechFiles, true);
+  assert.equal(state.crawlCalls[0][1], 16);
+  assert.equal(state.crawlCalls[0][2].preferredLang, "de");
+  assert.deepEqual(state.crawlCalls[0][2].seedPages, [selectedPage]);
+});
+
+for (const failure of ["throw", "homepage"]) {
+  test(`fill failure (${failure}) retains evaluated selection, mixed inputs and no automatic additions`, async () => {
+    const state = mixedState();
+    if (failure === "throw") state.fillError = new Error("Synthetic crawl failure");
+    else state.fillResult.homepageFailReason = "bot_protection";
+    await runAnalysis(`synthetic-fill-failure-${failure}`, "url", "http://127.0.0.1/", null, null,
+      [selectedPage.url], null, { fillToMax: true });
+    const result = getAnalysis(`synthetic-fill-failure-${failure}`);
+    assert.equal(result.status, "completed");
+    assert.deepEqual(result.crawledPages, [selectedPage.url]);
+    assert.equal(result.inputs.pageSelection, "mixed");
+    assert.deepEqual(result.inputs.autoAddedPages, []);
+    assert.ok(state.warnings.some(entry => entry.msg === "page fill failed"));
+  });
+}

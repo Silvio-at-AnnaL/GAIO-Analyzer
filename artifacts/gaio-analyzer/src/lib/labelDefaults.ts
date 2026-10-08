@@ -7,6 +7,8 @@ export interface LabelDef {
 }
 
 export const labelDefaults: Record<string, LabelDef> = {
+  "domain.fill_pages_option": { group: "domain", de: "Auf 16 Seiten auffüllen – abgewählte Seiten werden nicht verwendet" },
+  "results.page_auto_added": { group: "results", de: "(automatisch ergänzt)" },
   "welcome.eyebrow":           { group: "welcome", de: "KI-Sichtbarkeit & SEO-Analyse" },
   "welcome.headline_pre":      { group: "welcome", de: "Wie gut findet" },
   "welcome.headline_post":     { group: "welcome", de: "Ihre Website?" },

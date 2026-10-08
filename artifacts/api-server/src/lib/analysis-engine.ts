@@ -1,4 +1,4 @@
-import { crawlSite, fetchExplicitPages, determineSiteLanguage, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
+import { crawlSite, fetchExplicitPages, determineSiteLanguage, normalizeUrl, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
@@ -21,7 +21,9 @@ export interface AnalysisInputs {
   buyerPersonas: string | null;
   competitors: string[];
   requestedPages: string[] | null;
-  pageSelection: "manual" | "auto";
+  pageSelection: "manual" | "auto" | "mixed";
+  excludedPages: string[] | null;
+  autoAddedPages: string[];
 }
 
 export interface AnalysisState {
@@ -130,6 +132,7 @@ interface QuestionnaireInput {
 export function buildAnalysisInputs(
   questionnaire?: QuestionnaireInput | null,
   explicitUrls?: string[] | null,
+  fillOptions?: { fillToMax?: boolean; excludedUrls?: string[] | null },
 ): AnalysisInputs {
   const companyName = questionnaire?.companyName?.trim() || null;
   const buyerPersonas = questionnaire?.buyerPersonas?.trim() || null;
@@ -144,7 +147,9 @@ export function buildAnalysisInputs(
     buyerPersonas,
     competitors,
     requestedPages,
-    pageSelection: requestedPages ? "manual" : "auto",
+    pageSelection: requestedPages ? fillOptions?.fillToMax ? "mixed" : "manual" : "auto",
+    excludedPages: requestedPages && fillOptions?.fillToMax ? fillOptions.excludedUrls?.slice(0, 200) ?? null : null,
+    autoAddedPages: [],
   };
 }
 
@@ -243,6 +248,7 @@ export async function runAnalysis(
   questionnaire?: QuestionnaireInput | null,
   explicitUrls?: string[] | null,
   userSession?: string | null,
+  fillOptions?: { fillToMax?: boolean; excludedUrls?: string[] | null },
 ): Promise<void> {
   return runWithAnalysisContext(id, async () => {
   const domain = url || "html-upload";
@@ -261,7 +267,7 @@ export async function runAnalysis(
     status: "running",
     url,
     mode,
-    inputs: buildAnalysisInputs(questionnaire, mode === "html" ? null : explicitUrls),
+    inputs: buildAnalysisInputs(questionnaire, mode === "html" ? null : explicitUrls, fillOptions),
     overallScore: null,
     currentModule: null,
     progress: 0,
@@ -322,6 +328,7 @@ export async function runAnalysis(
 
       if (explicitUrls && explicitUrls.length > 0) {
         crawlResult = await fetchExplicitPages(url, explicitUrls, {
+          skipTechFiles: fillOptions?.fillToMax === true,
           onProgress: (done, total) => {
             state.progress = 5 + Math.round((done / total) * 15);
             state.currentModule = "Crawling Website";
@@ -329,6 +336,51 @@ export async function runAnalysis(
           },
         });
         pages = crawlResult.pages;
+        if (fillOptions?.fillToMax) {
+          const selectedResult = crawlResult;
+          let homepageHtml: string | undefined;
+          try {
+            const selectionLanguage = determineSiteLanguage(pages).lang;
+            const filled = await crawlSite(url, 16, {
+              deadlineMs: 90_000,
+              seedPages: pages,
+              excludeUrls: state.inputs?.excludedPages ?? [],
+              ...(selectionLanguage ? { preferredLang: selectionLanguage } : {}),
+              onHomepage: (html) => { homepageHtml = html; },
+              onProgress: (done, total) => {
+                state.progress = 5 + Math.round((done / Math.max(1, total)) * 15);
+                save();
+              },
+            });
+            const fillFailed = Boolean(filled.homepageFailReason);
+            if (fillFailed) logger.warn({ url, reason: filled.homepageFailReason }, "page fill failed");
+            pages = fillFailed ? selectedResult.pages : filled.pages;
+            crawlResult = {
+              ...filled,
+              pages,
+              reliability: {
+                attempted: selectedResult.reliability.attempted + filled.reliability.attempted,
+                succeeded: selectedResult.reliability.succeeded + filled.reliability.succeeded,
+                failed: selectedResult.reliability.failed + filled.reliability.failed,
+                failures: [...selectedResult.reliability.failures, ...filled.reliability.failures].slice(0, 25),
+              },
+              skipped: {
+                otherLanguage: selectedResult.skipped.otherLanguage + filled.skipped.otherLanguage,
+                excludedPath: selectedResult.skipped.excludedPath + filled.skipped.excludedPath,
+                duplicate: selectedResult.skipped.duplicate + filled.skipped.duplicate,
+                nonContent: selectedResult.skipped.nonContent + filled.skipped.nonContent,
+                urls: [...new Set([...selectedResult.skipped.urls, ...filled.skipped.urls])].slice(0, 10),
+              },
+              siteLanguage: determineSiteLanguage(pages, homepageHtml),
+            };
+            const selectedUrls = new Set(explicitUrls.map(normalizeUrl));
+            if (state.inputs) state.inputs.autoAddedPages = fillFailed ? [] : pages.filter((page) => !selectedUrls.has(normalizeUrl(page.url))).map((page) => page.url);
+          } catch (err) {
+            logger.warn({ url, err }, "page fill failed");
+            crawlResult = selectedResult;
+            pages = selectedResult.pages;
+          }
+        }
       } else {
         crawlResult = await crawlSite(url, 16, {
           deadlineMs: 90_000,

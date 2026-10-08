@@ -27,20 +27,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
-  /analyses:
-    get:
-      operationId: listAnalyses
-      tags: [analysis]
-      summary: List all analyses
-      description: Returns a summary of all analyses in the current session
-      responses:
-        "200":
-          description: List of analyses
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AnalysesListResponse"
-
   /analyze:
     post:
       operationId: startAnalysis
@@ -240,48 +226,6 @@ components:
         plannedCampaigns:
           type: ["string", "null"]
 
-    AnalysisSummary:
-      type: object
-      properties:
-        id:
-          type: string
-        status:
-          type: string
-          enum: [pending, running, completed, failed]
-        url:
-          type: ["string", "null"]
-        mode:
-          type: string
-          enum: [url, html]
-        overallScore:
-          type: ["number", "null"]
-        progress:
-          type: number
-        crawledPagesCount:
-          type: integer
-        startedAt:
-          type: string
-      required:
-        - id
-        - status
-        - mode
-        - progress
-        - crawledPagesCount
-        - startedAt
-
-    AnalysesListResponse:
-      type: object
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/AnalysisSummary"
-        total:
-          type: integer
-      required:
-        - items
-        - total
-
     StartAnalysisBody:
       type: object
       properties:
@@ -300,6 +244,12 @@ components:
             type: string
           nullable: true
           description: If provided, skip auto-crawl and use these URLs directly
+        fillToMax:
+          type: ["boolean", "null"]
+        excludedUrls:
+          type: ["array", "null"]
+          items:
+            type: string
       required:
         - mode
 

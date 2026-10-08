@@ -8,3 +8,4 @@
 - [AI key expiry ownership](ai-key-expiry-ownership.md) — expiry belongs to the active key, not the provider; switching providers or replacing that key clears the single saved date.
 - [Scoped crawl work](scoped-crawl-work.md) — repeated branch, local-verification, and no-publishing boundaries for crawl fixes.
 - [German content preference](german-content-preference.md) — product-owner rationale for preferring an available German main-site version.
+- [Generated type refresh](generated-type-refresh.md) — blocked library checks can leave declarations stale after codegen; refresh emission, then run real consumer checks.

@@ -56,10 +56,10 @@ function reset(readiness) {
   return globalThis.__analyzeTest;
 }
 
-async function postAnalyze() {
+async function postAnalyze(body = {}) {
   const handlers = globalThis.__analyzeTestRoutes.get("POST /analyze");
   const req = {
-    body: { mode: "url", url: "https://example.test", questionnaire: {}, explicitUrls: [] },
+    body: { mode: "url", url: "https://example.test", questionnaire: {}, explicitUrls: [], ...body },
     ip: "127.0.0.1",
     log: { warn: (obj, msg) => globalThis.__analyzeTest.logs.push({ obj, msg }) },
   };
@@ -101,4 +101,25 @@ test("successful LLM preflight preserves the 201 running response", async () => 
   assert.equal(state.preflightCalls, 1);
   assert.equal(state.runs.length, 1);
   assert.equal(state.runs[0][0], "test-analysis-id");
+});
+
+test("fill fields are ignored without selected pages, in HTML mode, or without opt-in", async () => {
+  for (const body of [
+    { explicitUrls: [] },
+    { mode: "html", html: "<html></html>", explicitUrls: ["https://example.test/a"] },
+    { explicitUrls: ["https://example.test/a"], fillToMax: false },
+  ]) {
+    const state = reset({ ok: true });
+    await postAnalyze({ fillToMax: true, excludedUrls: ["https://example.test/b"], ...body });
+    assert.equal(state.runs[0][7], undefined);
+  }
+});
+
+test("fill opt-in forwards exclusions capped at 200 without altering the selected pages", async () => {
+  const state = reset({ ok: true });
+  const explicitUrls = ["https://example.test/a"];
+  const excludedUrls = Array.from({ length: 220 }, (_, index) => `https://example.test/excluded-${index}`);
+  await postAnalyze({ explicitUrls, fillToMax: true, excludedUrls });
+  assert.deepEqual(state.runs[0][5], explicitUrls);
+  assert.deepEqual(state.runs[0][7], { fillToMax: true, excludedUrls: excludedUrls.slice(0, 200) });
 });

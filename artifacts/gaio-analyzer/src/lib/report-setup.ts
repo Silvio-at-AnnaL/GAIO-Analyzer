@@ -5,7 +5,7 @@ export type ReportSetup = {
   competitors: string[];
   pages: string[];
   requestedPages: string[] | null;
-  pageSelection: "manual" | "auto" | null;
+  pageSelection: "manual" | "auto" | "mixed" | null;
   analysisId: string | null;
   exportDate: string | null;
 };
@@ -282,7 +282,7 @@ function parseVersionTwo(block: Record<string, unknown>): ReportSetupResult {
       competitors,
       pages,
       requestedPages,
-      pageSelection: block.pageSelection === "manual" || block.pageSelection === "auto"
+      pageSelection: block.pageSelection === "manual" || block.pageSelection === "auto" || block.pageSelection === "mixed"
         ? block.pageSelection
         : null,
       analysisId: nullableString(block.analysisId),

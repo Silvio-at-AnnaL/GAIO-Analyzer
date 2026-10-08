@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScoreDonut } from "@/components/charts/ScoreDonut";
 import { RadarDimensions } from "@/components/charts/RadarDimensions";
 import { generateHtmlReport, buildFaqDocumentHtml, buildKontaktDocumentHtml, buildAnalyseparameterDocumentHtml, formatRedirectUrl, type ContactData } from "@/lib/report-export";
-import { buildReportInputParams } from "@/lib/report-input-params";
+import { buildReportInputParams, readAnalysisInputs } from "@/lib/report-input-params";
 import { useBranding } from "@/store/brandingStore";
 import {
   ResponsiveContainer,
@@ -657,7 +657,7 @@ function CompetitorCard({ competitor, mainScores, excludedModules = [] }: Compet
   );
 }
 
-function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMode?: boolean }) {
+function CrawledPagesPanel({ pages, autoAddedPages = [], pdfMode = false }: { pages: string[]; autoAddedPages?: string[]; pdfMode?: boolean }) {
   const t = useT();
   const [isOpen, setIsOpen] = useState(false);
   const expanded = isOpen || pdfMode;
@@ -689,6 +689,7 @@ function CrawledPagesPanel({ pages, pdfMode = false }: { pages: string[]; pdfMod
             >
               <ExternalLink className="w-3 h-3 shrink-0" />
               {url}
+              {autoAddedPages.includes(url) && <span className="text-muted-foreground">{t("results.page_auto_added")}</span>}
             </a>
           ))}
         </div>
@@ -2359,7 +2360,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
           {/* Gecrawlte Seiten collapsible panel */}
           {report.crawledPages.filter((p) => p !== "uploaded-page").length > 0 && (
-            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} pdfMode={pdfMode} />
+            <CrawledPagesPanel pages={report.crawledPages.filter((p) => p !== "uploaded-page")} autoAddedPages={readAnalysisInputs((report as unknown as Record<string, unknown>).inputs)?.autoAddedPages ?? []} pdfMode={pdfMode} />
           )}
 
           {technicalBarData.length > 0 && (

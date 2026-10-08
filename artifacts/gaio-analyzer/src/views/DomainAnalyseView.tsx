@@ -10,6 +10,7 @@ import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client
 import { competitorKey, normalizeUrl } from "@/lib/utils";
 import { useT } from "@/lib/LabelProvider";
 import { SetupImportLink } from "@/components/SetupImportLink";
+import { canFillPages, pageFillOptions } from "@/lib/page-fill";
 
 const MAX_VISIBLE_PAGES = 15;
 
@@ -34,6 +35,8 @@ export function DomainAnalyseView() {
   const [competitorReasons, setCompetitorReasons] = useState<Record<string, string>>({});
 
   const [editablePages, setEditablePages] = useState<string[]>([]);
+  const [fillToMax, setFillToMax] = useState(false);
+  useEffect(() => { setFillToMax(false); }, [editablePages]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [addingNew, setAddingNew] = useState(false);
@@ -64,6 +67,7 @@ export function DomainAnalyseView() {
     setAddingNew(false);
     setNewUrlValue("");
     setShowAllPages(false);
+    setFillToMax(false);
     setPhase2Visible(true);
   }, [setupImportNotice]);
 
@@ -75,10 +79,8 @@ export function DomainAnalyseView() {
   }, []);
 
   useEffect(() => {
-    if (crawledPages.length > 0) {
-      setEditablePages([...crawledPages]);
-      setSelectedPages([...crawledPages]);
-    }
+    setEditablePages([...crawledPages]);
+    if (crawledPages.length > 0) setSelectedPages([...crawledPages]);
   }, [crawledPages]);
 
   useEffect(() => {
@@ -295,6 +297,7 @@ export function DomainAnalyseView() {
             buyerPersonas: domainForm.personas.trim() || null,
           },
           explicitUrls,
+          ...pageFillOptions(editablePages, selectedPages, fillToMax),
         },
       },
       {
@@ -559,6 +562,13 @@ export function DomainAnalyseView() {
                 </div>
               )}
             </div>
+
+            {canFillPages(editablePages, selectedPages) && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground leading-relaxed">
+                <input type="checkbox" checked={fillToMax} onChange={(event) => setFillToMax(event.target.checked)} />
+                {t("domain.fill_pages_option")}
+              </label>
+            )}
 
             {editablePages.length > MAX_VISIBLE_PAGES && (
               <button

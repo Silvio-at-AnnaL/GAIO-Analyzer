@@ -13,7 +13,7 @@ router.post("/analyze", async (req, res): Promise<void> => {
     return;
   }
 
-  const { mode, url, html, questionnaire, explicitUrls } = parsed.data;
+  const { mode, url, html, questionnaire, explicitUrls, fillToMax, excludedUrls } = parsed.data;
 
   if (mode === "url" && (!url || url.trim().length === 0)) {
     res.status(400).json({ error: "URL is required for URL mode" });
@@ -38,7 +38,10 @@ router.post("/analyze", async (req, res): Promise<void> => {
   const id = uuidv4();
 
   const userSession = Array.isArray(req.ip) ? req.ip[0] : (req.ip ?? null);
-  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null, userSession);
+  const fillOptions = mode === "url" && explicitUrls?.length && fillToMax === true
+    ? { fillToMax: true, excludedUrls: excludedUrls?.slice(0, 200) ?? null }
+    : undefined;
+  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null, userSession, fillOptions);
 
   res.status(201).json({ id, status: "running" });
 });

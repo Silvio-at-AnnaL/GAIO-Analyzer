@@ -13,7 +13,7 @@ async function load(entry) {
   });
   return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 }
-const { generateHtmlReport } = await load("./report-export.ts");
+const { generateHtmlReport, buildAnalyseparameterDocumentHtml } = await load("./report-export.ts");
 const { parseReportSetup } = await load("./report-setup.ts");
 const { buildReportInputParams } = await load("./report-input-params.ts");
 const { customFetch } = await load("../../../../lib/api-client-react/src/custom-fetch.ts");
@@ -267,7 +267,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1079 + 1);
+  assert.equal(Object.keys(labelDefaults).length, 1080 + 2);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -277,6 +277,7 @@ test("results defaults add one language-variant label and retain the crawl text 
     lang_name_de: "Deutsch",
     lang_name_en: "Englisch",
     lang_variant_info: "Die eingegebene Adresse zeigt die Sprachversion „{fromLang}“. Analysiert wurde die deutsche Sprachversion: {to}",
+    page_auto_added: "(automatisch ergänzt)",
   })) {
     assert.deepEqual(labelDefaults[`results.${key}`], { group: "results", de });
   }
@@ -439,4 +440,68 @@ test("live language notice respects label overrides; HTML includes it in failed 
   assert.ok(html.includes("Die eingegebene Adresse zeigt"));
   assert.equal(block(html).url, report.url);
   assert.equal(block(html).domain, report.url);
+});
+
+test("mixed reports retain server inputs and export additive v2 metadata with an unchanged import selection", async () => {
+  const value = { ...report, inputs: { ...report.inputs, pageSelection: "mixed", requestedPages: [report.crawledPages[0]],
+    excludedPages: ["https://example.test/excluded"], autoAddedPages: report.crawledPages.slice(1) } };
+  const params = buildReportInputParams(value, form, "test-date");
+  assert.equal(params.inputsSource, "server");
+  assert.equal(params.pageSelection, "mixed");
+  assert.deepEqual(params.excludedPages, value.inputs.excludedPages);
+  assert.deepEqual(params.autoAddedPages, value.inputs.autoAddedPages);
+  const html = await exportReport(value);
+  const data = block(html);
+  assert.equal(data.blockVersion, 2);
+  assert.deepEqual(data.excludedPages, value.inputs.excludedPages);
+  assert.deepEqual(data.autoAddedPages, value.inputs.autoAddedPages);
+  const imported = parseReportSetup(html);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.setup.pageSelection, "mixed");
+  assert.deepEqual(imported.setup.pages, value.crawledPages, "all evaluated pages remain the imported manual selection");
+  assert.ok(html.includes("gemischt: 1 ausgewählt, 2 automatisch ergänzt"));
+  assert.ok(buildAnalyseparameterDocumentHtml(params).includes("gemischt: 1 ausgewählt, 2 automatisch ergänzt"));
+});
+
+test("HTML selection rows distinguish manual, automatic and absent selection metadata", async () => {
+  for (const [pageSelection, text] of [["manual", "manuell"], ["auto", "automatisch"]]) {
+    const value = { ...report, inputs: { ...report.inputs, pageSelection } };
+    const html = await exportReport(value);
+    assert.ok(html.includes("Seitenauswahl"));
+    assert.ok(html.includes(`>${text}</td>`));
+    assert.ok(buildAnalyseparameterDocumentHtml(buildReportInputParams(value, form)).includes(`>${text}</td>`));
+  }
+  const html = await exportReport({ ...report, inputs: undefined });
+  assert.ok(!html.includes("Seitenauswahl"));
+});
+
+const panelStart = resultsSource.indexOf("function CrawledPagesPanel(");
+const panelEnd = resultsSource.indexOf("interface HreflangVariant", panelStart);
+assert.ok(panelStart > 0 && panelEnd > panelStart);
+globalThis.__addedPagePanel = { React, t: key => labelDefaults[key]?.de ?? key };
+const { outputFiles: panelFiles } = await build({
+  stdin: { loader: "tsx", contents: `
+    const {React, t} = globalThis.__addedPagePanel;
+    const useState = () => [false, () => {}], useT = () => t;
+    const ChevronUp = () => null, ChevronDown = () => null, ExternalLink = () => null;
+    ${resultsSource.slice(panelStart, panelEnd)}
+    export {CrawledPagesPanel};` },
+  format: "esm", write: false,
+});
+const { CrawledPagesPanel } = await import(`data:text/javascript;base64,${Buffer.from(panelFiles[0].contents).toString("base64")}`);
+
+test("actual live and HTML page lists mark only automatically added pages with a muted same-size suffix", async () => {
+  const value = { ...report, inputs: { ...report.inputs, pageSelection: "mixed", autoAddedPages: [report.crawledPages[1]], excludedPages: [] } };
+  const live = renderToStaticMarkup(React.createElement(CrawledPagesPanel, { pages: value.crawledPages, autoAddedPages: value.inputs.autoAddedPages, pdfMode: true }));
+  const html = await exportReport(value);
+  assert.equal((live.match(/\(automatisch ergänzt\)/g) ?? []).length, 1);
+  assert.equal((html.match(/\(automatisch ergänzt\)/g) ?? []).length, 1);
+  assert.match(live, /<span class="text-muted-foreground">\(automatisch ergänzt\)<\/span>/);
+  assert.match(html, /<span style="color:[^"]*;">\(automatisch ergänzt\)<\/span>/);
+  assert.match(resultsSource.slice(panelStart, panelEnd), /t\("results\.page_auto_added"\)/);
+});
+
+test("fill and automatically-added labels use exactly the requested German defaults", () => {
+  assert.deepEqual(labelDefaults["domain.fill_pages_option"], { group: "domain", de: "Auf 16 Seiten auffüllen – abgewählte Seiten werden nicht verwendet" });
+  assert.deepEqual(labelDefaults["results.page_auto_added"], { group: "results", de: "(automatisch ergänzt)" });
 });

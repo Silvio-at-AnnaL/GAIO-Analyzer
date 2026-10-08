@@ -10,6 +10,7 @@ import {
 
 export interface CrawledPage {
   url: string;
+  finalUrl?: string;
   html: string;
   contentType: string | null;
   statusCode: number;
@@ -354,6 +355,7 @@ function sortCategoryQueue(q: QueueEntry[]): void {
 export async function fetchWithTiming(
   url: string,
   timeoutMs = 15000,
+  canFetchUrl?: (url: string) => boolean,
 ): Promise<{ html: string; contentType: string | null; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
   const start = Date.now();
   let ttfb = 0;
@@ -374,6 +376,9 @@ export async function fetchWithTiming(
       let redirects = 0;
       while (true) {
         controller.signal.throwIfAborted();
+        if (canFetchUrl && !canFetchUrl(currentUrl)) {
+          throw Object.assign(new Error("Page fetch blocked by selection"), { code: "PAGE_FETCH_BLOCKED", url: currentUrl });
+        }
         const hostname = new URL(currentUrl).hostname;
         const jar = cookies.get(hostname);
         const response = await fetch(currentUrl, {
@@ -591,7 +596,7 @@ function parseSitemapUrls(
 }
 
 /** Normalise a URL string: strip hash, remove redundant trailing slash. */
-function normalizeUrl(urlStr: string): string {
+export function normalizeUrl(urlStr: string): string {
   try {
     const u = new URL(urlStr);
     u.hash = "";
@@ -1022,7 +1027,7 @@ export async function fetchSiteTechFiles(
 export async function fetchExplicitPages(
   inputUrl: string,
   explicitUrls: string[],
-  opts?: { onProgress?: (done: number, total: number) => void },
+  opts?: { onProgress?: (done: number, total: number) => void; skipTechFiles?: boolean },
 ): Promise<CrawlResult> {
   const BATCH_DEADLINE_MS = Math.min(explicitUrls.length * 20_000, 180_000);
   const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
@@ -1090,7 +1095,7 @@ export async function fetchExplicitPages(
     },
   };
 
-  if (pages.length > 0) {
+  if (pages.length > 0 && !opts?.skipTechFiles) {
     let homepageHtml: string | undefined;
     Object.assign(result, await fetchSiteTechFiles(inputUrl, {
       onHomepage: (html) => { homepageHtml = html; },
@@ -1111,6 +1116,9 @@ export async function crawlSite(
     preferredLang?: string;
     minTextChars?: number;
     onProgress?: (done: number, total: number) => void;
+    seedPages?: CrawledPage[];
+    excludeUrls?: string[];
+    onHomepage?: (html: string) => void;
   },
 ): Promise<CrawlResult> {
   const base = new URL(inputUrl);
@@ -1232,6 +1240,21 @@ export async function crawlSite(
   }
 
   const visited = new Set<string>();
+  const seedMode = opts?.seedPages !== undefined;
+  const excludedUrls = new Set((opts?.excludeUrls ?? []).map(normalizeUrl));
+  const isExcluded = (url: string) => excludedUrls.has(normalizeUrl(url));
+  const seeds = (opts?.seedPages ?? []).filter((page) => !isExcluded(page.url) && !(page.finalUrl && isExcluded(page.finalUrl))).slice(0, maxPages);
+  result.pages.push(...seeds);
+  for (const page of seeds) {
+    visited.add(canon(page.url));
+    if (page.finalUrl) visited.add(canon(page.finalUrl));
+    const fingerprint = contentFingerprint(page.html);
+    if (fingerprint) seenFingerprints.set(fingerprint, page.url);
+  }
+  for (const url of excludedUrls) {
+    visited.add(canon(url));
+    recordExcludedPath(url);
+  }
   const hreflangUrlSet = new Set<string>();
 
   // When the start path already contains a language prefix (e.g. /de, /en),
@@ -1279,9 +1302,25 @@ export async function crawlSite(
 
   let homepageHtml = "";
   let canonicalHomepageUrl = canon(homepageUrl);
-  result.reliability.attempted++;
+  const homeSeed = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(homepageUrl) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(homepageUrl)));
+  const fetchDiscoveryPage = async (url: string, timeoutMs = 15000) => {
+    let cachedDestination: CrawledPage | undefined;
+    try {
+      return await fetchWithTiming(url, timeoutMs, seedMode ? (target) => {
+        cachedDestination = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(target) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(target)));
+        return !cachedDestination;
+      } : undefined);
+    } catch (error) {
+      if ((error as { code?: string })?.code === "PAGE_FETCH_BLOCKED" && cachedDestination) {
+        return { ...cachedDestination, finalUrl: cachedDestination.finalUrl ?? cachedDestination.url };
+      }
+      throw error;
+    }
+  };
+  let reusedHomepage = Boolean(homeSeed);
+  if (!homeSeed) result.reliability.attempted++;
   try {
-    let homePage = await fetchWithTiming(homepageUrl);
+    let homePage = homeSeed ? { ...homeSeed, finalUrl: homeSeed.finalUrl ?? homeSeed.url } : await fetchDiscoveryPage(homepageUrl);
     try {
       const finalUrl = new URL(homePage.finalUrl);
       if (hostKey(finalUrl.hostname) !== siteKey) {
@@ -1314,7 +1353,7 @@ export async function crawlSite(
       if (inputLanguage === "de" || inputLanguage === "en") {
         preferred = inputLanguage;
         source = "url";
-      } else if (detection.source === "content" && detection.lang !== opts.preferredLang && !hasPreferredVariant) {
+      } else if (!seedMode && detection.source === "content" && detection.lang !== opts.preferredLang && !hasPreferredVariant) {
         preferred = detection.lang;
         source = "content";
       }
@@ -1340,23 +1379,29 @@ export async function crawlSite(
         if (remaining <= 0) {
           logger.warn({ ...context, reason: "timeout" }, "language variant unavailable");
         } else {
-          result.reliability.attempted++;
+          const variantSeed = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(variant.url) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(variant.url)));
+          if (!variantSeed) result.reliability.attempted++;
           try {
-            const variantPage = await fetchWithTiming(variant.url, Math.min(15000, remaining));
+            const variantPage = variantSeed ? { ...variantSeed, finalUrl: variantSeed.finalUrl ?? variantSeed.url }
+              : await fetchDiscoveryPage(variant.url, Math.min(15000, remaining));
             const variantBlocked = detectBlockedContent(variantPage.html, variantPage.finalUrl);
             const finalVariantUrl = new URL(variantPage.finalUrl);
             if (variantPage.statusCode >= 400 || variantBlocked !== null ||
                 hostKey(finalVariantUrl.hostname) !== hostKey(originalHost) ||
                 normalizeUrl(variantPage.finalUrl) === normalizeUrl(originalUrl)) {
               const reason = variantBlocked ?? (variantPage.statusCode >= 400 ? classifyHttpStatus(variantPage.statusCode) : "unknown");
-              recordFailure(variant.url, reason, variantPage.statusCode);
+              if (!variantSeed) recordFailure(variant.url, reason, variantPage.statusCode);
               logger.warn({ ...context, reason, statusCode: variantPage.statusCode }, "language variant unavailable");
             } else {
               // The original entry was fetched, but only the variant is evaluated.
               const originalBlocked = detectBlockedContent(homePage.html, originalUrl);
-              if (homePage.statusCode < 400 && originalBlocked === null) result.reliability.succeeded++;
-              else recordFailure(originalUrl, originalBlocked ?? classifyHttpStatus(homePage.statusCode), homePage.statusCode);
+              if (homePage.statusCode < 400 && originalBlocked === null) {
+                if (!homeSeed) result.reliability.succeeded++;
+              }
+              else if (!homeSeed) recordFailure(originalUrl, originalBlocked ?? classifyHttpStatus(homePage.statusCode), homePage.statusCode);
               homePage = variantPage;
+              // Cached seed responses were accounted for by the selection phase.
+              reusedHomepage = Boolean(variantSeed);
               homepageUrl = variant.url;
               homepageHtml = variantPage.html;
               siteKey = hostKey(finalVariantUrl.hostname);
@@ -1382,6 +1427,7 @@ export async function crawlSite(
       }
     }
     provisionalLanguage = opts?.preferredLang === undefined && source !== "content" && source !== "hreflang";
+    opts?.onHomepage?.(homepageHtml);
     result.siteLanguage = {
       lang: targetLang, source, declared: detection.declared,
       mismatch: (source === "content" || source === "hreflang") && detection.source === "content"
@@ -1389,22 +1435,24 @@ export async function crawlSite(
     };
     const blocked = detectBlockedContent(homepageHtml, homePage.finalUrl);
     if (homePage.statusCode < 400 && blocked === null) {
-      const fingerprint = contentFingerprint(homepageHtml);
-      if (fingerprint) seenFingerprints.set(fingerprint, canonicalHomepageUrl);
-      result.pages.push({
+      if (!seedMode && !isExcluded(canonicalHomepageUrl)) {
+        const fingerprint = contentFingerprint(homepageHtml);
+        if (fingerprint) seenFingerprints.set(fingerprint, canonicalHomepageUrl);
+        result.pages.push({
         url: canonicalHomepageUrl,
         html: homepageHtml,
         contentType: homePage.contentType,
         statusCode: homePage.statusCode,
         responseTime: homePage.responseTime,
         ttfb: homePage.ttfb,
-      });
+        });
+      }
       acceptedBranches.add(firstPathSegment(new URL(canonicalHomepageUrl).pathname));
-      result.reliability.succeeded++;
+      if (!reusedHomepage) result.reliability.succeeded++;
       opts?.onProgress?.(result.pages.length, maxPages);
     } else {
       const reason = blocked ?? classifyHttpStatus(homePage.statusCode);
-      recordFailure(canonicalHomepageUrl, reason, homePage.statusCode);
+      if (!reusedHomepage) recordFailure(canonicalHomepageUrl, reason, homePage.statusCode);
       result.homepageFailReason = reason;
       logger.warn(
         { url: canonicalHomepageUrl, reason, statusCode: homePage.statusCode },
@@ -1418,7 +1466,7 @@ export async function crawlSite(
     quarantineHreflang(extractHreflangVariants(homepageHtml, result.languageVariant?.to ?? canonicalHomepageUrl));
 
     // Count homepage in __root__ category
-    categoryCounts.set("__root__", 1);
+    if (!seedMode && result.pages.length > 0) categoryCounts.set("__root__", 1);
   } catch (err) {
     const reason = classifyFetchError(err);
     canonicalHomepageUrl = canon(homepageUrl);
@@ -1437,6 +1485,19 @@ export async function crawlSite(
   }
 
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
+  // Reapply canonical identities after a homepage/variant redirect.
+  for (const url of excludedUrls) visited.add(canon(url));
+  const excludedPageUrls = new Set([...excludedUrls].map(canon));
+  const seededPageUrls = new Set(seeds.flatMap((page) => [canon(page.url), ...(page.finalUrl ? [canon(page.finalUrl)] : [])]));
+  for (const page of seeds) {
+    visited.add(canon(page.url));
+    if (page.finalUrl) visited.add(canon(page.finalUrl));
+    const path = new URL(page.url).pathname;
+    acceptedBranches.add(firstPathSegment(path));
+    const category = extractCategory(path, startPath);
+    categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+    quarantineHreflang(extractHreflangVariants(page.html, page.finalUrl ?? page.url));
+  }
   {
     const origin = `${canonicalProtocol}//${canonicalHost}`;
     const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, result.languageVariant?.to ?? canonicalHomepageUrl, targetLang, canFetchTechnical);
@@ -1453,6 +1514,11 @@ export async function crawlSite(
   //           (Rule 5 Step 1+2+3+4)
 
   // Homepage links
+  for (const page of seeds) {
+    for (const { url } of extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath)) {
+      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+    }
+  }
   if (homepageHtml) {
     const links = extractInternalLinks(
       homepageHtml,
@@ -1608,7 +1674,9 @@ export async function crawlSite(
 
     result.reliability.attempted++;
     try {
-      const page = await fetchWithTiming(url);
+      const page = await fetchWithTiming(url, 15000, seedMode || excludedUrls.size > 0
+        ? (target) => !isExcluded(target) && !excludedPageUrls.has(canon(target)) && !seededPageUrls.has(canon(target))
+        : undefined);
       const blocked = detectBlockedContent(page.html, page.finalUrl);
       if (page.statusCode < 400 && blocked === null) {
         const crawledPage: CrawledPage = {
@@ -1694,6 +1762,17 @@ export async function crawlSite(
         recordFailure(url, blocked ?? classifyHttpStatus(page.statusCode), page.statusCode);
       }
     } catch (err) {
+      const blockedFetch = err as { code?: string; url?: string };
+      if (blockedFetch?.code === "PAGE_FETCH_BLOCKED" && blockedFetch.url) {
+        if (canon(blockedFetch.url) === url) result.reliability.attempted--;
+        else result.reliability.succeeded++; // Successful redirect response; its destination was deliberately not fetched.
+        if (isExcluded(blockedFetch.url) || excludedPageUrls.has(canon(blockedFetch.url))) recordExcludedPath(normalizeUrl(blockedFetch.url));
+        else {
+          result.skipped.duplicate++;
+          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+        }
+        continue;
+      }
       const reason = classifyFetchError(err);
       recordFailure(url, reason);
       logger.warn({ url, reason, err }, "Failed to crawl page");
@@ -1701,7 +1780,7 @@ export async function crawlSite(
   }
 
   if (trackPhases) result.pagePhaseMs = Date.now() - pageLoopStart;
-  if (result.pages.length < 2 && skippedLanguagePages.length > 0) {
+  if (!seedMode && result.pages.length < 2 && skippedLanguagePages.length > 0) {
     const added = Math.min(2 - result.pages.length, skippedLanguagePages.length);
     const fallbackPages = skippedLanguagePages.slice(0, added);
     result.pages.push(...fallbackPages);

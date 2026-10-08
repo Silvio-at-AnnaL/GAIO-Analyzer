@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
 
 const logs = [];
+const seedOptions = { skipTechFiles: true };
 globalThis.__crawlerTestLogs = logs;
 const { outputFiles } = await build({
   entryPoints: [new URL("./crawler.ts", import.meta.url).pathname],
@@ -75,6 +76,132 @@ async function withServer(handler, run) {
     await new Promise(resolve => server.close(resolve));
   }
 }
+
+function fillFixture(req, res) {
+  const path = req.url;
+  if (path === "/robots.txt" || path === "/llms.txt") { res.end("Synthetic technical file"); return; }
+  if (path.includes("sitemap")) { res.writeHead(404); res.end(); return; }
+  const links = ["products", "services", "solutions", "industries", "company"]
+    .flatMap(category => Array.from({ length: 8 }, (_, index) => `/${category}/${index}`));
+  res.end(languageHtml("de", `${path} ${germanText.repeat(4)}`, path === "/" ? ["/products/removed", ...links] : []));
+}
+
+test("fill seeds stay first, are not refetched, and excluded normalized links never return", async () => {
+  await withServer(fillFixture, async ({ origin, requests }) => {
+    const urls = [`${origin}/products/0`, `${origin}/services/0`];
+    const selected = await fetchExplicitPages(origin, urls, seedOptions);
+    assert.equal(requests.some(request => request.url === "/robots.txt"), false, "selection phase must not fetch technical files in fill mode");
+    const result = await crawlSite(origin, 16, {
+      seedPages: selected.pages, excludeUrls: [`${origin}/products/removed#ignored`], preferredLang: "de",
+    });
+    assert.deepEqual(result.pages.slice(0, 2).map(page => page.url), urls);
+    assert.equal(requests.filter(request => request.url === "/products/0").length, 1);
+    assert.equal(requests.filter(request => request.url === "/services/0").length, 1);
+    assert.equal(requests.some(request => request.url === "/products/removed"), false);
+    assert.equal(result.pages.some(page => page.url.includes("/products/removed")), false);
+    assert.equal(result.pages.some(page => page.url === `${origin}/`), false, "discovery homepage is not evaluated");
+    assert.equal(result.skipped.excludedPath, 1);
+    assert.equal(result.pages.length, 16);
+    assert.equal(requests.filter(request => request.url === "/robots.txt").length, 1);
+    assert.equal(requests.filter(request => request.url === "/llms.txt").length, 1);
+  });
+});
+
+test("a selected homepage is reused for discovery and counted only in the selection phase", async () => {
+  await withServer(fillFixture, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/`], seedOptions);
+    const result = await crawlSite(origin, 4, { seedPages: selected.pages, preferredLang: "de" });
+    assert.equal(requests.filter(request => request.url === "/").length, 1);
+    assert.equal(result.pages[0].url, `${origin}/`);
+    assert.equal(result.pages.length, 4);
+    assert.equal(result.reliability.attempted, 3);
+    assert.equal(result.reliability.succeeded, 3);
+  });
+});
+
+test("a discovery homepage redirect reuses its already selected destination", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") { res.writeHead(302, { Location: "/de/" }); res.end(); }
+    else if (req.url === "/de/") res.end(languageHtml("de", `Root ${germanText.repeat(4)}`, ["/de/products/new"]));
+    else if (req.url === "/de/products/new") res.end(languageHtml("de", `New ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/de/`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, preferredLang: "de" });
+    assert.equal(requests.filter(request => request.url === "/de/").length, 1);
+    assert.deepEqual(result.pages.map(page => page.url), [`${origin}/de/`, `${origin}/de/products/new`]);
+  });
+});
+
+test("seed links discover pages even when the unselected homepage contains no links", async () => {
+  await withServer((req, res) => {
+    if (["/", "/products/seed", "/services/seed-discovery"].includes(req.url)) {
+      res.end(languageHtml("de", `${req.url} ${germanText.repeat(4)}`,
+        req.url === "/products/seed" ? ["/services/seed-discovery"] : []));
+    } else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/products/seed`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, excludeUrls: [`${origin}/`], preferredLang: "de" });
+    assert.deepEqual(result.pages.map(page => page.url), [`${origin}/products/seed`, `${origin}/services/seed-discovery`]);
+    assert.equal(requests.filter(request => request.url === "/").length, 1, "excluded homepage is still fetched for discovery only");
+    assert.equal(result.skipped.excludedPath, 1);
+  });
+});
+
+test("German seeds on an English root fill German pages and reuse a seeded hreflang homepage", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(`<html lang="en"><head><link rel="alternate" hreflang="de" href="/de/"></head><body><main>${englishText.repeat(4)}</main></body></html>`);
+    else if (req.url === "/de/") res.end(languageHtml("de", `German root ${germanText.repeat(4)}`, ["/de/products/new", "/en/products/new"]));
+    else if (req.url.startsWith("/de/products/")) res.end(languageHtml("de", `${req.url} ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/de/`, `${origin}/de/products/seed`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, preferredLang: "de" });
+    assert.ok(result.pages.every(page => page.url.startsWith(`${origin}/de/`)));
+    assert.ok(result.pages.some(page => page.url === `${origin}/de/products/new`));
+    assert.equal(requests.filter(request => request.url === "/de/").length, 1);
+    assert.equal(result.languageVariant.toLang, "de");
+    assert.equal(result.reliability.succeeded, 2, "only original discovery homepage and new page belong to crawl-phase reliability");
+  });
+});
+
+test("fill keeps selection language without hreflang and does not relax to English pages", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/de/selected") res.end(languageHtml("de", germanText.repeat(4)));
+    else if (req.url === "/" || req.url === "/products/english") res.end(languageHtml("en", `${req.url} ${englishText.repeat(4)}`, ["/products/english"]));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/de/selected`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, preferredLang: "de" });
+    assert.deepEqual(result.pages.map(page => page.url), [`${origin}/de/selected`]);
+    assert.equal(result.siteLanguage.lang, "de");
+    assert.equal(result.skipped.otherLanguage, 1);
+  });
+});
+
+test("page redirects cannot refetch seeded or deselected pages", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/products/excluded-alias", "/services/seed-alias"]));
+    else if (req.url === "/products/excluded-alias" || req.url === "/services/seed-alias") {
+      res.writeHead(302, { Location: req.url.includes("excluded") ? "/products/excluded" : "/services/seed" }); res.end();
+    } else if (req.url === "/services/seed") res.end(languageHtml("de", `Selected ${germanText.repeat(4)}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const selected = await fetchExplicitPages(origin, [`${origin}/services/seed`], seedOptions);
+    const result = await crawlSite(origin, 16, { seedPages: selected.pages, excludeUrls: [`${origin}/products/excluded`], preferredLang: "de" });
+    assert.equal(requests.some(request => request.url === "/products/excluded"), false);
+    assert.equal(requests.filter(request => request.url === "/services/seed").length, 1);
+    assert.deepEqual(result.pages.map(page => page.url), [`${origin}/services/seed`]);
+  });
+});
+
+test("without seed or exclusion options the homepage remains evaluated", async () => {
+  await withServer(fillFixture, async ({ origin }) => {
+    const result = await crawlSite(origin, 1);
+    assert.deepEqual(result.pages.map(page => page.url), [`${origin}/`]);
+    assert.equal(result.reliability.succeeded, 1);
+  });
+});
 
 test("cookie-gated self-redirect succeeds and keeps final-response timing and headers", async () => {
   await withServer((req, res) => {

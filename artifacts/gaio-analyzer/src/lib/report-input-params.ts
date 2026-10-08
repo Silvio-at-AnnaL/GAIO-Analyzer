@@ -5,13 +5,15 @@ export interface StoredAnalysisInputs {
   buyerPersonas: string | null;
   competitors: string[];
   requestedPages: string[] | null;
-  pageSelection: "manual" | "auto";
+  pageSelection: "manual" | "auto" | "mixed";
+  excludedPages: string[] | null;
+  autoAddedPages: string[];
 }
 
 export type ReportInputParams = InputParams & {
   inputsSource: "server" | "form";
   requestedPages: string[] | null;
-  pageSelection: "manual" | "auto" | null;
+  pageSelection: "manual" | "auto" | "mixed" | null;
 };
 
 const nullableString = (value: unknown): value is string | null =>
@@ -27,7 +29,9 @@ export function readAnalysisInputs(value: unknown): StoredAnalysisInputs | null 
     !nullableString(inputs.companyName) || !nullableString(inputs.buyerPersonas)
     || !stringArray(inputs.competitors)
     || !(inputs.requestedPages === null || stringArray(inputs.requestedPages))
-    || (inputs.pageSelection !== "manual" && inputs.pageSelection !== "auto")
+    || (inputs.pageSelection !== "manual" && inputs.pageSelection !== "auto" && inputs.pageSelection !== "mixed")
+    || !(inputs.excludedPages === undefined || inputs.excludedPages === null || stringArray(inputs.excludedPages))
+    || !(inputs.autoAddedPages === undefined || stringArray(inputs.autoAddedPages))
   ) return null;
   return {
     companyName: inputs.companyName,
@@ -35,6 +39,8 @@ export function readAnalysisInputs(value: unknown): StoredAnalysisInputs | null 
     competitors: [...inputs.competitors],
     requestedPages: inputs.requestedPages === null ? null : [...inputs.requestedPages],
     pageSelection: inputs.pageSelection,
+    excludedPages: Array.isArray(inputs.excludedPages) ? [...inputs.excludedPages] as string[] : null,
+    autoAddedPages: Array.isArray(inputs.autoAddedPages) ? [...inputs.autoAddedPages] as string[] : [],
   };
 }
 
@@ -55,5 +61,7 @@ export function buildReportInputParams(
     inputsSource: inputs ? "server" : "form",
     requestedPages: inputs?.requestedPages ?? null,
     pageSelection: inputs?.pageSelection ?? null,
+    excludedPages: inputs?.excludedPages ?? null,
+    autoAddedPages: inputs?.autoAddedPages ?? [],
   };
 }

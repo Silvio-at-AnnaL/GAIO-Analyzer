@@ -62,6 +62,10 @@ function langBadge(lang: string): string {
 // ─── Input parameters for Analyseparameter section ───────────────────────────
 
 export type InputParams = {
+  pageSelection?: "manual" | "auto" | "mixed" | null;
+  requestedPages?: string[] | null;
+  excludedPages?: string[] | null;
+  autoAddedPages?: string[];
   domainUrl: string;
   companyName?: string | null;
   targetAudience?: string | null;
@@ -491,6 +495,7 @@ function renderBreakdownRow(label: string, valueText: string, ratio: number): st
 }
 
 function renderDetailsSection(report: Record<string, unknown>): string {
+  const autoAddedPages = readAnalysisInputs(report.inputs)?.autoAddedPages ?? [];
   const DT = {
     heading: "Analyse-Details",
     technicalSeoHeading: "Technische SEO-Basis",
@@ -519,7 +524,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     html += `
     <div style="font-size:13px;font-weight:600;color:${C.textSec};margin:4px 0 2px;">Gecrawlte Seiten (${crawledPages.length})</div>
     <ul style="margin:4px 0;padding-left:16px;font-size:12px;color:${C.textSec};">
-      ${crawledPages.map((p) => `<li><a href="${esc(p)}" target="_blank" rel="noopener" style="color:${C.accent};">${esc(p)}</a></li>`).join("")}
+      ${crawledPages.map((p) => `<li><a href="${esc(p)}" target="_blank" rel="noopener" style="color:${C.accent};">${esc(p)}</a>${autoAddedPages.includes(p) ? ` <span style="color:${C.textMuted};">${PAGE_SELECTION_TEXT.autoAdded}</span>` : ""}</li>`).join("")}
     </ul>`;
   }
 
@@ -1149,6 +1154,19 @@ ${divider("FAQ / So funktioniert's")}
 }
 
 // ─── Analyseparameter ─────────────────────────────────────────────────────────
+const PAGE_SELECTION_TEXT = {
+  heading: "Seitenauswahl",
+  manual: "manuell",
+  auto: "automatisch",
+  mixed: (selected: number, added: number) => `gemischt: ${selected} ausgewählt, ${added} automatisch ergänzt`,
+  autoAdded: "(automatisch ergänzt)",
+} as const;
+
+function selectionDescription(params: InputParams): string | null {
+  if (params.pageSelection === "mixed") return PAGE_SELECTION_TEXT.mixed(params.requestedPages?.length ?? 0, params.autoAddedPages?.length ?? 0);
+  if (params.pageSelection === "manual" || params.pageSelection === "auto") return PAGE_SELECTION_TEXT[params.pageSelection];
+  return null;
+}
 
 /** Inner HTML for the Analyseparameter section in the HTML one-pager. */
 function renderAnalyseparameterSection(params: InputParams): string {
@@ -1172,6 +1190,8 @@ function renderAnalyseparameterSection(params: InputParams): string {
 
   rows.push(["Analysedatum", esc(params.analysisDate)]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
+  const selection = selectionDescription(params);
+  if (selection !== null) rows.push([PAGE_SELECTION_TEXT.heading, esc(selection)]);
 
   const tableRows = rows.map(([label, value], i) => {
     const isLast = i === rows.length - 1;
@@ -1210,6 +1230,8 @@ export function buildAnalyseparameterDocumentHtml(params: InputParams): string {
 
   rows.push(["Analysedatum", params.analysisDate]);
   rows.push(["Gecrawlte Seiten", String(params.crawledPagesCount)]);
+  const selection = selectionDescription(params);
+  if (selection !== null) rows.push([PAGE_SELECTION_TEXT.heading, selection]);
 
   const tableRows = rows.map(([label, value]) => {
     const htmlValue = value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
@@ -1713,6 +1735,8 @@ export async function generateHtmlReport(
     pages: Array.isArray(report.crawledPages) ? report.crawledPages : [],
     requestedPages: inputParams.requestedPages,
     pageSelection: inputParams.pageSelection,
+    excludedPages: inputParams.excludedPages,
+    autoAddedPages: inputParams.autoAddedPages,
     inputsSource: inputParams.inputsSource,
     status: typeof report.status === "string" ? report.status : null,
   };

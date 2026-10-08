@@ -17,4 +17,8 @@ export interface StartAnalysisBody {
   questionnaire?: QuestionnaireData;
   /** If provided, skip auto-crawl and use these URLs directly */
   explicitUrls?: string[] | null;
+  /** @nullable */
+  fillToMax?: boolean | null;
+  /** @nullable */
+  excludedUrls?: string[] | null;
 }
