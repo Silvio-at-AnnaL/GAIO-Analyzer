@@ -60,6 +60,14 @@ test("isSensitiveKey does not redact unrelated or near-match words", () => {
   }
 });
 
+test("language variant selected persists at info level without redacting variant metadata", () => {
+  const obj = { host: "example.test", from: "https://example.test/", to: "https://example.test/de/", fromLang: "en", toLang: "de" };
+  assert.ok(PERSISTED_INFO_MESSAGES.has("language variant selected"));
+  assert.equal(shouldPersist({ level: 30, msg: "language variant selected", obj }), true);
+  assert.equal(shouldPersist({ level: 20, msg: "language variant selected", obj }), false);
+  assert.deepEqual(buildContext(obj), obj);
+});
+
 test("buildContext keeps nested passages readable", () => {
   const context = buildContext({
     questions: [{

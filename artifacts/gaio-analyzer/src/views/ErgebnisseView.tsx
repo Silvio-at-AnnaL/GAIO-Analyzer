@@ -107,6 +107,8 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
     | { from: string; to: string }
     | null
     | undefined;
+  const failedLanguageVariant = (report as unknown as Record<string, unknown> | undefined)?.languageVariant as
+    { from: string; to: string; fromLang: string | null; toLang: string } | null | undefined;
 
   const buildFailedHtml = async () => {
     if (!report || report.status !== "failed") return "";
@@ -273,6 +275,19 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
           })}
         </p>
       )}
+      {isFailed && failedLanguageVariant && (() => {
+        const fromLang = failedLanguageVariant.fromLang === "en" ? t("results.lang_name_en")
+          : failedLanguageVariant.fromLang === "de" ? t("results.lang_name_de")
+          : failedLanguageVariant.fromLang?.toUpperCase() || "unbekannt";
+        const parts = t("results.lang_variant_info", { fromLang, to: "{to}" }).split("{to}");
+        return (
+          <p className="text-xs text-muted-foreground">
+            {parts[0]}{parts.slice(1).map((part, index) => (
+              <span key={index}><a href={failedLanguageVariant.to} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">{failedLanguageVariant.to}</a>{part}</span>
+            ))}
+          </p>
+        );
+      })()}
 
       {isFailed && (
         <div className="space-y-2">
@@ -1025,6 +1040,8 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const schemaOrg = report.schemaOrg as Record<string, unknown> | null;
   const crawlReliability = (report as unknown as Record<string, unknown>).crawlReliability as Record<string, unknown> | null;
   const siteLanguage = (report as unknown as Record<string, unknown>).siteLanguage as Record<string, unknown> | null | undefined;
+  const languageVariant = (report as unknown as Record<string, unknown>).languageVariant as
+    { from: string; to: string; fromLang: string | null; toLang: string } | null | undefined;
   const homepageRedirect = (report as unknown as Record<string, unknown>).homepageRedirect as
     | { from: string; to: string }
     | null
@@ -2198,6 +2215,19 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               })}
             </p>
           )}
+          {languageVariant && (() => {
+            const fromLang = languageVariant.fromLang === "en" ? t("results.lang_name_en")
+              : languageVariant.fromLang === "de" ? t("results.lang_name_de")
+              : languageVariant.fromLang?.toUpperCase() || "unbekannt";
+            const parts = t("results.lang_variant_info", { fromLang, to: "{to}" }).split("{to}");
+            return (
+              <p className="text-xs text-muted-foreground">
+                {parts[0]}{parts.slice(1).map((part, index) => (
+                  <span key={index}><a href={languageVariant.to} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">{languageVariant.to}</a>{part}</span>
+                ))}
+              </p>
+            );
+          })()}
           {crawlReliability && Number(crawlReliability.attempted) > 0 && (() => {
             const attempted = Number(crawlReliability.attempted);
             const succeeded = Number(crawlReliability.succeeded ?? 0);

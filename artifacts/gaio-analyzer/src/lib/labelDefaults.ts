@@ -480,6 +480,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.crawl_lang_mismatch":        { group: "results", de: "Die Sprachangabe der Website (lang=\"{declared}\") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt." },
   "results.lang_name_de":               { group: "results", de: "Deutsch" },
   "results.lang_name_en":               { group: "results", de: "Englisch" },
+  "results.lang_variant_info":          { group: "results", de: "Die eingegebene Adresse zeigt die Sprachversion „{fromLang}“. Analysiert wurde die deutsche Sprachversion: {to}" },
   "results.crawl_failed":               { group: "results", de: "Fehlgeschlagen" },
   "results.crawl_skipped_title":         { group: "results", de: "Nicht bewertete Seiten" },
   "results.crawl_skipped_noncontent":    { group: "results", de: "{n} Seite(n) ohne verwertbaren Inhalt (z. B. Bildanzeige, Datei, kaum Text)" },

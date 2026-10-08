@@ -86,11 +86,13 @@ test("normalizes empty company name and buyer personas to null", () => {
 
 for (const mode of ["auto", "manual"]) {
   test(`${mode} result retains siteLanguage and passes its corrected language to competitors and recommendations`, async () => {
-    const language = { lang: "de", source: "content", declared: "en", mismatch: true };
+    const language = { lang: "de", source: mode === "auto" ? "hreflang" : "content", declared: "en", mismatch: true };
+    const languageVariant = mode === "auto" ? { from: "http://127.0.0.1/home", to: "http://127.0.0.1/de/", fromLang: "en", toLang: "de" } : null;
     const state = globalThis.__analysisLanguageTest = {
       language, competitorCalls: [],
       crawlResult: {
         siteLanguage: language,
+        languageVariant,
         pages: [{ url: "http://127.0.0.1/home", html: '<html lang="en"><body>Kurz</body></html>', statusCode: 200 }],
         reliability: { attempted: 1, succeeded: 1, failed: 0, failures: [] },
         skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: mode === "manual" ? 1 : 0, urls: [] },
@@ -101,6 +103,8 @@ for (const mode of ["auto", "manual"]) {
     const result = getAnalysis(`synthetic-language-${mode}`);
     assert.equal(result.status, "completed");
     assert.deepEqual(result.siteLanguage, language);
+    assert.deepEqual(result.languageVariant, languageVariant);
+    assert.equal(result.url, "http://127.0.0.1/home", "the entered URL must remain unchanged");
     assert.deepEqual(result.crawlSkipped, state.crawlResult.skipped);
     assert.equal(state.competitorCalls.length, 1);
     assert.equal(state.competitorCalls[0][3], "de", "must not use the homepage declaration");

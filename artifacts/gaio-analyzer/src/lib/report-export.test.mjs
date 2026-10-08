@@ -266,8 +266,8 @@ test("failed HTML reports pass evaluated count and language metadata to the same
   assert.ok(html.includes('lang="en") passt nicht zum erkannten Inhalt (Deutsch)'));
 });
 
-test("results defaults include exactly one new non-content label and the updated sorted-out text", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1078 + 1);
+test("results defaults add one language-variant label and retain the crawl text defaults", () => {
+  assert.equal(Object.keys(labelDefaults).length, 1079 + 1);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -276,6 +276,7 @@ test("results defaults include exactly one new non-content label and the updated
     crawl_lang_mismatch: 'Die Sprachangabe der Website (lang="{declared}") passt nicht zum erkannten Inhalt ({content}). Die Analyse richtet sich nach dem Inhalt.',
     lang_name_de: "Deutsch",
     lang_name_en: "Englisch",
+    lang_variant_info: "Die eingegebene Adresse zeigt die Sprachversion „{fromLang}“. Analysiert wurde die deutsche Sprachversion: {to}",
   })) {
     assert.deepEqual(labelDefaults[`results.${key}`], { group: "results", de });
   }
@@ -372,4 +373,70 @@ test("both renderers omit the non-content line for zero or absent counts, includ
       assert.ok(!html.includes("Seite(n) ohne verwertbaren Inhalt"));
     }
   }
+});
+
+const noticeStart = resultsSource.indexOf("{homepageRedirect && (", resultsSource.indexOf("{/* Details Tab */}"));
+assert.ok(noticeStart >= 0 && noticeStart < cardStart);
+const failedNoticeStart = resultsSource.indexOf("{isFailed && failedHomepageRedirect && (");
+const failedNoticeEnd = resultsSource.indexOf("{isFailed && (", failedNoticeStart);
+assert.ok(failedNoticeStart >= 0 && failedNoticeEnd > failedNoticeStart);
+const { outputFiles: noticeFiles } = await build({
+  stdin: {
+    loader: "tsx",
+    contents: `
+      const React = globalThis.__crawlCardReact;
+      const formatRedirectUrl = value => { const url = new URL(value); return url.origin + url.pathname; };
+      export function LiveNotices({report, t}) {
+        const homepageRedirect = report.homepageRedirect;
+        const languageVariant = report.languageVariant;
+        return <>${resultsSource.slice(noticeStart, cardStart)}</>;
+      }
+      export function FailedNotices({report, t}) {
+        const isFailed = true;
+        const failedHomepageRedirect = report.homepageRedirect;
+        const failedLanguageVariant = report.languageVariant;
+        return <>${resultsSource.slice(failedNoticeStart, failedNoticeEnd)}</>;
+      }`,
+  },
+  platform: "node", format: "esm", write: false,
+});
+const { LiveNotices, FailedNotices } = await import(`data:text/javascript;base64,${Buffer.from(noticeFiles[0].contents).toString("base64")}`);
+function liveNotices(value, overrides = {}, Component = LiveNotices) {
+  const t = (key, vars = {}) => (overrides[key] ?? labelDefaults[key]?.de ?? key)
+    .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
+  return renderToStaticMarkup(React.createElement(Component, { report: value, t }));
+}
+
+test("language variant notice matches both renderers, maps language names, links the escaped URL and follows redirect info", async () => {
+  for (const [fromLang, name] of [["en", "Englisch"], ["de", "Deutsch"], ["fr", "FR"], [null, "unbekannt"]]) {
+    const to = 'https://example.test/de/?a="b"&q=<fixture>';
+    const value = { ...reliabilityFixture(4, 3), languageVariant: { from: report.url, to, fromLang, toLang: "de" },
+      homepageRedirect: { from: "https://original.test/", to: "https://example.test/" } };
+    for (const html of [liveNotices(value), liveNotices(value, {}, FailedNotices), await exportReport(value)]) {
+      assert.ok(html.includes(`Die eingegebene Adresse zeigt die Sprachversion „${name}“. Analysiert wurde die deutsche Sprachversion:`));
+      assert.ok(html.includes('href="https://example.test/de/?a=&quot;b&quot;&amp;q=&lt;fixture&gt;"'));
+      assert.ok(!html.includes("<fixture>"));
+      assert.ok(html.indexOf("Startseite leitet") < html.indexOf("Die eingegebene Adresse"));
+    }
+    assert.match(liveNotices(value), /text-muted-foreground/);
+    assert.match(liveNotices(value), /class="underline hover:no-underline"/);
+  }
+});
+
+test("language variant notice is absent for legacy reports, null metadata and competitor-only switches", async () => {
+  for (const languageVariant of [null, undefined]) {
+    const value = { ...report, languageVariant, competitors: [{ url: "https://rival.test", languageVariant: { from: "https://rival.test", to: "https://rival.test/de", fromLang: "en", toLang: "de" } }] };
+    for (const html of [liveNotices(value), liveNotices(value, {}, FailedNotices), await exportReport(value)]) {
+      assert.ok(!html.includes("Die eingegebene Adresse zeigt"));
+    }
+  }
+});
+
+test("live language notice respects label overrides; HTML includes it in failed reports too without changing the entered URL", async () => {
+  const value = { ...report, languageVariant: { from: report.url, to: "https://example.test/de/", fromLang: "en", toLang: "de" } };
+  assert.match(liveNotices(value, { "results.lang_variant_info": "Variant {fromLang}: {to}", "results.lang_name_en": "English override" }), /Variant English override:/);
+  const html = await exportReport({ ...value, status: "failed", errors: ["Synthetic failure"] });
+  assert.ok(html.includes("Die eingegebene Adresse zeigt"));
+  assert.equal(block(html).url, report.url);
+  assert.equal(block(html).domain, report.url);
 });

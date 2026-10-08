@@ -710,3 +710,172 @@ test("competitor with an English hreflang variant retains requested English and 
     assert.equal(logs.find(log => log.msg === "site language determined").obj.requestedLang, "en");
   });
 });
+
+function variantSite({ homeLang = "en", start = "/", variants = [{ lang: "de", url: "/de/" }], variantStatus = 200, variantDelay = 0, variantDeclared = "de", techDelay = 0 } = {}) {
+  return async (req, res) => {
+    if (req.url === "/robots.txt" || req.url === "/llms.txt") {
+      if (techDelay) await delay(techDelay);
+      res.end(req.url === "/robots.txt" ? "User-agent: *\nAllow: /" : "# Synthetic site information");
+    } else if (req.url === start) {
+      res.end(`<html lang="${homeLang}"><head>${variants.map(v => `<link rel="alternate" hreflang="${v.lang}" href="${v.url}">`).join("")}</head><body><nav><a href="${start === "/" ? "/english" : `${start}products/one`}">Content</a></nav><main>${(homeLang === "de" ? germanText : englishText).repeat(4)} Entry</main></body></html>`);
+    } else if (/^\/de(?:-[a-z]+)?\/$/i.test(req.url)) {
+      if (variantDelay) await delay(variantDelay);
+      if (res.destroyed) return;
+      res.writeHead(variantStatus, { "Content-Type": "text/html" });
+      res.end(variantStatus === 200 ? languageHtml(variantDeclared, `${germanText.repeat(4)} German variant ${req.url}`, ["products/one", "services/two", "/english"]) : "Variant unavailable");
+    } else if (/^\/de(?:-[a-z]+)?\/(?:products|services)\//i.test(req.url)) {
+      res.end(languageHtml("de", `${germanText.repeat(4)} German content ${req.url}`));
+    } else if (req.url === "/english" || req.url.startsWith("/en/products/")) {
+      res.end(languageHtml("en", `${englishText.repeat(4)} English content ${req.url}`));
+    } else if (req.url === "/sitemap.xml") {
+      res.end(`<urlset><url><loc>http://${req.headers.host}/de/services/two</loc></url><url><loc>http://${req.headers.host}/english</loc></url></urlset>`);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  };
+}
+
+test("main crawl selects the same-site German variant in place, evaluates only its path and reuses robots/llms", async () => {
+  await withServer(variantSite(), async ({ origin, requests }) => {
+    const result = await crawlSite(`${origin}/`, 16);
+    assert.deepEqual(result.languageVariant, { from: `${origin}/`, to: `${origin}/de/`, fromLang: "en", toLang: "de" });
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "hreflang", declared: "de", mismatch: false });
+    assert.equal(result.pages.length, 3);
+    assert.ok(result.pages.every(page => /^\/de(?:\/|$)/.test(new URL(page.url).pathname)));
+    assert.equal(result.reliability.succeeded, result.pages.length + 1, "the original homepage remains a successful fetch, not an evaluated page");
+    for (const url of ["/robots.txt", "/llms.txt", "/sitemap.xml", "/", "/de/"]) {
+      assert.equal(requests.filter(req => req.url === url).length, 1, url);
+    }
+    assert.ok(requests.findIndex(req => req.url === "/sitemap.xml") > requests.findIndex(req => req.url === "/de/"));
+    assert.ok(!requests.some(req => req.url === "/english"));
+    const selected = logs.findIndex(log => log.msg === "language variant selected");
+    const determined = logs.findIndex(log => log.msg === "site language determined");
+    assert.ok(selected >= 0 && determined > selected);
+    assert.deepEqual(logs[selected].obj, { host: "127.0.0.1", ...result.languageVariant });
+  });
+});
+
+test("an explicit English entry path is respected by main and competitor crawls", async () => {
+  await withServer(variantSite({ start: "/en/" }), async ({ origin, requests }) => {
+    for (const opts of [undefined, { preferredLang: "de", minTextChars: 50 }]) {
+      const result = await crawlSite(`${origin}/en/`, 5, opts);
+      assert.equal(result.languageVariant, null);
+      assert.equal(result.siteLanguage.lang, "en");
+      if (opts) assert.equal(result.siteLanguage.source, "url");
+    }
+    assert.ok(!requests.some(req => req.url === "/de/"));
+    assert.ok(!logs.some(log => log.msg === "language variant selected"));
+  });
+});
+
+test("a German main-site homepage never switches to its English hreflang variant", async () => {
+  await withServer(variantSite({ homeLang: "de", variants: [{ lang: "en", url: "/en/" }] }), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 5);
+    assert.equal(result.languageVariant, null);
+    assert.equal(result.siteLanguage.lang, "de");
+    assert.ok(!requests.some(req => req.url === "/en/"));
+  });
+});
+
+test("German variants on another host and x-default entries are ignored", async () => {
+  for (const variants of [
+    [{ lang: "de", url: "http://other.example/de/" }],
+    [{ lang: "x-default", url: "/de/" }],
+    [{ lang: "de", url: "/#same-homepage" }],
+  ]) {
+    await withServer(variantSite({ variants }), async ({ origin, requests }) => {
+      const result = await crawlSite(origin, 5);
+      assert.equal(result.languageVariant, null);
+      assert.equal(result.siteLanguage.lang, "en");
+      assert.ok(!requests.some(req => req.url === "/de/"));
+    });
+  }
+});
+
+test("unavailable German variants fall back to the original homepage and log a warning", async () => {
+  for (const variantStatus of [404, 403]) {
+    await withServer(variantSite({ variantStatus }), async ({ origin, requests }) => {
+      const result = await crawlSite(origin, 5);
+      assert.equal(result.languageVariant, null);
+      assert.equal(result.siteLanguage.lang, "en");
+      assert.equal(result.homepageFailReason, null);
+      assert.ok(result.pages.some(page => page.url === `${origin}/`));
+      assert.equal(requests.filter(req => req.url === "/").length, 1);
+      assert.ok(logs.some(log => log.level === "warn" && log.msg === "language variant unavailable"));
+      assert.ok(!logs.some(log => log.msg === "language variant selected"));
+    });
+  }
+});
+
+test("a competitor selects its chosen target-language variant without restarting technical fetches", async () => {
+  await withServer(variantSite(), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 5, { preferredLang: "de", minTextChars: 50, deadlineMs: 45000, techPhaseBudgetMs: 20000, minPagePhaseMs: 20000 });
+    assert.equal(result.languageVariant.toLang, "de");
+    assert.equal(result.siteLanguage.source, "hreflang");
+    assert.equal(result.pages.length, 3);
+    assert.equal(logs.find(log => log.msg === "site language determined").obj.requestedLang, "de");
+    for (const url of ["/robots.txt", "/llms.txt"]) assert.equal(requests.filter(req => req.url === url).length, 1);
+  });
+});
+
+test("a competitor can switch to English while main-site German preference remains unchanged", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(`<html lang="de"><head><link rel="alternate" hreflang="en" href="/en/"></head><body><main>${germanText.repeat(4)}</main></body></html>`);
+    else if (req.url === "/en/") res.end(languageHtml("en", `${englishText.repeat(4)} English variant`, ["products/one"]));
+    else if (req.url === "/en/products/one") res.end(languageHtml("en", `${englishText.repeat(4)} English product`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 5, { preferredLang: "en", minTextChars: 50 });
+    assert.deepEqual(result.languageVariant, { from: `${origin}/`, to: `${origin}/en/`, fromLang: "de", toLang: "en" });
+    assert.deepEqual(result.siteLanguage, { lang: "en", source: "hreflang", declared: "en", mismatch: false });
+    assert.equal(result.pages.length, 2);
+  });
+});
+
+test("variant ranking prefers de, then de-DE, then other regions; mismatch comes from the selected page", async () => {
+  for (const [variants, expected] of [
+    [[{ lang: "de-AT", url: "/de-at/" }, { lang: "de-DE", url: "/de-de/" }, { lang: "de", url: "/de/" }], "/de/"],
+    [[{ lang: "de-AT", url: "/de-at/" }, { lang: "DE-de", url: "/de-de/" }], "/de-de/"],
+    [[{ lang: "de-AT", url: "/de-at/" }], "/de-at/"],
+  ]) {
+    await withServer(variantSite({ variants, variantDeclared: "en" }), async ({ origin }) => {
+      const result = await crawlSite(origin, 5);
+      assert.equal(result.languageVariant.to, `${origin}${expected}`);
+      assert.deepEqual(result.siteLanguage, { lang: "de", source: "hreflang", declared: "en", mismatch: true });
+    });
+  }
+});
+
+test("a slow variant fetch uses the original overall deadline, not a fresh crawl window", async () => {
+  await withServer(variantSite({ variantDelay: 800 }), async ({ origin, requests }) => {
+    const started = Date.now();
+    const result = await crawlSite(origin, 5, { deadlineMs: 150 });
+    assert.ok(Date.now() - started < 500, "variant fetch must abort within the original remaining budget");
+    assert.equal(result.languageVariant, null);
+    assert.equal(result.timedOut, true);
+    assert.ok(result.pages.some(page => page.url === `${origin}/`));
+    assert.ok(!requests.some(req => /\/products\/|\/services\//.test(req.url)));
+    assert.ok(logs.some(log => log.msg === "language variant unavailable" && log.obj.reason === "timeout"));
+  });
+});
+
+test("competitor technical budgets are not reset by a variant switch", async () => {
+  await withServer(variantSite({ techDelay: 70, variantDelay: 60 }), async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 5, { preferredLang: "de", deadlineMs: 1000, techPhaseBudgetMs: 120, minPagePhaseMs: 100 });
+    assert.equal(result.siteLanguage.source, "hreflang");
+    assert.ok(result.techPhaseMs >= 200);
+    assert.ok(!requests.some(req => req.url === "/sitemap.xml"));
+    for (const url of ["/robots.txt", "/llms.txt"]) assert.equal(requests.filter(req => req.url === url).length, 1);
+  });
+});
+
+test("explicitly selected pages never switch languages even when the homepage offers German", async () => {
+  await withServer(variantSite(), async ({ origin, requests }) => {
+    const result = await fetchExplicitPages(origin, [`${origin}/`, `${origin}/english`]);
+    assert.equal(result.languageVariant, null);
+    assert.ok(result.pages.every(page => !page.url.includes("/de")));
+    assert.ok(!requests.some(req => req.url === "/de/"));
+    assert.ok(!logs.some(log => log.msg === "language variant selected"));
+  });
+});

@@ -52,6 +52,7 @@ export interface CrawlResult {
   pages: CrawledPage[];
   skipped: { otherLanguage: number; excludedPath: number; duplicate: number; nonContent: number; urls: string[] };
   siteLanguage: SiteLanguage;
+  languageVariant: { from: string; to: string; fromLang: string | null; toLang: "de" | "en" } | null;
   homepageFailReason?: CrawlFailReason | null;
   homepageRedirect?: { from: string; to: string } | null;
   timedOut: boolean;
@@ -166,7 +167,7 @@ export interface PageLanguageDetection {
 
 export interface SiteLanguage {
   lang: "de" | "en" | null;
-  source: "content" | "declared" | "preferred" | "url" | null;
+  source: "content" | "declared" | "preferred" | "url" | "hreflang" | null;
   declared: string | null;
   mismatch: boolean;
 }
@@ -1052,6 +1053,7 @@ export async function fetchExplicitPages(
   const result: CrawlResult = {
     pages,
     siteLanguage: determineSiteLanguage(pages),
+    languageVariant: null,
     skipped,
     timedOut: false,
     robotsTxt: null,
@@ -1113,7 +1115,7 @@ export async function crawlSite(
 ): Promise<CrawlResult> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
-  const siteKey = hostKey(base.hostname);
+  let siteKey = hostKey(base.hostname);
   let canonicalProtocol = base.protocol;
   let canonicalHost = base.host;
   const canon = (url: string): string => {
@@ -1139,11 +1141,12 @@ export async function crawlSite(
       return false;
     };
   // Rule 4: path ceiling — normalise to no trailing slash
-  const startPath = base.pathname.replace(/\/+$/, "") || "/";
+  let startPath = base.pathname.replace(/\/+$/, "") || "/";
 
   const result: CrawlResult = {
     pages: [],
     siteLanguage: { lang: null, source: null, declared: null, mismatch: false },
+    languageVariant: null,
     skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
     homepageFailReason: null,
     homepageRedirect: null,
@@ -1236,7 +1239,7 @@ export async function crawlSite(
   // do NOT quarantine them (Rule 4 already blocks other-language URLs).
   // When the start path is at the root (/), quarantine ALL hreflang URLs to
   // prevent the crawler from wasting budget on language duplicates.
-  const startPathHasLangPrefix = LANG_PREFIX_RE.test(startPath + "/");
+  let startPathHasLangPrefix = LANG_PREFIX_RE.test(startPath + "/");
 
   function quarantineHreflang(variants: HreflangVariant[]): void {
     for (const v of variants) {
@@ -1271,14 +1274,14 @@ export async function crawlSite(
   const categoryCounts = new Map<string, number>();
 
   // ── Step 1: Fetch homepage first (special — always crawl it) ──────────────
-  const homepageUrl = inputUrl;
+  let homepageUrl = inputUrl;
   visited.add(canon(homepageUrl));
 
   let homepageHtml = "";
   let canonicalHomepageUrl = canon(homepageUrl);
   result.reliability.attempted++;
   try {
-    const homePage = await fetchWithTiming(homepageUrl);
+    let homePage = await fetchWithTiming(homepageUrl);
     try {
       const finalUrl = new URL(homePage.finalUrl);
       if (hostKey(finalUrl.hostname) !== siteKey) {
@@ -1298,7 +1301,7 @@ export async function crawlSite(
     canonicalHomepageUrl = canon(homePage.finalUrl);
     visited.add(canonicalHomepageUrl);
     homepageHtml = homePage.html;
-    const detection = detectPageLanguageDetailed(homepageHtml);
+    let detection = detectPageLanguageDetailed(homepageHtml);
     let preferred = opts?.preferredLang ?? (detection.source === "content"
       ? detection.lang
       : detection.declared);
@@ -1317,10 +1320,72 @@ export async function crawlSite(
       }
     }
     targetLang = preferred === "de" || preferred === "en" ? preferred : null;
-    provisionalLanguage = opts?.preferredLang === undefined && source !== "content";
+    const variantLang = opts?.preferredLang === undefined ? "de" : targetLang;
+    if (variantLang && urlLang(base.pathname) === null && source !== "url" && detection.lang !== variantLang) {
+      const originalUrl = homePage.finalUrl;
+      const originalHost = new URL(originalUrl).hostname;
+      const variant = extractHreflangVariants(homepageHtml, originalUrl)
+        .map((entry) => {
+          const lang = entry.lang.trim().toLowerCase();
+          const rank = lang === variantLang ? 0 : lang === `${variantLang}-${variantLang}` ? 1
+            : lang.startsWith(`${variantLang}-`) ? 2 : 3;
+          return { ...entry, rank };
+        })
+        .filter((entry) => entry.rank < 3 && hostKey(new URL(entry.url).hostname) === hostKey(originalHost)
+          && normalizeUrl(entry.url) !== normalizeUrl(originalUrl))
+        .sort((a, b) => a.rank - b.rank)[0];
+      if (variant) {
+        const context = { host: originalHost, from: originalUrl, to: variant.url, fromLang: detection.lang, toLang: variantLang };
+        const remaining = CRAWL_DEADLINE_MS - (Date.now() - crawlStart);
+        if (remaining <= 0) {
+          logger.warn({ ...context, reason: "timeout" }, "language variant unavailable");
+        } else {
+          result.reliability.attempted++;
+          try {
+            const variantPage = await fetchWithTiming(variant.url, Math.min(15000, remaining));
+            const variantBlocked = detectBlockedContent(variantPage.html, variantPage.finalUrl);
+            const finalVariantUrl = new URL(variantPage.finalUrl);
+            if (variantPage.statusCode >= 400 || variantBlocked !== null ||
+                hostKey(finalVariantUrl.hostname) !== hostKey(originalHost) ||
+                normalizeUrl(variantPage.finalUrl) === normalizeUrl(originalUrl)) {
+              const reason = variantBlocked ?? (variantPage.statusCode >= 400 ? classifyHttpStatus(variantPage.statusCode) : "unknown");
+              recordFailure(variant.url, reason, variantPage.statusCode);
+              logger.warn({ ...context, reason, statusCode: variantPage.statusCode }, "language variant unavailable");
+            } else {
+              // The original entry was fetched, but only the variant is evaluated.
+              const originalBlocked = detectBlockedContent(homePage.html, originalUrl);
+              if (homePage.statusCode < 400 && originalBlocked === null) result.reliability.succeeded++;
+              else recordFailure(originalUrl, originalBlocked ?? classifyHttpStatus(homePage.statusCode), homePage.statusCode);
+              homePage = variantPage;
+              homepageUrl = variant.url;
+              homepageHtml = variantPage.html;
+              siteKey = hostKey(finalVariantUrl.hostname);
+              canonicalProtocol = finalVariantUrl.protocol;
+              canonicalHost = finalVariantUrl.host;
+              startPath = new URL(variant.url).pathname.replace(/\/+$/, "") || "/";
+              startPathHasLangPrefix = LANG_PREFIX_RE.test(startPath + "/");
+              canonicalHomepageUrl = canon(variantPage.finalUrl);
+              visited.add(canon(homepageUrl));
+              visited.add(canonicalHomepageUrl);
+              detection = detectPageLanguageDetailed(homepageHtml);
+              targetLang = variantLang;
+              source = "hreflang";
+              result.languageVariant = { from: originalUrl, to: variantPage.finalUrl, fromLang: context.fromLang, toLang: variantLang };
+              logger.info({ ...context, to: variantPage.finalUrl }, "language variant selected");
+            }
+          } catch (err) {
+            const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classifyFetchError(err);
+            recordFailure(variant.url, reason);
+            logger.warn({ ...context, reason, err }, "language variant unavailable");
+          }
+        }
+      }
+    }
+    provisionalLanguage = opts?.preferredLang === undefined && source !== "content" && source !== "hreflang";
     result.siteLanguage = {
       lang: targetLang, source, declared: detection.declared,
-      mismatch: source === "content" && detection.declared !== null && detection.declared !== targetLang,
+      mismatch: (source === "content" || source === "hreflang") && detection.source === "content"
+        && detection.declared !== null && detection.declared !== detection.lang,
     };
     const blocked = detectBlockedContent(homepageHtml, homePage.finalUrl);
     if (homePage.statusCode < 400 && blocked === null) {
@@ -1350,7 +1415,7 @@ export async function crawlSite(
     }
 
     // Quarantine hreflang variants found on homepage
-    quarantineHreflang(extractHreflangVariants(homepageHtml, canonicalHomepageUrl));
+    quarantineHreflang(extractHreflangVariants(homepageHtml, result.languageVariant?.to ?? canonicalHomepageUrl));
 
     // Count homepage in __root__ category
     categoryCounts.set("__root__", 1);
@@ -1374,7 +1439,7 @@ export async function crawlSite(
   // ── Sitemap discovery waterfall (steps 1–4) ───────────────────────────────
   {
     const origin = `${canonicalProtocol}//${canonicalHost}`;
-    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, targetLang, canFetchTechnical);
+    const sd = await discoverSitemap(origin, result.robotsTxt, homepageHtml, result.languageVariant?.to ?? canonicalHomepageUrl, targetLang, canFetchTechnical);
     result.sitemapXml = sd.sitemapXml;
     result.sitemapResolution = sd.sitemapResolution;
     result.sitemapXmlExists = sd.sitemapXmlExists;
@@ -1391,7 +1456,7 @@ export async function crawlSite(
   if (homepageHtml) {
     const links = extractInternalLinks(
       homepageHtml,
-      canonicalHomepageUrl,
+      result.languageVariant?.to ?? canonicalHomepageUrl,
       siteKey,
       canon,
       startPath,

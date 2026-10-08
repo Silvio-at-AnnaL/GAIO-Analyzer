@@ -107,6 +107,7 @@ const COMPETITOR_EXCLUDED_TEXT = {
 const REDIRECT_INFO_TEXT = {
   own: (from: string, to: string) => `Info: Die Startseite leitet auf eine andere Domain weiter: ${from} → ${to}.`,
   competitor: (to: string) => `Info: leitet weiter auf ${to}`,
+  languageVariant: "Die eingegebene Adresse zeigt die Sprachversion „{fromLang}“. Analysiert wurde die deutsche Sprachversion: {to}",
 } as const;
 
 export function formatRedirectUrl(value: string): string {
@@ -122,6 +123,17 @@ function renderOwnRedirectInfoHtml(report: Record<string, unknown>): string {
   const redirect = report.homepageRedirect as { from: string; to: string } | null | undefined;
   if (!redirect) return "";
   return `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${esc(REDIRECT_INFO_TEXT.own(formatRedirectUrl(redirect.from), formatRedirectUrl(redirect.to)))}</p>`;
+}
+
+function renderLanguageVariantInfoHtml(report: Record<string, unknown>): string {
+  const variant = report.languageVariant as { to: string; fromLang: string | null } | null | undefined;
+  if (!variant) return "";
+  const fromLang = variant.fromLang === "en" ? "Englisch" : variant.fromLang === "de" ? "Deutsch"
+    : variant.fromLang?.toUpperCase() || "unbekannt";
+  const link = `<a href="${esc(variant.to)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">${esc(variant.to)}</a>`;
+  const text = REDIRECT_INFO_TEXT.languageVariant.replace("{fromLang}", () => fromLang)
+    .split("{to}").map(esc).join(link);
+  return `<p style="font-size:12px;color:${C.textMuted};margin:6px 0 12px;">${text}</p>`;
 }
 
 function renderUnavailableModuleSection(title: string): string {
@@ -495,6 +507,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   let html = divider("Details");
   html += `<h2>${DT.heading}</h2>`;
   html += renderOwnRedirectInfoHtml(report);
+  html += renderLanguageVariantInfoHtml(report);
   html += renderCrawlReliabilityHtml(
     report.crawlReliability as Record<string, unknown> | null | undefined,
     report.crawlSkipped as Record<string, unknown> | null | undefined,
@@ -1645,7 +1658,7 @@ function buildFailedReportShell(
 
   ${divider("Crawl-Zuverlässigkeit")}
   <h2>Crawl-Zuverlässigkeit</h2>
-  ${renderOwnRedirectInfoHtml(report)}${renderCrawlReliabilityHtml(
+  ${renderOwnRedirectInfoHtml(report)}${renderLanguageVariantInfoHtml(report)}${renderCrawlReliabilityHtml(
     limitedReliability,
     report.crawlSkipped as Record<string, unknown> | null | undefined,
     ((report.crawledPages as string[] | undefined) ?? []).filter((url) => url !== "uploaded-page").length,

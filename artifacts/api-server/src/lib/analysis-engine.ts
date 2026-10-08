@@ -49,6 +49,7 @@ export interface AnalysisState {
   crawlReliability: CrawlReliability;
   crawlSkipped: { otherLanguage: number; excludedPath: number; duplicate: number; nonContent: number; urls: string[] } | null;
   siteLanguage: SiteLanguage | null;
+  languageVariant: CrawlResult["languageVariant"];
   homepageRedirect: { from: string; to: string } | null;
 }
 
@@ -285,6 +286,7 @@ export async function runAnalysis(
     crawlReliability: { attempted: 0, succeeded: 0, failed: 0, failures: [] },
     crawlSkipped: null,
     siteLanguage: null,
+    languageVariant: null,
     homepageRedirect: null,
   };
 
@@ -343,6 +345,7 @@ export async function runAnalysis(
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
       state.crawlReliability = crawlResult.reliability;
       state.siteLanguage = crawlResult.siteLanguage;
+      state.languageVariant = crawlResult.languageVariant ?? null;
       state.crawlSkipped = crawlResult.skipped;
 
       if (pages.length === 0) {
@@ -383,6 +386,7 @@ export async function runAnalysis(
       crawlResult = {
         pages,
         siteLanguage: determineSiteLanguage(pages, html),
+        languageVariant: null,
         skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
         timedOut: false,
         robotsTxt: null,

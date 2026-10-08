@@ -28,6 +28,7 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "Competitor findings response",
   "competitor input normalized",
   "site language determined",
+  "language variant selected",
   "recommendations input built",
   "AI recommendations response",
   "recommendations generation finished",
