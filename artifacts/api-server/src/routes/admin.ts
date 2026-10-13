@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
 import { Client as PgClient } from "pg";
-        import { getSetting, setSetting, saveAnalysisExport } from "../lib/admin-db.js";
+        import { getSetting, setSetting, saveAnalysisExport, saveAnalysisExportOnce } from "../lib/admin-db.js";
         import { query } from "../lib/db.js";
         import { getDatabaseUrl } from "../lib/bootstrap.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
@@ -17,6 +17,8 @@ import { getPrompt, fillTemplate, clearPromptCache } from "../lib/prompt-manager
 import { PROMPT_DEFAULTS_MAP } from "../lib/prompt-defaults.js";
 import { SCORE_PROFILES, getScoreParams, setScoreParam, resetScoreParams } from "../lib/score-config.js";
 import { randomUUID } from "node:crypto";
+import { validate as isUuid } from "uuid";
+import { getAnalysis } from "../lib/analysis-engine.js";
 
 declare module "express" {
   interface Request {
@@ -592,91 +594,47 @@ interface AnalysisLogRow {
   html_export_id: number | null;
 }
 
-// POST /api/admin/analysis-log/auto-export — NO auth, called automatically on analysis completion
-adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response) => {
-  const { htmlContent, logId, domain, companyName, gaioScore, scoresJson, pagesCrawled } = req.body ?? {};
+function escapeHtml(value: string): string {
+  const entities: Record<string, string> = {
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  };
+  return value.replace(/[&<>"']/g, char => entities[char]);
+}
 
-  if (!htmlContent || typeof htmlContent !== "string") {
+// POST /api/admin/analysis-log/auto-export — anonymous, bound to a finished server analysis
+adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response) => {
+  const { analysisId, htmlContent } = req.body ?? {};
+
+  if (typeof analysisId !== "string" || !isUuid(analysisId)) {
+    res.status(400).json({ error: "Ungültige analysisId" }); return;
+  }
+  if (typeof htmlContent !== "string") {
     res.status(400).json({ error: "htmlContent fehlt" }); return;
   }
 
-  const domainStr = String(domain ?? "");
-  let exportId: number;
-  let targetLogId: number;
-  let isFreshExport = false;
-
-  async function insertAutoLogEntry(): Promise<number> {
-    const r = await query<{ id: number }>(
-      `INSERT INTO analysis_log
-         (domain, company_name, gaio_score, scores_json, pages_crawled,
-          status, triggered_by, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, 'completed', 'auto', NOW(), NOW())
-       RETURNING id`,
-      [
-        String(domain ?? ""),
-        companyName ? String(companyName) : null,
-        typeof gaioScore === "number" ? gaioScore : null,
-        scoresJson ? String(scoresJson) : null,
-        typeof pagesCrawled === "number" ? pagesCrawled : null,
-      ],
-    );
-    return r.rows[0].id;
+  const state = getAnalysis(analysisId);
+  if (!state || state.logId === null) {
+    res.status(404).json({ error: "Analyse nicht gefunden" }); return;
+  }
+  if (state.status !== "completed" && state.status !== "failed") {
+    res.status(409).json({ error: "Analyse noch nicht abgeschlossen" }); return;
   }
 
+  const targetLogId = state.logId;
+  const domainStr = String(state.url ?? "");
   try {
-    if (logId && typeof logId === "number") {
-      const existingResult = await query<{ id: number; html_export_id: number | null }>(
-        "SELECT id, html_export_id FROM analysis_log WHERE id = $1",
-        [logId],
-      );
-      const existing = existingResult.rows[0];
-
-      if (existing) {
-        targetLogId = existing.id;
-        if (existing.html_export_id) {
-          res.json({ exportId: existing.html_export_id, logId: targetLogId, skipped: true }); return;
-        }
-        exportId = await saveAnalysisExport(targetLogId, htmlContent);
-        isFreshExport = true;
-        res.json({ exportId, logId: targetLogId });
-      } else {
-        targetLogId = await insertAutoLogEntry();
-        exportId = await saveAnalysisExport(targetLogId, htmlContent);
-        isFreshExport = true;
-        res.json({ exportId, logId: targetLogId });
-      }
-    } else {
-      const recentResult = await query<{ id: number; html_export_id: number | null }>(
-        `SELECT id, html_export_id FROM analysis_log
-         WHERE domain = $1 AND status = 'completed'
-         AND completed_at > NOW() - INTERVAL '5 minutes'
-         LIMIT 1`,
-        [domainStr],
-      );
-      const recent = recentResult.rows[0];
-
-      if (recent) {
-        targetLogId = recent.id;
-        if (!recent.html_export_id) {
-          exportId = await saveAnalysisExport(targetLogId, htmlContent);
-        } else {
-          exportId = recent.html_export_id;
-        }
-        res.json({ exportId, logId: targetLogId, duplicate: true }); return;
-      }
-
-      targetLogId = await insertAutoLogEntry();
-      exportId = await saveAnalysisExport(targetLogId, htmlContent);
-      isFreshExport = true;
-      res.json({ exportId, logId: targetLogId });
+    const exportId = await saveAnalysisExportOnce(targetLogId, htmlContent);
+    if (exportId === null) {
+      res.json({ skipped: true, logId: targetLogId }); return;
     }
+    res.json({ exportId, logId: targetLogId });
   } catch (err) {
     logger.error({ err }, "Failed to save auto-export");
     res.status(500).json({ error: "Fehler beim Speichern" }); return;
   }
 
-  // BCC copy: only for fresh (non-duplicate) exports
-  if (isFreshExport) {
+  // Only a fresh export reaches this BCC path.
+  {
     const bccList = parseBccList(await getSetting("delivery_bcc") ?? "");
     if (bccList.length > 0) {
       const today    = new Date().toLocaleDateString("de-DE");
@@ -684,35 +642,11 @@ adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response
       sendMail({
         to:      bccList.join(", "),
         subject: `[BCC] GAIO Analyse-Report – ${domainStr} (${today})`,
-        html:    `<p>Automatische Kopie: GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
+        html:    `<p>Automatische Kopie: GAIO Analyse-Report für <strong>${escapeHtml(domainStr)}</strong> vom ${today}.</p>`,
         text:    `Automatische Kopie: GAIO Analyse-Report für ${domainStr} vom ${today}.`,
         attachments: [{ filename: `GAIO-Report-${safeBase}.html`, content: htmlContent, contentType: "text/html" }],
       }).catch((err: unknown) => logger.warn({ err }, "auto-export BCC send failed"));
     }
-  }
-});
-
-// POST /api/admin/analysis-log/:id/export — NO auth
-adminRouter.post("/analysis-log/:id/export", async (req: Request, res: Response) => {
-  const logId = parseInt(String(req.params.id), 10);
-  if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
-
-  const { htmlContent } = req.body ?? {};
-  if (!htmlContent || typeof htmlContent !== "string") {
-    res.status(400).json({ error: "htmlContent fehlt" }); return;
-  }
-
-  const entry = (await query<{ id: number }>("SELECT id FROM analysis_log WHERE id = $1", [logId])).rows[0];
-  if (!entry) {
-    res.status(404).json({ error: "Analyseeintrag nicht gefunden" }); return;
-  }
-
-  try {
-    const exportId = await saveAnalysisExport(logId, htmlContent);
-    res.json({ exportId });
-  } catch (err) {
-    logger.error({ err }, "Failed to save analysis export");
-    res.status(500).json({ error: "Export konnte nicht gespeichert werden" });
   }
 });
 

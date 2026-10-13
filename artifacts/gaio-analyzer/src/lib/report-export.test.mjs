@@ -301,6 +301,16 @@ test("results defaults add one language-variant label and retain the crawl text 
 
 // Render the real live-card expression, without the rest of the view or an API.
 const resultsSource = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+test("both auto-export effects send only the view analysisId and generated HTML", () => {
+  const calls = [...resultsSource.matchAll(
+    /await fetch\(`\$\{basePrefix\}\/api\/admin\/analysis-log\/auto-export`, \{([\s\S]*?)\n\s*\}\);/g,
+  )];
+  assert.equal(calls.length, 2);
+  for (const [, options] of calls) {
+    assert.match(options, /body: JSON\.stringify\(\{ analysisId, htmlContent \}\)/);
+    assert.ok(!/\b(logId|domain|companyName|gaioScore|scoresJson|pagesCrawled)\b/.test(options));
+  }
+});
 const cardStart = resultsSource.indexOf("{crawlReliability && Number(");
 const cardEnd = resultsSource.indexOf("})()}", cardStart);
 assert.ok(cardStart >= 0 && cardEnd > cardStart);

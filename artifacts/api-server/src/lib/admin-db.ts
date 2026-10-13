@@ -471,3 +471,26 @@ export async function saveAnalysisExport(
   );
   return exportId;
 }
+
+export async function saveAnalysisExportOnce(
+  logId: number,
+  html: string,
+): Promise<number | null> {
+  const exportResult = await query<{ id: number }>(
+    `INSERT INTO analysis_exports (analysis_id, html_content, file_size_kb, created_at)
+     VALUES ($1, $2, $3, NOW())
+     RETURNING id`,
+    [logId, html, Math.round(html.length / 1024)],
+  );
+  const exportId = exportResult.rows[0].id;
+  const updated = await query<{ id: number }>(
+    `UPDATE analysis_log SET html_export_id = $1
+     WHERE id = $2 AND html_export_id IS NULL RETURNING id`,
+    [exportId, logId],
+  );
+  if (updated.rows.length === 0) {
+    await query("DELETE FROM analysis_exports WHERE id = $1", [exportId]);
+    return null;
+  }
+  return exportId;
+}

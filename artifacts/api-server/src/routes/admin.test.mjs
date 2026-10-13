@@ -28,10 +28,28 @@ const mocks = {
       globalThis.__adminTest.saved.push([key, value]);
     }
     export async function saveAnalysisExport() {}
+    export async function saveAnalysisExportOnce(logId, html) {
+      const state = globalThis.__adminTest;
+      state.exportCalls.push([logId, html]);
+      if (state.exportError) throw state.exportError;
+      if (state.exports.has(logId)) return null;
+      const id = 1000 + state.exports.size;
+      state.exports.set(logId, id);
+      return id;
+    }
   `,
-  "../lib/db.js": `export async function query() { return { rows: [] }; }`,
+  "../lib/db.js": `export async function query(sql, params) {
+    globalThis.__adminTest.queries.push([sql, params]);
+    return { rows: [] };
+  }`,
+  "../lib/analysis-engine.js": `export function getAnalysis(id) {
+    return globalThis.__adminTest.analyses.get(id);
+  }`,
   "../lib/bootstrap.js": `export function getDatabaseUrl() { return ""; }`,
-  "../lib/mailer.js": `export async function sendMail() { return { ok: true }; }`,
+  "../lib/mailer.js": `export async function sendMail(options) {
+    globalThis.__adminTest.mails.push(options);
+    return { ok: true };
+  }`,
   "../lib/admin-auth.js": `
     export function signToken() { return "token"; }
     export function verifyToken(token) {
@@ -93,13 +111,18 @@ function reset(settings = {}) {
     saved: [],
     cacheResets: 0,
     preflightChecks: [],
+    analyses: new Map(),
+    exports: new Map(),
+    exportCalls: [],
+    queries: [],
+    mails: [],
   };
   return globalThis.__adminTest;
 }
 
 async function request(method, path, { token = "valid-admin", body = {} } = {}) {
   const handlers = globalThis.__adminTestRoutes.get(`${method} ${path}`);
-  assert.ok(handlers, `Route not registered: ${method} ${path}`);
+  if (!handlers) return { statusCode: 404 };
   const req = {
     cookies: token ? { gaio_admin_token: token } : {},
     body,
@@ -232,4 +255,104 @@ test("ai-test requires admin auth and force-checks readiness for admins", async 
   assert.equal(admin.statusCode, 200);
   assert.equal(admin.body.ok, true);
   assert.deepEqual(state.preflightChecks, [{ force: true }]);
+});
+
+const analysisId = "11111111-1111-4111-8111-111111111111";
+const autoExport = body => request("POST", "/analysis-log/auto-export", { token: null, body });
+
+test("anonymous POST by log ID is gone while the admin GET download still requires auth", async () => {
+  reset();
+  assert.equal(globalThis.__adminTestRoutes.has("POST /analysis-log/:id/export"), false);
+  assert.equal((await request("POST", "/analysis-log/:id/export", { token: null })).statusCode, 404);
+  assert.equal(globalThis.__adminTestRoutes.has("GET /analysis-log/:id/export"), true);
+  assert.equal((await request("GET", "/analysis-log/:id/export", { token: null })).statusCode, 401);
+});
+
+test("auto-export rejects missing or invalid UUIDs and missing or non-string HTML", async () => {
+  const state = reset();
+  for (const value of [undefined, null, 123, "", "not-a-uuid", ` ${analysisId}`]) {
+    assert.equal((await autoExport({ analysisId: value, htmlContent: "<html/>" })).statusCode, 400);
+  }
+  for (const htmlContent of [undefined, null, 123, {}, []]) {
+    assert.equal((await autoExport({ analysisId, htmlContent })).statusCode, 400);
+  }
+  assert.deepEqual(state.exportCalls, []);
+  assert.deepEqual(state.mails, []);
+});
+
+test("auto-export returns 404 for unknown analyses and analyses with no log entry", async () => {
+  const state = reset();
+  const body = { analysisId, htmlContent: "<html/>" };
+  assert.equal((await autoExport(body)).statusCode, 404);
+  state.analyses.set(analysisId, { status: "completed", logId: null, url: "https://server.test" });
+  assert.equal((await autoExport(body)).statusCode, 404);
+  assert.deepEqual(state.exportCalls, []);
+  assert.deepEqual(state.queries, []);
+});
+
+test("auto-export returns 409 for running analyses without saving or sending mail", async () => {
+  const state = reset({ delivery_bcc: "archive@example.test" });
+  state.analyses.set(analysisId, { status: "running", logId: 42, url: "https://server.test" });
+  assert.equal((await autoExport({ analysisId, htmlContent: "<html/>" })).statusCode, 409);
+  assert.deepEqual(state.exportCalls, []);
+  assert.deepEqual(state.mails, []);
+});
+
+test("completed auto-export saves once, ignores supplied metadata, and escapes the server domain in its only BCC", async () => {
+  const state = reset({ delivery_bcc: "archive@example.test" });
+  const domain = `https://server.test/<path>&"'`;
+  state.analyses.set(analysisId, { status: "completed", logId: 42, url: domain });
+  const body = {
+    analysisId, htmlContent: "<html>report</html>", logId: 999,
+    domain: "https://attacker.test", companyName: "Untrusted", gaioScore: 100,
+    scoresJson: "untrusted", pagesCrawled: 999,
+  };
+  const first = await autoExport(body);
+  assert.equal(first.statusCode, 200);
+  assert.deepEqual(first.body, { exportId: 1000, logId: 42 });
+  const second = await autoExport({ ...body, htmlContent: "<html>replacement</html>" });
+  assert.equal(second.statusCode, 200);
+  assert.deepEqual(second.body, { skipped: true, logId: 42 });
+  assert.deepEqual(state.exportCalls, [[42, body.htmlContent], [42, "<html>replacement</html>"]]);
+  assert.deepEqual([...state.exports], [[42, 1000]]);
+  // No DB status check or client-metadata SQL: completed memory state is sufficient.
+  assert.deepEqual(state.queries, []);
+  assert.equal(state.mails.length, 1);
+  assert.equal(state.mails[0].to, "archive@example.test");
+  assert.ok(state.mails[0].html.includes("<strong>https://server.test/&lt;path&gt;&amp;&quot;&#39;</strong>"));
+  assert.ok(!state.mails[0].html.includes("attacker.test"));
+  assert.ok(state.mails[0].subject.includes(domain));
+  assert.equal(state.mails[0].attachments[0].content, body.htmlContent);
+  const safeBase = domain.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+  assert.equal(state.mails[0].attachments[0].filename, `GAIO-Report-${safeBase}.html`);
+});
+
+test("failed auto-export is allowed and accepts string HTML without requiring a domain", async () => {
+  const state = reset();
+  state.analyses.set(analysisId, { status: "failed", logId: 42, url: null });
+  const response = await autoExport({ analysisId, htmlContent: "" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, { exportId: 1000, logId: 42 });
+  assert.deepEqual(state.exportCalls, [[42, ""]]);
+  assert.deepEqual(state.mails, []);
+});
+
+test("concurrent auto-export requests send only one BCC", async () => {
+  const state = reset({ delivery_bcc: "archive@example.test" });
+  state.analyses.set(analysisId, { status: "completed", logId: 42, url: "https://server.test" });
+  const responses = await Promise.all([
+    autoExport({ analysisId, htmlContent: "first" }),
+    autoExport({ analysisId, htmlContent: "second" }),
+  ]);
+  assert.ok(responses.every(response => response.statusCode === 200));
+  assert.equal(responses.filter(response => response.body.skipped === true).length, 1);
+  assert.equal(state.mails.length, 1);
+});
+
+test("auto-export save errors return 500 without sending BCC", async () => {
+  const state = reset({ delivery_bcc: "archive@example.test" });
+  state.analyses.set(analysisId, { status: "completed", logId: 42, url: "https://server.test" });
+  state.exportError = new Error("Synthetic DB failure");
+  assert.equal((await autoExport({ analysisId, htmlContent: "report" })).statusCode, 500);
+  assert.deepEqual(state.mails, []);
 });

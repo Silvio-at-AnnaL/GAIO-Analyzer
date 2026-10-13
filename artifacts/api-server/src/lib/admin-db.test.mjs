@@ -34,6 +34,7 @@ const mocks = {
   "./db.js": `
     export async function query(sql, params) {
       const state = globalThis.__adminDbMigrationTest;
+      if (state.exportQuery) return state.exportQuery(sql, params);
       if (sql.includes("UPDATE prompts SET")) {
         state.updates.push(params);
         if (state.template === params[4]) {
@@ -80,6 +81,7 @@ const mocks = {
 const {
   migrateLlmDiscoverabilityAPrompt, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE,
   removeLegacyLlmDiscoverabilityRatingPrompt, PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE,
+  saveAnalysisExportOnce,
 } = await loadAdminDb();
 
 function reset(template) {
@@ -153,4 +155,67 @@ test("prompt defaults no longer contain the legacy rating slug", async () => {
   const { PROMPT_DEFAULTS } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
   assert.ok(!PROMPT_DEFAULTS.some(({ slug }) => slug === "llm-discoverability-rating"));
   assert.ok(PROMPT_DEFAULTS.some(({ slug }) => slug === "llm-discoverability-rating-v2"));
+});
+
+function exportDatabase() {
+  const db = { exports: new Map(), linked: null, nextId: 1, calls: [] };
+  state.exportQuery = async (sql, params) => {
+    db.calls.push([sql, params]);
+    await Promise.resolve(); // Allow overlapping inserts before the guarded updates.
+    const statement = sql.replace(/\s+/g, " ");
+    if (statement.includes("INSERT INTO analysis_exports")) {
+      const id = db.nextId++;
+      db.exports.set(id, { logId: params[0], html: params[1] });
+      return { rows: [{ id }] };
+    }
+    if (statement.includes("UPDATE analysis_log")) {
+      assert.match(statement, /WHERE id = \$2 AND html_export_id IS NULL RETURNING id/);
+      assert.equal(params[1], 42);
+      if (db.linked !== null) return { rows: [] };
+      db.linked = params[0];
+      return { rows: [{ id: 42 }] };
+    }
+    if (statement === "DELETE FROM analysis_exports WHERE id = $1") {
+      db.exports.delete(params[0]);
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected export SQL: ${sql}`);
+  };
+  return db;
+}
+
+test("saveAnalysisExportOnce skips a second call and deletes the newly inserted orphan", async () => {
+  const db = exportDatabase();
+  try {
+    const first = await saveAnalysisExportOnce(42, "original");
+    const second = await saveAnalysisExportOnce(42, "replacement");
+    assert.equal(first, 1);
+    assert.equal(second, null);
+    assert.equal(db.linked, first);
+    assert.deepEqual([...db.exports], [[1, { logId: 42, html: "original" }]]);
+    assert.equal(db.calls.filter(([sql]) => sql.includes("DELETE FROM analysis_exports")).length, 1);
+    assert.deepEqual(db.calls.at(-1)[1], [2]);
+  } finally {
+    delete state.exportQuery;
+  }
+});
+
+test("saveAnalysisExportOnce concurrent calls have one winner and leave no orphan row", async () => {
+  const db = exportDatabase();
+  try {
+    const results = await Promise.all([
+      saveAnalysisExportOnce(42, "first"),
+      saveAnalysisExportOnce(42, "second"),
+    ]);
+    const winners = results.filter(id => id !== null);
+    assert.equal(winners.length, 1);
+    assert.equal(results.filter(id => id === null).length, 1);
+    assert.equal(db.linked, winners[0]);
+    assert.equal(db.exports.size, 1);
+    assert.ok(db.exports.has(winners[0]));
+    assert.equal(db.calls.filter(([sql]) => sql.includes("INSERT INTO analysis_exports")).length, 2);
+    assert.equal(db.calls.filter(([sql]) => sql.includes("DELETE FROM analysis_exports")).length, 1);
+  } finally {
+    delete state.exportQuery;
+  }
 });
