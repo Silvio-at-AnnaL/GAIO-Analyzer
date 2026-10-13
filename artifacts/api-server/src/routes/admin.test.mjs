@@ -18,7 +18,11 @@ const mocks = {
     }
   `,
   bcryptjs: `export default { compare: async () => true, hash: async () => "hash" };`,
-  "express-rate-limit": `export default () => (_req, _res, next) => next();`,
+  "express-rate-limit": `export default options => {
+    const middleware = (_req, _res, next) => next();
+    middleware.options = options;
+    return middleware;
+  };`,
   cheerio: `export const load = () => ({ text: () => "", html: () => "" });`,
   pg: `export class Client { async connect() {} async query() {} async end() {} }`,
   "../lib/admin-db.js": `
@@ -27,7 +31,17 @@ const mocks = {
       globalThis.__adminTest.settings[key] = value;
       globalThis.__adminTest.saved.push([key, value]);
     }
-    export async function saveAnalysisExport() {}
+    export async function saveAnalysisExport(...args) { globalThis.__adminTest.legacyExportCalls.push(args); }
+    export async function countReportDeliveries(logId) {
+      globalThis.__adminTest.countCalls.push(logId);
+      return globalThis.__adminTest.deliveries.filter(row => row.analysisLogId === logId).length;
+    }
+    export async function insertReportDelivery(row) {
+      const state = globalThis.__adminTest;
+      if (state.deliveryError) throw state.deliveryError;
+      state.deliveries.push(row);
+      return state.deliveries.length;
+    }
     export async function saveAnalysisExportOnce(logId, html) {
       const state = globalThis.__adminTest;
       state.exportCalls.push([logId, html]);
@@ -47,8 +61,11 @@ const mocks = {
   }`,
   "../lib/bootstrap.js": `export function getDatabaseUrl() { return ""; }`,
   "../lib/mailer.js": `export async function sendMail(options) {
-    globalThis.__adminTest.mails.push(options);
-    return { ok: true };
+    const state = globalThis.__adminTest;
+    state.mails.push(options);
+    const result = state.mailResults.shift() ?? { success: true };
+    if (result instanceof Error) throw result;
+    return result;
   }`,
   "../lib/admin-auth.js": `
     export function signToken() { return "token"; }
@@ -61,7 +78,9 @@ const mocks = {
     export function generateTempPassword() { return "temporary"; }
   `,
   "../lib/admin-email.js": `export async function sendEmail() { return { ok: true }; }`,
-  "../lib/logger.js": `export const logger = { info() {}, warn() {}, error() {} };`,
+  "../lib/logger.js": `export const logger = {
+    info() {}, warn(...args) { globalThis.__adminTest.warnings.push(args); }, error() {}
+  };`,
   "../lib/ai-client.js": `export async function callLLM() { return ""; }`,
   "../lib/llm-preflight.js": `
     export async function checkLlmReady(options) {
@@ -116,6 +135,11 @@ function reset(settings = {}) {
     exportCalls: [],
     queries: [],
     mails: [],
+    mailResults: [],
+    deliveries: [],
+    countCalls: [],
+    legacyExportCalls: [],
+    warnings: [],
   };
   return globalThis.__adminTest;
 }
@@ -355,4 +379,218 @@ test("auto-export save errors return 500 without sending BCC", async () => {
   state.exportError = new Error("Synthetic DB failure");
   assert.equal((await autoExport({ analysisId, htmlContent: "report" })).statusCode, 500);
   assert.deepEqual(state.mails, []);
+});
+
+const validMailBody = {
+  analysisId, recipientEmail: "customer@example.test", reportType: "html", htmlContent: "<html>report</html>",
+};
+const reportMail = body => request("POST", "/public/send-report", { token: null, body });
+function completedMailAnalysis(settings = {}) {
+  const state = reset(settings);
+  state.analyses.set(analysisId, {
+    status: "completed", logId: 42, url: `https://server.test/<path>&"'`,
+    inputs: { companyName: `Server <Company>&"'` }, overallScore: 67,
+  });
+  return state;
+}
+function assertNoDelivery(state) {
+  assert.deepEqual(state.mails, []);
+  assert.deepEqual(state.deliveries, []);
+  assert.deepEqual(state.legacyExportCalls, []);
+  assert.deepEqual(state.queries, []);
+}
+
+test("send-report mounts the dedicated 10/hour IP rate limiter with German JSON errors", () => {
+  const handlers = globalThis.__adminTestRoutes.get("POST /public/send-report");
+  assert.equal(handlers.length, 2);
+  assert.deepEqual(handlers[0].options, {
+    windowMs: 60 * 60 * 1000, max: 10,
+    message: { error: "Zu viele Report-Anfragen. Bitte warten Sie eine Stunde." },
+    standardHeaders: true, legacyHeaders: false,
+  });
+  assert.ok(!Object.hasOwn(handlers[0].options, "keyGenerator"), "Uses the default per-IP key");
+});
+
+test("send-report validates UUID, analysis existence and completed status before other inputs", async () => {
+  const state = reset();
+  for (const id of [undefined, null, 123, "", "invalid"]) {
+    assert.equal((await reportMail({ analysisId: id })).statusCode, 400);
+  }
+  assert.equal((await reportMail({ analysisId })).statusCode, 404);
+  state.analyses.set(analysisId, { status: "completed", logId: null });
+  assert.equal((await reportMail({ analysisId })).statusCode, 404);
+  for (const status of ["running", "failed"]) {
+    state.analyses.set(analysisId, { status, logId: 42 });
+    assert.equal((await reportMail({ analysisId })).statusCode, 409);
+  }
+  assertNoDelivery(state);
+});
+
+test("send-report rejects multiple, whitespace, newline and overlong recipient addresses", async () => {
+  const state = completedMailAnalysis();
+  for (const recipientEmail of [
+    undefined, null, 123, "", "invalid", "a@b", "a@@b.test",
+    "a@example.test b@example.test", "a@example.test,b@example.test",
+    "a@example.test;b@example.test", "a@example.test\nbcc@example.test",
+    "a@example.test\r\n", "a @example.test", `${"a".repeat(255)}@example.test`,
+  ]) {
+    assert.equal((await reportMail({ ...validMailBody, recipientEmail })).statusCode, 400, String(recipientEmail));
+  }
+  assertNoDelivery(state);
+});
+
+test("send-report rejects invalid types, missing attachments and invalid PDF magic", async () => {
+  const state = completedMailAnalysis();
+  for (const body of [
+    { ...validMailBody, reportType: "unknown" },
+    { ...validMailBody, htmlContent: undefined },
+    { ...validMailBody, htmlContent: 123 },
+    { ...validMailBody, htmlContent: "" },
+    { ...validMailBody, reportType: "pdf" },
+    { ...validMailBody, reportType: "pdf", pdfBase64: Buffer.from("not a PDF").toString("base64") },
+    { ...validMailBody, reportType: "pdf", pdfBase64: Buffer.from([0xa5, 0xd0, 0xc4, 0xc6, 0xad]).toString("base64") },
+    { ...validMailBody, consentText: "x".repeat(1001) },
+    { ...validMailBody, consentText: {} },
+  ]) {
+    assert.equal((await reportMail(body)).statusCode, 400);
+  }
+  assertNoDelivery(state);
+});
+
+test("send-report limits decoded PDF and UTF-8 HTML size including optional HTML on PDF requests", async () => {
+  const state = completedMailAnalysis();
+  const pdf = Buffer.alloc(7 * 1024 * 1024 + 1);
+  pdf.write("%PDF-");
+  assert.equal((await reportMail({
+    ...validMailBody, reportType: "pdf", pdfBase64: pdf.toString("base64"),
+  })).statusCode, 413);
+  const htmlContent = "€".repeat(1024 * 1024 + 1);
+  assert.equal((await reportMail({ ...validMailBody, htmlContent })).statusCode, 413);
+  assert.equal((await reportMail({
+    ...validMailBody, reportType: "pdf", pdfBase64: Buffer.from("%PDF-test").toString("base64"), htmlContent,
+  })).statusCode, 413);
+  assertNoDelivery(state);
+});
+
+test("send-report accepts exact PDF and HTML size limits and preserves both attachments", async () => {
+  const state = completedMailAnalysis();
+  const pdf = Buffer.alloc(7 * 1024 * 1024);
+  pdf.write("%PDF-");
+  const htmlContent = "x".repeat(3 * 1024 * 1024);
+  const res = await reportMail({
+    ...validMailBody, reportType: "pdf", pdfBase64: pdf.toString("base64"), htmlContent, filename: "../report.pdf",
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(state.mails[0].attachments.length, 2);
+  assert.equal(state.mails[0].attachments[0].content.length, pdf.length);
+  assert.equal(state.mails[0].attachments[0].filename, ".._report.pdf");
+  assert.equal(state.mails[0].attachments[1].content, htmlContent);
+});
+
+test("send-report uses server metadata, no customer BCC, and a separate escaped internal notification", async () => {
+  const state = completedMailAnalysis({ delivery_bcc: "archive@example.test, other@example.test" });
+  const res = await reportMail({
+    ...validMailBody, recipientEmail: " customer@example.test ",
+    domain: "attacker.test", companyName: "Attacker", gaioScore: 100,
+    scoresJson: "untrusted", pagesCrawled: 999,
+    consentMarketing: true, consentText: "Exact displayed checkbox text",
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { success: true, deliveryId: 1 });
+  const [customer, notification] = state.mails;
+  assert.equal(customer.to, "customer@example.test");
+  assert.ok(!Object.hasOwn(customer, "bcc"));
+  assert.ok(customer.html.includes("https://server.test/&lt;path&gt;&amp;&quot;&#39;"));
+  assert.equal(notification.to, "archive@example.test, other@example.test");
+  assert.equal(notification.subject, `Neuer Report-Abruf: https://server.test/<path>&"'`);
+  for (const value of ["customer@example.test", "Server &lt;Company&gt;&amp;&quot;&#39;", "67", "Europe/Berlin", "html", "Ja", "sent"]) {
+    assert.ok(notification.html.includes(value), value);
+  }
+  assert.ok(notification.text.includes(`Server <Company>&"'`));
+  assert.deepEqual(notification.attachments, customer.attachments);
+  assert.ok(!notification.html.includes("attacker.test"));
+  assert.deepEqual(state.deliveries, [{
+    analysisLogId: 42, analysisUuid: analysisId, recipientEmail: "customer@example.test",
+    reportType: "html", domain: `https://server.test/<path>&"'`,
+    companyName: `Server <Company>&"'`, gaioScore: 67,
+    consentMarketing: true, consentText: "Exact displayed checkbox text", status: "sent", errorMessage: null,
+  }]);
+  assert.deepEqual(state.queries, []);
+  assert.deepEqual(state.legacyExportCalls, []);
+});
+
+test("send-report stores consent text only for boolean true, never for false, missing or truthy strings", async () => {
+  const state = completedMailAnalysis();
+  for (const consentMarketing of [undefined, false, "true", 1]) {
+    assert.equal((await reportMail({ ...validMailBody, consentMarketing, consentText: "Discard this" })).statusCode, 200);
+    assert.equal(state.deliveries.at(-1).consentMarketing, false);
+    assert.equal(state.deliveries.at(-1).consentText, null);
+  }
+});
+
+test("send-report rejects the sixth recorded delivery without sending or storing another", async () => {
+  const state = completedMailAnalysis();
+  for (let i = 0; i < 5; i++) assert.equal((await reportMail(validMailBody)).statusCode, 200);
+  const res = await reportMail(validMailBody);
+  assert.equal(res.statusCode, 429);
+  assert.equal(state.mails.length, 5);
+  assert.equal(state.deliveries.length, 5);
+  assert.deepEqual(state.countCalls, Array(6).fill(42));
+});
+
+test("concurrent send-report requests cannot exceed the five-delivery cap", async () => {
+  const state = completedMailAnalysis();
+  const responses = await Promise.all(Array.from({ length: 6 }, () => reportMail(validMailBody)));
+  assert.equal(responses.filter(res => res.statusCode === 200).length, 5);
+  assert.equal(responses.filter(res => res.statusCode === 429).length, 1);
+  assert.equal(state.mails.length, 5);
+  assert.equal(state.deliveries.length, 5);
+});
+
+test("send-report failure returns 502, records failed delivery and still sends the internal notification", async () => {
+  const state = completedMailAnalysis({ delivery_bcc: "archive@example.test" });
+  state.mailResults.push({ success: false, error: "SMTP rejected" });
+  const res = await reportMail(validMailBody);
+  assert.equal(res.statusCode, 502);
+  assert.deepEqual(res.body, { error: "E-Mail konnte nicht gesendet werden." });
+  assert.equal(state.deliveries[0].status, "failed");
+  assert.equal(state.deliveries[0].errorMessage, "SMTP rejected");
+  assert.equal(state.mails.length, 2);
+  assert.ok(state.mails[1].html.includes("failed"));
+  assert.ok(state.mails[1].html.includes("Nein"));
+});
+
+test("send-report fallback returns 200 and records not_configured with no error", async () => {
+  const state = completedMailAnalysis({ delivery_bcc: "archive@example.test" });
+  state.mailResults.push({ success: true, fallback: true });
+  assert.deepEqual((await reportMail(validMailBody)).body, { success: true, deliveryId: 1 });
+  assert.equal(state.deliveries[0].status, "not_configured");
+  assert.equal(state.deliveries[0].errorMessage, null);
+  assert.ok(state.mails[1].text.includes("not_configured"));
+});
+
+test("internal notification failure is warned without changing a successful customer response", async () => {
+  for (const failure of [{ success: false, error: "Internal SMTP failed" }, new Error("Internal mail threw")]) {
+    const state = completedMailAnalysis({ delivery_bcc: "archive@example.test" });
+    state.mailResults.push({ success: true }, failure);
+    const res = await reportMail(validMailBody);
+    assert.equal(res.statusCode, 200);
+    assert.equal(state.deliveries[0].status, "sent");
+    assert.equal(state.warnings.length, 1);
+  }
+});
+
+test("thrown customer mail failure is recorded and still produces an internal notification", async () => {
+  const state = completedMailAnalysis({ delivery_bcc: "archive@example.test" });
+  state.mailResults.push(new Error("Customer mail threw"));
+  assert.equal((await reportMail(validMailBody)).statusCode, 502);
+  assert.equal(state.deliveries[0].errorMessage, "Customer mail threw");
+  assert.equal(state.mails.length, 2);
+});
+
+test("send-report does not claim success if the delivery record could not be stored", async () => {
+  const state = completedMailAnalysis();
+  state.deliveryError = new Error("Synthetic DB failure");
+  assert.equal((await reportMail(validMailBody)).statusCode, 500);
+  assert.deepEqual(state.deliveries, []);
 });

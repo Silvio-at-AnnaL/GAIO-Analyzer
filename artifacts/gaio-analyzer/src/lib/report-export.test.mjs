@@ -282,7 +282,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1080 + 3);
+  assert.equal(Object.keys(labelDefaults).length, 1080 + 3 + 2);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -530,4 +530,123 @@ test("actual live and HTML page lists mark only automatically added pages with a
 test("fill and automatically-added labels use exactly the requested German defaults", () => {
   assert.deepEqual(labelDefaults["domain.fill_pages_option"], { group: "domain", de: "Auf 16 Seiten auffüllen – abgewählte Seiten werden nicht verwendet" });
   assert.deepEqual(labelDefaults["results.page_auto_added"], { group: "results", de: "(automatisch ergänzt)" });
+});
+
+test("report mail sender uses analysisId and exact displayed consent text without client metadata, and preserves server errors", async () => {
+  const senderSource = resultsSource.slice(
+    resultsSource.indexOf("  const sendReportByEmail = async"),
+    resultsSource.indexOf("  const closeEmailModal ="),
+  );
+  const { outputFiles } = await build({
+    stdin: {
+      contents: `export function createSender({ analysisId, consentMarketing, t, fetch }) {
+        ${senderSource}
+        return sendReportByEmail;
+      }`,
+      loader: "ts",
+    },
+    platform: "node", format: "esm", write: false,
+    define: { "import.meta.env.BASE_URL": '"/"' },
+  });
+  const { createSender } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+  const requests = [];
+  const label = "Displayed translated consent <text>";
+  for (const consentMarketing of [false, true]) {
+    const send = createSender({
+      analysisId: "11111111-1111-4111-8111-111111111111", consentMarketing,
+      t: key => key === "results.email_consent_label" ? label : "Fallback",
+      fetch: async (url, options) => { requests.push({ url, body: JSON.parse(options.body) }); return { ok: true }; },
+    });
+    await send("customer@example.test", "pdf", { htmlContent: "<html/>", pdfBase64: "JVBERi0=", filename: "report.pdf" });
+    assert.deepEqual(requests.at(-1), {
+      url: "/api/admin/public/send-report",
+      body: {
+        analysisId: "11111111-1111-4111-8111-111111111111", recipientEmail: "customer@example.test",
+        reportType: "pdf", htmlContent: "<html/>", pdfBase64: "JVBERi0=", filename: "report.pdf",
+        consentMarketing, consentText: label,
+      },
+    });
+  }
+  const failed = createSender({
+    analysisId: "id", consentMarketing: false, t: () => label,
+    fetch: async () => ({ ok: false, json: async () => ({ error: "Für diese Analyse wurden bereits fünf Reports angefordert." }) }),
+  });
+  await assert.rejects(() => failed("customer@example.test", "html", { htmlContent: "<html/>" }),
+    /Für diese Analyse wurden bereits fünf Reports angefordert/);
+});
+
+test("email consent labels are registered once, checkbox is optional, and empty privacy text is hidden", async () => {
+  assert.deepEqual(labelDefaults["results.email_consent_label"], {
+    group: "results",
+    de: "Ja, ich möchte zu meinem Analyseergebnis per E-Mail kontaktiert werden. Diese Einwilligung kann ich jederzeit widerrufen.",
+  });
+  assert.deepEqual(labelDefaults["results.email_privacy_note"], { group: "results", de: "" });
+  assert.match(resultsSource, /const \[consentMarketing, setConsentMarketing\] = useState\(false\)/);
+  const start = resultsSource.indexOf('<label className="flex items-start gap-2');
+  const end = resultsSource.indexOf("{sendError && (", start);
+  const { outputFiles } = await build({
+    stdin: {
+      contents: `const React = globalThis.__consentReact;
+        export function ConsentFields({ t, consentMarketing, sending, setConsentMarketing }) {
+          return <>${resultsSource.slice(start, end)}</>;
+        }`,
+      loader: "tsx",
+    },
+    platform: "node", format: "esm", write: false,
+  });
+  globalThis.__consentReact = React;
+  const { ConsentFields } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+  const render = (consentMarketing, privacy) => renderToStaticMarkup(React.createElement(ConsentFields, {
+    consentMarketing, sending: false, setConsentMarketing() {},
+    t: key => key === "results.email_privacy_note" ? privacy : labelDefaults[key].de,
+  }));
+  const unchecked = render(false, "");
+  assert.ok(unchecked.includes('type="checkbox"'));
+  assert.ok(!unchecked.includes("checked"));
+  assert.ok(!unchecked.includes("required"));
+  assert.ok(!unchecked.includes("text-muted-foreground"));
+  assert.ok(unchecked.includes(labelDefaults["results.email_consent_label"].de));
+  const checked = render(true, "Custom privacy note");
+  assert.ok(checked.includes('checked=""'));
+  assert.ok(checked.includes('class="text-xs text-muted-foreground">Custom privacy note'));
+});
+
+test("all email modal close paths reset consent and the send handler displays server error text", async () => {
+  const closeStart = resultsSource.indexOf("  const closeEmailModal =");
+  const closeEnd = resultsSource.indexOf("  // ── Modal send handler", closeStart);
+  const handlerStart = resultsSource.indexOf("  const handleModalSend =");
+  const handlerEnd = resultsSource.indexOf("  const handleCreateShare =", handlerStart);
+  const { outputFiles } = await build({
+    stdin: {
+      contents: `export function handlers(deps) {
+        const { setEmailModal, setEmailInput, setSendError, setSendFeedback, setConsentMarketing,
+          setSending, emailInput, emailModal, handleHtmlExport, handlePdfExport, t } = deps;
+        ${resultsSource.slice(closeStart, closeEnd)}
+        ${resultsSource.slice(handlerStart, handlerEnd)}
+        return { closeEmailModal, handleModalSend };
+      }`,
+      loader: "ts",
+    },
+    platform: "node", format: "esm", write: false,
+  });
+  const { handlers } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+  const updates = {};
+  const deps = {
+    emailInput: "customer@example.test", emailModal: "html", t: key => key,
+    handleHtmlExport: async () => { throw new Error("E-Mail konnte nicht gesendet werden."); },
+    handlePdfExport: async () => {},
+  };
+  for (const key of ["EmailModal", "EmailInput", "SendError", "SendFeedback", "ConsentMarketing", "Sending"]) {
+    deps[`set${key}`] = value => { updates[key] = value; };
+  }
+  const { closeEmailModal, handleModalSend } = handlers(deps);
+  closeEmailModal();
+  assert.equal(updates.ConsentMarketing, false);
+  assert.equal(updates.EmailModal, null);
+  await handleModalSend();
+  assert.equal(updates.SendError, "E-Mail konnte nicht gesendet werden.");
+  assert.equal(updates.Sending, false);
+  assert.match(resultsSource, /setTimeout\(closeEmailModal, 2500\)/);
+  assert.match(resultsSource, /onClick=\{closeEmailModal\}/);
+  assert.match(resultsSource, /if \(e\.target === e\.currentTarget && !sending\) closeEmailModal\(\)/);
 });

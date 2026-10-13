@@ -1,7 +1,7 @@
 - [Prompt-Verwaltung feature](prompt-verwaltung.md) — all 9 AI prompts are in PostgreSQL (prompts table), loaded at runtime via prompt-manager.ts; admin UI at view 19.
 - [Express 5 params typing](express5-params.md) — req.params values are typed as `string | string[]`; always cast with `as string` before using as a DB param or Map key.
 - [Admin auth pattern](admin-auth-pattern.md) — admin views use `adminFetch()` from authStore.tsx (cookie-based); no Bearer token needed; do NOT use a token from useAuth().
-- [PG Migration](pg-migration.md) — SQLite (node:sqlite/DatabaseSync) fully replaced with `pg` pool; all async patterns and caveats documented.
+- [PG Migration](pg-migration.md) — PostgreSQL async caveats and shared development/production database safety.
 - [Bundled API throwaway scripts](bundled-api-scripts.md) — CommonJS esbuild checks need an async wrapper and production logging to avoid pino-pretty resolution errors.
 - [Recommendation output protocol](recommendation-tool-output.md) — tool use was abandoned; recommendations use a delimiter-based plain-text protocol with JSON fallback.
 - [Stored prompt ownership](stored-prompt-ownership.md) — treat admin-stored prompts as production data; changing a code default does not authorize rewriting an existing prompt.

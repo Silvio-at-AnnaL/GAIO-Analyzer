@@ -82,6 +82,7 @@ const {
   migrateLlmDiscoverabilityAPrompt, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE,
   removeLegacyLlmDiscoverabilityRatingPrompt, PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE,
   saveAnalysisExportOnce,
+  insertReportDelivery, countReportDeliveries,
 } = await loadAdminDb();
 
 function reset(template) {
@@ -215,6 +216,44 @@ test("saveAnalysisExportOnce concurrent calls have one winner and leave no orpha
     assert.ok(db.exports.has(winners[0]));
     assert.equal(db.calls.filter(([sql]) => sql.includes("INSERT INTO analysis_exports")).length, 2);
     assert.equal(db.calls.filter(([sql]) => sql.includes("DELETE FROM analysis_exports")).length, 1);
+  } finally {
+    delete state.exportQuery;
+  }
+});
+
+test("insertReportDelivery timestamps consent in SQL only for true and never stores false-consent text or attachments", async () => {
+  const calls = [];
+  state.exportQuery = async (sql, params) => {
+    calls.push([sql, params]);
+    return { rows: [{ id: 12 }] };
+  };
+  try {
+    const delivery = {
+      analysisLogId: 42, analysisUuid: "uuid", recipientEmail: "customer@example.test",
+      reportType: "html", domain: "https://server.test", companyName: "Server", gaioScore: 67,
+      consentMarketing: true, consentText: "Exact label", status: "sent", errorMessage: null,
+    };
+    assert.equal(await insertReportDelivery(delivery), 12);
+    assert.match(calls[0][0], /CASE WHEN \$8 THEN NOW\(\) ELSE NULL END/);
+    assert.deepEqual(calls[0][1], [42, "uuid", "customer@example.test", "html", "https://server.test", "Server", 67, true, "Exact label", "sent", null]);
+    await insertReportDelivery({ ...delivery, consentMarketing: false, status: "failed", errorMessage: "SMTP failure" });
+    assert.equal(calls[1][1][7], false);
+    assert.equal(calls[1][1][8], null);
+    assert.deepEqual(calls[1][1].slice(9), ["failed", "SMTP failure"]);
+    assert.ok(!calls[0][0].includes("html_content"));
+  } finally {
+    delete state.exportQuery;
+  }
+});
+
+test("countReportDeliveries counts all delivery statuses for only the given analysis log", async () => {
+  state.exportQuery = async (sql, params) => {
+    assert.equal(sql, "SELECT COUNT(*)::int AS count FROM report_deliveries WHERE analysis_log_id = $1");
+    assert.deepEqual(params, [42]);
+    return { rows: [{ count: 5 }] };
+  };
+  try {
+    assert.equal(await countReportDeliveries(42), 5);
   } finally {
     delete state.exportQuery;
   }

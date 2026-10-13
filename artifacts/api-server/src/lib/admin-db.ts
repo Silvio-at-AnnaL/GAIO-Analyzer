@@ -131,6 +131,25 @@ const CREATE_TABLES = `
     created_at   TIMESTAMPTZ DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS report_deliveries (
+    id SERIAL PRIMARY KEY,
+    analysis_log_id INTEGER NOT NULL REFERENCES analysis_log(id),
+    analysis_uuid TEXT NOT NULL,
+    recipient_email TEXT NOT NULL,
+    report_type TEXT NOT NULL,
+    domain TEXT,
+    company_name TEXT,
+    gaio_score INTEGER,
+    consent_marketing BOOLEAN NOT NULL DEFAULT FALSE,
+    consent_at TIMESTAMPTZ,
+    consent_text TEXT,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS report_deliveries_analysis_log_id_idx
+    ON report_deliveries (analysis_log_id);
+
   CREATE TABLE IF NOT EXISTS shared_analyses (
     id          SERIAL      PRIMARY KEY,
     token       TEXT        UNIQUE NOT NULL,
@@ -451,6 +470,45 @@ export async function updateAnalysisLogFailed(id: number, errorMessage: string):
      WHERE id = $2`,
     [errorMessage, id],
   );
+}
+
+export interface ReportDelivery {
+  analysisLogId: number;
+  analysisUuid: string;
+  recipientEmail: string;
+  reportType: "html" | "pdf";
+  domain: string | null;
+  companyName: string | null;
+  gaioScore: number | null;
+  consentMarketing: boolean;
+  consentText: string | null;
+  status: "sent" | "failed" | "not_configured";
+  errorMessage: string | null;
+}
+
+export async function insertReportDelivery(delivery: ReportDelivery): Promise<number> {
+  const result = await query<{ id: number }>(
+    `INSERT INTO report_deliveries
+       (analysis_log_id, analysis_uuid, recipient_email, report_type, domain, company_name,
+        gaio_score, consent_marketing, consent_at, consent_text, status, error_message)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+             CASE WHEN $8 THEN NOW() ELSE NULL END, $9, $10, $11)
+     RETURNING id`,
+    [
+      delivery.analysisLogId, delivery.analysisUuid, delivery.recipientEmail, delivery.reportType,
+      delivery.domain, delivery.companyName, delivery.gaioScore, delivery.consentMarketing,
+      delivery.consentMarketing ? delivery.consentText : null, delivery.status, delivery.errorMessage,
+    ],
+  );
+  return result.rows[0].id;
+}
+
+export async function countReportDeliveries(analysisLogId: number): Promise<number> {
+  const result = await query<{ count: number }>(
+    "SELECT COUNT(*)::int AS count FROM report_deliveries WHERE analysis_log_id = $1",
+    [analysisLogId],
+  );
+  return result.rows[0].count;
 }
 
 export async function saveAnalysisExport(

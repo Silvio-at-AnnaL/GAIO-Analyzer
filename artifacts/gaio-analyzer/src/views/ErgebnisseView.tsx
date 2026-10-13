@@ -852,6 +852,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
   const [pdfMode, setPdfMode] = useState(false);
   const [emailModal, setEmailModal] = useState<"pdf" | "html" | null>(null);
   const [emailInput, setEmailInput] = useState("");
+  const [consentMarketing, setConsentMarketing] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
@@ -939,34 +940,32 @@ function ReportView({ analysisId }: { analysisId: string }) {
     opts: { htmlContent?: string; pdfBase64?: string; filename?: string },
   ) => {
     const basePrefix = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-    const scoresJson = JSON.stringify({
-      technicalSeo:       ((report as unknown as Record<string, unknown>).technicalSeo       as { score: number } | null)?.score ?? null,
-      schemaOrg:          ((report as unknown as Record<string, unknown>).schemaOrg          as { score: number } | null)?.score ?? null,
-      headingStructure:   ((report as unknown as Record<string, unknown>).headingStructure   as { score: number } | null)?.score ?? null,
-      contentRelevance:   ((report as unknown as Record<string, unknown>).contentRelevance   as { score: number } | null)?.score ?? null,
-      faqQuality:         ((report as unknown as Record<string, unknown>).faqQuality         as { score: number } | null)?.score ?? null,
-      llmDiscoverability: ((report as unknown as Record<string, unknown>).llmDiscoverability as { score: number } | null)?.score ?? null,
-    });
     const res = await fetch(`${basePrefix}/api/admin/public/send-report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        analysisId,
         recipientEmail,
         reportType,
         htmlContent: opts.htmlContent,
         pdfBase64:   opts.pdfBase64,
         filename:    opts.filename,
-        domain:      String(report.url ?? ""),
-        companyName: domainForm.companyName.trim() || "",
-        gaioScore:   report.overallScore ?? null,
-        scoresJson,
-        pagesCrawled: (report.crawledPages as string[])?.length ?? 0,
+        consentMarketing,
+        consentText: t("results.email_consent_label"),
       }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(err.error ?? t("results.email_send_error_fallback"));
     }
+  };
+
+  const closeEmailModal = () => {
+    setEmailModal(null);
+    setEmailInput("");
+    setSendError(null);
+    setSendFeedback(null);
+    setConsentMarketing(false);
   };
 
   // ── Modal send handler ────────────────────────────────────────────────────────
@@ -982,9 +981,9 @@ function ReportView({ analysisId }: { analysisId: string }) {
       if (emailModal === "html") await handleHtmlExport(email);
       else if (emailModal === "pdf") await handlePdfExport(email);
       setSendFeedback(email);
-      setTimeout(() => { setEmailModal(null); setSendFeedback(null); setEmailInput(""); }, 2500);
-    } catch {
-      setSendError(t("results.email_send_failed"));
+      setTimeout(closeEmailModal, 2500);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : t("results.email_send_failed"));
     } finally {
       setSending(false);
     }
@@ -2018,7 +2017,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
 
       {/* Email delivery modal */}
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget && !sending) { setEmailModal(null); setEmailInput(""); setSendError(null); } }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget && !sending) closeEmailModal(); }}>
           <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
             <h2 className="text-base font-semibold">{t("results.email_modal_title")}</h2>
             <p className="text-sm text-muted-foreground">
@@ -2048,6 +2047,19 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     color: "hsl(var(--foreground))",
                   }}
                 />
+                <label className="flex items-start gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentMarketing}
+                    onChange={(e) => setConsentMarketing(e.target.checked)}
+                    disabled={sending}
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span>{t("results.email_consent_label")}</span>
+                </label>
+                {t("results.email_privacy_note") && (
+                  <p className="text-xs text-muted-foreground">{t("results.email_privacy_note")}</p>
+                )}
                 {sendError && (
                   <p className="text-xs text-red-400 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3 shrink-0" /> {sendError}
@@ -2056,7 +2068,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                 <div className="flex gap-2 justify-end pt-1">
                   <Button
                     size="sm" variant="outline"
-                    onClick={() => { setEmailModal(null); setEmailInput(""); setSendError(null); }}
+                    onClick={closeEmailModal}
                     disabled={sending}
                   >
                     {t("domain.aria_cancel")}

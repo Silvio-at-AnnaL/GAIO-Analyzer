@@ -594,6 +594,8 @@ export const labelDefaults: Record<string, LabelDef> = {
   "results.loading_report":               { group: "results", de: "Lade Bericht\u2026" },
   "results.pdf_no_panels_error":          { group: "results", de: "Keine Tab-Panels gefunden. Selektor: {selector}" },
   "results.email_placeholder":            { group: "results", de: "empfaenger@unternehmen.de" },
+  "results.email_consent_label":          { group: "results", de: "Ja, ich möchte zu meinem Analyseergebnis per E-Mail kontaktiert werden. Diese Einwilligung kann ich jederzeit widerrufen." },
+  "results.email_privacy_note":           { group: "results", de: "" },
   "results.errors_card_title":            { group: "results", de: "Hinweise & Fehler" },
   "results.empty_no_analysis":            { group: "results", de: "Noch keine Analyse durchgef\u00FChrt." },
   "results.empty_start_pre":              { group: "results", de: "Starten Sie unter " },

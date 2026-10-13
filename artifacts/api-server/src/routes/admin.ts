@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
 import { Client as PgClient } from "pg";
-        import { getSetting, setSetting, saveAnalysisExport, saveAnalysisExportOnce } from "../lib/admin-db.js";
+        import { getSetting, setSetting, saveAnalysisExportOnce, insertReportDelivery, countReportDeliveries } from "../lib/admin-db.js";
         import { query } from "../lib/db.js";
         import { getDatabaseUrl } from "../lib/bootstrap.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
@@ -85,6 +85,28 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+const reportMailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: "Zu viele Report-Anfragen. Bitte warten Sie eine Stunde." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// UUIDs are resolved in this process, so serialize deliveries for their server-owned log.
+const reportDeliveryLocks = new Map<number, Promise<void>>();
+async function lockReportDelivery(logId: number): Promise<() => void> {
+  const previous = reportDeliveryLocks.get(logId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  reportDeliveryLocks.set(logId, current);
+  await previous;
+  return () => {
+    release();
+    if (reportDeliveryLocks.get(logId) === current) reportDeliveryLocks.delete(logId);
+  };
+}
 
 const adminRouter = Router();
 
@@ -233,79 +255,143 @@ adminRouter.get("/public/contact", async (_req: Request, res: Response) => {
 });
 
 // POST /api/admin/public/send-report
-adminRouter.post("/public/send-report", async (req: Request, res: Response) => {
+adminRouter.post("/public/send-report", reportMailLimiter, async (req: Request, res: Response) => {
   const {
-    recipientEmail, reportType, htmlContent, pdfBase64, filename,
-    domain, companyName, gaioScore, scoresJson, pagesCrawled,
-  } = req.body as Record<string, unknown>;
+    analysisId, recipientEmail, reportType, htmlContent, pdfBase64, filename,
+    consentMarketing, consentText,
+  } = (req.body ?? {}) as Record<string, unknown>;
 
-  if (!recipientEmail || typeof recipientEmail !== "string") {
-    res.status(400).json({ error: "recipientEmail fehlt" }); return;
+  if (typeof analysisId !== "string" || !isUuid(analysisId)) {
+    res.status(400).json({ error: "Ungültige analysisId" }); return;
   }
-  const rt = String(reportType ?? "");
-  if (rt !== "html" && rt !== "pdf") {
+  const state = getAnalysis(analysisId);
+  if (!state || state.logId === null) {
+    res.status(404).json({ error: "Analyse nicht gefunden" }); return;
+  }
+  if (state.status !== "completed") {
+    res.status(409).json({ error: "Analyse noch nicht abgeschlossen" }); return;
+  }
+  const email = typeof recipientEmail === "string" ? recipientEmail.trim() : "";
+  if (!email || email.length > 254 || /[\r\n]/.test(String(recipientEmail)) || /[\s,;]/.test(email) ||
+      !/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(email)) {
+    res.status(400).json({ error: "Bitte geben Sie eine einzelne gültige E-Mail-Adresse an." }); return;
+  }
+  if (reportType !== "html" && reportType !== "pdf") {
     res.status(400).json({ error: "reportType muss 'html' oder 'pdf' sein" }); return;
   }
-  if (rt === "pdf" && (!pdfBase64 || typeof pdfBase64 !== "string")) {
-    res.status(400).json({ error: "pdfBase64 fehlt für Typ 'pdf'" }); return;
+  let pdfBuffer: Buffer | undefined;
+  if (reportType === "pdf") {
+    if (typeof pdfBase64 !== "string" || !pdfBase64) {
+      res.status(400).json({ error: "pdfBase64 fehlt für Typ 'pdf'" }); return;
+    }
+    pdfBuffer = Buffer.from(pdfBase64, "base64");
+    if (pdfBuffer.length > 7 * 1024 * 1024) {
+      res.status(413).json({ error: "Der PDF-Report darf höchstens 7 MB groß sein." }); return;
+    }
+    if (!pdfBuffer.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+      res.status(400).json({ error: "Ungültiger PDF-Report." }); return;
+    }
+  }
+  if (reportType === "html" && (typeof htmlContent !== "string" || !htmlContent)) {
+    res.status(400).json({ error: "htmlContent fehlt für Typ 'html'" }); return;
+  }
+  if (htmlContent !== undefined) {
+    if (typeof htmlContent !== "string") {
+      res.status(400).json({ error: "htmlContent muss eine Zeichenfolge sein." }); return;
+    }
+    if (Buffer.byteLength(htmlContent, "utf8") > 3 * 1024 * 1024) {
+      res.status(413).json({ error: "Der HTML-Report darf höchstens 3 MB groß sein." }); return;
+    }
+  }
+  if (consentText !== undefined && (typeof consentText !== "string" || consentText.length > 1000)) {
+    res.status(400).json({ error: "Der Einwilligungstext darf höchstens 1000 Zeichen enthalten." }); return;
   }
 
-  const domainStr  = String(domain ?? "unknown");
-  const bccList    = parseBccList(await getSetting("delivery_bcc") ?? "");
-  const today      = new Date().toLocaleDateString("de-DE");
-  const safeBase   = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
-
-  let logId: number;
+  const release = await lockReportDelivery(state.logId);
   try {
-    const r = await query<{ id: number }>(
-      `INSERT INTO analysis_log
-         (domain, company_name, gaio_score, scores_json, pages_crawled,
-          status, triggered_by, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, 'completed', 'mail-delivery', NOW(), NOW())
-       RETURNING id`,
-      [
-        domainStr,
-        companyName ? String(companyName) : null,
-        typeof gaioScore === "number" ? gaioScore : null,
-        scoresJson ? String(scoresJson) : null,
-        typeof pagesCrawled === "number" ? pagesCrawled : null,
-      ],
-    );
-    logId = r.rows[0].id;
+    if (await countReportDeliveries(state.logId) >= 5) {
+      res.status(429).json({ error: "Für diese Analyse wurden bereits fünf Reports angefordert." }); return;
+    }
+
+    const domainStr  = state.url ?? "";
+    const companyName = state.inputs?.companyName ?? null;
+    const gaioScore = state.overallScore;
+    const consent = consentMarketing === true;
+    const today      = new Date().toLocaleDateString("de-DE");
+    const safeBase   = domainStr.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+    const safeFilename = typeof filename === "string" && filename
+      ? filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 150) : undefined;
+    const attachments: MailOptions["attachments"] = [];
+
+    if (pdfBuffer) {
+      const pdfFile    = safeFilename ?? `GAIO-Report-${safeBase}.pdf`;
+      attachments.push({ filename: pdfFile, content: pdfBuffer, contentType: "application/pdf" });
+    }
 
     if (htmlContent && typeof htmlContent === "string") {
-      await saveAnalysisExport(logId, htmlContent);
+      const htmlFile = (safeFilename && safeFilename.endsWith(".html"))
+        ? safeFilename
+        : `GAIO-Report-${safeBase}.html`;
+      attachments.push({ filename: htmlFile, content: htmlContent, contentType: "text/html" });
     }
-  } catch (err) {
-    logger.error({ err }, "send-report: failed to create log entry");
-    res.status(500).json({ error: "Fehler beim Erstellen des Eintrags" }); return;
+
+    let result: Awaited<ReturnType<typeof sendMail>>;
+    try {
+      result = await sendMail({
+        to:      email,
+        subject: `GAIO Analyse-Report – ${domainStr}`,
+        html:    `<p>Anbei finden Sie den angeforderten GAIO Analyse-Report für <strong>${escapeHtml(domainStr)}</strong> vom ${today}.</p>`,
+        text:    `Anbei finden Sie den angeforderten GAIO Analyse-Report für ${domainStr} vom ${today}.`,
+        attachments,
+      });
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const status = result.success ? (result.fallback ? "not_configured" : "sent") : "failed";
+
+    // A separate internal notification is sent even when customer delivery failed.
+    try {
+      const bccList = parseBccList(await getSetting("delivery_bcc") ?? "");
+      if (bccList.length > 0) {
+        const timestamp = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
+        const details = [
+          ["Empfänger", email], ["Unternehmen", companyName ?? ""], ["Domain", domainStr],
+          ["GAIO-Score", String(gaioScore ?? "")], ["Datum/Uhrzeit (Europe/Berlin)", timestamp],
+          ["Report-Typ", reportType], ["Einwilligung", consent ? "Ja" : "Nein"],
+          ["Kundenmail-Status", status],
+        ];
+        const notification = await sendMail({
+          to: bccList.join(", "),
+          subject: `Neuer Report-Abruf: ${domainStr}`,
+          html: details.map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`).join(""),
+          text: details.map(([label, value]) => `${label}: ${value}`).join("\n"),
+          attachments,
+        });
+        if (!notification.success) logger.warn({ error: notification.error }, "send-report: internal notification failed");
+      }
+    } catch (err) {
+      logger.warn({ err }, "send-report: internal notification failed");
+    }
+
+    let deliveryId: number;
+    try {
+      deliveryId = await insertReportDelivery({
+        analysisLogId: state.logId, analysisUuid: analysisId, recipientEmail: email, reportType,
+        domain: state.url, companyName, gaioScore, consentMarketing: consent,
+        consentText: consent && typeof consentText === "string" ? consentText : null,
+        status, errorMessage: status === "failed" ? (result.error ?? "E-Mail konnte nicht gesendet werden.") : null,
+      });
+    } catch (err) {
+      logger.error({ err }, "send-report: failed to record delivery");
+      res.status(500).json({ error: "Fehler beim Speichern des Report-Abrufs." }); return;
+    }
+    if (status === "failed") {
+      res.status(502).json({ error: "E-Mail konnte nicht gesendet werden." }); return;
+    }
+    res.json({ success: true, deliveryId });
+  } finally {
+    release();
   }
-
-  const attachments: MailOptions["attachments"] = [];
-
-  if (rt === "pdf" && pdfBase64) {
-    const pdfBuffer  = Buffer.from(String(pdfBase64), "base64");
-    const pdfFile    = filename ? String(filename) : `GAIO-Report-${safeBase}.pdf`;
-    attachments.push({ filename: pdfFile, content: pdfBuffer, contentType: "application/pdf" });
-  }
-
-  if (htmlContent && typeof htmlContent === "string") {
-    const htmlFile = (filename && String(filename).endsWith(".html"))
-      ? String(filename)
-      : `GAIO-Report-${safeBase}.html`;
-    attachments.push({ filename: htmlFile, content: htmlContent, contentType: "text/html" });
-  }
-
-  const result = await sendMail({
-    to:      String(recipientEmail),
-    subject: `GAIO Analyse-Report – ${domainStr}`,
-    html:    `<p>Anbei finden Sie den angeforderten GAIO Analyse-Report für <strong>${domainStr}</strong> vom ${today}.</p>`,
-    text:    `Anbei finden Sie den angeforderten GAIO Analyse-Report für ${domainStr} vom ${today}.`,
-    bcc:     bccList.length > 0 ? bccList.join(", ") : undefined,
-    attachments,
-  });
-
-  res.json({ ...result, logId });
 });
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

@@ -23,5 +23,9 @@ All DB access uses the `query<T>()` helper from `src/lib/db.ts`. It returns `{ r
 - `COUNT(*)` → `COUNT(*)::int` to get an integer not a string.
 - `datetime('now', '-5 minutes')` → `NOW() - INTERVAL '5 minutes'`.
 
-## Tables (8 total)
-users, verification_codes, settings, analysis_log, analysis_exports, shared_analyses, share_access_log, prompts
+## Shared database safety
+The user states that the database is shared with production. Do not treat development data as disposable.
+
+**Why:** The user explicitly identified the shared database and required additive-only schema work, without changes to existing tables or data, for report delivery tracking.
+
+**How to apply:** Check the requested scope before schema changes or startup migrations; prefer additive changes and never reset existing data as a development shortcut.
