@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 
 async function loadAdminDb() {
   const { outputFiles } = await build({
@@ -83,6 +84,7 @@ const {
   removeLegacyLlmDiscoverabilityRatingPrompt, PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE,
   saveAnalysisExportOnce,
   insertReportDelivery, countReportDeliveries,
+  migrateReportDeliveryRetention, REPORT_DELIVERY_RETENTION_MIGRATION,
 } = await loadAdminDb();
 
 function reset(template) {
@@ -254,6 +256,33 @@ test("countReportDeliveries counts all delivery statuses for only the given anal
   };
   try {
     assert.equal(await countReportDeliveries(42), 5);
+  } finally {
+    delete state.exportQuery;
+  }
+});
+
+test("delivery retention migration is repeatable, guards the FK delete action and changes only report_deliveries", async () => {
+  const calls = [];
+  state.exportQuery = async sql => { calls.push(sql); return { rows: [] }; };
+  try {
+    await migrateReportDeliveryRetention();
+    await migrateReportDeliveryRetention();
+    assert.deepEqual(calls, [REPORT_DELIVERY_RETENTION_MIGRATION, REPORT_DELIVERY_RETENTION_MIGRATION]);
+    const sql = calls[0];
+    assert.match(sql, /DO \$\$/);
+    assert.match(sql, /ALTER TABLE public\.report_deliveries ALTER COLUMN analysis_log_id DROP NOT NULL/);
+    assert.match(sql, /FROM pg_constraint c/);
+    assert.match(sql, /c\.conkey = ARRAY\[a\.attnum\]/);
+    assert.match(sql, /a\.attname = 'analysis_log_id'/);
+    assert.match(sql, /IF fk\.confdeltype <> 'n' THEN/);
+    assert.match(sql, /DROP CONSTRAINT %I/);
+    assert.match(sql, /REFERENCES public\.analysis_log\(id\) ON DELETE SET NULL/);
+    assert.ok(!/\b(UPDATE|DELETE FROM|TRUNCATE|INSERT INTO)\b/.test(sql));
+    assert.deepEqual([...sql.matchAll(/ALTER TABLE (\S+)/g)].map(match => match[1]),
+      ["public.report_deliveries", "public.report_deliveries", "public.report_deliveries"]);
+    const source = await readFile(new URL("./admin-db.ts", import.meta.url), "utf8");
+    assert.match(source, /analysis_log_id INTEGER REFERENCES analysis_log\(id\) ON DELETE SET NULL/);
+    assert.match(source, /await query\(CREATE_TABLES\);\s*await migrateReportDeliveryRetention\(\);/);
   } finally {
     delete state.exportQuery;
   }

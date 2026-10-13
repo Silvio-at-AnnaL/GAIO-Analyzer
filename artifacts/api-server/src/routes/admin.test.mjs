@@ -52,10 +52,41 @@ const mocks = {
       return id;
     }
   `,
-  "../lib/db.js": `export async function query(sql, params) {
-    globalThis.__adminTest.queries.push([sql, params]);
-    return { rows: [] };
-  }`,
+  "../lib/db.js": `
+    export async function query(sql, params) {
+      const state = globalThis.__adminTest;
+      state.queries.push([sql, params]);
+      return { rows: state.deleteLogExists && sql === "SELECT id FROM analysis_log WHERE id = $1" ? [{ id: 42 }] : [] };
+    }
+    export async function withTransaction(fn) {
+      const state = globalThis.__adminTest;
+      const snapshot = { logExists: state.deleteLogExists, exportExists: state.deleteExportExists,
+        deliveryLogId: state.deliveryLogId };
+      state.transactionCalls.push("BEGIN");
+      const client = { async query(sql, params) {
+        state.transactionCalls.push([sql, params]);
+        if (sql.startsWith("DELETE FROM analysis_exports")) state.deleteExportExists = false;
+        else if (sql.startsWith("DELETE FROM analysis_log")) {
+          if (state.deleteError) throw state.deleteError;
+          state.deleteLogExists = false;
+          state.deliveryLogId = null;
+        } else throw new Error("Unexpected transactional query");
+        return { rows: [] };
+      }};
+      state.transactionClients.push(client);
+      try {
+        const result = await fn(client);
+        state.transactionCalls.push("COMMIT");
+        return result;
+      } catch (err) {
+        state.transactionCalls.push("ROLLBACK");
+        state.deleteLogExists = snapshot.logExists;
+        state.deleteExportExists = snapshot.exportExists;
+        state.deliveryLogId = snapshot.deliveryLogId;
+        throw err;
+      }
+    }
+  `,
   "../lib/analysis-engine.js": `export function getAnalysis(id) {
     return globalThis.__adminTest.analyses.get(id);
   }`,
@@ -140,17 +171,19 @@ function reset(settings = {}) {
     countCalls: [],
     legacyExportCalls: [],
     warnings: [],
+    transactionCalls: [],
+    transactionClients: [],
   };
   return globalThis.__adminTest;
 }
 
-async function request(method, path, { token = "valid-admin", body = {} } = {}) {
+async function request(method, path, { token = "valid-admin", body = {}, params = {} } = {}) {
   const handlers = globalThis.__adminTestRoutes.get(`${method} ${path}`);
   if (!handlers) return { statusCode: 404 };
   const req = {
     cookies: token ? { gaio_admin_token: token } : {},
     body,
-    params: { group: "ai" },
+    params: { group: "ai", ...params },
     query: {},
   };
   const res = {
@@ -503,7 +536,7 @@ test("send-report uses server metadata, no customer BCC, and a separate escaped 
   assert.ok(customer.html.includes("https://server.test/&lt;path&gt;&amp;&quot;&#39;"));
   assert.equal(notification.to, "archive@example.test, other@example.test");
   assert.equal(notification.subject, `Neuer Report-Abruf: https://server.test/<path>&"'`);
-  for (const value of ["customer@example.test", "Server &lt;Company&gt;&amp;&quot;&#39;", "67", "Europe/Berlin", "html", "Ja", "sent"]) {
+  for (const value of ["customer@example.test", "Server &lt;Company&gt;&amp;&quot;&#39;", "67", "Europe/Berlin", "html", "Ja", "zugestellt"]) {
     assert.ok(notification.html.includes(value), value);
   }
   assert.ok(notification.text.includes(`Server <Company>&"'`));
@@ -556,7 +589,8 @@ test("send-report failure returns 502, records failed delivery and still sends t
   assert.equal(state.deliveries[0].status, "failed");
   assert.equal(state.deliveries[0].errorMessage, "SMTP rejected");
   assert.equal(state.mails.length, 2);
-  assert.ok(state.mails[1].html.includes("failed"));
+  assert.ok(state.mails[1].html.includes("fehlgeschlagen"));
+  assert.ok(state.mails[1].text.includes("Kundenmail-Status: fehlgeschlagen"));
   assert.ok(state.mails[1].html.includes("Nein"));
 });
 
@@ -566,7 +600,8 @@ test("send-report fallback returns 200 and records not_configured with no error"
   assert.deepEqual((await reportMail(validMailBody)).body, { success: true, deliveryId: 1 });
   assert.equal(state.deliveries[0].status, "not_configured");
   assert.equal(state.deliveries[0].errorMessage, null);
-  assert.ok(state.mails[1].text.includes("not_configured"));
+  assert.ok(state.mails[1].text.includes("kein Mailserver konfiguriert"));
+  assert.ok(state.mails[1].html.includes("kein Mailserver konfiguriert"));
 });
 
 test("internal notification failure is warned without changing a successful customer response", async () => {
@@ -593,4 +628,51 @@ test("send-report does not claim success if the delivery record could not be sto
   state.deliveryError = new Error("Synthetic DB failure");
   assert.equal((await reportMail(validMailBody)).statusCode, 500);
   assert.deepEqual(state.deliveries, []);
+});
+
+test("admin analysis deletion commits both deletes on one client and retains delivery records", async () => {
+  const state = reset();
+  state.deleteLogExists = true;
+  state.deleteExportExists = true;
+  state.deliveryLogId = 42;
+  state.deliveries.push({ analysisUuid: analysisId, recipientEmail: "customer@example.test" });
+  const res = await request("DELETE", "/analysis-log/:id", { params: { id: "42" } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true });
+  assert.deepEqual(state.transactionCalls, [
+    "BEGIN", ["DELETE FROM analysis_exports WHERE analysis_id = $1", [42]],
+    ["DELETE FROM analysis_log WHERE id = $1", [42]], "COMMIT",
+  ]);
+  assert.equal(state.transactionClients.length, 1);
+  assert.deepEqual(state.queries, [["SELECT id FROM analysis_log WHERE id = $1", [42]]]);
+  assert.equal(state.deleteLogExists, false);
+  assert.equal(state.deleteExportExists, false);
+  assert.equal(state.deliveryLogId, null);
+  assert.equal(state.deliveries.length, 1);
+});
+
+test("admin analysis deletion rolls back the export when the log delete fails", async () => {
+  const state = reset();
+  state.deleteLogExists = true;
+  state.deleteExportExists = true;
+  state.deliveryLogId = 42;
+  state.deleteError = new Error("Second delete failed");
+  const res = await request("DELETE", "/analysis-log/:id", { params: { id: "42" } });
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(res.body, { error: "Fehler beim Löschen" });
+  assert.equal(state.transactionClients.length, 1);
+  assert.equal(state.transactionCalls.at(-1), "ROLLBACK");
+  assert.ok(!state.transactionCalls.includes("COMMIT"));
+  assert.equal(state.deleteExportExists, true);
+  assert.equal(state.deleteLogExists, true);
+  assert.equal(state.deliveryLogId, 42);
+});
+
+test("admin analysis deletion preserves authentication, validation and missing-log responses", async () => {
+  const state = reset();
+  assert.equal((await request("DELETE", "/analysis-log/:id", { token: null, params: { id: "42" } })).statusCode, 401);
+  assert.equal((await request("DELETE", "/analysis-log/:id", { token: "valid-user", params: { id: "42" } })).statusCode, 403);
+  assert.equal((await request("DELETE", "/analysis-log/:id", { params: { id: "invalid" } })).statusCode, 400);
+  assert.equal((await request("DELETE", "/analysis-log/:id", { params: { id: "42" } })).statusCode, 404);
+  assert.deepEqual(state.transactionCalls, []);
 });

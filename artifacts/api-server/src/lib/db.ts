@@ -62,4 +62,27 @@ export async function query<T = Record<string, any>>(
   return runQuery<T>(() => pool.connect(), text, params);
 }
 
+export async function withTransaction<T>(
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await connectWithRetry(() => pool.connect());
+  let releaseError: Error | undefined;
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      releaseError = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+      logger.error({ err: rollbackError }, "Transaction rollback failed");
+    }
+    throw err;
+  } finally {
+    client.release(releaseError);
+  }
+}
+
 export { pool };

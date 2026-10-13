@@ -133,7 +133,7 @@ const CREATE_TABLES = `
 
   CREATE TABLE IF NOT EXISTS report_deliveries (
     id SERIAL PRIMARY KEY,
-    analysis_log_id INTEGER NOT NULL REFERENCES analysis_log(id),
+    analysis_log_id INTEGER REFERENCES analysis_log(id) ON DELETE SET NULL,
     analysis_uuid TEXT NOT NULL,
     recipient_email TEXT NOT NULL,
     report_type TEXT NOT NULL,
@@ -329,9 +329,39 @@ export async function removeLegacyLlmDiscoverabilityRatingPrompt(): Promise<void
 
 // ── Public init ───────────────────────────────────────────────────────────────
 
+export const REPORT_DELIVERY_RETENTION_MIGRATION = `
+DO $$
+DECLARE
+  fk RECORD;
+BEGIN
+  ALTER TABLE public.report_deliveries ALTER COLUMN analysis_log_id DROP NOT NULL;
+  FOR fk IN
+    SELECT c.conname, c.confdeltype
+    FROM pg_constraint c
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND c.conkey = ARRAY[a.attnum]
+    WHERE c.conrelid = 'public.report_deliveries'::regclass
+      AND c.confrelid = 'public.analysis_log'::regclass
+      AND c.contype = 'f' AND a.attname = 'analysis_log_id'
+  LOOP
+    IF fk.confdeltype <> 'n' THEN
+      EXECUTE format('ALTER TABLE public.report_deliveries DROP CONSTRAINT %I', fk.conname);
+      EXECUTE format(
+        'ALTER TABLE public.report_deliveries ADD CONSTRAINT %I FOREIGN KEY (analysis_log_id) REFERENCES public.analysis_log(id) ON DELETE SET NULL',
+        fk.conname
+      );
+    END IF;
+  END LOOP;
+END $$;
+`;
+
+export async function migrateReportDeliveryRetention(): Promise<void> {
+  await query(REPORT_DELIVERY_RETENTION_MIGRATION);
+}
+
 export async function initializeDatabase(): Promise<void> {
   // Create all tables
   await query(CREATE_TABLES);
+  await migrateReportDeliveryRetention();
 
   // Seed default settings (ON CONFLICT DO NOTHING = INSERT OR IGNORE)
   for (const [k, v] of DEFAULT_SETTINGS) {

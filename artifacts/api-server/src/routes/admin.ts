@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
 import { Client as PgClient } from "pg";
         import { getSetting, setSetting, saveAnalysisExportOnce, insertReportDelivery, countReportDeliveries } from "../lib/admin-db.js";
-        import { query } from "../lib/db.js";
+        import { query, withTransaction } from "../lib/db.js";
         import { getDatabaseUrl } from "../lib/bootstrap.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
 import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
@@ -348,6 +348,11 @@ adminRouter.post("/public/send-report", reportMailLimiter, async (req: Request, 
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
     const status = result.success ? (result.fallback ? "not_configured" : "sent") : "failed";
+    const statusText = {
+      sent: "zugestellt",
+      failed: "fehlgeschlagen",
+      not_configured: "kein Mailserver konfiguriert",
+    }[status];
 
     // A separate internal notification is sent even when customer delivery failed.
     try {
@@ -358,7 +363,7 @@ adminRouter.post("/public/send-report", reportMailLimiter, async (req: Request, 
           ["Empfänger", email], ["Unternehmen", companyName ?? ""], ["Domain", domainStr],
           ["GAIO-Score", String(gaioScore ?? "")], ["Datum/Uhrzeit (Europe/Berlin)", timestamp],
           ["Report-Typ", reportType], ["Einwilligung", consent ? "Ja" : "Nein"],
-          ["Kundenmail-Status", status],
+          ["Kundenmail-Status", statusText],
         ];
         const notification = await sendMail({
           to: bccList.join(", "),
@@ -918,8 +923,10 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, async (req: R
   if (!entry) { res.status(404).json({ error: "Eintrag nicht gefunden" }); return; }
 
   try {
-    await query("DELETE FROM analysis_exports WHERE analysis_id = $1", [logId]);
-    await query("DELETE FROM analysis_log WHERE id = $1", [logId]);
+    await withTransaction(async client => {
+      await client.query("DELETE FROM analysis_exports WHERE analysis_id = $1", [logId]);
+      await client.query("DELETE FROM analysis_log WHERE id = $1", [logId]);
+    });
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "Failed to delete analysis log entry");

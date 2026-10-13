@@ -1,6 +1,6 @@
 ---
 name: PG Migration
-description: SQLite → PostgreSQL migration details, async patterns, and known gotchas for this project.
+description: PostgreSQL caveats and data-retention rules for the shared development/production database.
 ---
 
 ## Rule
@@ -29,3 +29,10 @@ The user states that the database is shared with production. Do not treat develo
 **Why:** The user explicitly identified the shared database and required additive-only schema work, without changes to existing tables or data, for report delivery tracking.
 
 **How to apply:** Check the requested scope before schema changes or startup migrations; prefer additive changes and never reset existing data as a development shortcut.
+
+## Delivery record retention
+The user decided: "delivery (lead) records must survive deletion of the analysis."
+
+**Why:** This is the product owner's explicit retention decision.
+
+**How to apply:** Preserve delivery and lead records when changing analysis deletion or lead-management behavior; deleting an analysis is not permission to delete its delivery records.
