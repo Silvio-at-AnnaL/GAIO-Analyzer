@@ -7,6 +7,7 @@ export interface LabelDef {
 }
 
 export const labelDefaults: Record<string, LabelDef> = {
+  "perm.admin_only_hint": { group: "admin", de: "Nur für Administratoren" },
   "domain.fill_pages_option": { group: "domain", de: "Auf 16 Seiten auffüllen – abgewählte Seiten werden nicht verwendet" },
   "results.page_auto_added": { group: "results", de: "(automatisch ergänzt)" },
   "welcome.eyebrow":           { group: "welcome", de: "KI-Sichtbarkeit & SEO-Analyse" },

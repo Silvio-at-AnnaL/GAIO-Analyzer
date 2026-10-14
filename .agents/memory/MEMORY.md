@@ -9,3 +9,4 @@
 - [Scoped crawl work](scoped-crawl-work.md) — branch/no-publishing boundaries, preserve reservations, and check timing failures against a baseline.
 - [German content preference](german-content-preference.md) — product-owner rationale for preferring an available German main-site version.
 - [Generated type refresh](generated-type-refresh.md) — blocked library checks can leave declarations stale after codegen; refresh emission, then run real consumer checks.
+- [Nondelegable admin permissions](admin-permissions-policy.md) — user management, permission editing, and database configuration/testing must remain admin-only.

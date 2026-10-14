@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 import { deliveryRouteTests } from "./report-deliveries-tests.mjs";
+import { adminFeaturePermissionTests } from "./admin-feature-permissions-tests.mjs";
 
 const mocks = {
   express: `
@@ -180,7 +181,7 @@ function reset(settings = {}) {
   return globalThis.__adminTest;
 }
 
-async function request(method, path, { token = "valid-admin", body = {}, params = {}, query = {} } = {}) {
+async function request(method, path, { token = "valid-admin", body = {}, params = {}, query = {}, guardsOnly = false } = {}) {
   const handlers = globalThis.__adminTestRoutes.get(`${method} ${path}`);
   if (!handlers) return { statusCode: 404 };
   const req = {
@@ -198,7 +199,7 @@ async function request(method, path, { token = "valid-admin", body = {}, params 
     json(value) { this.body = value; return this; },
     send(value) { this.body = value; return this; },
   };
-  for (const handler of handlers) {
+  for (const handler of guardsOnly ? handlers.slice(0, -1) : handlers) {
     let nextCalled = false;
     await handler(req, res, () => { nextCalled = true; });
     if (!nextCalled) break;
@@ -424,6 +425,7 @@ const validMailBody = {
 };
 
 deliveryRouteTests({ reset, request });
+adminFeaturePermissionTests({ reset, request });
 const reportMail = body => request("POST", "/public/send-report", { token: null, body });
 function completedMailAnalysis(settings = {}) {
   const state = reset(settings);

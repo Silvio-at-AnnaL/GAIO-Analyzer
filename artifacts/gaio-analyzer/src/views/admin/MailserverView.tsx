@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Save, Send, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Database, Info } from "lucide-react";
-import { adminFetch } from "@/store/authStore";
+import { adminFetch, useAuth } from "@/store/authStore";
 import { useT } from "@/lib/LabelProvider";
 
 // ── Mail settings ─────────────────────────────────────────────────────────────
@@ -41,6 +41,8 @@ interface DbStatus {
 
 export function MailserverView() {
   const t = useT();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   // ── Mail state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState<MailSettings>({
     mail_host: "", mail_port: "587", mail_secure: "false",
@@ -68,8 +70,9 @@ export function MailserverView() {
   const [dbSaved,      setDbSaved]      = useState(false);
 
   useEffect(() => {
-    void Promise.all([loadMail(), loadDb()]);
-  }, []);
+    void loadMail();
+    if (isAdmin) void loadDb();
+  }, [isAdmin]);
 
   // ── Mail handlers ────────────────────────────────────────────────────────────
 
@@ -334,7 +337,7 @@ export function MailserverView() {
       </div>
 
       {/* ── Database card ──────────────────────────────────────────────────────── */}
-      <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+      {isAdmin && <div className="rounded-lg border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center gap-2 mb-1">
           <Database className="w-4 h-4" style={{ color: "hsl(var(--muted-foreground))" }} />
           <span className="text-sm font-semibold">{t("mail.db_title")}</span>
@@ -485,7 +488,7 @@ export function MailserverView() {
           {t("mail.db_platform_hint_replit")}
           {" "}{t("mail.db_platform_hint_own")}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

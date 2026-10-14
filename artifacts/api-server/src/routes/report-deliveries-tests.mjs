@@ -82,8 +82,8 @@ export function deliveryRouteTests({ reset, request }) {
     }
   });
 
-  test("new feature does not relax existing admin route guards", async () => {
-    const state = deliveryDatabase([], JSON.stringify({ analyseprotokoll: ["user_extended"], versandprotokoll: ["user_extended"] }));
+  test("delivery permission alone does not grant analysis-log access", async () => {
+    const state = deliveryDatabase([], JSON.stringify({ versandprotokoll: ["user_extended"] }));
     assert.equal((await request("GET", "/analysis-log", { token: "valid-extended" })).statusCode, 403);
     assert.equal((await request("DELETE", "/analysis-log/:id", { token: "valid-extended", params: { id: "42" } })).statusCode, 403);
     assert.deepEqual(state.queries, []);

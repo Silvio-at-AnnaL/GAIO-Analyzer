@@ -97,6 +97,17 @@ function requireFeature(featureId: string) {
   };
 }
 
+function requireSettingsFeature(req: Request, res: Response, next: NextFunction): void | Promise<void> {
+  const features: Record<string, string> = {
+    ai: "ki_tool", mail: "mailserver", delivery: "versand_analyse",
+  };
+  const group = String(req.params.group);
+  if (!Object.hasOwn(features, group)) {
+    res.status(400).json({ error: "Ungültige Gruppe" }); return;
+  }
+  return requireFeature(features[group])(req, res, next);
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -762,7 +773,7 @@ adminRouter.post("/analysis-log/auto-export", async (req: Request, res: Response
 });
 
 // GET /api/admin/analysis-log — admin only, paginated
-adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/analysis-log", requireAuth, requireFeature("analyseprotokoll"), async (req: Request, res: Response) => {
   const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
   const limit  = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "25"), 10) || 25));
   const offset = (page - 1) * limit;
@@ -816,7 +827,7 @@ adminRouter.get("/analysis-log", requireAuth, requireAdmin, async (req: Request,
 });
 
 // GET /api/admin/system-events — admin only, cursor-paginated
-adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/system-events", requireAuth, requireFeature("systemprotokoll"), async (req: Request, res: Response) => {
   try {
     const filters = systemEventFilters(req);
     if ("error" in filters) {
@@ -857,7 +868,7 @@ adminRouter.get("/system-events", requireAuth, requireAdmin, async (req: Request
 });
 
 // GET /api/admin/system-events/export — admin only, oldest first
-adminRouter.get("/system-events/export", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/system-events/export", requireAuth, requireFeature("systemprotokoll"), async (req: Request, res: Response) => {
   try {
     const filters = systemEventFilters(req);
     if ("error" in filters) {
@@ -913,7 +924,7 @@ adminRouter.get("/system-events/export", requireAuth, requireAdmin, async (req: 
 });
 
 // GET /api/admin/analysis-log/:id/export — admin only
-adminRouter.get("/analysis-log/:id/export", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/analysis-log/:id/export", requireAuth, requireFeature("analyseprotokoll"), async (req: Request, res: Response) => {
   const logId = parseInt(String(req.params.id), 10);
   if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
 
@@ -935,7 +946,7 @@ adminRouter.get("/analysis-log/:id/export", requireAuth, requireAdmin, async (re
 });
 
 // DELETE /api/admin/analysis-log/:id — admin only
-adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.delete("/analysis-log/:id", requireAuth, requireFeature("analyseprotokoll"), async (req: Request, res: Response) => {
   const logId = parseInt(String(req.params.id), 10);
   if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
 
@@ -955,7 +966,7 @@ adminRouter.delete("/analysis-log/:id", requireAuth, requireAdmin, async (req: R
 });
 
 // POST /api/admin/angebot/generate — admin only
-adminRouter.post("/angebot/generate", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.post("/angebot/generate", requireAuth, requireFeature("angebots_creator"), async (req: Request, res: Response) => {
   interface UploadRec { finding: string; fix: string; }
   interface UploadBody {
     fromUpload: true;
@@ -1119,7 +1130,7 @@ function stripDataUrl(value: string): { raw: string; mime: string } {
 const MAX_B64_CHARS = Math.ceil(500 * 1024 * (4 / 3));
 
 // GET /api/admin/settings/theme
-adminRouter.get("/settings/theme", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+adminRouter.get("/settings/theme", requireAuth, requireFeature("erscheinungsbild"), async (_req: Request, res: Response) => {
   res.json({
     theme_primary:         await getSetting("theme_primary")         ?? "#2563eb",
     theme_sidebar_bg:      await getSetting("theme_sidebar_bg")      ?? "#1e2235",
@@ -1130,7 +1141,7 @@ adminRouter.get("/settings/theme", requireAuth, requireAdmin, async (_req: Reque
 });
 
 // GET /api/admin/settings/branding
-adminRouter.get("/settings/branding", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+adminRouter.get("/settings/branding", requireAuth, requireFeature("erscheinungsbild"), async (_req: Request, res: Response) => {
   res.json({
     branding_logo_base64:   buildDataUrl(await getSetting("branding_logo_base64") ?? "", await getSetting("branding_logo_mimetype") ?? "image/png"),
     branding_logo_mimetype: await getSetting("branding_logo_mimetype") ?? "image/png",
@@ -1140,7 +1151,7 @@ adminRouter.get("/settings/branding", requireAuth, requireAdmin, async (_req: Re
 });
 
 // PATCH /api/admin/settings/branding
-adminRouter.patch("/settings/branding", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.patch("/settings/branding", requireAuth, requireFeature("erscheinungsbild"), async (req: Request, res: Response) => {
   const body = req.body as Record<string, string>;
   if ("branding_logo_base64" in body) {
     const { raw, mime } = stripDataUrl(String(body.branding_logo_base64 ?? ""));
@@ -1163,7 +1174,7 @@ adminRouter.patch("/settings/branding", requireAuth, requireAdmin, async (req: R
 });
 
 // GET /api/admin/settings/contact
-adminRouter.get("/settings/contact", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+adminRouter.get("/settings/contact", requireAuth, requireFeature("kontakt_daten"), async (_req: Request, res: Response) => {
   res.json({
     contact_name:           await getSetting("contact_name")           ?? "Silvio Haase",
     contact_title:          await getSetting("contact_title")          ?? "CMO & Head of Business Development",
@@ -1177,7 +1188,7 @@ adminRouter.get("/settings/contact", requireAuth, requireAdmin, async (_req: Req
 });
 
 // PATCH /api/admin/settings/contact
-adminRouter.patch("/settings/contact", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.patch("/settings/contact", requireAuth, requireFeature("kontakt_daten"), async (req: Request, res: Response) => {
   const body = req.body as Record<string, string>;
   const textFields = ["contact_name","contact_title","contact_company","contact_email","contact_cta_text","contact_cta_subtext"] as const;
   for (const f of textFields) {
@@ -1206,7 +1217,8 @@ adminRouter.get("/settings/permissions", requireAuth, async (_req: Request, res:
 // PATCH /api/admin/settings/permissions
 adminRouter.patch("/settings/permissions", requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
-    await setSetting("permissions_json", JSON.stringify(req.body));
+    const permissions = { ...req.body, nutzerverwaltung: ["admin"], rechtemanagement: ["admin"] };
+    await setSetting("permissions_json", JSON.stringify(permissions));
     res.json({ success: true });
   } catch {
     res.status(400).json({ error: "Ungültige Berechtigungen" });
@@ -1214,7 +1226,7 @@ adminRouter.patch("/settings/permissions", requireAuth, requireAdmin, async (req
 });
 
 // GET /api/admin/settings/ai-status
-adminRouter.get("/settings/ai-status", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+adminRouter.get("/settings/ai-status", requireAuth, requireFeature("ki_tool"), async (_req: Request, res: Response) => {
   const provider = await getSetting("ai_provider") ?? "claude";
   const hasApiKey = {
     claude:     (await getSetting("ai_api_key_claude")     ?? "") !== "",
@@ -1234,12 +1246,12 @@ adminRouter.get("/settings/ai-status", requireAuth, requireAdmin, async (_req: R
 });
 
 // POST /api/admin/settings/ai-test
-adminRouter.post("/settings/ai-test", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+adminRouter.post("/settings/ai-test", requireAuth, requireFeature("ki_tool"), async (_req: Request, res: Response) => {
   res.json(await checkLlmReady({ force: true }));
 });
 
 // POST /api/admin/settings/test-mail
-adminRouter.post("/settings/test-mail", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.post("/settings/test-mail", requireAuth, requireFeature("mailserver"), async (req: Request, res: Response) => {
   const userResult = await query<{ email: string }>("SELECT email FROM users WHERE id = $1", [req.adminUser!.id]);
   const to = userResult.rows[0]?.email ?? await getSetting("mail_from_address") ?? "";
   if (!to) { res.status(400).json({ success: false, error: "Keine E-Mail-Adresse gefunden" }); return; }
@@ -1314,7 +1326,7 @@ adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (re
 });
 
 // GET /api/admin/settings/:group
-adminRouter.get("/settings/:group", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/settings/:group", requireAuth, requireSettingsFeature, async (req: Request, res: Response) => {
   const group = String(req.params.group);
   const keys = SETTINGS_GROUPS[group];
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
@@ -1335,7 +1347,7 @@ adminRouter.get("/settings/:group", requireAuth, requireAdmin, async (req: Reque
 });
 
 // PATCH /api/admin/settings/:group
-adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.patch("/settings/:group", requireAuth, requireSettingsFeature, async (req: Request, res: Response) => {
   const group = String(req.params.group);
   const keys = SETTINGS_GROUPS[group];
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
@@ -1395,7 +1407,7 @@ adminRouter.patch("/settings/:group", requireAuth, requireAdmin, async (req: Req
 });
 
 // POST /api/admin/analysis/:id/send-email
-adminRouter.post("/analysis/:id/send-email", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+adminRouter.post("/analysis/:id/send-email", requireAuth, requireFeature("analyseprotokoll"), async (req: Request, res: Response) => {
   const logId = parseInt(String(req.params.id), 10);
   if (isNaN(logId)) { res.status(400).json({ error: "Ungültige ID" }); return; }
 
@@ -1446,7 +1458,7 @@ function buildShareUrl(base: string, token: string): string {
 }
 
 // POST /api/admin/shares — create a share link
-adminRouter.post("/shares", requireAuth, async (req: Request, res: Response) => {
+adminRouter.post("/shares", requireAuth, requireFeature("geteilte_analysen"), async (req: Request, res: Response) => {
   const { analysisId, expiryDays, title } = req.body ?? {};
   if (!analysisId || typeof analysisId !== "number") {
     res.status(400).json({ error: "analysisId fehlt" }); return;
@@ -1467,7 +1479,7 @@ adminRouter.post("/shares", requireAuth, async (req: Request, res: Response) => 
 });
 
 // GET /api/admin/shares — list all shares
-adminRouter.get("/shares", requireAuth, async (_req: Request, res: Response) => {
+adminRouter.get("/shares", requireAuth, requireFeature("geteilte_analysen"), async (_req: Request, res: Response) => {
   const rows = (await query<SharedAnalysisRow & { domain: string | null; company_name: string | null }>(`
     SELECT sa.id, sa.token, sa.analysis_id, sa.created_by, sa.created_at,
            sa.expires_at, sa.is_active, sa.title, sa.view_count,
@@ -1495,7 +1507,7 @@ adminRouter.get("/shares", requireAuth, async (_req: Request, res: Response) => 
 });
 
 // DELETE /api/admin/shares/:id — deactivate a share
-adminRouter.delete("/shares/:id", requireAuth, async (req: Request, res: Response) => {
+adminRouter.delete("/shares/:id", requireAuth, requireFeature("geteilte_analysen"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Ungültige ID" }); return; }
   await query("UPDATE shared_analyses SET is_active = 0 WHERE id = $1", [id]);
@@ -1503,7 +1515,7 @@ adminRouter.delete("/shares/:id", requireAuth, async (req: Request, res: Respons
 });
 
 // GET /api/admin/shares/:id/access-log
-adminRouter.get("/shares/:id/access-log", requireAuth, async (req: Request, res: Response) => {
+adminRouter.get("/shares/:id/access-log", requireAuth, requireFeature("geteilte_analysen"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Ungültige ID" }); return; }
   const items = (await query<{ id: number; accessed_at: string; ip_hash: string | null; user_agent: string | null }>(`
@@ -1526,11 +1538,11 @@ async function scoreProfileWithCurrent(profile: (typeof SCORE_PROFILES)[number])
   };
 }
 
-adminRouter.get("/score-profiles", requireAuth, requireAdmin, async (_req, res) => {
+adminRouter.get("/score-profiles", requireAuth, requireFeature("score_einstellungen"), async (_req, res) => {
   res.json(await Promise.all(SCORE_PROFILES.map(scoreProfileWithCurrent)));
 });
 
-adminRouter.patch("/score-profiles/:slug", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.patch("/score-profiles/:slug", requireAuth, requireFeature("score_einstellungen"), async (req, res) => {
   const slug = req.params.slug as string;
   const { key, value } = req.body as { key?: string; value?: number };
   const profile = SCORE_PROFILES.find((item) => item.slug === slug);
@@ -1545,7 +1557,7 @@ adminRouter.patch("/score-profiles/:slug", requireAuth, requireAdmin, async (req
   res.json(await scoreProfileWithCurrent(profile));
 });
 
-adminRouter.post("/score-profiles/:slug/reset", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.post("/score-profiles/:slug/reset", requireAuth, requireFeature("score_einstellungen"), async (req, res) => {
   const slug = req.params.slug as string;
   const profile = SCORE_PROFILES.find((item) => item.slug === slug);
   if (!profile) { res.status(404).json({ error: "Score-Profil nicht gefunden" }); return; }
@@ -1555,7 +1567,7 @@ adminRouter.post("/score-profiles/:slug/reset", requireAuth, requireAdmin, async
 
 // ── Prompt-Verwaltung ─────────────────────────────────────────────────────────
 
-adminRouter.get("/prompts", requireAuth, requireAdmin, async (_req, res) => {
+adminRouter.get("/prompts", requireAuth, requireFeature("prompt_verwaltung"), async (_req, res) => {
   type DbPromptRow = {
     id: number; slug: string; name: string; description: string;
     module: string; is_modified: number; updated_at: string;
@@ -1576,7 +1588,7 @@ adminRouter.get("/prompts", requireAuth, requireAdmin, async (_req, res) => {
   });
 });
 
-adminRouter.get("/prompts/:slug", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.get("/prompts/:slug", requireAuth, requireFeature("prompt_verwaltung"), async (req, res) => {
   const slug = req.params.slug as string;
   type DbPromptFull = {
     id: number; slug: string; name: string; description: string;
@@ -1603,7 +1615,7 @@ adminRouter.get("/prompts/:slug", requireAuth, requireAdmin, async (req, res) =>
   });
 });
 
-adminRouter.patch("/prompts/:slug", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.patch("/prompts/:slug", requireAuth, requireFeature("prompt_verwaltung"), async (req, res) => {
   const slug = req.params.slug as string;
   const { template } = req.body as { template?: string };
   if (typeof template !== "string" || template.trim().length === 0) {
@@ -1619,7 +1631,7 @@ adminRouter.patch("/prompts/:slug", requireAuth, requireAdmin, async (req, res) 
   res.json({ ok: true });
 });
 
-adminRouter.post("/prompts/:slug/reset", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.post("/prompts/:slug/reset", requireAuth, requireFeature("prompt_verwaltung"), async (req, res) => {
   const slug = req.params.slug as string;
   const def = PROMPT_DEFAULTS_MAP.get(slug);
   if (!def) { res.status(404).json({ error: "Kein Standard für diesen Prompt verfügbar" }); return; }
@@ -1691,7 +1703,7 @@ adminRouter.get("/public/labels", async (req, res) => {
 });
 
 // GET /api/admin/labels?locale=L — admin, raw per-locale overrides for editing
-adminRouter.get("/labels", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.get("/labels", requireAuth, requireFeature("textverwaltung"), async (req, res) => {
   const locale = String(req.query.locale ?? "de");
   if (!isSupportedLocale(locale)) {
     res.status(400).json({ error: "Unsupported locale" }); return;
@@ -1706,7 +1718,7 @@ adminRouter.get("/labels", requireAuth, requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/admin/labels/:key — admin, upsert one (key, locale) override
-adminRouter.patch("/labels/:key", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.patch("/labels/:key", requireAuth, requireFeature("textverwaltung"), async (req, res) => {
   const key = req.params.key as string;
   const { locale, value } = req.body as { locale?: unknown; value?: unknown };
   if (!isSupportedLocale(locale)) {
@@ -1725,7 +1737,7 @@ adminRouter.patch("/labels/:key", requireAuth, requireAdmin, async (req, res) =>
 });
 
 // POST /api/admin/labels/:key/reset — admin, delete (key, locale) override
-adminRouter.post("/labels/:key/reset", requireAuth, requireAdmin, async (req, res) => {
+adminRouter.post("/labels/:key/reset", requireAuth, requireFeature("textverwaltung"), async (req, res) => {
   const key = req.params.key as string;
   const { locale } = req.body as { locale?: unknown };
   if (!isSupportedLocale(locale)) {

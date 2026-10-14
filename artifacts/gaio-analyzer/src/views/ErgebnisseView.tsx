@@ -20,7 +20,7 @@ import {
   Loader2, CheckCircle2, XCircle, FileText, Globe, Star, AlertCircle, AlertTriangle,
   Info, Clock, ChevronDown, ChevronUp, ExternalLink, Share2, Copy, Check,
 } from "lucide-react";
-import { useAuth, adminFetch } from "@/store/authStore";
+import { useAuth, adminFetch, canAccess } from "@/store/authStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
 import { getHeadingSummary } from "@/lib/heading-summary";
 import { isLimitedCompetitor } from "@/lib/competitor-comparability";
@@ -844,7 +844,8 @@ function UnavailableModuleCard({ title }: { title: string }) {
 function ReportView({ analysisId }: { analysisId: string }) {
   const { setCrawledPages, setSelectedPages, domainForm } = useAppStore();
   const { mode: deliveryMode } = useDeliveryMode();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, permissions } = useAuth();
+  const canShare = isAuthenticated && !!user && canAccess("geteilte_analysen", user.role, permissions);
   const { footerText: brandingFooterText, logoSrc: brandingLogoSrc } = useBranding();
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingHtml, setExportingHtml] = useState(false);
@@ -1987,7 +1988,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
             {exportingHtml ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Globe className="w-4 h-4 mr-1.5" />}
             {exportingHtml ? t("results.html_export_loading") : t("results.html_export_button")}
           </Button>
-          {isAuthenticated && (
+          {canShare && (
             <Button
               size="sm"
               variant="outline"
@@ -2090,7 +2091,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       )}
 
       {/* Share modal */}
-      {shareModal && (
+      {canShare && shareModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) { setShareModal(false); } }}>
           <div className="w-full max-w-md rounded-xl border border-border shadow-2xl p-6 mx-4 space-y-4" style={{ background: "hsl(var(--card))" }}>
             <div className="flex items-center gap-2">

@@ -21,6 +21,7 @@ const DEFAULT_PERMISSIONS: PermissionsMap = Object.fromEntries(
 );
 
 const ALL_GROUP_ITEMS = new Set(ADMIN_NAV_GROUPS.flatMap((g) => g.items as readonly string[]));
+const ADMIN_ONLY_FEATURES = new Set(["nutzerverwaltung", "rechtemanagement"]);
 
 export function PermissionsView() {
   const t = useT();
@@ -39,6 +40,7 @@ export function PermissionsView() {
   }, []);
 
   function toggle(featureId: string, roleId: string, enabled: boolean) {
+    if (ADMIN_ONLY_FEATURES.has(featureId)) return;
     setPermissions((prev) => {
       const current = prev[featureId] ?? ["admin"];
       let next: string[];
@@ -75,13 +77,17 @@ export function PermissionsView() {
   }
 
   function FeatureRow({ feature, idx }: { feature: AnyFeature; idx: number }) {
+    const fixedAdminOnly = ADMIN_ONLY_FEATURES.has(feature.id);
     const allowed = permissions[feature.id] ?? ["admin"];
     return (
       <tr
         className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
         style={idx % 2 !== 0 ? { background: "hsl(var(--muted)/0.15)" } : {}}
       >
-        <td className="px-5 py-3 font-medium pl-8 text-sm">{t(feature.label)}</td>
+        <td className="px-5 py-3 font-medium pl-8 text-sm">
+          {t(feature.label)}
+          {fixedAdminOnly && <p className="text-xs font-normal text-muted-foreground mt-1">{t("perm.admin_only_hint")}</p>}
+        </td>
         {ROLES.map((role) => {
           if (role.locked) {
             return (
@@ -92,12 +98,14 @@ export function PermissionsView() {
               </td>
             );
           }
-          const checked = allowed.includes(role.id);
+          const checked = !fixedAdminOnly && allowed.includes(role.id);
           return (
             <td key={role.id} className="px-4 py-3 text-center">
               <div className="flex justify-center">
                 <button
                   onClick={() => toggle(feature.id, role.id, !checked)}
+                  disabled={fixedAdminOnly}
+                  title={fixedAdminOnly ? t("perm.admin_only_hint") : undefined}
                   className="relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none"
                   style={{ background: checked ? "#3b82f6" : "hsl(var(--muted))" }}
                   role="switch"
