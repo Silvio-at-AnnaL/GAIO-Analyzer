@@ -14,3 +14,17 @@ mtime_ms = 1791985892416
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/7ddf49e7-1c86-4929-9ad9-25ec2c369c5c/fb272938-7741-4c4e-a7a2-d5651b798439"
 storage_version_token = "1791985893255351"
 content_type = "text/plain"
+
+[[outputs]]
+id = "jw7lptDSIBaVatG46bVTt"
+uri = "file://.local/crawl-admin-verification.txt"
+type = "text"
+title = "Crawl exclusions admin verification"
+description = "Commit, all 19 changed files, label/test totals, cache policy and the completed Dev browser check with cleanup."
+logical_id = "b0394ee8-2551-4e5f-ab72-df4669b7c29d"
+content_hash = "sha256:a2f0aa03f157a0a65a41941dbc1bf52d38a4b4f4e512334975dd13ebfda198fb"
+size = 2759
+mtime_ms = 1791988305159
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/b0394ee8-2551-4e5f-ab72-df4669b7c29d/50f22248-ff13-4b8c-b3b7-94e9b6d15f52"
+storage_version_token = "1791988305842608"
+content_type = "text/plain"
