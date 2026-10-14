@@ -19,6 +19,7 @@ import { SCORE_PROFILES, getScoreParams, setScoreParam, resetScoreParams } from 
 import { randomUUID } from "node:crypto";
 import { validate as isUuid } from "uuid";
 import { getAnalysis } from "../lib/analysis-engine.js";
+import { registerReportDeliveryRoutes } from "./report-deliveries.js";
 
 declare module "express" {
   interface Request {
@@ -78,6 +79,24 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+function requireFeature(featureId: string) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const role = req.adminUser?.role;
+    if (role === "admin") { next(); return; }
+    let allowed: unknown;
+    try {
+      const permissions = JSON.parse(await getSetting("permissions_json") ?? "{}");
+      if (permissions && typeof permissions === "object" && !Array.isArray(permissions)) {
+        allowed = permissions[featureId];
+      }
+    } catch {
+      // Missing, malformed or unavailable permission data must never grant access.
+    }
+    if (role && Array.isArray(allowed) && allowed.includes(role)) { next(); return; }
+    res.status(403).json({ error: "Keine Berechtigung" });
+  };
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -109,6 +128,7 @@ async function lockReportDelivery(logId: number): Promise<() => void> {
 }
 
 const adminRouter = Router();
+registerReportDeliveryRoutes(adminRouter, requireAuth, requireFeature("versandprotokoll"));
 
 interface SystemEventRow {
   id: string;

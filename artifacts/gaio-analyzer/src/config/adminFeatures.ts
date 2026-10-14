@@ -5,6 +5,7 @@ export const ADMIN_FEATURES = [
   { id: "geteilte_analysen", label: "nav.admin_geteilte_analysen",  icon: "Share2",            defaultRoles: ["admin"] },
   { id: "angebots_creator",  label: "nav.admin_angebots_creator",   icon: "FileText",          defaultRoles: ["admin"] },
   { id: "versand_analyse",   label: "nav.admin_versand_analyse",    icon: "Send",              defaultRoles: ["admin"] },
+  { id: "versandprotokoll",  label: "nav.admin_versandprotokoll",   icon: "Inbox",             defaultRoles: ["admin"] },
   { id: "erscheinungsbild",  label: "nav.admin_erscheinungsbild",   icon: "Palette",           defaultRoles: ["admin"] },
   { id: "kontakt_daten",     label: "nav.admin_kontakt_daten",      icon: "ContactRound",      defaultRoles: ["admin"] },
   { id: "rechtemanagement",  label: "nav.admin_rechtemanagement",   icon: "ShieldCheck",       defaultRoles: ["admin"] },
@@ -32,7 +33,7 @@ export const ADMIN_NAV_GROUPS = [
     id: "analysen",
     label: "nav.admin_grp_analysen",
     icon: "BarChart2",
-    items: ["analyseprotokoll", "geteilte_analysen", "angebots_creator", "versand_analyse"] as const,
+    items: ["analyseprotokoll", "geteilte_analysen", "angebots_creator", "versand_analyse", "versandprotokoll"] as const,
   },
   {
     id: "darstellung",

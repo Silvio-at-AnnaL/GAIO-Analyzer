@@ -400,7 +400,7 @@ export async function initializeDatabase(): Promise<void> {
   const ALL_FEATURE_IDS = [
     "nutzerverwaltung", "analyseprotokoll", "setup_import", "geteilte_analysen", "angebots_creator",
     "erscheinungsbild", "kontakt_daten", "rechtemanagement",
-    "ki_tool", "mailserver", "versand_analyse",
+    "ki_tool", "mailserver", "versand_analyse", "versandprotokoll",
   ];
   try {
     const raw = await getSetting("permissions_json");

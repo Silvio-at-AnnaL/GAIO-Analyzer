@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
+import { deliveryRouteTests } from "./report-deliveries-tests.mjs";
 
 const mocks = {
   express: `
@@ -56,6 +57,7 @@ const mocks = {
     export async function query(sql, params) {
       const state = globalThis.__adminTest;
       state.queries.push([sql, params]);
+      if (state.deliveryQuery) return state.deliveryQuery(sql, params);
       return { rows: state.deleteLogExists && sql === "SELECT id FROM analysis_log WHERE id = $1" ? [{ id: 42 }] : [] };
     }
     export async function withTransaction(fn) {
@@ -103,6 +105,7 @@ const mocks = {
     export function verifyToken(token) {
       if (token === "valid-admin") return { userId: 1, username: "admin", role: "admin" };
       if (token === "valid-user") return { userId: 2, username: "user", role: "user" };
+      if (token === "valid-extended") return { userId: 3, username: "extended", role: "user_extended" };
       return null;
     }
     export function validatePasswordPolicy() { return null; }
@@ -177,18 +180,20 @@ function reset(settings = {}) {
   return globalThis.__adminTest;
 }
 
-async function request(method, path, { token = "valid-admin", body = {}, params = {} } = {}) {
+async function request(method, path, { token = "valid-admin", body = {}, params = {}, query = {} } = {}) {
   const handlers = globalThis.__adminTestRoutes.get(`${method} ${path}`);
   if (!handlers) return { statusCode: 404 };
   const req = {
     cookies: token ? { gaio_admin_token: token } : {},
     body,
     params: { group: "ai", ...params },
-    query: {},
+    query,
   };
   const res = {
     statusCode: 200,
     body: undefined,
+    headers: {},
+    setHeader(key, value) { this.headers[key] = value; return this; },
     status(code) { this.statusCode = code; return this; },
     json(value) { this.body = value; return this; },
     send(value) { this.body = value; return this; },
@@ -417,6 +422,8 @@ test("auto-export save errors return 500 without sending BCC", async () => {
 const validMailBody = {
   analysisId, recipientEmail: "customer@example.test", reportType: "html", htmlContent: "<html>report</html>",
 };
+
+deliveryRouteTests({ reset, request });
 const reportMail = body => request("POST", "/public/send-report", { token: null, body });
 function completedMailAnalysis(settings = {}) {
   const state = reset(settings);

@@ -255,3 +255,77 @@ export const GetAnalysisReportResponse = zod.object({
   errors: zod.array(zod.string()),
   crawledPages: zod.array(zod.string()),
 });
+
+/**
+ * @summary Permission-controlled delivery log
+ */
+export const listReportDeliveriesQueryPageDefault = 1;
+
+export const listReportDeliveriesQueryLimitDefault = 25;
+export const listReportDeliveriesQueryLimitMax = 100;
+
+export const ListReportDeliveriesQueryParams = zod.object({
+  page: zod.coerce
+    .number()
+    .min(1)
+    .default(listReportDeliveriesQueryPageDefault),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listReportDeliveriesQueryLimitMax)
+    .default(listReportDeliveriesQueryLimitDefault),
+  q: zod.coerce.string().optional(),
+  consent: zod.enum(["only"]).optional(),
+});
+
+export const ListReportDeliveriesResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      createdAt: zod.string().nullable(),
+      recipientEmail: zod.string(),
+      companyName: zod.string().nullable(),
+      domain: zod.string().nullable(),
+      gaioScore: zod.number().nullable(),
+      reportType: zod.enum(["html", "pdf"]),
+      consentMarketing: zod.boolean(),
+      consentAt: zod.string().nullable(),
+      consentText: zod.string().nullable(),
+      status: zod.enum(["sent", "failed", "not_configured"]),
+      errorMessage: zod.string().nullable(),
+      analysisLogId: zod.number().nullable(),
+      hasReport: zod.boolean(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pages: zod.number(),
+});
+
+/**
+ * @summary Download up to 10000 filtered deliveries as injection-safe German CSV
+ */
+export const ExportReportDeliveriesCsvQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+  consent: zod.enum(["only"]).optional(),
+});
+
+/**
+ * @summary Download the HTML export of the linked analysis
+ */
+
+export const DownloadDeliveryReportParams = zod.object({
+  id: zod.coerce.number().min(1),
+});
+
+/**
+ * @summary Delete only this delivery record
+ */
+
+export const DeleteReportDeliveryParams = zod.object({
+  id: zod.coerce.number().min(1),
+});
+
+export const DeleteReportDeliveryResponse = zod.object({
+  ok: zod.boolean(),
+});

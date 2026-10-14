@@ -5,6 +5,59 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ReportDeliveryItemReportType =
+  (typeof ReportDeliveryItemReportType)[keyof typeof ReportDeliveryItemReportType];
+
+export const ReportDeliveryItemReportType = {
+  html: "html",
+  pdf: "pdf",
+} as const;
+
+export type ReportDeliveryItemStatus =
+  (typeof ReportDeliveryItemStatus)[keyof typeof ReportDeliveryItemStatus];
+
+export const ReportDeliveryItemStatus = {
+  sent: "sent",
+  failed: "failed",
+  not_configured: "not_configured",
+} as const;
+
+export interface ReportDeliveryItem {
+  id: number;
+  /** @nullable */
+  createdAt: string | null;
+  recipientEmail: string;
+  /** @nullable */
+  companyName: string | null;
+  /** @nullable */
+  domain: string | null;
+  /** @nullable */
+  gaioScore: number | null;
+  reportType: ReportDeliveryItemReportType;
+  consentMarketing: boolean;
+  /** @nullable */
+  consentAt: string | null;
+  /** @nullable */
+  consentText: string | null;
+  status: ReportDeliveryItemStatus;
+  /** @nullable */
+  errorMessage: string | null;
+  /** @nullable */
+  analysisLogId: number | null;
+  hasReport: boolean;
+}
+
+export interface ReportDeliveryPage {
+  items: ReportDeliveryItem[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+export interface ReportDeliveryDeletion {
+  ok: boolean;
+}
+
 export interface PrefillBody {
   company_name: string;
   url: string;
@@ -294,3 +347,36 @@ export interface AnalysisReport {
   errors: string[];
   crawledPages: string[];
 }
+
+export type ListReportDeliveriesParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  q?: string;
+  consent?: ListReportDeliveriesConsent;
+};
+
+export type ListReportDeliveriesConsent =
+  (typeof ListReportDeliveriesConsent)[keyof typeof ListReportDeliveriesConsent];
+
+export const ListReportDeliveriesConsent = {
+  only: "only",
+} as const;
+
+export type ExportReportDeliveriesCsvParams = {
+  q?: string;
+  consent?: ExportReportDeliveriesCsvConsent;
+};
+
+export type ExportReportDeliveriesCsvConsent =
+  (typeof ExportReportDeliveriesCsvConsent)[keyof typeof ExportReportDeliveriesCsvConsent];
+
+export const ExportReportDeliveriesCsvConsent = {
+  only: "only",
+} as const;

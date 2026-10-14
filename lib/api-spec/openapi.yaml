@@ -111,8 +111,119 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/report-deliveries:
+    get:
+      operationId: listReportDeliveries
+      tags: [admin]
+      summary: Permission-controlled delivery log
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1, minimum: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 25, minimum: 1, maximum: 100 } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: consent, in: query, schema: { type: string, enum: [only] } }
+      responses:
+        "200":
+          description: Newest deliveries first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportDeliveryPage"
+        "401": { description: Not authenticated }
+        "403": { description: Feature permission required }
+        "500": { description: Delivery log unavailable }
+
+  /admin/report-deliveries/export.csv:
+    get:
+      operationId: exportReportDeliveriesCsv
+      tags: [admin]
+      summary: Download up to 10000 filtered deliveries as injection-safe German CSV
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: consent, in: query, schema: { type: string, enum: [only] } }
+      responses:
+        "200":
+          description: Semicolon-separated UTF-8 CSV with BOM and CRLF
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { description: Not authenticated }
+        "403": { description: Feature permission required }
+        "500": { description: CSV unavailable }
+
+  /admin/report-deliveries/{id}/report:
+    get:
+      operationId: downloadDeliveryReport
+      tags: [admin]
+      summary: Download the HTML export of the linked analysis
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: HTML attachment
+          content:
+            text/html:
+              schema: { type: string }
+        "400": { description: Invalid ID }
+        "401": { description: Not authenticated }
+        "403": { description: Feature permission required }
+        "404": { description: No linked HTML export }
+        "500": { description: Report unavailable }
+
+  /admin/report-deliveries/{id}:
+    delete:
+      operationId: deleteReportDelivery
+      tags: [admin]
+      summary: Delete only this delivery record
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Delivery deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportDeliveryDeletion"
+        "400": { description: Invalid ID }
+        "401": { description: Not authenticated }
+        "403": { description: Feature permission required }
+        "404": { description: Delivery not found }
+        "500": { description: Deletion failed }
+
 components:
   schemas:
+    ReportDeliveryItem:
+      type: object
+      required: [id, createdAt, recipientEmail, companyName, domain, gaioScore, reportType, consentMarketing, consentAt, consentText, status, errorMessage, analysisLogId, hasReport]
+      properties:
+        id: { type: integer }
+        createdAt: { type: ["string", "null"] }
+        recipientEmail: { type: string }
+        companyName: { type: ["string", "null"] }
+        domain: { type: ["string", "null"] }
+        gaioScore: { type: ["integer", "null"] }
+        reportType: { type: string, enum: [html, pdf] }
+        consentMarketing: { type: boolean }
+        consentAt: { type: ["string", "null"] }
+        consentText: { type: ["string", "null"] }
+        status: { type: string, enum: [sent, failed, not_configured] }
+        errorMessage: { type: ["string", "null"] }
+        analysisLogId: { type: ["integer", "null"] }
+        hasReport: { type: boolean }
+    ReportDeliveryPage:
+      type: object
+      required: [items, total, page, pages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReportDeliveryItem" }
+        total: { type: integer }
+        page: { type: integer }
+        pages: { type: integer }
+    ReportDeliveryDeletion:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
     PrefillBody:
       type: object
       properties:

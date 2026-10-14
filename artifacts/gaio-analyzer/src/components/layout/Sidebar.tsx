@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, User, Users, Server, ArrowLeftRight,
-  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText, AlertTriangle,
+  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText, AlertTriangle, Inbox,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { adminFetch, useAuth, canAccess, type Permissions } from "@/store/authStore";
@@ -33,6 +33,7 @@ const FEATURE_VIEW: Record<string, ActiveView> = {
   textverwaltung: 20,
   score_einstellungen: 21,
   systemprotokoll: 22,
+  versandprotokoll: 23,
 };
 
 const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
@@ -45,6 +46,7 @@ const GROUP_ICON: Record<string, React.ElementType> = {
 
 const FEATURE_ICON: Record<string, React.ElementType> = {
   systemprotokoll: ScrollText,
+  versandprotokoll: Inbox,
 };
 
 function NavButton({

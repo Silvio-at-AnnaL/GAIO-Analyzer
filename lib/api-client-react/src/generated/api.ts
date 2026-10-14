@@ -20,9 +20,13 @@ import type {
   AnalysisReport,
   AnalysisStarted,
   ErrorResponse,
+  ExportReportDeliveriesCsvParams,
   HealthStatus,
+  ListReportDeliveriesParams,
   PrefillBody,
   PrefillResponse,
+  ReportDeliveryDeletion,
+  ReportDeliveryPage,
   StartAnalysisBody,
 } from "./api.schemas";
 
@@ -372,3 +376,381 @@ export function useGetAnalysisReport<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Permission-controlled delivery log
+ */
+export const getListReportDeliveriesUrl = (
+  params?: ListReportDeliveriesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/report-deliveries?${stringifiedParams}`
+    : `/api/admin/report-deliveries`;
+};
+
+export const listReportDeliveries = async (
+  params?: ListReportDeliveriesParams,
+  options?: RequestInit,
+): Promise<ReportDeliveryPage> => {
+  return customFetch<ReportDeliveryPage>(getListReportDeliveriesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListReportDeliveriesQueryKey = (
+  params?: ListReportDeliveriesParams,
+) => {
+  return [`/api/admin/report-deliveries`, ...(params ? [params] : [])] as const;
+};
+
+export const getListReportDeliveriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listReportDeliveries>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListReportDeliveriesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReportDeliveries>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListReportDeliveriesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listReportDeliveries>>
+  > = ({ signal }) =>
+    listReportDeliveries(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listReportDeliveries>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListReportDeliveriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listReportDeliveries>>
+>;
+export type ListReportDeliveriesQueryError = ErrorType<void>;
+
+/**
+ * @summary Permission-controlled delivery log
+ */
+
+export function useListReportDeliveries<
+  TData = Awaited<ReturnType<typeof listReportDeliveries>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListReportDeliveriesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReportDeliveries>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListReportDeliveriesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download up to 10000 filtered deliveries as injection-safe German CSV
+ */
+export const getExportReportDeliveriesCsvUrl = (
+  params?: ExportReportDeliveriesCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/report-deliveries/export.csv?${stringifiedParams}`
+    : `/api/admin/report-deliveries/export.csv`;
+};
+
+export const exportReportDeliveriesCsv = async (
+  params?: ExportReportDeliveriesCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportReportDeliveriesCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportReportDeliveriesCsvQueryKey = (
+  params?: ExportReportDeliveriesCsvParams,
+) => {
+  return [
+    `/api/admin/report-deliveries/export.csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportReportDeliveriesCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportReportDeliveriesCsv>>,
+  TError = ErrorType<void>,
+>(
+  params?: ExportReportDeliveriesCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReportDeliveriesCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportReportDeliveriesCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportReportDeliveriesCsv>>
+  > = ({ signal }) =>
+    exportReportDeliveriesCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportReportDeliveriesCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportReportDeliveriesCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportReportDeliveriesCsv>>
+>;
+export type ExportReportDeliveriesCsvQueryError = ErrorType<void>;
+
+/**
+ * @summary Download up to 10000 filtered deliveries as injection-safe German CSV
+ */
+
+export function useExportReportDeliveriesCsv<
+  TData = Awaited<ReturnType<typeof exportReportDeliveriesCsv>>,
+  TError = ErrorType<void>,
+>(
+  params?: ExportReportDeliveriesCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReportDeliveriesCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportReportDeliveriesCsvQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download the HTML export of the linked analysis
+ */
+export const getDownloadDeliveryReportUrl = (id: number) => {
+  return `/api/admin/report-deliveries/${id}/report`;
+};
+
+export const downloadDeliveryReport = async (
+  id: number,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getDownloadDeliveryReportUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getDownloadDeliveryReportQueryKey = (id: number) => {
+  return [`/api/admin/report-deliveries/${id}/report`] as const;
+};
+
+export const getDownloadDeliveryReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof downloadDeliveryReport>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadDeliveryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getDownloadDeliveryReportQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof downloadDeliveryReport>>
+  > = ({ signal }) => downloadDeliveryReport(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof downloadDeliveryReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type DownloadDeliveryReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof downloadDeliveryReport>>
+>;
+export type DownloadDeliveryReportQueryError = ErrorType<void>;
+
+/**
+ * @summary Download the HTML export of the linked analysis
+ */
+
+export function useDownloadDeliveryReport<
+  TData = Awaited<ReturnType<typeof downloadDeliveryReport>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadDeliveryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getDownloadDeliveryReportQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Delete only this delivery record
+ */
+export const getDeleteReportDeliveryUrl = (id: number) => {
+  return `/api/admin/report-deliveries/${id}`;
+};
+
+export const deleteReportDelivery = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ReportDeliveryDeletion> => {
+  return customFetch<ReportDeliveryDeletion>(getDeleteReportDeliveryUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteReportDeliveryMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReportDelivery>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteReportDelivery>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteReportDelivery"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteReportDelivery>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteReportDelivery(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteReportDeliveryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteReportDelivery>>
+>;
+
+export type DeleteReportDeliveryMutationError = ErrorType<void>;
+
+/**
+ * @summary Delete only this delivery record
+ */
+export const useDeleteReportDelivery = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReportDelivery>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteReportDelivery>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteReportDeliveryMutationOptions(options));
+};

@@ -27,6 +27,7 @@ import { AngebotCreatorView } from "@/views/admin/AngebotCreatorView";
 import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 import { TextverwaltungView } from "@/views/admin/TextverwaltungView";
 import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
+import { DeliveryLogView } from "@/views/admin/DeliveryLogView";
 import { SystemLogView } from "@/views/admin/SystemLogView";
 
 function AppContent() {
@@ -80,6 +81,7 @@ function AppContent() {
                     initialAnalysisId={systemLogAnalysisId ?? undefined}
                   />
                 )}
+                {activeView === 23                  && <DeliveryLogView />}
               </>
             )}
           </div>
