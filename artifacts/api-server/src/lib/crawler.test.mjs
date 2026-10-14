@@ -24,9 +24,28 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { fetchWithTiming, fetchTechFile, fetchPage, crawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage, isNonContentPage, isThinPage } = await import(
+const { fetchWithTiming, fetchTechFile, fetchPage, crawlSite: realCrawlSite, fetchExplicitPages, detectPageLanguage, detectPageLanguageDetailed, determineSiteLanguage, isNonContentPage, isThinPage } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
+const seedBundle = await build({
+  stdin: {
+    contents: `export { compileExclusionRules } from "./crawl-exclusions.ts";
+      export { CRAWL_EXCLUSION_SEED } from "./crawl-exclusion-seed.ts";`,
+    resolveDir: new URL(".", import.meta.url).pathname, loader: "ts",
+  },
+  bundle: true, platform: "node", format: "esm", write: false,
+});
+const { compileExclusionRules, CRAWL_EXCLUSION_SEED } = await import(
+  `data:text/javascript;base64,${Buffer.from(seedBundle.outputFiles[0].contents).toString("base64")}`
+);
+const seedMatcher = compileExclusionRules(CRAWL_EXCLUSION_SEED.map(rule => ({ ...rule, is_active: true })));
+const crawlSite = (url, limit = 16, options = {}) => realCrawlSite(url, limit, {
+  exclusionMatcher: seedMatcher, ...options,
+});
+
+test("crawlSite rejects a missing matcher before fetching", async () => {
+  await assert.rejects(realCrawlSite("https://example.test", 16, {}), /requires an exclusion matcher/);
+});
 const diagnosticsBundle = await build({
   entryPoints: [new URL("./fetch-diagnostics.ts", import.meta.url).pathname],
   bundle: true, platform: "node", format: "esm", write: false,
@@ -42,6 +61,27 @@ const { classifyFetchError } = await import(
 );
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+for (const source of ["homepage", "sitemap"]) {
+  test(`${source} uses snapshot rules and counts only counted matches, leaving explicit pages unfiltered`, async () => {
+    await withServer((req, res) => {
+      if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), source === "homepage" ? ["/versand", "/file.pdf", "/products"] : []));
+      else if (req.url === "/sitemap.xml") res.end(source === "sitemap"
+        ? `<urlset>${["versand", "file.pdf", "products"].map(part => `<url><loc>http://${req.headers.host}/${part}</loc></url>`).join("")}</urlset>`
+        : "<urlset></urlset>");
+      else if (req.url === "/products") res.end(languageHtml("de", `Produkte ${germanText.repeat(5)}`));
+      else if (req.url === "/versand") res.end(languageHtml("de", `Versand ${germanText.repeat(6)}`));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin, requests }) => {
+      const result = await crawlSite(origin, 16);
+      assert.ok(result.pages.some(page => page.url === `${origin}/products`));
+      assert.ok(!requests.some(request => ["/versand", "/file.pdf"].includes(request.url)));
+      assert.equal(result.skipped.excludedPath, 1);
+      const explicit = await fetchExplicitPages(origin, [`${origin}/versand`], seedOptions);
+      assert.deepEqual(explicit.pages.map(page => page.url), [`${origin}/versand`]);
+    });
+  });
+}
 
 async function withServer(handler, run) {
   const requests = [];

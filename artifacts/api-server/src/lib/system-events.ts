@@ -19,6 +19,7 @@ const EXCLUDED_CONTEXT_KEYS = new Set([
 ]);
 
 export const PERSISTED_INFO_MESSAGES = new Set([
+  "crawl exclusion rules loaded",
   "Analysis completed",
   "callLLM route",
   "llm preflight ok",

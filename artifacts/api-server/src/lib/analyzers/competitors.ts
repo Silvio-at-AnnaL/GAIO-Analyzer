@@ -1,5 +1,6 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { crawlSite } from "../crawler";
+import type { CrawlExclusionMatcher } from "../crawl-exclusions.js";
 import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./headings";
@@ -294,6 +295,7 @@ export async function analyzeCompetitors(
   mainSiteScores: MainSiteScores,
   questionnaireContext: string,
   mainSiteLang: string | null,
+  exclusionMatcher: CrawlExclusionMatcher,
 ): Promise<CompetitorResult> {
   const urlsToProcess = competitorUrls.slice(0, MAX_COMPETITORS);
   const excludedModules = getExcludedModules(mainSiteScores);
@@ -325,6 +327,7 @@ export async function analyzeCompetitors(
       //     priority scoring to select the best subpages.
       const crawlStartedAt = Date.now();
       const crawlResult = await crawlSite(normalizedUrl, COMPETITOR_MAX_PAGES, {
+        exclusionMatcher,
         deadlineMs: CRAWL_DEADLINE_MS,
         techPhaseBudgetMs: 20_000,
         minPagePhaseMs: 20_000,

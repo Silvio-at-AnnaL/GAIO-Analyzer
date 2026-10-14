@@ -6,6 +6,7 @@ import { analyzeContentRelevance, usableContentRelevance } from "./analyzers/con
 import { analyzeFaq, type FaqScoreParams } from "./analyzers/faq";
 import { analyzeLlmDiscoverability } from "./analyzers/llm-discoverability";
 import { analyzeCompetitors } from "./analyzers/competitors";
+import { getCrawlExclusionRules, CRAWL_EXCLUSION_LOAD_ERROR } from "./crawl-exclusion-store.js";
 import { generateRecommendations } from "./analyzers/recommendations";
 import { logger } from "./logger";
 import {
@@ -321,6 +322,10 @@ export async function runAnalysis(
   let pages: CrawledPage[];
 
   try {
+    const exclusionMatcher = await getCrawlExclusionRules().catch(err => {
+      logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "crawl exclusion rules load failed");
+      throw new Error(CRAWL_EXCLUSION_LOAD_ERROR);
+    });
     if (mode === "url" && url) {
       state.currentModule = "Crawling Website";
       state.progress = 5;
@@ -355,6 +360,7 @@ export async function runAnalysis(
           try {
             const selectionLanguage = determineSiteLanguage(pages).lang;
             const filled = await crawlSite(url, 16, {
+              exclusionMatcher,
               deadlineMs: 90_000,
               seedPages: pages,
               excludeUrls: state.inputs?.excludedPages ?? [],
@@ -397,6 +403,7 @@ export async function runAnalysis(
         }
       } else {
         crawlResult = await crawlSite(url, 16, {
+          exclusionMatcher,
           deadlineMs: 90_000,
           onProgress: (done, total) => {
             state.progress = 5 + Math.round((done / Math.max(1, total)) * 15);
@@ -581,6 +588,7 @@ export async function runAnalysis(
           mainSiteScores,
           questionnaireContext,
           state.siteLanguage?.lang ?? null,
+          exclusionMatcher,
         );
       } catch (err) {
         logger.error({ err }, "Competitor analysis failed");
@@ -664,7 +672,9 @@ export async function runAnalysis(
   } catch (err) {
     logger.error({ err, id }, "Analysis failed");
     state.status = "failed";
-    state.errors.push("Analysis failed unexpectedly");
+    state.errors.push(err instanceof Error && err.message === CRAWL_EXCLUSION_LOAD_ERROR
+      ? CRAWL_EXCLUSION_LOAD_ERROR
+      : "Analysis failed unexpectedly");
     save();
 
     if (logId !== null) {

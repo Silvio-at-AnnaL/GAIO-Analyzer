@@ -33,6 +33,7 @@ globalThis.__adminDbMigrationTest = state;
 const mocks = {
   "bcryptjs": `export default { hash: async () => "not-used" };`,
   "./db.js": `
+    export async function withTransaction(fn) { return fn({ query }); }
     export async function query(sql, params) {
       const state = globalThis.__adminDbMigrationTest;
       if (state.exportQuery) return state.exportQuery(sql, params);

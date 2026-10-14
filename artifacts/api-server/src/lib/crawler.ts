@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
+import type { CrawlExclusionMatcher } from "./crawl-exclusions.js";
 import {
   classifyFetchError,
   fetchErrorCause,
@@ -113,32 +114,13 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
   { score: 40, pattern: /technologie|technology|innovation|industrie|industry/i },
 ];
 
-const EXCLUDED_KEYWORD_PATTERN =
-  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json|partials?|ajax|sendfriend|registrieren|register|signup|anmelden|passwort-vergessen|password-reset|lostpassword|kuendigung|kündigung|mein-konto|my-account|customer\/account|merkliste|wishlist|newsletter|suche|search|reviews?_write|review-write|bewertung-schreiben|gaestebuch|guestbook|print\.php|druckansicht|printview|[?&]print=/i;
-
-const EXCLUDED_CONTENT_PATH_PATTERN =
-  /(?:^|\/)(?:imprint|disclaimer|legal-notice|legal-information|data-protection|data-privacy|account|widgets?)(?:\/|$)/i;
-const EXCLUDED_CONTENT_QUERY_PATTERN =
-  /^(?:eID|add-to-cart|add_to_cart|add-to-quote|add-to-wishlist|fwp_.*)$/i;
-
-function isExcludedContentUrl(url: string): boolean {
-  const parsed = new URL(url);
-  return EXCLUDED_CONTENT_PATH_PATTERN.test(parsed.pathname) ||
-    [...parsed.searchParams.keys()].some((key) => EXCLUDED_CONTENT_QUERY_PATTERN.test(key));
-}
-
-const EXCLUDED_EXTENSION_PATTERN = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
 const EXTRA_FETCH_ALLOWANCE = 12;
-
-const EXCLUDED_TRACKING_PARAMS = /[?&](utm_|fbclid|gclid)/i;
 
 // 2-3 letter language codes with optional region, e.g. "de", "en", "zh-CN", "pt-BR"
 const LANG_PREFIX_RE = /^\/([a-z]{2,3}(?:-[a-z]{2,4})?)(?:\/|$)/i;
 
-function scoreUrl(urlStr: string): number {
-  if (EXCLUDED_KEYWORD_PATTERN.test(urlStr) || isExcludedContentUrl(urlStr)) return 0;
-  if (EXCLUDED_EXTENSION_PATTERN.test(urlStr)) return 0;
-  if (EXCLUDED_TRACKING_PARAMS.test(urlStr)) return 0;
+function scoreUrl(urlStr: string, matcher: CrawlExclusionMatcher): number {
+  if (matcher.isExcluded(urlStr)) return 0;
   for (const { score, pattern } of PRIORITY_PATTERNS) {
     if (pattern.test(urlStr)) return score;
   }
@@ -331,13 +313,13 @@ interface QueueEntry {
   langPriority: number; // 0–2
 }
 
-function makeEntry(rawUrl: string, startPath: string): QueueEntry {
+function makeEntry(rawUrl: string, startPath: string, matcher: CrawlExclusionMatcher): QueueEntry {
   const url = normalizeUrl(rawUrl);
   const parsed = new URL(url);
   const pathname = parsed.pathname;
   return {
     url,
-    contentScore: scoreUrl(url),
+    contentScore: scoreUrl(url, matcher),
     category: extractCategory(pathname, startPath),
     depth: extractDepth(pathname, startPath),
     langPriority: getLangPriority(pathname),
@@ -562,6 +544,7 @@ function extractInternalLinks(
   startPath: string,
   excludedUrls: Set<string>,
   onExcludedPath: (url: string) => void,
+  matcher: CrawlExclusionMatcher,
   isExcludedUrl?: (url: string) => boolean,
 ): Array<{ url: string }> {
   const $ = cheerio.load(html);
@@ -592,11 +575,11 @@ function extractInternalLinks(
       if (!isWithinStartPath(pathname, startPath)) return;
 
       // Score must be non-zero (excludes blacklisted/binary URLs)
-      if (EXCLUDED_KEYWORD_PATTERN.test(url) || isExcludedContentUrl(url)) {
-        onExcludedPath(url);
+      if (matcher.isExcluded(url)) {
+        if (matcher.countsInReport(url)) onExcludedPath(url);
         return;
       }
-      if (scoreUrl(url) === 0) return;
+      if (scoreUrl(url, matcher) === 0) return;
 
       results.push({ url });
     } catch {
@@ -1175,7 +1158,8 @@ export async function fetchExplicitPages(
 export async function crawlSite(
   inputUrl: string,
   maxPages = 16,
-  opts?: {
+  opts: {
+    exclusionMatcher: CrawlExclusionMatcher;
     deadlineMs?: number;
     techPhaseBudgetMs?: number;
     minPagePhaseMs?: number;
@@ -1187,6 +1171,8 @@ export async function crawlSite(
     onHomepage?: (html: string) => void;
   },
 ): Promise<CrawlResult> {
+  if (!opts?.exclusionMatcher) throw new Error("crawlSite requires an exclusion matcher");
+  const matcher = opts.exclusionMatcher;
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
   let siteKey = hostKey(base.hostname);
@@ -1597,8 +1583,8 @@ export async function crawlSite(
 
   // Homepage links
   for (const page of seeds) {
-    for (const { url } of extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded)) {
-      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+    for (const { url } of extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, matcher, isExcluded)) {
+      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath, matcher), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
     }
   }
   if (homepageHtml) {
@@ -1610,10 +1596,11 @@ export async function crawlSite(
       startPath,
       hreflangUrlSet,
       recordExcludedPath,
+      matcher,
       isExcluded,
     );
     for (const { url } of links) {
-      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+      addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath, matcher), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
     }
   }
 
@@ -1628,13 +1615,13 @@ export async function crawlSite(
           continue;
         }
         if (!isWithinStartPath(parsed.pathname, startPath)) continue;
-        if (EXCLUDED_KEYWORD_PATTERN.test(u) || isExcludedContentUrl(u)) {
-          recordExcludedPath(u);
+        if (matcher.isExcluded(u)) {
+          if (matcher.countsInReport(u)) recordExcludedPath(u);
           continue;
         }
-        if (scoreUrl(u) === 0) continue;
+        if (scoreUrl(u, matcher) === 0) continue;
         if (hreflangUrlSet.has(u)) continue;
-        addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(u, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+        addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(u, startPath, matcher), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
       } catch {
         // skip
       }
@@ -1686,9 +1673,9 @@ export async function crawlSite(
       opts?.onProgress?.(result.pages.length, maxPages);
       quarantineHreflang(extractHreflangVariants(page.html, page.url));
       if (pagesLeft > 0) {
-        const links = extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded);
+        const links = extractInternalLinks(page.html, page.finalUrl ?? page.url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, matcher, isExcluded);
         for (const { url } of links) {
-          addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+          addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(url, startPath, matcher), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
         }
       }
     }
@@ -1841,9 +1828,9 @@ export async function crawlSite(
 
         // Discover new links and add to per-category queues (Rule 5 Step 5)
         if (pagesLeft > 0) {
-          const links = extractInternalLinks(page.html, page.finalUrl ?? url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, isExcluded);
+          const links = extractInternalLinks(page.html, page.finalUrl ?? url, siteKey, canon, startPath, hreflangUrlSet, recordExcludedPath, matcher, isExcluded);
           for (const { url: linkUrl } of links) {
-            addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(linkUrl, startPath), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
+            addToQueue(categoryQueues, queuedUrls, dirtyQueues, makeEntry(linkUrl, startPath, matcher), visited, hreflangUrlSet, targetLang, foreignBranchHits, acceptedBranches, recordOtherLanguage);
           }
         }
       } else {
