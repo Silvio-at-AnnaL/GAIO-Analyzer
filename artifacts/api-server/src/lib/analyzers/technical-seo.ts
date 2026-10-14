@@ -189,6 +189,16 @@ function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
 
 // ─── sitemap.xml analyser ─────────────────────────────────────────────────────
 
+export function coverageKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    return `${hostname}${parsed.pathname.replace(/\/$/, "")}${parsed.search}`.toLowerCase();
+  } catch {
+    return url.replace(/\/$/, "").toLowerCase();
+  }
+}
+
 function analyzeSitemapXml(
   content: string,
   type: "xml" | "xml_index",
@@ -215,10 +225,9 @@ function analyzeSitemapXml(
   const hasVideoSitemap = Boolean(resolution?.hasVideo) || content.includes("video:") || content.includes("xmlns:video");
 
   const sitemapUrls = locMatches.map((m) => m[1].trim());
-  const normalise = (u: string) => u.replace(/\/$/, "").toLowerCase();
-  const sitemapUrlSet = new Set(sitemapUrls.map(normalise));
+  const sitemapUrlSet = new Set(sitemapUrls.map(coverageKey));
   const eligibleCrawled = crawledPages.filter((p) => p !== "uploaded-page");
-  const matchedCrawled = eligibleCrawled.filter((p) => sitemapUrlSet.has(normalise(p)));
+  const matchedCrawled = eligibleCrawled.filter((p) => sitemapUrlSet.has(coverageKey(p)));
   const crawledPageCoverage =
     resolution && !resolution.complete && matchedCrawled.length !== eligibleCrawled.length
       ? null
@@ -281,7 +290,7 @@ function analyzeHtmlSitemap(
     if (!href) return;
     try {
       const resolved = new URL(href, url);
-      linkHrefs.add(resolved.href.replace(/\/$/, "").toLowerCase());
+      linkHrefs.add(coverageKey(resolved.href));
     } catch {
       // skip
     }
@@ -289,7 +298,7 @@ function analyzeHtmlSitemap(
 
   const eligibleCrawled = crawledPages.filter((p) => p !== "uploaded-page");
   const matched = eligibleCrawled.filter((p) =>
-    linkHrefs.has(p.replace(/\/$/, "").toLowerCase()),
+    linkHrefs.has(coverageKey(p)),
   );
   const crawledPageCoverage =
     eligibleCrawled.length > 0 ? Math.round((matched.length / eligibleCrawled.length) * 100) : 0;
