@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "8jkdYzendtav3P2kWQVpc"
+uri = "file://.local/crawl-exclusion-verification.txt"
+type = "text"
+title = "Crawl exclusion verification report"
+description = "Commit, changed files, seed and test counts, equivalence classes, and full old/seed page lists for all four domains."
+logical_id = "7ddf49e7-1c86-4929-9ad9-25ec2c369c5c"
+content_hash = "sha256:8b65283cb3f5ccec44bd599f6b0e4c50bad31f5c30bee417b711be6a4261999b"
+size = 9560
+mtime_ms = 1791985892416
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/7ddf49e7-1c86-4929-9ad9-25ec2c369c5c/fb272938-7741-4c4e-a7a2-d5651b798439"
+storage_version_token = "1791985893255351"
+content_type = "text/plain"
