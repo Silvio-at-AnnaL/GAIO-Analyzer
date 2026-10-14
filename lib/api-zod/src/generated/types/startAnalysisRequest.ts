@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { QuestionnaireData } from "./questionnaireData";
-import type { StartAnalysisBodyMode } from "./startAnalysisBodyMode";
+import type { StartAnalysisRequestMode } from "./startAnalysisRequestMode";
 
-export interface StartAnalysisBody {
-  mode: StartAnalysisBodyMode;
+export interface StartAnalysisRequest {
+  mode: StartAnalysisRequestMode;
   /** @nullable */
   url?: string | null;
   /** @nullable */

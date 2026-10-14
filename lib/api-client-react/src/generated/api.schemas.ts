@@ -136,16 +136,16 @@ export interface QuestionnaireData {
   plannedCampaigns?: string | null;
 }
 
-export type StartAnalysisBodyMode =
-  (typeof StartAnalysisBodyMode)[keyof typeof StartAnalysisBodyMode];
+export type StartAnalysisRequestMode =
+  (typeof StartAnalysisRequestMode)[keyof typeof StartAnalysisRequestMode];
 
-export const StartAnalysisBodyMode = {
+export const StartAnalysisRequestMode = {
   url: "url",
   html: "html",
 } as const;
 
-export interface StartAnalysisBody {
-  mode: StartAnalysisBodyMode;
+export interface StartAnalysisRequest {
+  mode: StartAnalysisRequestMode;
   /** @nullable */
   url?: string | null;
   /** @nullable */

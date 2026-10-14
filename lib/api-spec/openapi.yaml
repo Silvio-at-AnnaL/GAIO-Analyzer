@@ -38,7 +38,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StartAnalysisBody"
+              $ref: "#/components/schemas/StartAnalysisRequest"
       responses:
         "201":
           description: Analysis started
@@ -337,7 +337,7 @@ components:
         plannedCampaigns:
           type: ["string", "null"]
 
-    StartAnalysisBody:
+    StartAnalysisRequest:
       type: object
       properties:
         mode:

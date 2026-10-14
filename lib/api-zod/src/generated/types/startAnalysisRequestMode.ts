@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type StartAnalysisBodyMode =
-  (typeof StartAnalysisBodyMode)[keyof typeof StartAnalysisBodyMode];
+export type StartAnalysisRequestMode =
+  (typeof StartAnalysisRequestMode)[keyof typeof StartAnalysisRequestMode];
 
-export const StartAnalysisBodyMode = {
+export const StartAnalysisRequestMode = {
   url: "url",
   html: "html",
 } as const;

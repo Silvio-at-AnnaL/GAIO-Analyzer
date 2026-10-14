@@ -27,7 +27,7 @@ import type {
   PrefillResponse,
   ReportDeliveryDeletion,
   ReportDeliveryPage,
-  StartAnalysisBody,
+  StartAnalysisRequest,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -124,14 +124,14 @@ export const getStartAnalysisUrl = () => {
 };
 
 export const startAnalysis = async (
-  startAnalysisBody: StartAnalysisBody,
+  startAnalysisRequest: StartAnalysisRequest,
   options?: RequestInit,
 ): Promise<AnalysisStarted> => {
   return customFetch<AnalysisStarted>(getStartAnalysisUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(startAnalysisBody),
+    body: JSON.stringify(startAnalysisRequest),
   });
 };
 
@@ -142,14 +142,14 @@ export const getStartAnalysisMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof startAnalysis>>,
     TError,
-    { data: BodyType<StartAnalysisBody> },
+    { data: BodyType<StartAnalysisRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof startAnalysis>>,
   TError,
-  { data: BodyType<StartAnalysisBody> },
+  { data: BodyType<StartAnalysisRequest> },
   TContext
 > => {
   const mutationKey = ["startAnalysis"];
@@ -163,7 +163,7 @@ export const getStartAnalysisMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof startAnalysis>>,
-    { data: BodyType<StartAnalysisBody> }
+    { data: BodyType<StartAnalysisRequest> }
   > = (props) => {
     const { data } = props ?? {};
 
@@ -176,7 +176,7 @@ export const getStartAnalysisMutationOptions = <
 export type StartAnalysisMutationResult = NonNullable<
   Awaited<ReturnType<typeof startAnalysis>>
 >;
-export type StartAnalysisMutationBody = BodyType<StartAnalysisBody>;
+export type StartAnalysisMutationBody = BodyType<StartAnalysisRequest>;
 export type StartAnalysisMutationError = ErrorType<ErrorResponse>;
 
 /**
@@ -189,14 +189,14 @@ export const useStartAnalysis = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof startAnalysis>>,
     TError,
-    { data: BodyType<StartAnalysisBody> },
+    { data: BodyType<StartAnalysisRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof startAnalysis>>,
   TError,
-  { data: BodyType<StartAnalysisBody> },
+  { data: BodyType<StartAnalysisRequest> },
   TContext
 > => {
   return useMutation(getStartAnalysisMutationOptions(options));
