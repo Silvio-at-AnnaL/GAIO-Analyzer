@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { build } from "esbuild";
 import { deliveryRouteTests } from "./report-deliveries-tests.mjs";
 import { adminFeaturePermissionTests } from "./admin-feature-permissions-tests.mjs";
+import { currentUserAuthTests } from "./current-user-auth-tests.mjs";
 
 const mocks = {
   express: `
@@ -28,7 +29,10 @@ const mocks = {
   cheerio: `export const load = () => ({ text: () => "", html: () => "" });`,
   pg: `export class Client { async connect() {} async query() {} async end() {} }`,
   "../lib/admin-db.js": `
-    export async function getSetting(key) { return globalThis.__adminTest.settings[key] ?? null; }
+    export async function getSetting(key) {
+      globalThis.__adminTest.settingReads.push(key);
+      return globalThis.__adminTest.settings[key] ?? null;
+    }
     export async function setSetting(key, value) {
       globalThis.__adminTest.settings[key] = value;
       globalThis.__adminTest.saved.push([key, value]);
@@ -57,6 +61,14 @@ const mocks = {
   "../lib/db.js": `
     export async function query(sql, params) {
       const state = globalThis.__adminTest;
+      // Track authentication lookups separately from route-handler queries so
+      // existing tests can continue asserting that forbidden handlers do no work.
+      if (sql === "SELECT id, username, role FROM users WHERE id = $1") {
+        state.authQueries.push([sql, params]);
+        if (state.authLookupError) throw state.authLookupError;
+        const user = state.users.get(params[0]);
+        return { rows: user ? [{ ...user }] : [] };
+      }
       state.queries.push([sql, params]);
       if (state.deliveryQuery) return state.deliveryQuery(sql, params);
       return { rows: state.deleteLogExists && sql === "SELECT id FROM analysis_log WHERE id = $1" ? [{ id: 42 }] : [] };
@@ -162,6 +174,13 @@ await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents)
 function reset(settings = {}) {
   globalThis.__adminTest = {
     settings: { ...settings },
+    settingReads: [],
+    users: new Map([
+      [1, { id: 1, username: "admin", role: "admin" }],
+      [2, { id: 2, username: "user", role: "user" }],
+      [3, { id: 3, username: "extended", role: "user_extended" }],
+    ]),
+    authQueries: [],
     saved: [],
     cacheResets: 0,
     preflightChecks: [],
@@ -194,6 +213,8 @@ async function request(method, path, { token = "valid-admin", body = {}, params 
     statusCode: 200,
     body: undefined,
     headers: {},
+    clearedCookies: [],
+    clearCookie(name, options) { this.clearedCookies.push([name, options]); return this; },
     setHeader(key, value) { this.headers[key] = value; return this; },
     status(code) { this.statusCode = code; return this; },
     json(value) { this.body = value; return this; },
@@ -204,6 +225,7 @@ async function request(method, path, { token = "valid-admin", body = {}, params 
     await handler(req, res, () => { nextCalled = true; });
     if (!nextCalled) break;
   }
+  res.adminUser = req.adminUser;
   return res;
 }
 
@@ -426,6 +448,7 @@ const validMailBody = {
 
 deliveryRouteTests({ reset, request });
 adminFeaturePermissionTests({ reset, request });
+currentUserAuthTests({ reset, request });
 const reportMail = body => request("POST", "/public/send-report", { token: null, body });
 function completedMailAnalysis(settings = {}) {
   const state = reset(settings);

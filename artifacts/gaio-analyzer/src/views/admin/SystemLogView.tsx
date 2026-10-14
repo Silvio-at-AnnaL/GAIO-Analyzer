@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useCallback, useRef, type FormEvent } from "react";
-import { adminFetch, useAuth } from "@/store/authStore";
+import { adminFetch, useAuth, canAccess } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
 import { ChevronDown, ChevronUp, Download } from "lucide-react";
@@ -85,7 +85,8 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
   const t = useT();
   const { locale } = useLabelContext();
   const intlLocale = locale === "en" ? "en-US" : "de-DE";
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth();
+  const canViewLog = isAuthenticated && !!user && canAccess("systemprotokoll", user.role, permissions);
   const { setActiveView, setSystemLogAnalysisId } = useAppStore();
 
   const urlAnalysisId = new URLSearchParams(window.location.search).get("analysisId");
@@ -172,10 +173,10 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
   );
 
   useEffect(() => {
-    if (isAuthenticated && user?.role === "admin") {
+    if (canViewLog) {
       fetchLogs();
     }
-  }, [isAuthenticated, user, fetchLogs]);
+  }, [canViewLog, user, fetchLogs]);
 
   useEffect(() => () => activeRequest.current?.abort(), []);
 
@@ -244,7 +245,7 @@ export function SystemLogView({ initialAnalysisId }: { initialAnalysisId?: strin
     return <div className="p-8 text-muted-foreground text-sm">{t("systemlog.loading")}</div>;
   }
 
-  if (!isAuthenticated || user?.role !== "admin") {
+  if (!canViewLog) {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
         <p className="text-muted-foreground">{t("systemlog.error")}</p>

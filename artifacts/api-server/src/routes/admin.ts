@@ -65,12 +65,26 @@ const COOKIE_OPTS = {
   path: "/",
 };
 
-function requireAuth(req: Request, res: Response, next: NextFunction): void {
+async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.gaio_admin_token;
   if (!token) { res.status(401).json({ error: "Nicht authentifiziert" }); return; }
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ error: "Sitzung abgelaufen" }); return; }
-  req.adminUser = { id: payload.userId, username: payload.username, role: payload.role };
+  let user: Pick<DbUser, "id" | "username" | "role"> | undefined;
+  try {
+    const result = await query<Pick<DbUser, "id" | "username" | "role">>(
+      "SELECT id, username, role FROM users WHERE id = $1", [payload.userId],
+    );
+    user = result.rows[0];
+  } catch (err) {
+    logger.error({ err }, "Failed to verify authenticated user");
+    res.status(500).json({ error: "Anmeldung konnte nicht geprüft werden" }); return;
+  }
+  if (!user) {
+    res.clearCookie("gaio_admin_token", { path: "/" });
+    res.status(401).json({ error: "Sitzung ungültig" }); return;
+  }
+  req.adminUser = { id: user.id, username: user.username, role: user.role };
   next();
 }
 

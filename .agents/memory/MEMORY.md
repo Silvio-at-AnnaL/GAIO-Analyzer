@@ -10,3 +10,4 @@
 - [German content preference](german-content-preference.md) — product-owner rationale for preferring an available German main-site version.
 - [Generated type refresh](generated-type-refresh.md) — blocked library checks can leave declarations stale after codegen; refresh emission, then run real consumer checks.
 - [Nondelegable admin permissions](admin-permissions-policy.md) — user management, permission editing, and database configuration/testing must remain admin-only.
+- [Live session identity](live-session-identity.md) — JWT claims identify the account; protected requests use its current database role and username, without caching or fallback.

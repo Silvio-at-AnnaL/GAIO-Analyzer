@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Download, Trash2, ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
-import { adminFetch } from "@/store/authStore";
-import { useAuth } from "@/store/authStore";
+import { adminFetch, useAuth, canAccess } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
 
@@ -55,7 +54,9 @@ export function AnalysisLogView() {
   const t = useT();
   const { locale } = useLabelContext();
   const intlLocale = locale === "en" ? "en-US" : "de-DE";
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, permissions } = useAuth();
+  const canViewLog = isAuthenticated && !!user && canAccess("analyseprotokoll", user.role, permissions);
+  const canOpenSystemLog = isAuthenticated && !!user && canAccess("systemprotokoll", user.role, permissions);
   const { setActiveView, setSystemLogAnalysisId } = useAppStore();
 
   const [data, setData] = useState<LogResponse | null>(null);
@@ -96,7 +97,7 @@ export function AnalysisLogView() {
     }
   }, [page, limit, statusFilter, debouncedSearch, t]);
 
-  useEffect(() => { if (isAuthenticated && user?.role === "admin") fetchLog(); }, [fetchLog, isAuthenticated, user]);
+  useEffect(() => { if (canViewLog) fetchLog(); }, [fetchLog, canViewLog, user]);
 
   async function downloadExport(item: LogItem) {
     setDownloading(item.id);
@@ -129,7 +130,7 @@ export function AnalysisLogView() {
   }
 
   if (isLoading) return <div className="p-8 text-muted-foreground text-sm">{t("profile.loading")}</div>;
-  if (!isAuthenticated || user?.role !== "admin") {
+  if (!canViewLog) {
     return (
       <div className="max-w-md mx-auto mt-16 space-y-4">
         <p className="text-muted-foreground">{t("log.no_access")}</p>
@@ -296,7 +297,7 @@ export function AnalysisLogView() {
                     {/* Aktionen */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                      {item.analysisUuid && (
+                      {item.analysisUuid && canOpenSystemLog && (
                         <button
                           onClick={() => {
                             setSystemLogAnalysisId(item.analysisUuid);
