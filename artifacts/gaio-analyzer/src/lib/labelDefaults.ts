@@ -1059,6 +1059,7 @@ export const labelDefaults: Record<string, LabelDef> = {
 
   // ── offer ──────────────────────────────────────────────────────────────────
   "offer.err_html_only":          { group: "offer", de: "Nur HTML-Dateien werden akzeptiert." },
+  "offer.err_failed_report":      { group: "offer", de: "Dieser Report stammt von einer fehlgeschlagenen Analyse und kann nicht für ein Angebot verwendet werden." },
   "offer.err_unreadable":         { group: "offer", de: "Die Analysedaten in dieser Datei konnten nicht gelesen werden." },
   "offer.err_incomplete":         { group: "offer", de: "Die Analysedaten in dieser Datei sind unvollst\u00e4ndig." },
   "offer.confirm_regenerate":     { group: "offer", de: "\u00c4nderungen verwerfen und neu generieren?" },

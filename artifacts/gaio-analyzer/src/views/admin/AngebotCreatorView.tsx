@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { adminFetch, canAccess, useAuth } from "@/store/authStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
+import { classifyOfferUploadRecommendations, isFailedUploadReport, readOfferUploadScores } from "@/lib/offer-upload";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -217,6 +218,11 @@ export function AngebotCreatorView() {
       return;
     }
 
+    if (isFailedUploadReport(data)) {
+      setUploadError(t("offer.err_failed_report"));
+      return;
+    }
+
     // Validate required fields
     if (!data.domain || data.gaioScore === undefined || !data.scores || typeof data.scores !== "object") {
       setUploadError(t("offer.err_incomplete"));
@@ -228,21 +234,14 @@ export function AngebotCreatorView() {
     const doc = parser.parseFromString(text, "text/html");
     const recs = doc.querySelectorAll(".rec");
 
-    const kritisch:    ParsedRec[] = [];
-    const hoherHebel:  ParsedRec[] = [];
-    const nachgeordnet:ParsedRec[] = [];
-
-    recs.forEach((el) => {
-      const tier    = (el.querySelector(".tier")?.textContent ?? "").trim().toUpperCase();
-      const finding = (el.querySelector(".finding")?.textContent ?? "").trim();
-      const fix     = (el.querySelector(".fix")?.textContent ?? "").trim();
-      if (!finding && !fix) return;
-      if (tier.includes("KRITISCH"))                                    kritisch.push({ finding, fix });
-      else if (tier.includes("HOHER HEBEL"))                            hoherHebel.push({ finding, fix });
-      else if (tier.includes("NACHGEORDNET") || tier.includes("SEKUNDÄR")) nachgeordnet.push({ finding, fix });
-    });
-
-    const scores = data.scores as Record<string, unknown>;
+    const { kritisch, hoherHebel, nachgeordnet } = classifyOfferUploadRecommendations(
+      Array.from(recs, (el) => ({
+        tier: el.querySelector(".tier")?.textContent ?? "",
+        finding: el.querySelector(".finding")?.textContent ?? "",
+        fix: el.querySelector(".fix")?.textContent ?? "",
+        hasFixElement: el.querySelector(".fix") !== null,
+      })),
+    );
 
     setUploadData({
       fileName:    file.name,
@@ -250,14 +249,7 @@ export function AngebotCreatorView() {
       companyName: String(data.companyName ?? data.domain),
       exportDate:  String(data.exportDate ?? data.completedAt ?? ""),
       gaioScore:   Number(data.gaioScore),
-      scores: {
-        technicalSeo:       scores.technicalSeo       != null ? Number(scores.technicalSeo)       : null,
-        schemaOrg:          scores.schemaOrg           != null ? Number(scores.schemaOrg)           : null,
-        headingStructure:   scores.headingStructure    != null ? Number(scores.headingStructure)    : null,
-        contentRelevance:   scores.contentRelevance    != null ? Number(scores.contentRelevance)    : null,
-        faqQuality:         scores.faqQuality          != null ? Number(scores.faqQuality)          : null,
-        llmDiscoverability: scores.llmDiscoverability  != null ? Number(scores.llmDiscoverability)  : null,
-      },
+      scores: readOfferUploadScores(data),
       kritisch,
       hoherHebel,
       nachgeordnet,
