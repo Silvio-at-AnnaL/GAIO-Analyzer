@@ -29,7 +29,7 @@ test("versandprotokoll registered as feature and nav item after versand_analyse"
 test("sidebar, store and home map view 23", async () => {
   assert.match(await read("../components/layout/Sidebar.tsx"), /versandprotokoll: 23/);
   assert.match(await read("../components/layout/Sidebar.tsx"), /versandprotokoll: Inbox/);
-  assert.match(await read("../store/appStore.tsx"), /\| 22 \| 23;/);
+  assert.match(await read("../store/appStore.tsx"), /\| 22 \| 23( \| 24)?;/);
   assert.match(await read("../pages/Home.tsx"), /activeView === 23\s+&& <DeliveryLogView \/>/);
 });
 

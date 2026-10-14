@@ -415,7 +415,7 @@ export async function initializeDatabase(): Promise<void> {
     "nutzerverwaltung", "analyseprotokoll", "setup_import", "geteilte_analysen", "angebots_creator",
     "erscheinungsbild", "kontakt_daten", "rechtemanagement",
     "ki_tool", "mailserver", "versand_analyse", "versandprotokoll",
-    "prompt_verwaltung", "textverwaltung", "score_einstellungen", "systemprotokoll",
+    "prompt_verwaltung", "textverwaltung", "score_einstellungen", "crawl_ausschluesse", "systemprotokoll",
   ];
   try {
     const raw = await getSetting("permissions_json");

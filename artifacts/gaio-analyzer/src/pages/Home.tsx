@@ -28,6 +28,7 @@ import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 import { TextverwaltungView } from "@/views/admin/TextverwaltungView";
 import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
 import { DeliveryLogView } from "@/views/admin/DeliveryLogView";
+import { CrawlExclusionsView } from "@/views/admin/CrawlExclusionsView";
 import { SystemLogView } from "@/views/admin/SystemLogView";
 
 function AppContent() {
@@ -82,6 +83,7 @@ function AppContent() {
                   />
                 )}
                 {activeView === 23                  && <DeliveryLogView />}
+                {activeView === 24                  && <CrawlExclusionsView />}
               </>
             )}
           </div>

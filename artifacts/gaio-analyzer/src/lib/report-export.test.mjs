@@ -282,7 +282,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1080 + 3 + 2 + 49 + 1 + 1);
+  assert.equal(Object.keys(labelDefaults).length, 1080 + 3 + 2 + 49 + 1 + 1 + 59);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",

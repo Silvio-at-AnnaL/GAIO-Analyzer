@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { validate as isUuid } from "uuid";
 import { getAnalysis } from "../lib/analysis-engine.js";
 import { registerReportDeliveryRoutes } from "./report-deliveries.js";
+import { registerCrawlExclusionRoutes } from "./crawl-exclusions.js";
 
 declare module "express" {
   interface Request {
@@ -154,6 +155,7 @@ async function lockReportDelivery(logId: number): Promise<() => void> {
 
 const adminRouter = Router();
 registerReportDeliveryRoutes(adminRouter, requireAuth, requireFeature("versandprotokoll"));
+registerCrawlExclusionRoutes(adminRouter, requireAuth, requireFeature("crawl_ausschluesse"));
 
 interface SystemEventRow {
   id: string;

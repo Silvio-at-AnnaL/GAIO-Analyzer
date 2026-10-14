@@ -34,6 +34,11 @@ test("crawl exclusion snapshot load INFO is persisted", () => {
   assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rules loaded", obj: {} }), true);
 });
 
+test("crawl exclusion mutation audit INFO is persisted", () => {
+  assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rule changed"));
+  assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rule changed", obj: {} }), true);
+});
+
 test("isSensitiveKey recognizes sensitive words and API key forms", () => {
   for (const key of [
     "password", "passwordHash", "apiKey", "api_key", "API_KEY", "APIKey", "x-api-key",

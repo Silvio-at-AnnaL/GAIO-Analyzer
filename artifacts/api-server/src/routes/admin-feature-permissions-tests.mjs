@@ -11,6 +11,7 @@ const ROUTE_FEATURES = {
   ki_tool: ["GET /settings/ai-status", "POST /settings/ai-test"],
   mailserver: ["POST /settings/test-mail"],
   score_einstellungen: ["GET /score-profiles", "PATCH /score-profiles/:slug", "POST /score-profiles/:slug/reset"],
+  crawl_ausschluesse: ["GET /crawl-exclusions", "POST /crawl-exclusions", "PATCH /crawl-exclusions/:id", "DELETE /crawl-exclusions/:id", "POST /crawl-exclusions/test"],
   prompt_verwaltung: ["GET /prompts", "GET /prompts/:slug", "PATCH /prompts/:slug", "POST /prompts/:slug/reset"],
   textverwaltung: ["GET /labels", "PATCH /labels/:key", "POST /labels/:key/reset"],
   geteilte_analysen: ["POST /shares", "GET /shares", "DELETE /shares/:id", "GET /shares/:id/access-log"],
@@ -175,10 +176,16 @@ export function adminFeaturePermissionTests({ reset, request }) {
 
   test("exact route headers retain auth first and each required feature/admin guard", async () => {
     const source = await readFile(new URL("./admin.ts", import.meta.url), "utf8");
+    const exclusionSource = await readFile(new URL("./crawl-exclusions.ts", import.meta.url), "utf8");
     for (const [feature, routes] of Object.entries(ROUTE_FEATURES)) {
       for (const route of routes) {
         const [method, path] = route.split(" ");
-        assert.ok(source.includes(`adminRouter.${method.toLowerCase()}("${path}", requireAuth, requireFeature("${feature}"),`), route);
+        if (feature === "crawl_ausschluesse") {
+          assert.ok(source.includes('registerCrawlExclusionRoutes(adminRouter, requireAuth, requireFeature("crawl_ausschluesse"))'));
+          assert.ok(exclusionSource.includes(`router.${method.toLowerCase()}("${path}", auth, feature,`), route);
+        } else {
+          assert.ok(source.includes(`adminRouter.${method.toLowerCase()}("${path}", requireAuth, requireFeature("${feature}"),`), route);
+        }
       }
     }
     for (const route of ADMIN_ONLY) {
@@ -195,7 +202,7 @@ export function adminFeaturePermissionTests({ reset, request }) {
   test("prompt/text/score/system features auto-register with admin-only defaults", async () => {
     const source = await readFile(new URL("../lib/admin-db.ts", import.meta.url), "utf8");
     const ids = /const ALL_FEATURE_IDS = \[([\s\S]*?)\];/.exec(source)[1];
-    for (const feature of ["prompt_verwaltung", "textverwaltung", "score_einstellungen", "systemprotokoll"]) {
+    for (const feature of ["prompt_verwaltung", "textverwaltung", "score_einstellungen", "crawl_ausschluesse", "systemprotokoll"]) {
       assert.ok(ids.includes(`"${feature}"`));
     }
     assert.match(source, /if \(!\(id in current\)\) \{ current\[id\] = \["admin"\]; changed = true; \}/);

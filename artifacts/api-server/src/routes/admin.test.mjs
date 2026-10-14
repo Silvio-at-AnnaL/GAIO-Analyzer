@@ -4,6 +4,7 @@ import { build } from "esbuild";
 import { deliveryRouteTests } from "./report-deliveries-tests.mjs";
 import { adminFeaturePermissionTests } from "./admin-feature-permissions-tests.mjs";
 import { currentUserAuthTests } from "./current-user-auth-tests.mjs";
+import { crawlExclusionRouteTests } from "./crawl-exclusions-tests.mjs";
 
 const mocks = {
   express: `
@@ -70,6 +71,7 @@ const mocks = {
         return { rows: user ? [{ ...user }] : [] };
       }
       state.queries.push([sql, params]);
+      if (state.crawlQuery && sql.includes("crawl_exclusion_rules")) return state.crawlQuery(sql, params);
       if (state.deliveryQuery) return state.deliveryQuery(sql, params);
       return { rows: state.deleteLogExists && sql === "SELECT id FROM analysis_log WHERE id = $1" ? [{ id: 42 }] : [] };
     }
@@ -80,6 +82,7 @@ const mocks = {
       state.transactionCalls.push("BEGIN");
       const client = { async query(sql, params) {
         state.transactionCalls.push([sql, params]);
+        if (state.crawlQuery && sql.includes("crawl_exclusion_rules")) return state.crawlQuery(sql, params);
         if (sql.startsWith("DELETE FROM analysis_exports")) state.deleteExportExists = false;
         else if (sql.startsWith("DELETE FROM analysis_log")) {
           if (state.deleteError) throw state.deleteError;
@@ -126,8 +129,9 @@ const mocks = {
   `,
   "../lib/admin-email.js": `export async function sendEmail() { return { ok: true }; }`,
   "../lib/logger.js": `export const logger = {
-    info() {}, warn(...args) { globalThis.__adminTest.warnings.push(args); }, error() {}
+    info(...args) { globalThis.__adminTest.infos.push(args); }, warn(...args) { globalThis.__adminTest.warnings.push(args); }, error() {}
   };`,
+  "../lib/crawl-exclusion-store.js": `export function invalidateCrawlExclusionCache() { globalThis.__adminTest.ruleInvalidations++; }`,
   "../lib/ai-client.js": `export async function callLLM() { return ""; }`,
   "../lib/llm-preflight.js": `
     export async function checkLlmReady(options) {
@@ -194,6 +198,8 @@ function reset(settings = {}) {
     countCalls: [],
     legacyExportCalls: [],
     warnings: [],
+    infos: [],
+    ruleInvalidations: 0,
     transactionCalls: [],
     transactionClients: [],
   };
@@ -448,6 +454,7 @@ const validMailBody = {
 
 deliveryRouteTests({ reset, request });
 adminFeaturePermissionTests({ reset, request });
+crawlExclusionRouteTests({ reset, request });
 currentUserAuthTests({ reset, request });
 const reportMail = body => request("POST", "/public/send-report", { token: null, body });
 function completedMailAnalysis(settings = {}) {

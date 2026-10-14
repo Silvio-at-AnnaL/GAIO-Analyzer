@@ -13,6 +13,7 @@ export const ADMIN_FEATURES = [
   { id: "ki_tool",           label: "nav.admin_ki_tool",            icon: "Cpu",               defaultRoles: ["admin"] },
   { id: "textverwaltung",    label: "nav.admin_textverwaltung",     icon: "Languages",         defaultRoles: ["admin"] },
   { id: "score_einstellungen", label: "nav.admin_score_einstellungen", icon: "SlidersHorizontal", defaultRoles: ["admin"] },
+  { id: "crawl_ausschluesse", label: "nav.admin_crawl_ausschluesse", icon: "FilterX", defaultRoles: ["admin"] },
   { id: "systemprotokoll",   label: "nav.admin_systemprotokoll",    icon: "ScrollText",        defaultRoles: ["admin"] },
   { id: "mailserver",        label: "nav.server",                   icon: "Server",            defaultRoles: ["admin"] },
   { id: "user",        label: "nav.admin_feat_group_user",       icon: "Users",        defaultRoles: ["admin"], isGroup: true },
@@ -51,7 +52,7 @@ export const ADMIN_NAV_GROUPS = [
     id: "system",
     label: "nav.admin_grp_system",
     icon: "SlidersHorizontal",
-    items: ["score_einstellungen", "systemprotokoll"] as const,
+    items: ["score_einstellungen", "crawl_ausschluesse", "systemprotokoll"] as const,
   },
 ] as const;
 

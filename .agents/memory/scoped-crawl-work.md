@@ -43,3 +43,11 @@ The user chose component-based wildcard matching over exact legacy whole-URL reg
 **Why:** The user confirmed this choice after concrete legacy-equivalence conflicts were surfaced. These differences are deliberate, not regressions to undo.
 
 **How to apply:** Preserve this policy in future exclusion-rule management work. Surface any new behavior difference outside the explicitly approved equivalence classes rather than silently widening the exceptions.
+
+## Rule-change cache timing
+
+Keep the 60-second rule cache and invalidate only the editing server immediately. Explain that changes affect new analyses on that server immediately, other servers (including Live) within about a minute, and running analyses retain their rules.
+
+**Why:** The user explicitly chose this behavior instead of adding cross-process invalidation when the immediate-Dev-and-Live wording conflicted with independent process caches.
+
+**How to apply:** Keep admin help text and future change-timing promises consistent with this decision; do not introduce cross-process invalidation without a new request.
