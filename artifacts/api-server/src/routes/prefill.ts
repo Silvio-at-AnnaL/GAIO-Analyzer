@@ -3,6 +3,8 @@ import * as cheerio from "cheerio";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { getSetting } from "../lib/admin-db.js";
+import { getCrawlExclusionRules, CRAWL_EXCLUSION_LOAD_ERROR } from "../lib/crawl-exclusion-store.js";
+import type { CrawlExclusionMatcher } from "../lib/crawl-exclusions.js";
 import { findCandidatesBySearch, type CandidateSourceName } from "../lib/competitor-sources.js";
 import { logger } from "../lib/logger";
 import {
@@ -22,14 +24,8 @@ const ABOUT_PATTERN =
 const PRODUCT_PATTERN =
   /produkt|produkte|product|products|loesungen|solutions|leistungen|services|portfolio|sortiment|angebot/i;
 
-const EXCLUDED_PATTERN =
-  /login|logout|cart|warenkorb|checkout|impressum|datenschutz|privacy|cookie|agb|terms|sitemap|feed|rss|wp-admin|wp-json/i;
-
-const EXCLUDED_EXT = /\.(pdf|jpg|jpeg|png|gif|svg|mp4|zip|css|js)(\?|$)/i;
-
-function scorePrefillUrl(urlStr: string): number {
-  if (EXCLUDED_PATTERN.test(urlStr)) return 0;
-  if (EXCLUDED_EXT.test(urlStr)) return 0;
+function scorePrefillUrl(urlStr: string, matcher: CrawlExclusionMatcher): number {
+  if (matcher.isExcluded(urlStr)) return 0;
   if (ABOUT_PATTERN.test(urlStr)) return 100;
   if (PRODUCT_PATTERN.test(urlStr)) return 80;
   return 10;
@@ -79,7 +75,7 @@ function extractText(html: string, maxChars = 1500): string {
 
 // ── Internal link extraction ──────────────────────────────────────────────────
 
-function extractInternalLinks(html: string, baseUrl: string, baseDomain: string): string[] {
+function extractInternalLinks(html: string, baseUrl: string, baseDomain: string, matcher: CrawlExclusionMatcher): string[] {
   const $ = cheerio.load(html);
   const seen = new Set<string>();
   const results: string[] = [];
@@ -98,7 +94,7 @@ function extractInternalLinks(html: string, baseUrl: string, baseDomain: string)
       const normalised = resolved.href;
       if (seen.has(normalised)) return;
       seen.add(normalised);
-      if (scorePrefillUrl(normalised) === 0) return;
+      if (scorePrefillUrl(normalised, matcher) === 0) return;
       results.push(normalised);
     } catch {
       // skip
@@ -393,7 +389,8 @@ interface PageContent {
 
 async function miniCrawl(
   inputUrl: string,
-  maxPages = 8,
+  maxPages: number,
+  matcher: CrawlExclusionMatcher,
 ): Promise<{ pages: PageContent[]; failReason: CrawlFailReason | null; homepageLang: string | null }> {
   const base = new URL(inputUrl);
   const baseDomain = base.hostname;
@@ -407,9 +404,9 @@ async function miniCrawl(
   const homepageText = extractText(homepageHtml);
   if (homepageText) results.push({ url: inputUrl, text: homepageText });
 
-  const links = extractInternalLinks(homepageHtml, inputUrl, baseDomain)
+  const links = extractInternalLinks(homepageHtml, inputUrl, baseDomain, matcher)
     .filter((u) => u !== inputUrl)
-    .map((u) => ({ url: u, score: scorePrefillUrl(u) }))
+    .map((u) => ({ url: u, score: scorePrefillUrl(u, matcher) }))
     .filter((e) => e.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, maxPages - 1);
@@ -705,6 +702,15 @@ router.post("/prefill", async (req, res): Promise<void> => {
     return;
   }
 
+  let exclusionMatcher: CrawlExclusionMatcher;
+  try {
+    exclusionMatcher = await getCrawlExclusionRules();
+  } catch (err) {
+    logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "crawl exclusion rules load failed");
+    res.status(500).json({ error: CRAWL_EXCLUSION_LOAD_ERROR });
+    return;
+  }
+
   // STEP 1 — Mini-crawl
   logger.info({ url }, "Prefill: starting mini-crawl");
   let pages: PageContent[] = [];
@@ -713,7 +719,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
   let homepageLang: string | null = null;
 
   try {
-    const outcome = await miniCrawl(url, 8);
+    const outcome = await miniCrawl(url, 8, exclusionMatcher);
     pages = outcome.pages;
     homepageLang = outcome.homepageLang;
     crawlFailed = pages.length === 0;

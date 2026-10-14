@@ -2,7 +2,8 @@ import bcrypt from "bcryptjs";
 import { logger } from "./logger.js";
 import { PROMPT_DEFAULTS } from "./prompt-defaults.js";
 import { clearPromptCache } from "./prompt-manager.js";
-import { query } from "./db.js";
+import { query, withTransaction } from "./db.js";
+import { seedCrawlExclusionRules } from "./crawl-exclusion-seed.js";
 
 // Verbatim previous default: a custom admin-edited template must not be overwritten.
 export const PREVIOUS_CONTENT_RELEVANCE_TEMPLATE = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
@@ -362,6 +363,19 @@ export async function initializeDatabase(): Promise<void> {
   // Create all tables
   await query(CREATE_TABLES);
   await migrateReportDeliveryRetention();
+  await query(`
+    CREATE TABLE IF NOT EXISTS crawl_exclusion_rules (
+      id SERIAL PRIMARY KEY,
+      pattern TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      count_in_report BOOLEAN NOT NULL DEFAULT TRUE,
+      note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS crawl_exclusion_rules_pattern_unique ON crawl_exclusion_rules (pattern);
+  `);
+  await withTransaction(seedCrawlExclusionRules);
 
   // Seed default settings (ON CONFLICT DO NOTHING = INSERT OR IGNORE)
   for (const [k, v] of DEFAULT_SETTINGS) {

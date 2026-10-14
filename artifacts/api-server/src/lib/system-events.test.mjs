@@ -29,6 +29,11 @@ const { buildContext, isSensitiveKey, shouldPersist, PERSISTED_INFO_MESSAGES } =
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 
+test("crawl exclusion snapshot load INFO is persisted", () => {
+  assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rules loaded"));
+  assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rules loaded", obj: {} }), true);
+});
+
 test("isSensitiveKey recognizes sensitive words and API key forms", () => {
   for (const key of [
     "password", "passwordHash", "apiKey", "api_key", "API_KEY", "APIKey", "x-api-key",

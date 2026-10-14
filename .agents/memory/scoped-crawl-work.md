@@ -35,3 +35,11 @@ Before treating a small wall-clock budget fixture failure as a crawler regressio
 **Why:** Combined runs produced budget failures while isolated checks of both versions passed; a later complete serial suite also passed without changing production budgets.
 
 **How to apply:** Use focused baseline/current comparisons and serial whole-suite verification when timing failures occur. Do not change reservations or timer origins just to accommodate test-process scheduling.
+
+## Exclusion matching policy
+
+The user chose component-based wildcard matching over exact legacy whole-URL regex behavior, explicitly accepting cross-component matches, extension/tracking matches in any component, and ignoring fragments.
+
+**Why:** The user confirmed this choice after concrete legacy-equivalence conflicts were surfaced. These differences are deliberate, not regressions to undo.
+
+**How to apply:** Preserve this policy in future exclusion-rule management work. Surface any new behavior difference outside the explicitly approved equivalence classes rather than silently widening the exceptions.

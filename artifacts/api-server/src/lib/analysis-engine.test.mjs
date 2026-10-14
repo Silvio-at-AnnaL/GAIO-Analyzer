@@ -4,6 +4,15 @@ import { build } from "esbuild";
 import { createServer } from "node:http";
 
 const mocks = {
+  "./crawl-exclusion-store.js": `
+    export const CRAWL_EXCLUSION_LOAD_ERROR = "Die Ausschlussliste für den Crawl konnte nicht geladen werden. Bitte versuchen Sie es später erneut.";
+    export async function getCrawlExclusionRules() {
+      const state = globalThis.__analysisLanguageTest;
+      state.ruleLoads = (state.ruleLoads ?? 0) + 1;
+      if (state.ruleError) throw state.ruleError;
+      return state.matcher ??= { isExcluded: () => false, countsInReport: () => false };
+    }
+  `,
   "./crawler": `
     export const crawlSite = async (...args) => {
       const state = globalThis.__analysisLanguageTest;
@@ -143,6 +152,9 @@ for (const mode of ["auto", "manual"]) {
     assert.deepEqual(result.crawlSkipped, state.crawlResult.skipped);
     assert.equal(state.competitorCalls.length, 1);
     assert.equal(state.competitorCalls[0][3], "de", "must not use the homepage declaration");
+    assert.equal(state.ruleLoads, 1);
+    assert.equal(state.competitorCalls[0][4], state.matcher);
+    if (mode === "auto") assert.equal(state.crawlCalls[0][2].exclusionMatcher, state.matcher);
     assert.deepEqual(state.modules.siteLanguage, language);
   });
 }
@@ -231,6 +243,32 @@ test("mixed analysis merges both phases and exposes only newly evaluated URLs as
   assert.equal(state.crawlCalls[0][2].preferredLang, "de");
   assert.deepEqual(state.crawlCalls[0][2].seedPages, [selectedPage]);
   assert.equal(state.techCalls, undefined, "successful fill must not refetch technical files");
+  assert.equal(state.ruleLoads, 1);
+  assert.equal(state.crawlCalls[0][2].exclusionMatcher, state.matcher);
+});
+
+test("mixed fill and all competitors receive the same loaded snapshot", async () => {
+  const state = mixedState();
+  await runAnalysis("synthetic-rule-snapshot", "url", "http://127.0.0.1/", null,
+    { competitors: "https://rival.example.test\nhttps://another.example.test" },
+    [selectedPage.url], null, { fillToMax: true });
+  assert.equal(getAnalysis("synthetic-rule-snapshot").status, "completed");
+  assert.equal(state.ruleLoads, 1);
+  assert.equal(state.crawlCalls[0][2].exclusionMatcher, state.matcher);
+  assert.equal(state.competitorCalls[0][4], state.matcher);
+});
+
+test("rule loading failure fails analysis with the German message before any crawl", async () => {
+  const state = mixedState();
+  state.ruleError = new Error("synthetic exclusion DB outage");
+  await runAnalysis("synthetic-rule-failure", "url", "http://127.0.0.1/", null, null, [selectedPage.url]);
+  const result = getAnalysis("synthetic-rule-failure");
+  assert.equal(result.status, "failed");
+  assert.ok(result.errors.includes("Die Ausschlussliste für den Crawl konnte nicht geladen werden. Bitte versuchen Sie es später erneut."));
+  assert.equal(state.crawlCalls, undefined);
+  assert.equal(state.explicitCalls, undefined);
+  assert.deepEqual(state.competitorCalls, []);
+  assert.ok(state.warnings.some(log => log.obj.reason === "synthetic exclusion DB outage"));
 });
 
 for (const failure of ["throw", "homepage"]) {

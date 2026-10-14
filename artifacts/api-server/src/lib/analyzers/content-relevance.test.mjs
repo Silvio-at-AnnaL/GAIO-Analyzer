@@ -69,6 +69,7 @@ const { extractMainText, extractPageText, analyzeContentRelevance, usableContent
 const { migrateContentRelevancePrompt, PREVIOUS_CONTENT_RELEVANCE_TEMPLATE } = await loadWithMocks("../admin-db.ts", {
   "bcryptjs": `export default { hash: async () => "not-used" };`,
   "./db.js": `
+    export async function withTransaction(fn) { return fn({ query }); }
     export async function query(sql, params) {
       const state = globalThis.__contentRelevanceTest;
       if (sql.includes("UPDATE prompts SET")) {
