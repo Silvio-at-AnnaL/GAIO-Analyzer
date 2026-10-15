@@ -51,3 +51,11 @@ Keep the 60-second rule cache and invalidate only the editing server immediately
 **Why:** The user explicitly chose this behavior instead of adding cross-process invalidation when the immediate-Dev-and-Live wording conflicted with independent process caches.
 
 **How to apply:** Keep admin help text and future change-timing promises consistent with this decision; do not introduce cross-process invalidation without a new request.
+
+## Legacy crawl-card translation boundary
+
+The existing hard-coded crawl-card texts in the HTML export are a separate backlog item, outside scoped crawl fixes.
+
+**Why:** The user explicitly separated the legacy copy from the new reliability hints and retry-credit texts.
+
+**How to apply:** Use label keys and the caller's translator for new text in results and exports; leave the legacy crawl-card copy unchanged unless its translation is explicitly requested.

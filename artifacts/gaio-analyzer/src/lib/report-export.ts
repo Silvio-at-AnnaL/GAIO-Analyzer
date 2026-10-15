@@ -1,6 +1,5 @@
 import { getHeadingSummary } from "./heading-summary";
 import { crawlReliabilityNotices } from "./crawl-reliability";
-import { labelDefaults } from "./labelDefaults";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
 import { isLimitedCompetitor } from "./competitor-comparability";
 import type { TechnicalScoreBreakdown } from "@workspace/api-client-react";
@@ -358,6 +357,7 @@ function renderCrawlReliabilityHtml(
   skipped?: Record<string, unknown> | null,
   evaluated = 0,
   siteLanguage?: Record<string, unknown> | null,
+  t: TechnicalT = defaultTechnicalT,
 ): string {
   const T = {
     heading: "Crawl-Zuverlässigkeit",
@@ -455,11 +455,7 @@ function renderCrawlReliabilityHtml(
     </div>`;
   }
 
-  const noticeText = crawlReliabilityNotices(reliability, evaluated, (key, params) => {
-    let text = labelDefaults[key]?.de ?? key;
-    for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value));
-    return text;
-  });
+  const noticeText = crawlReliabilityNotices(reliability, evaluated, t);
   html += noticeText.map(text => `<p style="font-size:12px;color:#b45309;">${esc(text)}</p>`).join("");
   if (failed === 0) {
     if (reliability.timedOut !== true && Number(reliability.transientErrors ?? 0) === 0) html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
@@ -544,6 +540,7 @@ function renderDetailsSection(report: Record<string, unknown>, t: TechnicalT): s
     report.crawlSkipped as Record<string, unknown> | null | undefined,
     crawledPages.length,
     report.siteLanguage as Record<string, unknown> | null | undefined,
+    t,
   );
 
   if (crawledPages.length > 0) {
@@ -1674,7 +1671,7 @@ type ReportDocumentShell = (
 function buildFailedReportShell(
   report: Record<string, unknown>,
   logoHtml: string,
-  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData },
+  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; t?: TechnicalT },
   reportDocumentShell: ReportDocumentShell,
   analysisDataScript: string,
 ): string {
@@ -1713,6 +1710,7 @@ function buildFailedReportShell(
     report.crawlSkipped as Record<string, unknown> | null | undefined,
     ((report.crawledPages as string[] | undefined) ?? []).filter((url) => url !== "uploaded-page").length,
     report.siteLanguage as Record<string, unknown> | null | undefined,
+    opts.t ?? defaultTechnicalT,
   )}
 
   ${divider("Nächste Schritte")}

@@ -38,11 +38,11 @@ const report = {
     pageSelection: "manual",
   },
 };
-async function exportReport(value, inputParams = buildReportInputParams(value, form, "01.10.2026")) {
+async function exportReport(value, inputParams = buildReportInputParams(value, form, "01.10.2026"), opts = {}) {
   const fetchBefore = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false });
   try {
-    return await generateHtmlReport(value, { inputParams });
+    return await generateHtmlReport(value, { inputParams, ...opts });
   } finally {
     globalThis.fetch = fetchBefore;
   }
@@ -387,6 +387,54 @@ function liveCard(value, overrides = {}) {
     .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
   return renderToStaticMarkup(React.createElement(LiveCard, { report: value, t }));
 }
+
+for (const status of ["completed", "failed"]) {
+  test(`${status} report and live card use the passed translator for every new crawl hint`, async () => {
+    const overrides = {
+      "results.crawl_timed_out": "Translated timeout <{n}/{max}>",
+      "results.crawl_server_errors": "Translated 5xx: {count}",
+      "results.crawl_transient_errors": "Translated transient: {transient}/{attempted}, recovered: {recovered}",
+    };
+    const calls = [];
+    const t = (key, vars = {}) => {
+      calls.push({ key, vars });
+      return (overrides[key] ?? labelDefaults[key]?.de ?? key)
+        .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
+    };
+    const value = {
+      ...reliabilityFixture(2, 2), status, errors: status === "failed" ? ["Synthetic failure"] : [],
+      crawlReliability: { attempted: 4, succeeded: 2, failed: 2, failures: [
+        { url: "https://example.test/a", reason: "http_error", statusCode: 502 },
+        { url: "https://example.test/b", reason: "http_error", statusCode: 503 },
+      ], timedOut: true, maxPages: 8, transientErrors: 3, recoveredAfterRetry: 1 },
+    };
+    const html = await exportReport(value, undefined, { t });
+    const ui = liveCard(value, overrides);
+    for (const output of [html, ui]) {
+      assert.ok(output.includes("Translated timeout &lt;2/8&gt;"));
+      assert.ok(output.includes("Translated 5xx: 2"));
+      assert.ok(output.includes("Translated transient: 3/4, recovered: 1"));
+      assert.ok(!output.includes("Translated timeout <2/8>"), "translator output is escaped");
+      assert.ok(!output.includes("Alle abgerufenen Seiten waren erfolgreich"));
+      assert.ok(!output.includes("Die Website hat langsam geantwortet."));
+      assert.ok(!output.includes("Nicht alle Crawler wiederholen fehlgeschlagene Abrufe"));
+    }
+    assert.deepEqual(calls.find(call => call.key === "results.crawl_timed_out").vars, { n: 2, max: 8 });
+    assert.deepEqual(calls.find(call => call.key === "results.crawl_server_errors").vars, { count: 2 });
+    assert.deepEqual(calls.find(call => call.key === "results.crawl_transient_errors").vars,
+      { transient: 3, attempted: 4, recovered: 1 });
+  });
+}
+
+test("report keeps legacy crawl-card strings unchanged and never reads new hints directly from label defaults", async () => {
+  const source = await readFile(new URL("./report-export.ts", import.meta.url), "utf8");
+  assert.match(source, /crawlReliabilityNotices\(reliability, evaluated, t\)/);
+  assert.doesNotMatch(source, /import.*labelDefaults/);
+  assert.doesNotMatch(source, /Die Website hat langsam geantwortet|Nicht alle Crawler wiederholen fehlgeschlagene Abrufe/);
+  const html = await exportReport(reliabilityFixture(2, 2), undefined, { t: () => "Translation override" });
+  assert.ok(html.includes("Alle abgerufenen Seiten waren erfolgreich."));
+  assert.ok(html.includes("Auf welcher Datengrundlage diese Analyse durchgeführt wurde."));
+});
 
 test("recovered transient failures show the exact German warning in both cards instead of the success line", async () => {
   const value = reliabilityFixture(4, 3);

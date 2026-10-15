@@ -197,3 +197,21 @@ test("retry credit has the requested German slider, saves its numeric value, and
   assert.equal(slider.value, "0.5");
   assert.doesNotMatch(triggers()[0].textContent, /Angepasst/);
 });
+test("retry-credit label, help and extended profile description render through t rather than fixed German", async () => {
+  const previous = globalThis.__scoreT;
+  const translated = {
+    "score.profile_technical_desc": "Translated technical description, including retry-credit sentence",
+    "score.param_retry_credit_label": "Translated retry credit",
+    "score.param_retry_credit_help": "Translated retry help",
+  };
+  globalThis.__scoreT = (key, vars) => translated[key] ?? previous(key, vars);
+  try {
+    await mount({ fetcher: async () => ({ ok: true, json: async () => [{
+      ...clone(profiles[0]), params: [{ key: "retry_credit", label: "score.param_retry_credit_label",
+        help: "score.param_retry_credit_help", current: 0.5, default: 0.5, min: 0, max: 1, step: 0.05 }],
+    }] }) });
+    await click(triggers()[0]);
+    for (const text of Object.values(translated)) assert.ok(host.textContent.includes(text));
+    assert.ok(!host.textContent.includes("Abrufe, die erst nach einer Wiederholung gelingen"));
+  } finally { globalThis.__scoreT = previous; }
+});
