@@ -28,3 +28,17 @@ mtime_ms = 1791988305159
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/b0394ee8-2551-4e5f-ab72-df4669b7c29d/50f22248-ff13-4b8c-b3b7-94e9b6d15f52"
 storage_version_token = "1791988305842608"
 content_type = "text/plain"
+
+[[outputs]]
+id = "6BzqWycNg0DUeOSAQ9RL5"
+uri = "file://.local/technical-seo-verification.txt"
+type = "text"
+title = "Technical SEO — verification and comparison"
+description = "Commit, 34 changed files, test results, label count, and all six domain comparisons with component tables."
+logical_id = "6c82d669-4ad9-4e6c-858b-3f5747c43d00"
+content_hash = "sha256:bc7669e2b181e0dbee73c7a3e1a843d495f0afb0b31481373910a054ab35875b"
+size = 18507
+mtime_ms = 1792053966630
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/6c82d669-4ad9-4e6c-858b-3f5747c43d00/a5d2fbc3-6277-4060-b4d3-f9ab34e59887"
+storage_version_token = "1792053981927806"
+content_type = "text/plain"
