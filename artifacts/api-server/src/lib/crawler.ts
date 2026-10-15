@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
-import { LANG_PREFIX_RE } from "./language-path";
+import { LANG_PREFIX_RE, getPathLanguage as urlLang } from "./language-path";
 import { checkHttpsRedirect, type HttpsRedirectStatus } from "./https-redirect";
 export { checkHttpsRedirect } from "./https-redirect";
 import type { CrawlExclusionMatcher } from "./crawl-exclusions.js";
@@ -137,6 +137,7 @@ const EN_STOPWORDS = new Set(
   "the and of with for you are this that from our your they have been will more about which".split(" "),
 );
 const BOILERPLATE_PATTERN = /cookie|consent|borlabs|recaptcha|privacy|banner/i;
+export const CONTENT_LANGUAGE_OVERRIDE_MIN_CHARS = 800;
 
 export function contentFingerprint(html: string): string | null {
   const $ = cheerio.load(html);
@@ -166,10 +167,10 @@ function extractMainText($: cheerio.CheerioAPI): string {
       $(el).remove();
     }
   });
-  const content = $("main").first().length
-    ? $("main").first()
-    : $("article").first().length
-      ? $("article").first()
+  const content = $("main").length === 1
+    ? $("main")
+    : $("article").length === 1
+      ? $("article")
       : $("body").first();
   return content.text().replace(/\s+/g, " ").trim();
 }
@@ -189,16 +190,25 @@ export function isNonContentPage(page: { html: string; contentType: string | nul
   return text.length < 20 && body.find("img").length > 0 ? "image_only" : null;
 }
 
-/** Classify the visible main text; short pages use their declared language. */
-export function detectPageLanguageDetailed(html: string): PageLanguageDetection {
+interface PageLanguageEvidence extends PageLanguageDetection {
+  mainTextLength: number;
+}
+
+/** Keep text length internal: callers of the public detector retain its result shape. */
+function detectPageLanguageEvidence(html: string): PageLanguageEvidence {
   let declared: string | null = null;
+  let mainTextLength = 0;
   try {
     const $ = cheerio.load(html);
     declared = $("html").first().attr("lang")?.trim().toLowerCase().split("-")[0] || null;
     const text = extractMainText($);
-    if (text.length < 200) {
+    mainTextLength = text.length;
+    const fallback = (): PageLanguageEvidence => {
       const lang = declared === "de" || declared === "en" ? declared : null;
-      return { lang, source: lang ? "declared" : null, declared };
+      return { lang, source: lang ? "declared" : null, declared, mainTextLength };
+    };
+    if (text.length < 200) {
+      return fallback();
     }
 
     let deTotal = 0;
@@ -215,12 +225,19 @@ export function detectPageLanguageDetailed(html: string): PageLanguageDetection 
         enWords.add(word);
       }
     }
-    if (deTotal >= enTotal * 1.5 && deTotal >= 5 && deWords.size >= 4) return { lang: "de", source: "content", declared };
-    if (enTotal >= deTotal * 1.5 && enTotal >= 5 && enWords.size >= 4) return { lang: "en", source: "content", declared };
-    return { lang: null, source: null, declared };
+    const lang = deTotal >= enTotal * 1.5 && deTotal >= 5 && deWords.size >= 4 ? "de"
+      : enTotal >= deTotal * 1.5 && enTotal >= 5 && enWords.size >= 4 ? "en" : null;
+    if (lang && declared !== null && lang !== declared && text.length < CONTENT_LANGUAGE_OVERRIDE_MIN_CHARS) return fallback();
+    return { lang, source: lang ? "content" : null, declared, mainTextLength };
   } catch {
-    return { lang: null, source: null, declared };
+    return { lang: null, source: null, declared, mainTextLength };
   }
+}
+
+/** Classify main text; overriding a declaration requires at least 800 characters. */
+export function detectPageLanguageDetailed(html: string): PageLanguageDetection {
+  const { mainTextLength: _, ...detection } = detectPageLanguageEvidence(html);
+  return detection;
 }
 
 export function detectPageLanguage(html: string): "de" | "en" | null {
@@ -229,7 +246,7 @@ export function detectPageLanguage(html: string): "de" | "en" | null {
 
 /** Explicit selection is never filtered; use the first five pages as evidence. */
 export function determineSiteLanguage(pages: Array<Pick<CrawledPage, "html">>): SiteLanguage {
-  const detections = pages.slice(0, 5).map((page) => detectPageLanguageDetailed(page.html));
+  const detections = pages.slice(0, 5).map((page) => detectPageLanguageEvidence(page.html));
   const declarations = new Map<string, number>();
   for (const detection of detections) {
     if (detection.declared !== null) declarations.set(detection.declared, (declarations.get(detection.declared) ?? 0) + 1);
@@ -241,11 +258,18 @@ export function determineSiteLanguage(pages: Array<Pick<CrawledPage, "html">>): 
   for (const detection of detections) {
     if (detection.source === "content" && detection.lang) votes[detection.lang]++;
   }
-  const lang = votes.de === votes.en
+  let lang: SiteLanguage["lang"] = votes.de === votes.en
     ? (declared === "de" || declared === "en" ? declared : null)
     : votes.de > votes.en ? "de" : "en";
-  const source = votes.de !== votes.en ? "content" : lang ? "declared" : null;
-  return { lang, source, declared, mismatch: source === "content" && declared !== null && declared !== lang };
+  let source: SiteLanguage["source"] = votes.de !== votes.en ? "content" : lang ? "declared" : null;
+  if ((declared === "de" || declared === "en") && lang !== declared) {
+    const disagreements = detections.filter(d => d.source === "content" && d.lang === lang && d.lang !== declared);
+    const sufficient = pages.length === 1
+      ? disagreements.length === 1 && disagreements[0].mainTextLength >= CONTENT_LANGUAGE_OVERRIDE_MIN_CHARS
+      : disagreements.length >= 2;
+    if (!sufficient) { lang = declared; source = "declared"; }
+  }
+  return { lang, source, declared, mismatch: declared !== null && lang !== null && declared !== lang };
 }
 
 // Existing analysis-engine import uses this name for the main site's language.
@@ -255,9 +279,8 @@ export const pageLanguage = detectPageLanguage;
 // de=2, en=1, neutral (no prefix)=1, anything else=0
 
 function getLangPriority(pathname: string): number {
-  const m = pathname.match(LANG_PREFIX_RE);
-  if (!m) return 1; // no language prefix → neutral
-  const lang = m[1].toLowerCase().split("-")[0];
+  const lang = urlLang(pathname);
+  if (!lang) return 1; // no curated language prefix → neutral
   if (lang === "de") return 2;
   if (lang === "en") return 1;
   return 0;
@@ -274,7 +297,7 @@ function isWithinStartPath(pathname: string, startPath: string): boolean {
 
 /**
  * Returns the "first meaningful path segment" after the domain/language prefix.
- * Language prefixes (2-3 letter codes, e.g. /de/, /en/, /zh-CN/) are skipped.
+ * Only curated language prefixes (e.g. /de/, /en/, /zh-CN/) are skipped.
  */
 function extractCategory(pathname: string, startPath: string): string {
   // Strip the start path prefix first
@@ -288,7 +311,7 @@ function extractCategory(pathname: string, startPath: string): string {
 
   // Skip a leading language prefix segment
   let startIdx = 0;
-  if (segments[0] && /^[a-z]{2,3}(-[a-z]{2,4})?$/i.test(segments[0])) {
+  if (segments[0] && urlLang(`/${segments[0]}/`) !== null) {
     startIdx = 1;
   }
 
@@ -668,32 +691,6 @@ function addToQueue(
   queuedUrls.add(entry.url);
   q.push(entry);
   dirtyQueues.add(q);
-}
-
-// ─── Known language/region codes for path-based detection ────────────────────
-
-const KNOWN_LANG_CODES = new Set([
-  "af", "ar", "az", "be", "bg", "bn", "bs", "ca", "cs", "cy", "da", "de",
-  "el", "en", "es", "et", "eu", "fa", "fi", "fil", "fr", "ga", "gl", "gu",
-  "he", "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "ka", "kk", "km",
-  "kn", "ko", "lt", "lv", "mk", "ml", "mn", "mr", "ms", "mt", "nb", "nl",
-  "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sr", "sv", "sw", "ta",
-  "te", "th", "tr", "uk", "ur", "uz", "vi", "zh",
-  // common region variants
-  "de-at", "de-ch", "de-de", "en-au", "en-ca", "en-gb", "en-ie", "en-in",
-  "en-nz", "en-sg", "en-us", "en-za", "es-419", "es-ar", "es-cl", "es-co",
-  "es-es", "es-mx", "fr-be", "fr-ca", "fr-ch", "fr-fr", "it-ch", "it-it",
-  "nl-be", "nl-nl", "pt-br", "pt-pt", "zh-cn", "zh-hk", "zh-tw",
-]);
-
-function isKnownLangCode(code: string): boolean {
-  return KNOWN_LANG_CODES.has(code.toLowerCase());
-}
-
-function urlLang(pathname: string): string | null {
-  const match = pathname.match(LANG_PREFIX_RE);
-  if (!match || !isKnownLangCode(match[1])) return null;
-  return match[1].toLowerCase().split("-")[0];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -1257,6 +1254,13 @@ export async function crawlSite(
   let switchedLanguage = false;
   let readmittedPages = 0;
   const logSiteLanguage = () => {
+    // Final aggregate evidence must meet the site-level override threshold.
+    // Explicit URL/preferred/hreflang choices keep their chosen language.
+    if (result.pages.length > 0 && result.siteLanguage.source === "content") {
+      result.siteLanguage = determineSiteLanguage(result.pages);
+    }
+    const { declared, lang } = result.siteLanguage;
+    result.siteLanguage.mismatch = declared !== null && lang !== null && declared !== lang;
     logger.info({ host: baseDomain, requestedLang: opts?.preferredLang ?? null, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
   };
 
@@ -1507,8 +1511,7 @@ export async function crawlSite(
     opts?.onHomepage?.(homepageHtml);
     result.siteLanguage = {
       lang: targetLang, source, declared: detection.declared,
-      mismatch: (source === "content" || source === "hreflang") && detection.source === "content"
-        && detection.declared !== null && detection.declared !== detection.lang,
+      mismatch: detection.declared !== null && targetLang !== null && detection.declared !== targetLang,
     };
     const blocked = detectBlockedContent(homepageHtml, homePage.finalUrl);
     if (homePage.statusCode < 400 && blocked === null) {
@@ -1783,7 +1786,8 @@ export async function crawlSite(
         const detection = detectPageLanguageDetailed(page.html);
         const urlLanguage = urlLang(pathname);
         const lang = targetLang ? urlLanguage ??
-          (result.siteLanguage.mismatch && detection.source === "declared" ? null : detection.lang) : null;
+          (result.siteLanguage.mismatch && result.siteLanguage.source !== "preferred" && result.siteLanguage.source !== "url"
+            && detection.source === "declared" ? null : detection.lang) : null;
         const held = targetLang !== null && lang !== null && lang !== targetLang;
         if (held) {
           recordOtherLanguage(url);
@@ -1882,7 +1886,6 @@ export async function crawlSite(
   // If no hreflang tags were found at all, infer language variants from the
   // path prefixes of the URLs we actually visited during the crawl.
   // Pattern: /<langcode>/ or /<langcode> at end of pathname (e.g. /en, /de-at)
-  const LANG_SEGMENT_RE = /^\/([a-z]{2,3}(?:-[a-z]{2,4})?)(?:\/|$)/i;
 
   // Collect all candidate URLs: crawled pages + hreflang-quarantined URLs
   const candidateUrls = [
@@ -1893,13 +1896,9 @@ export async function crawlSite(
   for (const candidateUrl of candidateUrls) {
     try {
       const pathname = new URL(candidateUrl).pathname;
-      const m = pathname.match(LANG_SEGMENT_RE);
+      const m = pathname.match(LANG_PREFIX_RE);
       if (!m) continue;
       const lang = m[1].toLowerCase();
-      // Only treat as a language segment if it looks like a real ISO code
-      // (skip path segments that happen to be 2-3 chars, e.g. /de for a topic)
-      // We check against a known list of common language/region codes.
-      if (!isKnownLangCode(lang)) continue;
 
       // Normalise: use the root of that language path as the variant URL
       const u = new URL(candidateUrl);

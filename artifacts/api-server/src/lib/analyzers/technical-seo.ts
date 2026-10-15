@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import type { CrawlResult, SitemapResolution } from "../crawler";
 import { getTitleFromDom } from "../html-title";
-import { LANG_PREFIX_RE } from "../language-path";
+import { getPathLanguage } from "../language-path";
 import { logger } from "../logger";
 import { DEFAULT_TECHNICAL_PARAMS, type TechnicalScoreParams, type TechnicalBreakdown } from "./technical-params";
 
@@ -446,7 +446,7 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string, 
     $("a[href]").each((_, el) => {
       try {
         const target = new URL($(el).attr("href")!, page.finalUrl || page.url);
-        const lang = target.pathname.match(LANG_PREFIX_RE)?.[1].toLowerCase().split("-")[0];
+        const lang = getPathLanguage(target.pathname);
         const currentLang = crawlResult.siteLanguage?.lang?.toLowerCase().split("-")[0];
         if (host(target.href) === siteHost && lang && currentLang && lang !== currentLang) hasLanguageVersions = true;
       } catch { /* Invalid or uploaded-page relative URL. */ }

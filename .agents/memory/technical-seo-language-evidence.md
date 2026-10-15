@@ -1,10 +1,10 @@
 ---
-name: Technical SEO language evidence
-description: Why technical scoring must not silently adopt the crawler's stricter language-code validation.
+name: Shared language-path policy
+description: The user's explicit correction of the earlier broad language-prefix scoring policy.
 ---
 
-For technical SEO's hreflang applicability, preserve the specified same-site language-path-prefix regex evidence. Do not add a known-language-code whitelist without asking the user.
+Crawler and technical SEO must share the requested curated web-language-code recognizer, with optional regions. Ordinary short paths such as sc, mc, nxp, bom, faq and new must not count as language versions.
 
-**Why:** The score specification names the existing prefix regex as evidence. Adding stricter known-code validation changed the Farnell comparison from the supplied target of 86 to 91 by dropping hreflang from the evaluated weights. This is a scoring-policy change, not a harmless parser cleanup.
+**Why:** The user explicitly replaced the previous bare-regex policy after identifying false language branches on Farnell. Farnell's hreflang component is now expected to be non-evaluable when only these ordinary paths are present. The old score target of 86 is not a reason to restore false-positive detection.
 
-**How to apply:** Keep this score's evidence rule separate from the crawler's stricter page-selection language helpers. Do not change page selection when changing technical scoring.
+**How to apply:** Keep language-path recognition consistent across crawling and technical SEO; do not reintroduce separate broader regexes or preserve historical scores by treating product/category paths as languages.

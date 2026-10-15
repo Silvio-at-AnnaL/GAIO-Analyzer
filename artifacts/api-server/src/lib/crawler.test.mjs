@@ -633,8 +633,9 @@ test("only competitor calls opt into both budgets, retaining five pages and a 45
   assert.doesNotMatch(mainSource, /techPhaseBudgetMs|minPagePhaseMs/);
 });
 
-const germanText = "Wir bieten die Produkte und Leistungen für unsere Kunden an. Die Lösungen werden mit einer sicheren Technik auf den Bedarf unserer Kunden abgestimmt. ";
-const englishText = "The products and services are designed for you and your team with our technology. We offer the solutions that you have been looking for with more information about our company. ";
+// Strong contrary-language fixtures must satisfy the 800-character threshold.
+const germanText = "Wir bieten die Produkte und Leistungen für unsere Kunden an. Die Lösungen werden mit einer sicheren Technik auf den Bedarf unserer Kunden abgestimmt. ".repeat(2);
+const englishText = "The products and services are designed for you and your team with our technology. We offer the solutions that you have been looking for with more information about our company. ".repeat(2);
 function languageHtml(declared, text, links = []) {
   return `<html${declared ? ` lang="${declared}"` : ""}><body><nav>${links.map(url => `<a href="${url}">${url}</a>`).join("")}</nav><main>${text}</main></body></html>`;
 }
@@ -732,7 +733,7 @@ test("Site D still skips English URL-language pages on a German multilingual sit
 test("preferredLang preserves declaration-only filtering and never runs provisional switching", async () => {
   await withServer(languageSite(), async ({ origin }) => {
     const result = await crawlSite(origin, 16, { preferredLang: "de" });
-    assert.deepEqual(result.siteLanguage, { lang: "de", source: "preferred", declared: "en", mismatch: false });
+    assert.deepEqual(result.siteLanguage, { lang: "de", source: "preferred", declared: "en", mismatch: true });
     assert.equal(result.pages.length, 5);
     assert.equal(result.skipped.otherLanguage, 2);
     assert.equal(logs.find(log => log.msg === "site language determined").obj.switched, false);
@@ -767,7 +768,9 @@ test("re-admission uses duplicate fingerprints and respects the maximum page cou
     assert.equal(requests.filter(req => req.url === "/products/two").length, 1);
     const capped = await crawlSite(origin, 2);
     assert.equal(capped.pages.length, 2);
-    assert.equal(capped.siteLanguage.lang, "de");
+    // Only one contrary-language page fits beside the short homepage.
+    // Fetches/duplicates outside the evaluated set cannot override the declaration.
+    assert.deepEqual(capped.siteLanguage, { lang: "en", source: "declared", declared: "en", mismatch: false });
     assert.equal(capped.skipped.otherLanguage, 0);
   });
 });
@@ -796,6 +799,94 @@ test("evaluated declarations use the first-five majority and the first evaluated
   assert.equal(determineSiteLanguage([de(null), de("en"), de("de")]).declared, null);
   assert.equal(determineSiteLanguage(Array.from({ length: 5 }, () => de(null))).declared, null);
   assert.equal(determineSiteLanguage([de("en"), de("de"), de("de"), de("de"), de("de"), ...Array.from({ length: 6 }, () => de("en"))]).declared, "de");
+});
+
+function hardceramicHtml(suffix = "") {
+  const teaser = englishText.repeat(2).slice(0, 350);
+  return `<html lang="de-DE"><body><header>${englishText.repeat(20)}</header>
+    <script>${englishText.repeat(20)}</script><div class="cookie-consent">${englishText.repeat(20)}</div>
+    <article>${teaser}</article>${Array.from({ length: 6 }, (_, i) =>
+      `<article>${germanText.repeat(3)} Artikel ${i} ${suffix}</article>`).join("")}
+    <a href="/de/products/one">Produkt</a><a href="/de/products/two">Weitere Produkte</a>
+    </body></html>`;
+}
+test("seven article homepage uses the cleaned German body rather than the first English teaser", () => {
+  assert.deepEqual(detectPageLanguageDetailed(hardceramicHtml()), { lang: "de", source: "content", declared: "de" });
+  assert.deepEqual(determineSiteLanguage([
+    { html: hardceramicHtml() },
+    { html: languageHtml("de", germanText.repeat(4)) },
+  ]), { lang: "de", source: "content", declared: "de", mismatch: false });
+});
+test("one main or one article is preferred, while multiple main/article elements fall back to body", () => {
+  const de = germanText.repeat(5), en = englishText.repeat(12);
+  assert.equal(detectPageLanguage(`<html lang="de"><body>${en}<main>${de}</main></body></html>`), "de");
+  assert.equal(detectPageLanguage(`<html lang="de"><body>${en}<article>${de}</article></body></html>`), "de");
+  assert.equal(detectPageLanguage(`<html lang="de"><body><main>${englishText.slice(0, 300)}</main><main>${de}</main>${de}</body></html>`), "de");
+});
+test("content evidence honours 200/800 boundaries and short contradicting pages keep declarations", () => {
+  for (const length of [199, 200, 300, 799, 800]) {
+    const text = englishText.repeat(5).slice(0, length - 1) + ".";
+    const contrary = detectPageLanguageDetailed(languageHtml("de", text));
+    assert.deepEqual(contrary, length < 800
+      ? { lang: "de", source: "declared", declared: "de" }
+      : { lang: "en", source: "content", declared: "de" });
+    for (const declaration of ["en", null]) {
+      const agreeing = detectPageLanguageDetailed(languageHtml(declaration, text));
+      assert.equal(agreeing.source, length < 200 ? declaration ? "declared" : null : "content");
+      assert.equal(agreeing.lang, length < 200 && declaration === null ? null : "en");
+    }
+  }
+  assert.deepEqual(determineSiteLanguage([{ html: languageHtml("de", englishText.slice(0, 299) + ".") }]),
+    { lang: "de", source: "declared", declared: "de", mismatch: false });
+});
+test("site content overrides need two disagreeing evaluated pages, except for one long page", () => {
+  const wrong = { html: languageHtml("en", germanText.repeat(4)) };
+  const unknown = { html: languageHtml("en", "xyz ".repeat(210)) };
+  assert.deepEqual(determineSiteLanguage([wrong]), { lang: "de", source: "content", declared: "en", mismatch: true });
+  assert.deepEqual(determineSiteLanguage([wrong, unknown]), { lang: "en", source: "declared", declared: "en", mismatch: false });
+  assert.deepEqual(determineSiteLanguage([wrong, wrong, unknown]), { lang: "de", source: "content", declared: "en", mismatch: true });
+});
+test("hardceramic-like crawl evaluates German subpages and preserves matching hreflang language", async () => {
+  for (const start of ["/de/", "/"]) {
+    await withServer((req, res) => {
+      if (req.url === "/") res.end(languageHtml("en", englishText.repeat(4)) + '<link rel="alternate" hreflang="de" href="/de/">');
+      else if (req.url === "/de/") res.end(hardceramicHtml());
+      else if (req.url.startsWith("/de/products/")) res.end(languageHtml("de", `${germanText.repeat(4)} ${req.url}`));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const value = await crawlSite(`${origin}${start}`, 16);
+      assert.equal(value.siteLanguage.lang, "de");
+      assert.equal(value.siteLanguage.declared, "de");
+      assert.equal(value.siteLanguage.mismatch, false);
+      assert.equal(value.pages.length, 3);
+      assert.equal(value.skipped.otherLanguage, 0);
+      assert.equal(value.siteLanguage.source, start === "/" ? "hreflang" : "content");
+    });
+  }
+});
+test("matching declaration after a hreflang switch does not inherit the content detector mismatch", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("en", englishText.repeat(4)) + '<link rel="alternate" hreflang="de" href="/de/">');
+    else if (req.url === "/de/") res.end(languageHtml("de-DE", englishText.repeat(4)));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin }) => {
+    const value = await crawlSite(origin, 1);
+    assert.deepEqual(value.siteLanguage, { lang: "de", source: "hreflang", declared: "de", mismatch: false });
+  });
+});
+test("ordinary sc/mc/nxp/bom/faq/new paths are evaluated while real foreign language paths remain excluded", async () => {
+  const paths = ["/sc/one", "/mc/two", "/nxp/three", "/bom-tool", "/faq/four", "/new/five", "/fr/produits"];
+  await withServer((req, res) => {
+    if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), paths));
+    else if (paths.includes(req.url)) res.end(languageHtml("de", `${germanText.repeat(4)} ${req.url}`));
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const value = await crawlSite(origin, 16);
+    assert.equal(value.pages.length, 7);
+    assert.equal(value.skipped.otherLanguage, 1);
+    assert.ok(!requests.some(req => req.url === "/fr/produits"));
+    for (const pathname of paths.slice(0, -1)) assert.ok(value.pages.some(page => page.url === origin + pathname));
+  });
 });
 
 test("explicit German pages ignore the English root declaration", async () => {

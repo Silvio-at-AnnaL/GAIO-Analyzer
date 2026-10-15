@@ -232,7 +232,8 @@ test("response bands use strict boundaries and all three profile parameters", ()
   }), "response").fraction, .3);
 });
 test("hreflang requires evidence: skipped language alone and external or same-language links do not count", () => {
-  for (const links of ["", '<a href="/de/produkte">DE</a>', '<a href="https://other.de/en/">EN</a>']) {
+  for (const links of ["", '<a href="/sc/">SC</a><a href="/nxp/">NXP</a><a href="/mc/">MC</a><a href="/bom-tool">BOM</a><a href="/faq">FAQ</a><a href="/new">NEW</a>',
+    '<a href="/de/produkte">DE</a>', '<a href="https://other.de/en/">EN</a>']) {
     assert.equal(component(result([goodHtml() + links], { skipped: { otherLanguage: 20 } }), "hreflang").fraction, null);
   }
   assert.equal(component(result([goodHtml() + '<a href="https://example.de/en/products">EN</a>']), "hreflang").fraction, 0);
