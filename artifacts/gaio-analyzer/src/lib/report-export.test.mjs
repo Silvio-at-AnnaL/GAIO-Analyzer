@@ -327,7 +327,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1287);
+  assert.equal(Object.keys(labelDefaults).length, 1288);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -426,6 +426,26 @@ for (const status of ["completed", "failed"]) {
   });
 }
 
+test("empty_response has a label-backed German reason in results and both report paths", async () => {
+  assert.equal(labelDefaults["results.crawl_reason_empty_response"].de, "Leere Antwort");
+  const source = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+  assert.match(source, /empty_response:\s*"results\.crawl_reason_empty_response"/);
+  assert.match(source, /t\(reasonLabels\[failure\.reason\]\s*\?\?\s*reasonLabels\.unknown\)/);
+  for (const status of ["completed", "failed"]) {
+    const value = { ...reliabilityFixture(0, 0), status,
+      crawlReliability: { attempted: 1, succeeded: 0, failed: 1,
+        failures: [{ url: "https://example.test/empty", reason: "empty_response", statusCode: 200, retries: 2 }] } };
+    assert.ok((await exportReport(value)).includes("Leere Antwort"));
+    const html = await exportReport(value, undefined, {
+      t: (key, vars = {}) => (key === "results.crawl_reason_empty_response"
+        ? "Translated empty <response>" : labelDefaults[key]?.de ?? key)
+        .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name])),
+    });
+    assert.ok(html.includes("Translated empty &lt;response&gt;"));
+    assert.ok(!html.includes("Leere Antwort"));
+  }
+});
+
 test("report keeps legacy crawl-card strings unchanged and never reads new hints directly from label defaults", async () => {
   const source = await readFile(new URL("./report-export.ts", import.meta.url), "utf8");
   assert.match(source, /crawlReliabilityNotices\(reliability, evaluated, t\)/);
@@ -439,7 +459,7 @@ test("report keeps legacy crawl-card strings unchanged and never reads new hints
 test("recovered transient failures show the exact German warning in both cards instead of the success line", async () => {
   const value = reliabilityFixture(4, 3);
   value.crawlReliability = { ...value.crawlReliability, transientErrors: 2, recoveredAfterRetry: 2 };
-  const expected = "Der Server hat 2 von 4 Abrufen zunächst mit einem Serverfehler beantwortet; 2 davon gelangen erst beim erneuten Versuch. Nicht alle Crawler wiederholen fehlgeschlagene Abrufe – Inhalte dieser Website sind für KI-Systeme daher möglicherweise nur eingeschränkt erreichbar.";
+  const expected = "Der Server hat 2 von 4 Abrufen zunächst mit einem Serverfehler oder gar nicht beantwortet; 2 davon gelangen erst beim erneuten Versuch. Nicht alle Crawler wiederholen fehlgeschlagene Abrufe – Inhalte dieser Website sind für KI-Systeme daher möglicherweise nur eingeschränkt erreichbar.";
   for (const html of [liveCard(value), exportedCard(await exportReport(value))]) {
     assert.ok(html.includes(expected));
     assert.ok(!html.includes("Alle abgerufenen Seiten waren erfolgreich"));

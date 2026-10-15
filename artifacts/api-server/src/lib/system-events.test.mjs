@@ -40,6 +40,13 @@ test("transient server errors WARN is persisted with its aggregate counts and st
   assert.ok(JSON.stringify(context).includes("recoveredAfterRetry"));
   assert.ok(JSON.stringify(context).includes("502"));
 });
+test("retry budget exhaustion INFO is persisted with the crawl host and exhausted URL count", () => {
+  assert.ok(PERSISTED_INFO_MESSAGES.has("retry budget exhausted"));
+  assert.equal(shouldPersist({ level: 30, msg: "retry budget exhausted", obj: { host: "example.test", exhaustedUrls: 3 } }), true);
+  const context = buildContext({ host: "example.test", exhaustedUrls: 3 });
+  assert.equal(context.host, "example.test");
+  assert.equal(context.exhaustedUrls, 3);
+});
 
 test("crawl exclusion mutation audit INFO is persisted", () => {
   assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rule changed"));

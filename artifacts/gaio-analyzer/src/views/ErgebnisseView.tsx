@@ -2249,6 +2249,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
               refused: "results.crawl_reason_refused",
               timeout: "results.crawl_reason_timeout",
               http_error: "results.crawl_reason_http_error",
+              empty_response: "results.crawl_reason_empty_response",
               bot_protection: "results.crawl_reason_bot_protection",
               parked_domain: "results.crawl_reason_parked_domain",
               unknown: "results.crawl_reason_unknown",

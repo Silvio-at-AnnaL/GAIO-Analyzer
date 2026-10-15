@@ -16,6 +16,7 @@ export type CrawlFailReason =
   | "timeout"
   | "redirect_loop"
   | "http_error"
+  | "empty_response"
   | "bot_protection"
   | "parked_domain"
   | "unknown";
@@ -83,6 +84,7 @@ export function classifyHttpStatus(_status: number): CrawlFailReason {
 }
 
 export function classifyFetchError(err: unknown): CrawlFailReason {
+  if ((err as { code?: string } | null)?.code === "EMPTY_RESPONSE") return "empty_response";
   const e = err as { name?: string; message?: string; code?: string; cause?: { code?: string; message?: string } } | null;
   if (/redirect count exceeded/i.test(`${e?.message ?? ""} ${e?.cause?.message ?? ""}`)) return "redirect_loop";
   if (e?.name === "AbortError" || e?.message === "fetch-timeout") return "timeout";

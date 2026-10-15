@@ -59,3 +59,11 @@ The existing hard-coded crawl-card texts in the HTML export are a separate backl
 **Why:** The user explicitly separated the legacy copy from the new reliability hints and retry-credit texts.
 
 **How to apply:** Use label keys and the caller's translator for new text in results and exports; leave the legacy crawl-card copy unchanged unless its translation is explicitly requested.
+
+## Retry cost and evaluated-page coverage
+
+Do not optimize retries solely for more attempts at persistently failing subpages; preserve full homepage retries while containing the effect on evaluated-page coverage.
+
+**Why:** The user observed a live comparison in which persistent per-URL server failures consumed the crawl's page time and reduced evaluated pages despite retries working as designed.
+
+**How to apply:** When changing retry policy, compare both elapsed time and evaluated pages, especially under persistent subpage failures. Keep the existing homepage and language-variant recovery paths available.

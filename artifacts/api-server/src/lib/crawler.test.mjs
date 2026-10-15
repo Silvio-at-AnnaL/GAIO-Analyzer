@@ -69,6 +69,143 @@ const { classifyFetchError } = await import(
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 for (const mode of ["explicit", "crawl"]) {
+  test(`${mode}: three exhausted subpages stop subsequent retries but homepage retries stay enabled`, async () => {
+    const hits = new Map();
+    const paths = ["/products/fail1", "/products/fail2", "/products/fail3", "/products/fail4"];
+    await withServer((req, res) => {
+      const count = (hits.get(req.url) ?? 0) + 1;
+      hits.set(req.url, count);
+      if (req.url === "/" || req.url === "/de/") {
+        if (count === 1) { res.writeHead(502); res.end("temporary"); }
+        else res.end(languageHtml("de", germanText.repeat(4), paths));
+      } else if (req.url.startsWith("/products/")) {
+        res.writeHead(503); res.end("persistent");
+      } else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const result = mode === "explicit"
+        ? await fetchExplicitPages(origin, [...paths.slice(0, 3).map(path => origin + path), origin, origin + "/de/", origin + paths[3]], seedOptions)
+        : await crawlSite(origin, 5);
+      assert.deepEqual(paths.map(path => hits.get(path)), [3, 3, 3, 1]);
+      assert.equal(hits.get("/"), 2, "homepage retains retries, even after the explicit subpage budget is exhausted");
+      if (mode === "explicit") assert.equal(hits.get("/de/"), 2, "language-variant homepage also keeps its full retries");
+      assert.deepEqual(result.pages.map(page => page.url), mode === "explicit" ? [origin, origin + "/de/"] : [`${origin}/`]);
+      assert.equal(result.reliability.failed, 4);
+      assert.equal(result.reliability.transientErrors, mode === "explicit" ? 5 : 4, "the single-attempt fourth failure is not a retried transient");
+      assert.equal(result.reliability.recoveredAfterRetry, mode === "explicit" ? 2 : 1);
+      const info = logs.filter(log => log.msg === "retry budget exhausted");
+      assert.deepEqual(info, [{ level: "info", msg: "retry budget exhausted",
+        obj: { host: "127.0.0.1", exhaustedUrls: 3 } }]);
+      const fourth = result.reliability.failures.find(failure => failure.url === origin + paths[3]);
+      assert.equal(fourth.retries, 0);
+      if (mode === "explicit") {
+        await fetchExplicitPages(origin, [origin + "/products/fresh"], seedOptions);
+        assert.equal(hits.get("/products/fresh"), 3, "the next crawl has a fresh retry budget");
+      }
+    });
+  });
+
+  for (const recovered of [true, false]) {
+    test(`${mode}: empty HTML 200 is retried and ${recovered ? "recovers" : "fails as empty_response without evaluation"}`, async () => {
+      let hits = 0;
+      await withServer((req, res) => {
+        if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/products/empty"]));
+        else if (req.url === "/products/empty") {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(++hits === 1 || !recovered ? " \n " : languageHtml("de", germanText.repeat(4)));
+        } else { res.writeHead(404); res.end(); }
+      }, async ({ origin }) => {
+        const result = mode === "explicit"
+          ? await fetchExplicitPages(origin, [origin + "/products/empty"], seedOptions)
+          : await crawlSite(origin, 2);
+        assert.equal(hits, recovered ? 2 : 3);
+        assert.equal(result.reliability.transientErrors, 1);
+        assert.equal(result.reliability.recoveredAfterRetry, recovered ? 1 : 0);
+        assert.equal(result.reliability.failed, recovered ? 0 : 1);
+        assert.equal(result.pages.some(page => page.url === origin + "/products/empty"), recovered);
+        if (!recovered) assert.deepEqual(result.reliability.failures, [{
+          url: origin + "/products/empty", reason: "empty_response", retries: 2, statusCode: 200,
+        }]);
+        const warning = logs.find(log => log.msg === "transient server errors");
+        assert.deepEqual(warning.obj.byStatus, { 200: 1 });
+      });
+    });
+  }
+}
+
+test("empty homepage and language-variant homepage retain full retries and correct failure status", async () => {
+  for (const variant of [false, true]) {
+    let hits = 0;
+    await withServer((req, res) => {
+      if (variant && req.url === "/") {
+        res.end(`<html lang="en"><head><link rel="alternate" hreflang="de" href="/de/"></head><body><main>${englishText.repeat(4)}</main></body></html>`);
+      } else if (req.url === (variant ? "/de/" : "/")) {
+        hits++; res.writeHead(200); res.end();
+      } else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const result = await crawlSite(origin, 1, { preferredLang: "de" });
+      assert.equal(hits, 3);
+      assert.equal(result.pages.length, variant ? 1 : 0, "failed variant preserves the original homepage");
+      if (!variant) assert.equal(result.homepageFailReason, "empty_response");
+      assert.equal(result.reliability.failures[0].reason, "empty_response");
+      assert.equal(result.reliability.failures[0].statusCode, 200);
+      assert.equal(result.reliability.transientErrors, 1);
+      assert.equal(result.reliability.recoveredAfterRetry, 0);
+      assert.ok(!logs.some(log => log.msg === "retry budget exhausted"), "homepages never consume subpage retry budget");
+    });
+  }
+});
+
+test("short non-HTML responses are not empty failures; the HTML threshold is 100 UTF-8 bytes after trimming", async () => {
+  await withServer((req, res) => {
+    if (req.url === "/json") { res.writeHead(200, { "Content-Type": "application/json" }); res.end("{}"); }
+    else if (req.url === "/plain") { res.writeHead(200, { "Content-Type": "text/plain" }); res.end("OK"); }
+    else if (req.url === "/bytes") { res.writeHead(200, { "Content-Type": "text/html" }); res.end(` \n${"ä".repeat(50)}\n `); }
+    else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    for (const path of ["/json", "/plain", "/bytes"]) {
+      const page = await fetchPage(origin + path);
+      assert.equal(page.statusCode, 200);
+      assert.equal(page.retries, 0);
+      assert.equal(requests.filter(req => req.url === path).length, 1);
+    }
+    assert.ok(!logs.some(log => log.msg === "Retrying page fetch"));
+  });
+});
+
+test("fully exhausted timeout retries count toward the subpage breaker", async () => {
+  const previous = globalThis.fetch;
+  const hits = new Map();
+  logs.length = 0;
+  globalThis.fetch = async url => {
+    const path = new URL(url).pathname;
+    hits.set(path, (hits.get(path) ?? 0) + 1);
+    if (path !== "/fourth") throw new Error("fetch-timeout");
+    return new Response("unavailable", { status: 502 });
+  };
+  try {
+    const origin = "https://fixture.test";
+    const result = await fetchExplicitPages(origin, ["/first", "/second", "/third", "/fourth"].map(path => origin + path), seedOptions);
+    assert.deepEqual([...hits.values()], [2, 2, 2, 1]);
+    assert.equal(result.reliability.transientErrors, 3);
+    assert.equal(logs.filter(log => log.msg === "retry budget exhausted").length, 1);
+  } finally { globalThis.fetch = previous; }
+});
+
+test("recovered retries and permanent errors do not consume the exhausted-subpage budget", async () => {
+  const hits = new Map();
+  await withServer((req, res) => {
+    const count = (hits.get(req.url) ?? 0) + 1;
+    hits.set(req.url, count);
+    if (req.url.startsWith("/recovered") && count > 1) res.end(languageHtml("de", germanText.repeat(4)));
+    else { res.writeHead(req.url === "/missing" ? 404 : 502); res.end("unavailable"); }
+  }, async ({ origin }) => {
+    await fetchExplicitPages(origin, ["/recovered1", "/recovered2", "/recovered3", "/missing", "/persistent"].map(path => origin + path), seedOptions);
+    assert.equal(hits.get("/persistent"), 3);
+    assert.ok(!logs.some(log => log.msg === "retry budget exhausted"));
+  });
+});
+
+for (const mode of ["explicit", "crawl"]) {
   test(`${mode}: 502 then 200 counts the recovered page once and records one retry`, async () => {
     let hits = 0;
     await withServer((req, res) => {
@@ -96,7 +233,7 @@ for (const mode of ["explicit", "crawl"]) {
       assert.equal(retries.length, 1);
       assert.equal(retries[0].obj.retries, 1);
       assert.equal(retries[0].obj.statusCode, 502);
-      assert.equal(retries[0].obj.delayMs, 2000);
+      assert.equal(retries[0].obj.delayMs, 1000);
       if (mode === "explicit") assert.equal(result.pages[0].retries, 1);
     });
   });
@@ -112,7 +249,7 @@ test("three 502 responses produce one final failure with status 502 and retries 
       transientErrors: 1, recoveredAfterRetry: 0,
       failures: [{ url: origin, reason: "http_error", statusCode: 502, retries: 2 }],
     });
-    assert.deepEqual(logs.filter(log => log.msg === "Retrying page fetch").map(log => log.obj.delayMs), [2000, 4000]);
+    assert.deepEqual(logs.filter(log => log.msg === "Retrying page fetch").map(log => log.obj.delayMs), [1000, 2000]);
   });
 });
 
@@ -665,7 +802,7 @@ async function technicalHandler(req, res) {
   } else if (req.url === "/") {
     res.end(homeHtml);
   } else if (subpaths.includes(req.url)) {
-    res.end(`<html><body><h1>Distinct ${req.url}</h1><p>${req.url} content</p></body></html>`);
+    res.end(`<html><body><h1>Distinct ${req.url}</h1><p>${req.url} content</p></body></html><!--${"fixture padding ".repeat(8)}-->`);
   } else {
     res.writeHead(404);
     res.end();
@@ -795,7 +932,9 @@ test("only competitor calls opt into both budgets, retaining five pages and a 45
 const germanText = "Wir bieten die Produkte und Leistungen für unsere Kunden an. Die Lösungen werden mit einer sicheren Technik auf den Bedarf unserer Kunden abgestimmt. ".repeat(2);
 const englishText = "The products and services are designed for you and your team with our technology. We offer the solutions that you have been looking for with more information about our company. ".repeat(2);
 function languageHtml(declared, text, links = []) {
-  return `<html${declared ? ` lang="${declared}"` : ""}><body><nav>${links.map(url => `<a href="${url}">${url}</a>`).join("")}</nav><main>${text}</main></body></html>`;
+  // Keep thin-page/language fixtures above the raw-response byte threshold
+  // without adding visible text or changing language/fingerprint evidence.
+  return `<html${declared ? ` lang="${declared}"` : ""}><body><nav>${links.map(url => `<a href="${url}">${url}</a>`).join("")}</nav><main>${text}</main></body></html><!--${"fixture padding ".repeat(8)}-->`;
 }
 const languagePaths = [
   "/products/one", "/products/two", "/products/three",
@@ -1342,7 +1481,7 @@ test("explicit mode drops non-content pages, keeps thin pages, preserves success
 
 test("automatic homepage remains exempt even when its response is image-only", async () => {
   await withServer((req, res) => {
-    if (req.url === "/") res.end('<body><img src="photo.jpg"></body>');
+    if (req.url === "/") res.end(`<body><img src="photo.jpg"></body><!--${"fixture padding ".repeat(8)}-->`);
     else { res.writeHead(404); res.end(); }
   }, async ({ origin }) => {
     const result = await crawlSite(origin, 5, { minTextChars: 50 });
@@ -1455,7 +1594,7 @@ for (const mode of ["main", "competitor"]) {
           assert.equal(retries.length, persistent ? 2 : 1);
           assert.ok(retries.every(log => log.level === "debug" && log.obj.statusCode === status));
           assert.deepEqual(retries.map(log => log.obj.retries), persistent ? [1, 2] : [1]);
-          assert.deepEqual(retries.map(log => log.obj.delayMs), persistent ? [2000, 4000] : [status === 429 ? 1000 : 2000]);
+          assert.deepEqual(retries.map(log => log.obj.delayMs), persistent ? [1000, 2000] : [1000]);
           assert.equal(result.reliability.transientErrors, 1);
           assert.equal(result.reliability.recoveredAfterRetry, persistent ? 0 : 1);
           const warnings = logs.filter(log => log.msg === "transient server errors");

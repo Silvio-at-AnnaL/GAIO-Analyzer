@@ -43,6 +43,21 @@ test("both technical breakdown renderers show recovered-after-retry counts witho
   assert.equal(technicalDetail({ key: "crawl", detail: { attempted: 4, succeeded: 4 } }, t),
     "4 von 4 Seitenabrufen erfolgreich");
 });
+test("zero recovered fetches use the original detail label in results and HTML export", () => {
+  const crawl = { key: "crawl", weight: 10, fraction: 1, points: 10,
+    detail: { attempted: 4, succeeded: 4, recoveredAfterRetry: 0 } };
+  const value = { ...breakdown, components: [crawl], evaluatedWeight: 10 };
+  const keys = [];
+  const translated = (key, vars) => { keys.push(key); return t(key, vars); };
+  const ui = renderToStaticMarkup(React.createElement(TechnicalScoreBreakdown, { breakdown: value, t: translated }));
+  const html = renderTechnicalBreakdownHtml(value, translated);
+  for (const text of [ui, html]) {
+    assert.ok(text.includes("4 von 4 Seitenabrufen erfolgreich"));
+    assert.ok(!text.includes("davon 0"));
+  }
+  assert.ok(keys.includes("technical.detail_crawl"));
+  assert.ok(!keys.includes("technical.detail_crawl_recovered"));
+});
 async function exportHtml(value, opts) {
   const previous = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false });

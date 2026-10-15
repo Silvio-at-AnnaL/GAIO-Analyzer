@@ -407,6 +407,7 @@ function renderCrawlReliabilityHtml(
     refused: T.reason_refused,
     timeout: T.reason_timeout,
     http_error: T.reason_http_error,
+    empty_response: t("results.crawl_reason_empty_response"),
     bot_protection: T.reason_bot_protection,
     parked_domain: T.reason_parked_domain,
     unknown: T.reason_unknown,

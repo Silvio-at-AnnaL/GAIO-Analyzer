@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
-import { createCrawlRetryTracker, type RetryMetadata } from "./crawl-retry-tracker";
+import { createCrawlRetryTracker, createCrawlRetryBudget, type CrawlRetryBudget, type RetryMetadata } from "./crawl-retry-tracker";
 import { LANG_PREFIX_RE, getPathLanguage as urlLang } from "./language-path";
 import { checkHttpsRedirect, type HttpsRedirectStatus } from "./https-redirect";
 export { checkHttpsRedirect } from "./https-redirect";
@@ -706,20 +706,46 @@ function addToQueue(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+function isEmptyHtmlResponse(response: FetchTimingResult): boolean {
+  return response.statusCode >= 200 && response.statusCode < 300 &&
+    (response.contentType === null || response.contentType === "text/html") &&
+    Buffer.byteLength(response.html.trim(), "utf8") < 100;
+}
+
+function isExplicitHomepage(pageUrl: string, inputUrl: string): boolean {
+  if (normalizeUrl(pageUrl) === normalizeUrl(inputUrl)) return true;
+  try {
+    const pathname = new URL(pageUrl).pathname;
+    return pathname === "/" || (pathname.split("/").filter(Boolean).length === 1 && urlLang(pathname) !== null);
+  } catch { return false; }
+}
+
 async function fetchPageWithRetry(
   url: string,
   timeoutMs = 15000,
   canFetchUrl?: (url: string) => boolean,
   deadline?: number,
   discoveryFetch = false,
+  retryBudget?: CrawlRetryBudget,
 ): Promise<FetchTimingResult & { retries: number } & RetryMetadata> {
   let retries = 0;
   let networkRetries = 0;
+  let retriesExhausted = false;
+  const maxRetries = discoveryFetch || !retryBudget || retryBudget.allowsRetries() ? 2 : 0;
   let firstTransientStatus: RetryMetadata["transientStatus"];
   const metadata = () => ({
     retries,
+    ...(retriesExhausted ? { retriesExhausted: true } : {}),
     ...(retries > 0 && firstTransientStatus !== undefined ? { transientStatus: firstTransientStatus } : {}),
   });
+  const finishResponse = (response: FetchTimingResult) => {
+    if (isEmptyHtmlResponse(response)) {
+      throw Object.assign(new Error("Empty HTML response"), {
+        code: "EMPTY_RESPONSE", statusCode: response.statusCode, ...metadata(),
+      });
+    }
+    return Object.assign(response, metadata());
+  };
   while (true) {
     let response: FetchTimingResult | undefined;
     let error: unknown;
@@ -731,11 +757,13 @@ async function fetchPageWithRetry(
         ? timeoutMs : Math.min(timeoutMs, deadline - Date.now());
       if (remaining <= 0) throw new Error("fetch-timeout");
       response = await fetchWithTiming(url, remaining, canFetchUrl);
-      if (retries === 0 && (response.statusCode >= 500 || response.statusCode === 429)) firstTransientStatus = response.statusCode;
-      if (retries >= 2 || ![429, 502, 503, 504].includes(response.statusCode)) {
-        return Object.assign(response, metadata());
+      const empty = isEmptyHtmlResponse(response);
+      if (retries === 0 && (response.statusCode >= 500 || response.statusCode === 429 || empty)) firstTransientStatus = response.statusCode;
+      if (retries >= maxRetries || (!empty && ![429, 502, 503, 504].includes(response.statusCode))) {
+        retriesExhausted = retries >= 2;
+        return finishResponse(response);
       }
-      delayMs = retries === 0 ? 2000 : 4000;
+      delayMs = retries === 0 ? 1000 : 2000;
       if (response.statusCode === 429) {
         const header = response.retryAfter?.trim();
         const seconds = header && /^\d+(?:\.\d+)?$/.test(header) ? Number(header) * 1000 : NaN;
@@ -747,19 +775,24 @@ async function fetchPageWithRetry(
       error = err;
       const reason = classifyFetchError(err);
       if (retries === 0 && reason === "timeout") firstTransientStatus = "timeout";
+      const retryable = ["timeout", "connection_reset", "unknown"].includes(reason);
+      const blocked = (err as { code?: string })?.code === "PAGE_FETCH_BLOCKED";
+      if (blocked || retries >= maxRetries || networkRetries >= 1 || !retryable) {
+        retriesExhausted = !blocked && (retries >= 2 || (networkRetries >= 1 && retryable));
+        Object.assign(err as object, metadata());
+        throw err;
+      }
       Object.assign(err as object, metadata());
-      if ((err as { code?: string })?.code === "PAGE_FETCH_BLOCKED" || retries >= 2 || networkRetries >= 1 ||
-        !["timeout", "connection_reset", "unknown"].includes(reason)) throw err;
       delayMs = 1000;
     }
     // Keep the last HTTP outcome when there is no budget for another attempt.
     if (deadline !== undefined && Date.now() + delayMs >= deadline) {
-      if (response) return Object.assign(response, metadata());
+      if (response) return finishResponse(response);
       throw error;
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (deadline !== undefined && Date.now() >= deadline) {
-      if (response) return Object.assign(response, metadata());
+      if (response) return finishResponse(response);
       throw error;
     }
     retries++;
@@ -772,16 +805,18 @@ async function fetchPageWithRetry(
 
 export async function fetchPage(
   url: string,
-  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason, retries: number) => void; onOutcome?: (metadata: RetryMetadata, succeeded: boolean) => void },
+  opts?: { deadline?: number; retryBudget?: CrawlRetryBudget; onFailure?: (reason: CrawlFailReason, retries: number, statusCode?: number) => void; onOutcome?: (metadata: RetryMetadata, succeeded: boolean) => void },
 ): Promise<CrawledPage | null> {
   try {
-    const data = await fetchPageWithRetry(url, 15000, undefined, opts?.deadline);
+    const data = await fetchPageWithRetry(url, 15000, undefined, opts?.deadline, false, opts?.retryBudget);
     opts?.onOutcome?.(data, data.statusCode < 400);
+    opts?.retryBudget?.record(data, data.statusCode < 400);
     return { url, ...data };
   } catch (err) {
     opts?.onOutcome?.(err as RetryMetadata, false);
+    opts?.retryBudget?.record(err as RetryMetadata, false);
     const reason = classifyFetchError(err);
-    opts?.onFailure?.(reason, (err as { retries?: number }).retries ?? 0);
+    opts?.onFailure?.(reason, (err as { retries?: number }).retries ?? 0, (err as { statusCode?: number }).statusCode);
     logger.warn({ url, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to fetch page");
     return null;
   }
@@ -1141,7 +1176,9 @@ export async function fetchExplicitPages(
   const completed = new Array<boolean>(explicitUrls.length).fill(false);
   const failureReasons = new Map<number, CrawlFailReason>();
   const failureRetries = new Map<number, number>();
+  const failureStatuses = new Map<number, number>();
   const retryTracker = createCrawlRetryTracker();
+  const retryBudget = createCrawlRetryBudget(inputUrl);
   const loopStart = Date.now();
   let done = 0;
 
@@ -1149,7 +1186,11 @@ export async function fetchExplicitPages(
     if (Date.now() - loopStart >= BATCH_DEADLINE_MS) break;
     results[index] = await fetchPage(pageUrl, {
       deadline: loopStart + BATCH_DEADLINE_MS,
-      onFailure: (reason, retries) => { failureReasons.set(index, reason); failureRetries.set(index, retries); },
+      retryBudget: isExplicitHomepage(pageUrl, inputUrl) ? undefined : retryBudget,
+      onFailure: (reason, retries, statusCode) => {
+        failureReasons.set(index, reason); failureRetries.set(index, retries);
+        if (statusCode !== undefined) failureStatuses.set(index, statusCode);
+      },
       onOutcome: retryTracker.record,
     });
     completed[index] = true;
@@ -1196,7 +1237,8 @@ export async function fetchExplicitPages(
           return [{ url: explicitUrls[index], reason: "timeout" as const }];
         }
         if (page === null) {
-          return [{ url: explicitUrls[index], reason: failureReasons.get(index) ?? "unknown", retries: failureRetries.get(index) ?? 0 }];
+          return [{ url: explicitUrls[index], reason: failureReasons.get(index) ?? "unknown", retries: failureRetries.get(index) ?? 0,
+            ...(failureStatuses.has(index) ? { statusCode: failureStatuses.get(index) } : {}) }];
         }
         if (page.statusCode >= 400) {
           return [{
@@ -1327,17 +1369,21 @@ export async function crawlSite(
   };
 
   const retryTracker = createCrawlRetryTracker();
+  const retryBudget = createCrawlRetryBudget(inputUrl);
   const finish = () => {
     retryTracker.finish(result.reliability);
     return result;
   };
   const fetchTrackedPage = async (...args: Parameters<typeof fetchPageWithRetry>) => {
     try {
-      const page = await fetchPageWithRetry(...args);
-      retryTracker.record(page, page.statusCode < 400 && detectBlockedContent(page.html, page.finalUrl) === null);
+      const page = await fetchPageWithRetry(args[0], args[1], args[2], args[3], args[4], retryBudget);
+      const succeeded = page.statusCode < 400 && detectBlockedContent(page.html, page.finalUrl) === null;
+      retryTracker.record(page, succeeded);
+      if (!args[4]) retryBudget.record(page, succeeded);
       return page;
     } catch (error) {
       retryTracker.record(error as RetryMetadata, false);
+      if (!args[4]) retryBudget.record(error as RetryMetadata, false);
       throw error;
     }
   };
@@ -1582,7 +1628,7 @@ export async function crawlSite(
             }
           } catch (err) {
             const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classifyFetchError(err);
-            recordFailure(variant.url, reason, undefined, (err as { retries?: number }).retries);
+            recordFailure(variant.url, reason, (err as { statusCode?: number }).statusCode, (err as { retries?: number }).retries);
             logger.warn({ ...context, reason, cause: fetchErrorCause(err), err }, "language variant unavailable");
           }
         }
@@ -1634,7 +1680,7 @@ export async function crawlSite(
   } catch (err) {
     const reason = classifyFetchError(err);
     canonicalHomepageUrl = canon(homepageUrl);
-    recordFailure(canonicalHomepageUrl, reason, undefined, (err as { retries?: number }).retries);
+    recordFailure(canonicalHomepageUrl, reason, (err as { statusCode?: number }).statusCode, (err as { retries?: number }).retries);
     result.homepageFailReason = reason;
     logger.warn({ url: canonicalHomepageUrl, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to fetch homepage");
     if (
@@ -1948,7 +1994,7 @@ export async function crawlSite(
         continue;
       }
       const reason = classifyFetchError(err);
-      recordFailure(url, reason, undefined, (err as { retries?: number }).retries);
+      recordFailure(url, reason, (err as { statusCode?: number }).statusCode, (err as { retries?: number }).retries);
       logger.warn({ url, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to crawl page");
     }
   }
