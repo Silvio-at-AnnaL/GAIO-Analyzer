@@ -128,7 +128,7 @@ test("failed export locally overrides global heading and paragraph styles", asyn
   const html = await htmlReport(report("crawl_bot_protection"));
   assert.ok(html.includes('<h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">'));
   assert.ok(html.includes('<p style="font-size:13px;color:#4a4d57;margin:0 0 14px;">'));
-  assert.ok(html.includes('<h3 style="margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">'));
+  assert.ok(html.includes('<h3 style="font-size:14px;margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">'));
 });
 
 test("raw failure objects and serialized objects never appear in legacy error rendering", async () => {
@@ -153,6 +153,6 @@ test("both results locations and legacy dashboard use the shared labelled render
   const shared = await readFile(new URL("../views/SharedAnalysisView.tsx", import.meta.url), "utf8");
   assert.match(shared, /srcDoc=\{data.htmlContent\}/);
   assert.ok(!shared.includes("JSON.stringify"));
-  assert.equal(Object.keys(labelDefaults).length, 1308);
+  assert.equal(Object.keys(labelDefaults).length, 1323);
   assert.ok(crawlFailureMessage(report("crawl_timed_out")).paragraphs.length > 1);
 });

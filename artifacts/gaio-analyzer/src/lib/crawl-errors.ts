@@ -34,6 +34,12 @@ export function crawlFailureMessage(report: FailureReport, t: TechnicalT = defau
   return { title: t(`errors.${code}_title`), paragraphs: t(`errors.${code}_body`).split(/\n+/).filter(Boolean) };
 }
 
+export function crawlFailureNextSteps(report: FailureReport, t: TechnicalT = defaultTechnicalT) {
+  const key = typeof report.errorCode === "string" && codes.has(report.errorCode)
+    ? `errors.${report.errorCode}_next_steps` : "errors.next_steps_default";
+  return { title: t("errors.next_steps_title"), steps: t(key).split(/\r?\n/).map(step => step.trim()).filter(Boolean) };
+}
+
 export function robotsHintText(report: FailureReport, t: TechnicalT = defaultTechnicalT) {
   if (report.errorCode !== "crawl_bot_protection" || !report.blockedRobotsHint ||
       typeof report.blockedRobotsHint !== "object") return null;
@@ -69,6 +75,6 @@ export function renderCrawlFailureHtml(report: FailureReport, t: TechnicalT = de
   if (!message) return "";
   const paragraphStyle = "font-size:13px;color:#4a4d57;margin:0 0 14px;";
   return `<section><h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">${escapeHtml(message.title)}</h2>${message.paragraphs.map(p => `<p style="${paragraphStyle}">${escapeHtml(p)}</p>`).join("")}
-    ${hint ? `<section><h3 style="margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">${escapeHtml(hint.title)}</h3><ul style="font-size:13px;color:#4a4d57;margin:0 0 14px;padding-left:18px;">${hint.crawlers.map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
+    ${hint ? `<section><h3 style="font-size:14px;margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">${escapeHtml(hint.title)}</h3><ul style="font-size:13px;color:#4a4d57;margin:0 0 14px;padding-left:18px;">${hint.crawlers.map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
       ${hint.fullyBlocked ? `<p style="${paragraphStyle}">${escapeHtml(hint.fullyBlocked)}</p>` : ""}<p style="${paragraphStyle}">${escapeHtml(hint.note)}</p></section>` : ""}</section>`;
 }

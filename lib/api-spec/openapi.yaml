@@ -264,6 +264,15 @@ components:
           type: boolean
         crawl_fail_reason:
           type: ["string", "null"]
+        droppedUnfit:
+          type: integer
+          minimum: 0
+        droppedUnreachable:
+          type: integer
+          minimum: 0
+        droppedDuplicateCompany:
+          type: integer
+          minimum: 0
       required:
         - personas
         - competitors

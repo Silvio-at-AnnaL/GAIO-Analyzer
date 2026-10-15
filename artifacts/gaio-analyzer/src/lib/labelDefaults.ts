@@ -7,6 +7,21 @@ export interface LabelDef {
 }
 
 export const labelDefaults: Record<string, LabelDef> = {
+  "errors.next_steps_title": { group: "errors", de: "Nächste Schritte" },
+  "errors.next_steps_default": { group: "errors", de: "Erreichbarkeit und Antwortzeiten der Website prüfen.\nFehlerhafte oder nicht erreichbare URLs bereinigen.\nNach der Behebung eine erneute GAIO-Analyse durchführen." },
+  "errors.crawl_bot_protection_next_steps": { group: "errors", de: "Abrufe mit der Kennung „GAIOAnalyzer/1.0“ beim Betreiber bzw. der IT freigeben lassen.\nEinstellungen des Schutzdienstes gezielt für KI-Crawler (z. B. GPTBot, ClaudeBot, PerplexityBot) prüfen.\nNach der Freigabe eine erneute GAIO-Analyse durchführen." },
+  "errors.crawl_parked_domain_next_steps": { group: "errors", de: "Die eingegebene Adresse prüfen: Unter dieser Domain wird nur eine Park- oder Verkaufsseite angezeigt.\nDie Domain angeben, unter der die Website tatsächlich betrieben wird.\nMit der richtigen Website-Adresse eine erneute GAIO-Analyse durchführen." },
+  "errors.crawl_timed_out_next_steps": { group: "errors", de: "Die GAIO-Analyse später erneut starten.\nBei dauerhaft langsamen Antworten die Antwortzeiten des Servers durch den Betreiber bzw. die IT prüfen lassen.\nNach der Behebung eine erneute GAIO-Analyse durchführen." },
+  "errors.crawl_no_selected_page_next_steps": { group: "errors", de: "Die Adressen der manuell ausgewählten Seiten prüfen.\nDie GAIO-Analyse später erneut starten.\nFalls die Seiten weiterhin nicht geladen werden, die Auswahl korrigieren und die GAIO-Analyse erneut durchführen." },
+  "errors.crawl_unreachable_next_steps": { group: "errors", de: "Die Website-Adresse prüfen und die Übersicht der fehlgeschlagenen Seiten beachten.\nDie Erreichbarkeit der Website und gegebenenfalls die Domain-Auflösung durch den Betreiber bzw. die IT prüfen lassen.\nNach der Behebung eine erneute GAIO-Analyse durchführen." },
+  "domain.competitor_dropped_intro_one": { group: "domain", de: "1 KI-Vorschlag wurde verworfen:" },
+  "domain.competitor_dropped_intro_other": { group: "domain", de: "{n} KI-Vorschläge wurden verworfen:" },
+  "domain.competitor_dropped_unfit_one": { group: "domain", de: "{n} fachlich unpassend" },
+  "domain.competitor_dropped_unfit_other": { group: "domain", de: "{n} fachlich unpassend" },
+  "domain.competitor_dropped_unreachable_one": { group: "domain", de: "{n} nicht erreichbar" },
+  "domain.competitor_dropped_unreachable_other": { group: "domain", de: "{n} nicht erreichbar" },
+  "domain.competitor_dropped_duplicate_one": { group: "domain", de: "{n} Dublette" },
+  "domain.competitor_dropped_duplicate_other": { group: "domain", de: "{n} Dubletten" },
   "errors.crawl_bot_protection_title": { group: "errors", de: "Die Website lässt keine automatisierten Abrufe zu" },
   "errors.crawl_bot_protection_body": { group: "errors", de: `Ein Schutzdienst des Website-Betreibers (z. B. Cloudflare) hat die Abrufe des GAIO-Analyzers blockiert. Das ist kein Fehler des Analyzers und sagt nichts darüber aus, ob die Website für Besucher erreichbar ist.
 

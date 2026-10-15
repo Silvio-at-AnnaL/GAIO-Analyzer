@@ -15,4 +15,10 @@ export interface PrefillResponse {
   crawl_failed: boolean;
   /** @nullable */
   crawl_fail_reason: string | null;
+  /** @minimum 0 */
+  droppedUnfit?: number;
+  /** @minimum 0 */
+  droppedUnreachable?: number;
+  /** @minimum 0 */
+  droppedDuplicateCompany?: number;
 }

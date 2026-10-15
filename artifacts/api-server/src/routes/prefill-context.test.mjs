@@ -54,7 +54,7 @@ const { outputFiles } = await build({
 });
 await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 
-async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false } = {}) {
+async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false, blockedCandidate = false } = {}) {
   Object.assign(state, {
     initial: { personas: "Technische Einkäufer", competitors: [aiCandidate], content_summary: summary, company_context: companyContext },
     source, searches: [], prompts: [], logs: [], searchCandidates,
@@ -67,6 +67,7 @@ async function run({ failed = false, summary = null, companyContext = null, sour
           ? "Gecrawlte Produkte für industrielle Anwendungen. ".repeat(50) + '<a href="/products">Produkte</a>'
           : "Gecrawlte Produkte für industrielle Anwendungen."}</main></body></html>`);
     }
+    if (blockedCandidate) return new Response("<html><title>Just a moment...</title><body>Cloudflare checking your browser</body></html>", {status:403});
     return new Response(`<html><body><main>${"Dieser Hersteller produziert passende industrielle Produkte und liefert an technische Einkäufer. ".repeat(3)}</main></body></html>`);
   };
   const response = { body: null, code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
@@ -145,4 +146,16 @@ test("the obsolete placeholder is absent from production route and source code",
     const source = await readFile(new URL(path, import.meta.url), "utf8");
     assert.ok(!source.includes("Kein auswertbarer Text der Unternehmenswebsite vorhanden."));
   }
+});
+
+test("judged search candidate exposes the clean relevance reason instead of the search snippet", async () => {
+  const data = await run({ summary: "Website-Zusammenfassung" });
+  assert.ok(data.competitors.every(c => c.reason === "Passender Hersteller"));
+});
+
+test("unjudged blocked candidate retains its original search reason", async () => {
+  const data = await run({ summary: "Website-Zusammenfassung", blockedCandidate: true });
+  assert.equal(data.competitors.length, 2);
+  assert.ok(data.competitors.every(c => c.reason === "Direkter Wettbewerber"));
+  assert.ok(state.prompts.every(prompt => !prompt.startsWith("RELEVANCE:")));
 });

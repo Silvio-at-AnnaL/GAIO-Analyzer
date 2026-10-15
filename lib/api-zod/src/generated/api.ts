@@ -67,6 +67,12 @@ export const PrefillQuestionnaireBody = zod.object({
   url: zod.string(),
 });
 
+export const prefillQuestionnaireResponseDroppedUnfitMin = 0;
+
+export const prefillQuestionnaireResponseDroppedUnreachableMin = 0;
+
+export const prefillQuestionnaireResponseDroppedDuplicateCompanyMin = 0;
+
 export const PrefillQuestionnaireResponse = zod.object({
   personas: zod.string(),
   competitors: zod.array(
@@ -79,6 +85,18 @@ export const PrefillQuestionnaireResponse = zod.object({
   content_summary: zod.string().nullable(),
   crawl_failed: zod.boolean(),
   crawl_fail_reason: zod.string().nullable(),
+  droppedUnfit: zod
+    .number()
+    .min(prefillQuestionnaireResponseDroppedUnfitMin)
+    .optional(),
+  droppedUnreachable: zod
+    .number()
+    .min(prefillQuestionnaireResponseDroppedUnreachableMin)
+    .optional(),
+  droppedDuplicateCompany: zod
+    .number()
+    .min(prefillQuestionnaireResponseDroppedDuplicateCompanyMin)
+    .optional(),
 });
 
 /**

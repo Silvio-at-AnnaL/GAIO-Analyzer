@@ -85,3 +85,21 @@ test("heading detection still requires ? and all visible answers require 40 char
   assert.deepEqual(extract(`<h3>Wie funktioniert es</h3><p>${answer(1)}</p>
     <h3>Was kostet das?</h3><p>Kurz.</p><details><summary>Was?</summary>Kurz.</details>`), []);
 });
+
+test("heading CTA followed by text and a form discards the entire pair rather than truncating it", () => {
+  const html = `<h3>Sie möchten eine persönliche telefonische Beratung?</h3>
+    <p>${answer(1)}</p><form><label>Name<input name="name"></label></form>`;
+  assert.deepEqual(extract(html), []);
+});
+
+test("heading answer rejects each form element, directly or nested, while normal accordions remain", () => {
+  for (const element of ["form", "input", "textarea", "select"]) {
+    for (const nested of [false, true]) {
+      const field = `<${element}></${element}>`;
+      assert.deepEqual(extract(`<header><h3>Wie funktioniert es?</h3></header>
+        <p>${answer(1)}</p>${nested ? `<div>${field}</div>` : field}`), []);
+    }
+  }
+  assert.deepEqual(extract(`<header><h3>Wie funktioniert es?</h3></header><div>${answer(1)}</div>`),
+    [{question:"Wie funktioniert es?",answer:answer(1)}]);
+});

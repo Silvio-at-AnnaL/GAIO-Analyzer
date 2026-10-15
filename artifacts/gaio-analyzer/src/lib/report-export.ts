@@ -1,4 +1,4 @@
-import { crawlFailureMessage, renderCrawlFailureHtml, readableAnalysisError } from "./crawl-errors";
+import { crawlFailureMessage, crawlFailureNextSteps, renderCrawlFailureHtml, readableAnalysisError } from "./crawl-errors";
 import { faqNoSchemaHint } from "./faq-hint";
 import { getHeadingSummary } from "./heading-summary";
 import { crawlReliabilityNotices } from "./crawl-reliability";
@@ -422,7 +422,7 @@ function renderCrawlReliabilityHtml(
     <p style="font-size:12px;color:${C.textMuted};margin-bottom:12px;">${T.intro}</p>
     <div class="detail-grid">
       <div class="detail-item"><div class="label">${T.attempted}</div><div class="val">${attempted}</div></div>
-      <div class="detail-item"><div class="label">${T.succeeded}</div><div class="val" style="color:#22c55e;">✓ ${succeeded}</div></div>
+      <div class="detail-item"><div class="label">${T.succeeded}</div><div class="val"${succeeded > 0 ? ' style="color:#22c55e;"' : ""}>${succeeded > 0 ? "✓ " : ""}${succeeded}</div></div>
       <div class="detail-item"><div class="label">${T.evaluated}</div><div class="val">${evaluated}</div></div>
       <div class="detail-item"><div class="label">${T.failed}</div><div class="val"${failed > 0 ? ' style="color:#ef4444;"' : ""}>${failed > 0 ? "✗ " : ""}${failed}</div></div>
     </div>`;
@@ -1694,6 +1694,7 @@ function buildFailedReportShell(
           : [],
       }
     : null;
+  const nextSteps = crawlFailureNextSteps(report, opts.t ?? defaultTechnicalT);
 
   const failedBodyContent = `  <header style="margin-bottom:28px;">
     ${logoHtml ? `<div style="margin-bottom:20px;">${logoHtml}</div>` : ""}
@@ -1708,8 +1709,6 @@ function buildFailedReportShell(
     <p style="font-size:13px;color:${C.textSec};"><strong>Was bedeutet das?</strong> KI-Systeme wie ChatGPT, Perplexity oder Google-KI greifen auf Websites über automatisierte Crawler zu — dieselbe Technik, die hier scheiterte. Eine Website, die für unseren Analyse-Crawler nicht zuverlässig erreichbar ist, ist mit hoher Wahrscheinlichkeit auch für KI-Crawler schlecht oder gar nicht sichtbar. Das ist ein unmittelbares Risiko für die Auffindbarkeit in KI-Antworten.</p>`}
   </div>
 
-  ${divider("Crawl-Zuverlässigkeit")}
-  <h2>Crawl-Zuverlässigkeit</h2>
   ${renderOwnRedirectInfoHtml(report)}${renderLanguageVariantInfoHtml(report)}${renderCrawlReliabilityHtml(
     limitedReliability,
     report.crawlSkipped as Record<string, unknown> | null | undefined,
@@ -1718,12 +1717,10 @@ function buildFailedReportShell(
     opts.t ?? defaultTechnicalT,
   )}
 
-  ${divider("Nächste Schritte")}
-  <h2>Nächste Schritte</h2>
+  ${divider(nextSteps.title)}
+  <h2>${esc(nextSteps.title)}</h2>
   <ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:${C.textSec};line-height:1.8;">
-    <li>Erreichbarkeit und Antwortzeiten der Website prüfen.</li>
-    <li>Fehlerhafte oder nicht erreichbare URLs bereinigen.</li>
-    <li>Nach der Behebung eine erneute GAIO-Analyse durchführen.</li>
+    ${nextSteps.steps.map(step => `<li>${esc(step)}</li>`).join("\n    ")}
   </ul>
 
   ${renderKontaktSection(logoHtml, opts.profileSrc ?? "", opts.contactData)}

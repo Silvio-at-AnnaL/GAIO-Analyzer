@@ -124,6 +124,8 @@ function visiblePairs(html: string, target: Map<string, FaqPair>): void {
     let sibling = anchor.next();
     const headings = "h1, h2, h3, h4, h5, h6";
     while (sibling.length && !sibling.is(headings) && !sibling.find(headings).length) {
+      const formElements = "form, input, textarea, select";
+      if (sibling.is(formElements) || sibling.find(formElements).length) return;
       answer.push(sibling.text());
       sibling = sibling.next();
     }

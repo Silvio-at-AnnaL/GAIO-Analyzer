@@ -623,7 +623,7 @@ export async function checkCompetitorRelevance(
       competitors: candidates.flatMap((candidate, index) => {
         if (!kept.has(index)) return [];
         const number = judgedIndexes.indexOf(index) + 1;
-        return [{ ...candidate, reason: candidate.reason || (number ? verdicts.get(number)?.reason : "") || "" }];
+        return [{ ...candidate, reason: (number ? verdicts.get(number)?.reason : "") || candidate.reason || "" }];
       }),
       droppedByRelevance: candidates.length - kept.size,
       droppedUnreachable,

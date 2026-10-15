@@ -10,6 +10,7 @@ import { useStartAnalysis, usePrefillQuestionnaire } from "@workspace/api-client
 import { competitorKey, normalizeUrl } from "@/lib/utils";
 import { useT } from "@/lib/LabelProvider";
 import { SetupImportLink } from "@/components/SetupImportLink";
+import { PrefillCompetitorDropNote } from "@/components/PrefillCompetitorDropNote";
 import { canFillPages, pageFillOptions } from "@/lib/page-fill";
 
 const MAX_VISIBLE_PAGES = 15;
@@ -753,13 +754,7 @@ export function DomainAnalyseView() {
                 {t("domain.competitor_limit_note")}
               </p>
             </div>
-            {prefillMutation.data && "droppedByRelevance" in prefillMutation.data &&
-              typeof prefillMutation.data.droppedByRelevance === "number" &&
-              prefillMutation.data.droppedByRelevance > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {t("domain.competitor_dropped_note", { n: prefillMutation.data.droppedByRelevance })}
-                </p>
-              )}
+            {prefillMutation.data && <PrefillCompetitorDropNote data={prefillMutation.data} />}
           </section>
 
           {/* Section: Zielgruppen */}
