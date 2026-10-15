@@ -193,6 +193,51 @@ export type TechnicalSeoResultMetaDescriptions = {
   missing: number;
 };
 
+export type TechnicalScoreComponentKey =
+  (typeof TechnicalScoreComponentKey)[keyof typeof TechnicalScoreComponentKey];
+
+export const TechnicalScoreComponentKey = {
+  https: "https",
+  crawl: "crawl",
+  robots: "robots",
+  sitemap: "sitemap",
+  indexable: "indexable",
+  canonical: "canonical",
+  title: "title",
+  description: "description",
+  viewport: "viewport",
+  alt: "alt",
+  response: "response",
+  hreflang: "hreflang",
+} as const;
+
+export type TechnicalScoreComponentDetail = {
+  [key: string]: number | string | boolean | null;
+};
+
+export interface TechnicalScoreComponent {
+  key: TechnicalScoreComponentKey;
+  weight: number;
+  /** @nullable */
+  fraction: number | null;
+  /** @nullable */
+  points: number | null;
+  detail: TechnicalScoreComponentDetail;
+}
+
+export type TechnicalScoreBreakdownParams = {
+  title_min: number;
+  title_max: number;
+  desc_min: number;
+  desc_max: number;
+};
+
+export interface TechnicalScoreBreakdown {
+  components: TechnicalScoreComponent[];
+  evaluatedWeight: number;
+  params: TechnicalScoreBreakdownParams;
+}
+
 export interface TechnicalSeoResult {
   score: number;
   responseTime: number;
@@ -207,6 +252,7 @@ export interface TechnicalSeoResult {
   imageAltCoverage: number;
   mobileViewport: boolean;
   httpsEnforced: boolean;
+  breakdown?: TechnicalScoreBreakdown;
 }
 
 export type SchemaOrgResultProductSchemaDetails = { [key: string]: boolean };

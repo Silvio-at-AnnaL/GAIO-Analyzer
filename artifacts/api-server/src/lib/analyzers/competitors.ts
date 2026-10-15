@@ -419,7 +419,8 @@ export async function analyzeCompetitors(
         };
       }
 
-      const technicalResult = analyzeTechnicalSeo(crawlResult, normalizedUrl);
+      const technicalParams = await getScoreParams("technical");
+      const technicalResult = analyzeTechnicalSeo(crawlResult, normalizedUrl, technicalParams);
       const schemaResult = analyzeSchemaOrg(crawlResult.pages, schemaParams as unknown as SchemaScoreParams);
       const headingResult = analyzeHeadings(crawlResult.pages, [], headingParams as unknown as HeadingScoreParams);
       const [faqResult, contentScore] = await Promise.all([

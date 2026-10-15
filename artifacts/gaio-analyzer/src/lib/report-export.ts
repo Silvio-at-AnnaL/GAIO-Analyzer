@@ -1,6 +1,8 @@
 import { getHeadingSummary } from "./heading-summary";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
 import { isLimitedCompetitor } from "./competitor-comparability";
+import type { TechnicalScoreBreakdown } from "@workspace/api-client-react";
+import { defaultTechnicalT, technicalDetail, technicalPoints, technicalTooltip, type TechnicalT } from "./technical-breakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -496,7 +498,21 @@ function renderBreakdownRow(label: string, valueText: string, ratio: number): st
         </div>`;
 }
 
-function renderDetailsSection(report: Record<string, unknown>): string {
+export function renderTechnicalBreakdownHtml(breakdown: TechnicalScoreBreakdown | undefined, t: TechnicalT = defaultTechnicalT): string {
+  if (!breakdown) return "";
+  return `<section aria-label="${esc(t("technical.breakdown_title"))}">
+    <h4>${esc(t("technical.breakdown_title"))}</h4>
+    <div style="overflow-x:auto"><table class="data-table"><thead><tr>
+    ${["component", "weight", "points", "detail"].map(k => `<th scope="col">${esc(t(`technical.${k}`))}</th>`).join("")}
+    </tr></thead><tbody>${breakdown.components.map(c => `<tr>
+      <th scope="row">${esc(t(`technical.${c.key}`))}</th><td>${technicalPoints(c.weight)}</td>
+      <td>${c.points === null ? esc(t("technical.not_evaluable")) : technicalPoints(c.points)}</td>
+      <td>${esc(technicalDetail(c, t))}</td></tr>`).join("")}</tbody></table></div>
+    <p>${esc(t("technical.evaluated_weight", { weight: breakdown.evaluatedWeight }))}</p>
+    </section>`;
+}
+
+function renderDetailsSection(report: Record<string, unknown>, t: TechnicalT): string {
   const autoAddedPages = readAnalysisInputs(report.inputs)?.autoAddedPages ?? [];
   const DT = {
     heading: "Analyse-Details",
@@ -531,6 +547,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
   }
 
   if (technicalSeo) {
+    const breakdown = technicalSeo.breakdown as TechnicalScoreBreakdown | undefined;
     const metaTitlePct   = Math.round(((technicalSeo.metaTitles as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
     const metaDescPct    = Math.round(((technicalSeo.metaDescriptions as Record<string, number>)?.present / Math.max(1, crawledCount)) * 100);
     const altPct         = (technicalSeo.imageAltCoverage as number) ?? 0;
@@ -544,8 +561,8 @@ function renderDetailsSection(report: Record<string, unknown>): string {
     <table class="data-table">
       <thead><tr><th>Metrik</th><th>Wert</th></tr></thead>
       <tbody>
-        <tr><td><span title="Seitentitel in Browser-Tab und Suchergebnissen. Optimal: 50–60 Zeichen.">Meta-Titel <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaTitlePct}%</td></tr>
-        <tr><td><span title="Kurzbeschreibung der Seite in Suchergebnissen. Optimal: 70–160 Zeichen.">Meta-Beschreibung <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaDescPct}%</td></tr>
+        <tr><td><span title="${esc(technicalTooltip("title", breakdown, t))}">${esc(t("technical.title"))} <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaTitlePct}%</td></tr>
+        <tr><td><span title="${esc(technicalTooltip("description", breakdown, t))}">${esc(t("technical.description"))} <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${metaDescPct}%</td></tr>
         <tr><td><span title="Bildbeschreibungen für Suchmaschinen und Screenreader. Sollte für alle inhaltlichen Bilder gesetzt sein.">Alt-Texte <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${altPct}%</td></tr>
         <tr><td><span title="Verschlüsselte Verbindung. Pflichtanforderung für SEO und Nutzervertrauen.">HTTPS <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${httpsPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
         <tr><td><span title="Mobile-Optimierung. Steuert die Darstellung auf Smartphones und Tablets.">Viewport <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></td><td>${viewportPct === 100 ? "✓ Ja" : "✗ Nein"}</td></tr>
@@ -561,6 +578,7 @@ function renderDetailsSection(report: Record<string, unknown>): string {
       <div class="detail-item"><div class="label"><span title="Canonical Tags verhindern Duplicate-Content-Probleme, indem sie Suchmaschinen die bevorzugte URL einer Seite mitteilen.">Canonical Tags <span style="color:#9ca3af;font-size:10px;cursor:help">ⓘ</span></span></div><div class="val">${(technicalSeo.canonicalTags as Record<string, unknown>)?.count ?? 0}</div></div>
     </div>`;
 
+    html += renderTechnicalBreakdownHtml(breakdown, t);
     html += renderTechnischeDateienHtml(technicalSeo);
   } else {
     html += renderUnavailableModuleSection(DT.technicalSeoHeading);
@@ -1705,7 +1723,7 @@ function buildFailedReportShell(
 
 export async function generateHtmlReport(
   report: Record<string, unknown>,
-  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string } = {}
+  opts: { profileSrc?: string; inputParams?: InputParams; contactData?: ContactData; footerText?: string; t?: TechnicalT } = {}
 ): Promise<string> {
   const inputParams = buildReportInputParams(report, {
     companyName: opts.inputParams?.companyName ?? "",
@@ -1775,7 +1793,7 @@ export async function generateHtmlReport(
   ];
 
   const bodyContent = [
-    renderDetailsSection(report),
+    renderDetailsSection(report, opts.t ?? defaultTechnicalT),
     renderLlmSection(report),
     renderCompetitorSection(report),
     renderRecommendationsSection(report),

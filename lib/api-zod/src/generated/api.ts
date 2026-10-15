@@ -132,6 +132,44 @@ export const GetAnalysisReportResponse = zod.object({
         imageAltCoverage: zod.number(),
         mobileViewport: zod.boolean(),
         httpsEnforced: zod.boolean(),
+        breakdown: zod
+          .object({
+            components: zod.array(
+              zod.object({
+                key: zod.enum([
+                  "https",
+                  "crawl",
+                  "robots",
+                  "sitemap",
+                  "indexable",
+                  "canonical",
+                  "title",
+                  "description",
+                  "viewport",
+                  "alt",
+                  "response",
+                  "hreflang",
+                ]),
+                weight: zod.number(),
+                fraction: zod.number().nullable(),
+                points: zod.number().nullable(),
+                detail: zod.record(
+                  zod.string(),
+                  zod
+                    .union([zod.number(), zod.string(), zod.boolean()])
+                    .nullable(),
+                ),
+              }),
+            ),
+            evaluatedWeight: zod.number(),
+            params: zod.object({
+              title_min: zod.number(),
+              title_max: zod.number(),
+              desc_min: zod.number(),
+              desc_max: zod.number(),
+            }),
+          })
+          .optional(),
       }),
       zod.null(),
     ])

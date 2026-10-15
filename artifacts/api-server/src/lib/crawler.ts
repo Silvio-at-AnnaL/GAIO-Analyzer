@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
+import { LANG_PREFIX_RE } from "./language-path";
+import { checkHttpsRedirect, type HttpsRedirectStatus } from "./https-redirect";
+export { checkHttpsRedirect } from "./https-redirect";
 import type { CrawlExclusionMatcher } from "./crawl-exclusions.js";
 import {
   classifyFetchError,
@@ -74,6 +77,7 @@ export interface CrawlResult {
   robotsTxtStatus?: TechnicalFileStatus;
   sitemapStatus?: TechnicalFileStatus;
   llmsTxtStatus?: TechnicalFileStatus;
+  httpsRedirect?: HttpsRedirectStatus;
   hreflangVariants: HreflangVariant[];
   reliability: CrawlReliability;
 }
@@ -82,7 +86,7 @@ export type SiteTechFiles = Pick<CrawlResult,
   "robotsTxt" | "robotsTxtExists" | "robotsTxtStatus" | "llmsTxt" | "llmsTxtExists" |
   "llmsTxtStatus" | "sitemapXml" | "sitemapXmlExists" | "htmlSitemapHtml" |
   "htmlSitemapUrl" | "sitemapType" | "sitemapStatus" | "sitemapResolution" |
-  "homepageRedirect">;
+  "homepageRedirect" | "httpsRedirect">;
 
 export type TechnicalFileStatus = "found" | "missing" | "error";
 
@@ -117,7 +121,6 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
 const EXTRA_FETCH_ALLOWANCE = 12;
 
 // 2-3 letter language codes with optional region, e.g. "de", "en", "zh-CN", "pt-BR"
-const LANG_PREFIX_RE = /^\/([a-z]{2,3}(?:-[a-z]{2,4})?)(?:\/|$)/i;
 
 function scoreUrl(urlStr: string, matcher: CrawlExclusionMatcher): number {
   if (matcher.isExcluded(urlStr)) return 0;
@@ -1011,6 +1014,7 @@ export async function fetchSiteTechFiles(
 ): Promise<SiteTechFiles> {
   const base = new URL(inputUrl);
   const result: SiteTechFiles = {
+    httpsRedirect: "unknown",
     homepageRedirect: null,
     robotsTxt: null,
     robotsTxtExists: false,
@@ -1027,6 +1031,7 @@ export async function fetchSiteTechFiles(
     sitemapStatus: "missing",
   };
 
+  const httpsCheck = checkHttpsRedirect(inputUrl);
   const robotsResult = await fetchTechFile(`${base.protocol}//${base.hostname}/robots.txt`, 10000);
   result.robotsTxtStatus = robotsResult.status;
   const robotsResp = robotsResult.resp;
@@ -1070,7 +1075,7 @@ export async function fetchSiteTechFiles(
   }
 
   const sitemap = await discoverSitemap(canonicalOrigin, result.robotsTxt, homepageHtml, canonicalHomepageUrl, homepageHtml ? detectPageLanguage(homepageHtml) : null);
-  return { ...result, ...sitemap };
+  return { ...result, ...sitemap, httpsRedirect: await httpsCheck };
 }
 
 export async function fetchExplicitPages(
@@ -1110,6 +1115,7 @@ export async function fetchExplicitPages(
   });
   const result: CrawlResult = {
     pages,
+    httpsRedirect: "unknown",
     siteLanguage: determineSiteLanguage(pages),
     languageVariant: null,
     skipped,
@@ -1205,6 +1211,7 @@ export async function crawlSite(
 
   const result: CrawlResult = {
     pages: [],
+    httpsRedirect: "unknown",
     siteLanguage: { lang: null, source: null, declared: null, mismatch: false },
     languageVariant: null,
     skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
@@ -1263,6 +1270,9 @@ export async function crawlSite(
       });
     }
   }
+
+  // Run alongside the existing tech phase without changing page selection or its budgets.
+  const httpsCheck = checkHttpsRedirect(inputUrl);
 
   // ── robots.txt ────────────────────────────────────────────────────────────
   {
@@ -1527,6 +1537,7 @@ export async function crawlSite(
         "Homepage could not be analysed",
       );
       logSiteLanguage();
+      result.httpsRedirect = await httpsCheck;
       return result;
     }
 
@@ -1548,6 +1559,7 @@ export async function crawlSite(
       reason === "tls_other"
     ) {
       logSiteLanguage();
+      result.httpsRedirect = await httpsCheck;
       return result;
     }
   }
@@ -1924,5 +1936,6 @@ export async function crawlSite(
   );
 
   logSiteLanguage();
+  result.httpsRedirect = await httpsCheck;
   return result;
 }

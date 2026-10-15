@@ -45,6 +45,16 @@ export function generateRuleBasedRecommendations(moduleResults: Record<string, u
 
   // ── KRITISCH ────────────────────────────────────────────────────────────────
 
+  const technicalBreakdown = techSeo.breakdown as { components?: Array<{ key: string; detail: { status?: string } }> } | undefined;
+  if (technicalBreakdown?.components?.some(c => c.key === "https" && c.detail.status === "not_enforced")) {
+    recs.push({
+      tier: "critical",
+      finding: "Die Website leitet http nicht auf https um",
+      whyItMatters: "Ohne HTTPS-Weiterleitung können Besucher unverschlüsselte Seiten aufrufen; Suchmaschinen sehen zudem getrennte HTTP- und HTTPS-Versionen.",
+      fixInstruction: "Richten Sie serverseitig eine permanente Weiterleitung (301 oder 308) aller HTTP-URLs auf die entsprechende HTTPS-URL ein und testen Sie die Weiterleitung.",
+    });
+  }
+
   if (robotsMissing) {
     recs.push({
       tier: "critical",

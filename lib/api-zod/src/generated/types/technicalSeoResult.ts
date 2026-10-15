@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TechnicalScoreBreakdown } from "./technicalScoreBreakdown";
 import type { TechnicalSeoResultCanonicalTags } from "./technicalSeoResultCanonicalTags";
 import type { TechnicalSeoResultHreflang } from "./technicalSeoResultHreflang";
 import type { TechnicalSeoResultHttpStatusCodes } from "./technicalSeoResultHttpStatusCodes";
@@ -25,4 +26,5 @@ export interface TechnicalSeoResult {
   imageAltCoverage: number;
   mobileViewport: boolean;
   httpsEnforced: boolean;
+  breakdown?: TechnicalScoreBreakdown;
 }

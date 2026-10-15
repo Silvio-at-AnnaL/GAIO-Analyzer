@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import type { TechnicalScoreBreakdown as TechnicalBreakdown } from "@workspace/api-client-react";
+import { TechnicalScoreBreakdown } from "@/components/TechnicalScoreBreakdown";
+import { technicalTooltip } from "@/lib/technical-breakdown";
 import { useDeliveryMode } from "@/store/deliveryModeStore";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { useAppStore } from "@/store/appStore";
@@ -130,6 +133,7 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
     const inputParams = buildReportInputParams(report, domainForm);
 
     return generateHtmlReport(report as unknown as Record<string, unknown>, {
+      t,
       profileSrc: contactData.photoSrc,
       inputParams,
       contactData,
@@ -911,6 +915,7 @@ function ReportView({ analysisId }: { analysisId: string }) {
         const htmlInputParams = buildReportInputParams(report, domainForm);
 
         const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
+          t,
           profileSrc:  asContactData.photoSrc,
           inputParams: htmlInputParams,
           contactData: asContactData,
@@ -1937,6 +1942,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
       const htmlInputParams = buildReportInputParams(report, domainForm);
 
       const htmlContent = await generateHtmlReport(report as unknown as Record<string, unknown>, {
+        t,
         profileSrc:  htContactData.photoSrc,
         inputParams: htmlInputParams,
         contactData: htContactData,
@@ -2416,6 +2422,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </div>
                   ))}
                 </div>
+                <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                  <span title={technicalTooltip("title", technicalSeo.breakdown as TechnicalBreakdown | undefined, t)}>{t("technical.title")} ⓘ</span>
+                  <span title={technicalTooltip("description", technicalSeo.breakdown as TechnicalBreakdown | undefined, t)}>{t("technical.description")} ⓘ</span>
+                </div>
+                <TechnicalScoreBreakdown breakdown={technicalSeo.breakdown as TechnicalBreakdown | undefined} t={t} />
               </CardContent>
             </Card>
           )}

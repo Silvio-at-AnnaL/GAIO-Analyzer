@@ -1,6 +1,9 @@
 import * as cheerio from "cheerio";
 import type { CrawlResult, SitemapResolution } from "../crawler";
 import { getTitleFromDom } from "../html-title";
+import { LANG_PREFIX_RE } from "../language-path";
+import { logger } from "../logger";
+import { DEFAULT_TECHNICAL_PARAMS, type TechnicalScoreParams, type TechnicalBreakdown } from "./technical-params";
 
 // ─── LLM crawler list ─────────────────────────────────────────────────────────
 
@@ -69,6 +72,7 @@ export interface LlmsTxtAnalysis {
 
 export interface TechnicalSeoResult {
   score: number;
+  breakdown: TechnicalBreakdown;
   responseTime: number;
   ttfb: number;
   httpStatusCodes: Record<string, number>;
@@ -372,9 +376,20 @@ function analyzeLlmsTxt(content: string): LlmsTxtAnalysis {
 
 // ─── Main analyser ────────────────────────────────────────────────────────────
 
-export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string): TechnicalSeoResult {
+export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string, overrides: Partial<TechnicalScoreParams> = {}): TechnicalSeoResult {
+  const params = { ...DEFAULT_TECHNICAL_PARAMS, ...overrides };
   const pages = crawlResult.pages;
   const totalPages = pages.length;
+  const uploaded = inputUrl === "uploaded-page" || pages.some(p => p.url === "uploaded-page");
+  const host = (url: string) => new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  const siteHost = uploaded ? null : host(inputUrl);
+  const normalise = (text: string) => text.trim().replace(/\s+/g, " ");
+  const titles: string[] = [];
+  const descriptions: string[] = [];
+  let indexablePages = 0;
+  let sameSiteCanonicals = 0;
+  let viewportPages = 0;
+  let hasLanguageVersions = false;
 
   const avgResponseTime =
     totalPages > 0 ? pages.reduce((sum, p) => sum + p.responseTime, 0) / totalPages : 0;
@@ -407,31 +422,52 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
 
   for (const page of pages) {
     const $ = cheerio.load(page.html);
-    if ($('link[rel="canonical"]').length > 0) canonicalCount++;
-    const hreflangs = $('link[rel="alternate"][hreflang]');
+    const canonical = $('link[rel~="canonical" i]');
+    if (canonical.length > 0) canonicalCount++;
+    if (canonical.toArray().some(el => {
+      try {
+        const href = $(el).attr("href")?.trim();
+        return !!href && host(new URL(href, page.finalUrl || page.url).href) === siteHost;
+      } catch { return false; }
+    })) sameSiteCanonicals++;
+    const noindex = $('meta[name="robots" i], meta[name="googlebot" i]').toArray()
+      .some(el => /noindex/i.test($(el).attr("content") ?? ""));
+    if (!noindex) indexablePages++;
+    const hreflangs = $('link[rel~="alternate" i][hreflang]');
     if (hreflangs.length > 0) {
       hreflangPresent = true;
+      hasLanguageVersions = true;
       hreflangPageCount++;
       hreflangs.each((_, el) => {
         const lang = $(el).attr("hreflang");
         if (lang) allLangs.add(lang);
       });
     }
-    const title = getTitleFromDom($);
+    $("a[href]").each((_, el) => {
+      try {
+        const target = new URL($(el).attr("href")!, page.finalUrl || page.url);
+        const lang = target.pathname.match(LANG_PREFIX_RE)?.[1].toLowerCase().split("-")[0];
+        const currentLang = crawlResult.siteLanguage?.lang?.toLowerCase().split("-")[0];
+        if (host(target.href) === siteHost && lang && currentLang && lang !== currentLang) hasLanguageVersions = true;
+      } catch { /* Invalid or uploaded-page relative URL. */ }
+    });
+    const title = normalise(getTitleFromDom($) ?? "");
+    titles.push(title);
     if (title) {
       titlePresent++;
       totalTitleLength += title.length;
-      if (title.length < 30) titleTooShort++;
-      if (title.length > 60) titleTooLong++;
+      if (title.length < params.title_min) titleTooShort++;
+      if (title.length > params.title_max) titleTooLong++;
     } else {
       titleMissing++;
     }
-    const desc = $('meta[name="description"]').attr("content")?.trim() || "";
+    const desc = normalise($('meta[name="description" i]').attr("content") ?? "");
+    descriptions.push(desc);
     if (desc) {
       descPresent++;
       totalDescLength += desc.length;
-      if (desc.length < 50) descTooShort++;
-      if (desc.length > 160) descTooLong++;
+      if (desc.length < params.desc_min) descTooShort++;
+      if (desc.length > params.desc_max) descTooLong++;
     } else {
       descMissing++;
     }
@@ -439,35 +475,68 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
       totalImages++;
       if ($(el).attr("alt")?.trim()) imagesWithAlt++;
     });
-    if ($('meta[name="viewport"]').length > 0) hasMobileViewport = true;
+    if ($('meta[name="viewport" i]').length > 0) {
+      hasMobileViewport = true;
+      viewportPages++;
+    }
   }
 
-  const httpsEnforced = inputUrl.startsWith("https://");
+  const httpsRedirect = uploaded ? "unknown" : crawlResult.httpsRedirect ?? "unknown";
+  if (uploaded) logger.warn({ reason: "uploaded-page" }, "https redirect check failed");
+  const httpsEnforced = httpsRedirect === "enforced";
   const imageAltCoverage = totalImages > 0 ? (imagesWithAlt / totalImages) * 100 : 100;
   const hreflangConsistent = hreflangPresent
     ? hreflangPageCount === totalPages || hreflangPageCount >= totalPages * 0.8
     : true;
 
-  let score = 0;
-  if (crawlResult.robotsTxtExists) score += 8;
-  if (crawlResult.sitemapXmlExists) score += 8;
-  if (canonicalCount > 0) score += 10;
-  if (httpsEnforced) score += 10;
-  if (hasMobileViewport) score += 8;
-  const titleRatio = totalPages > 0 ? titlePresent / totalPages : 0;
-  score += Math.round(titleRatio * 15);
-  const descRatio = totalPages > 0 ? descPresent / totalPages : 0;
-  score += Math.round(descRatio * 12);
-  score += Math.round((imageAltCoverage / 100) * 10);
-  const goodStatus = (httpStatusCodes["200"] || 0) / Math.max(totalPages, 1);
-  score += Math.round(goodStatus * 10);
-  if (avgResponseTime < 1000) score += 5;
-  else if (avgResponseTime < 2000) score += 3;
-  if (hreflangPresent && hreflangConsistent) score += 4;
-  score = Math.min(100, Math.max(0, score));
-
   const crawledPageUrls = pages.map((p) => p.url);
   const sitemapType = crawlResult.sitemapType ?? (crawlResult.sitemapXmlExists ? "xml" : "none");
+  const robotsStatus = crawlResult.robotsTxtStatus ?? (crawlResult.robotsTxtExists ? "found" : "missing");
+  const sitemapStatus = crawlResult.sitemapStatus ?? (sitemapType !== "none" ? "found" : "missing");
+  const share = (count: number) => totalPages > 0 ? count / totalPages : 0;
+  const textComponent = (values: string[], min: number, max: number) => {
+    const counts = new Map<string, number>();
+    for (const value of values) if (value) counts.set(value.toLowerCase(), (counts.get(value.toLowerCase()) ?? 0) + 1);
+    let duplicate = 0, outOfRange = 0, missing = 0;
+    const sum = values.reduce((sum, value) => {
+      if (!value) { missing++; return sum; }
+      let fraction = 1;
+      if (value.length < min || value.length > max) { outOfRange++; fraction *= params.length_factor; }
+      if (counts.get(value.toLowerCase())! >= 2) { duplicate++; fraction *= params.duplicate_factor; }
+      return sum + fraction;
+    }, 0);
+    return { fraction: share(sum), detail: { missing, outOfRange, duplicate, pages: totalPages } };
+  };
+  const titleComponent = textComponent(titles, params.title_min, params.title_max);
+  const descComponent = textComponent(descriptions, params.desc_min, params.desc_max);
+  const reliability = crawlResult.reliability;
+  const components: TechnicalBreakdown["components"] = [];
+  const add = (key: TechnicalBreakdown["components"][number]["key"], fraction: number | null,
+    detail: TechnicalBreakdown["components"][number]["detail"]) => {
+    const weight = params[`weight_${key}`];
+    components.push({ key, weight, fraction, points: fraction === null ? null : weight * fraction, detail });
+  };
+  add("https", httpsRedirect === "unknown" ? null : httpsEnforced ? 1 : 0, { status: httpsRedirect, uploaded });
+  add("crawl", uploaded || !reliability?.attempted ? null : reliability.succeeded / reliability.attempted,
+    { succeeded: reliability?.succeeded ?? 0, attempted: reliability?.attempted ?? 0, uploaded });
+  add("robots", robotsStatus === "error" ? null : robotsStatus === "found" ? 1 : 0, { status: robotsStatus });
+  add("sitemap", sitemapStatus === "error" ? null : sitemapStatus === "missing" ? 0
+    : sitemapType === "html" ? params.html_sitemap_credit : sitemapType === "xml" || sitemapType === "xml_index" ? 1 : 0,
+    { status: sitemapStatus, type: sitemapType });
+  add("indexable", share(indexablePages), { noindex: totalPages - indexablePages, pages: totalPages });
+  add("canonical", share(sameSiteCanonicals), { valid: sameSiteCanonicals, pages: totalPages });
+  add("title", titleComponent.fraction, titleComponent.detail);
+  add("description", descComponent.fraction, descComponent.detail);
+  add("viewport", share(viewportPages), { present: viewportPages, pages: totalPages });
+  add("alt", totalImages > 0 ? imagesWithAlt / totalImages : 1, { present: imagesWithAlt, images: totalImages });
+  add("response", avgResponseTime < params.response_good_ms ? 1 : avgResponseTime < params.response_ok_ms ? params.response_ok_credit : 0,
+    { avgMs: Math.round(avgResponseTime), goodMs: params.response_good_ms, okMs: params.response_ok_ms });
+  add("hreflang", hasLanguageVersions ? hreflangPageCount >= totalPages * 0.8 ? 1 : share(hreflangPageCount) : null,
+    { versions: hasLanguageVersions, present: hreflangPageCount, pages: totalPages });
+  const evaluatedWeight = components.reduce((sum, c) => sum + (c.fraction === null ? 0 : c.weight), 0);
+  if (evaluatedWeight === 0) logger.warn({ inputUrl }, "technical SEO has no evaluated weights");
+  const score = evaluatedWeight === 0 ? 0 : Math.round(100 * components.reduce((sum, c) => sum + (c.points ?? 0), 0) / evaluatedWeight);
+  const { title_min, title_max, desc_min, desc_max } = params;
 
   const robotsTxtAnalysis = crawlResult.robotsTxt ? analyzeRobotsTxt(crawlResult.robotsTxt) : null;
 
@@ -505,14 +574,15 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string):
 
   return {
     score,
+    breakdown: { components, evaluatedWeight, params: { title_min, title_max, desc_min, desc_max } },
     responseTime: Math.round(avgResponseTime),
     ttfb: Math.round(avgTtfb),
     httpStatusCodes,
     robotsTxt: crawlResult.robotsTxtExists,
     sitemapXml: crawlResult.sitemapXmlExists,
     llmsTxt: crawlResult.llmsTxtExists,
-    robotsTxtStatus: crawlResult.robotsTxtStatus ?? "missing",
-    sitemapStatus: crawlResult.sitemapStatus ?? "missing",
+    robotsTxtStatus: robotsStatus,
+    sitemapStatus,
     llmsTxtStatus: crawlResult.llmsTxtStatus ?? "missing",
     sitemapType,
     canonicalTags: { present: canonicalCount > 0, count: canonicalCount },

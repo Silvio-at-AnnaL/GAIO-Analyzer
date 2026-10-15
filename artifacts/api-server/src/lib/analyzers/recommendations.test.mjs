@@ -29,6 +29,21 @@ const { generateRuleBasedRecommendations, filterImplausibleRecommendations } = a
 );
 const language = { lang: "de", source: "content", declared: "en", mismatch: true };
 
+test("only proven non-enforcement adds one critical HTTPS rule", () => {
+  for (const status of ["not_enforced", "enforced", "unknown", undefined]) {
+    const recs = generateRuleBasedRecommendations({ technicalSeo: {
+      robotsTxtStatus: "found", llmsTxtStatus: "found", sitemapStatus: "found",
+      breakdown: { components: [{ key: "https", detail: { status } }] },
+    } }).filter(r => r.finding === "Die Website leitet http nicht auf https um");
+    assert.equal(recs.length, status === "not_enforced" ? 1 : 0);
+    if (recs.length) {
+      assert.equal(recs[0].tier, "critical");
+      assert.ok(recs[0].whyItMatters);
+      assert.match(recs[0].fixInstruction, /301 oder 308/);
+    }
+  }
+});
+
 test("mismatch adds the exact high-leverage rule, even without a technical SEO result", () => {
   assert.deepEqual(generateRuleBasedRecommendations({ siteLanguage: language }), [{
     tier: "high_leverage",

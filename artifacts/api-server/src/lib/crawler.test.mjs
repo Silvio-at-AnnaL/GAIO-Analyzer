@@ -14,6 +14,12 @@ const { outputFiles } = await build({
   plugins: [{
     name: "crawler-test-logger",
     setup(builder) {
+      // Page-selection/retry fixtures count homepage hits. The independent HTTP
+      // probe is exercised against real local HTTP/TLS servers in https-redirect.test.mjs.
+      builder.onResolve({ filter: /^\.\/https-redirect$/ }, () => ({ path: "https-probe", namespace: "https-probe" }));
+      builder.onLoad({ filter: /.*/, namespace: "https-probe" }, () => ({
+        contents: `export const checkHttpsRedirect = async () => "unknown";`,
+      }));
       builder.onResolve({ filter: /^cheerio$/ }, () => ({ path: import.meta.resolve("cheerio"), external: true }));
       builder.onResolve({ filter: /^\.\/logger$/ }, () => ({ path: "logger", namespace: "crawler-test" }));
       builder.onLoad({ filter: /.*/, namespace: "crawler-test" }, () => ({

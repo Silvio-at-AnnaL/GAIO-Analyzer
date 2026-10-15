@@ -160,5 +160,5 @@ test("result share control is hidden without feature permission and shown for ex
 test("admin-only hint has the requested German default and total label count is updated", async () => {
   const { labelDefaults } = await load({ entryPoints: [new URL("./labelDefaults.ts", import.meta.url).pathname] });
   assert.deepEqual(labelDefaults["perm.admin_only_hint"], { group: "admin", de: "Nur für Administratoren" });
-  assert.equal(Object.keys(labelDefaults).length, 1195);
+  assert.equal(Object.keys(labelDefaults).length, 1279);
 });

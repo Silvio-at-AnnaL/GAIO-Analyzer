@@ -458,6 +458,7 @@ export async function runAnalysis(
       ];
       crawlResult = {
         pages,
+        httpsRedirect: "unknown",
         siteLanguage: determineSiteLanguage(pages),
         languageVariant: null,
         skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] },
@@ -491,7 +492,8 @@ export async function runAnalysis(
       state.progress = 10;
       save();
       await new Promise((r) => setTimeout(r, 1000));
-      state.technicalSeo = analyzeTechnicalSeo(crawlResult, url || "uploaded-page");
+      const technicalParams = await getScoreParams("technical");
+      state.technicalSeo = analyzeTechnicalSeo(crawlResult, url || "uploaded-page", technicalParams);
       await new Promise((r) => setTimeout(r, 300));
     } catch (err) {
       logger.error({ err }, "Technical SEO analysis failed");

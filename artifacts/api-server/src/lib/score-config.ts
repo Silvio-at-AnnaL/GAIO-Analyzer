@@ -1,4 +1,5 @@
 import { getSetting, setSetting } from "./admin-db.js";
+import { DEFAULT_TECHNICAL_PARAMS } from "./analyzers/technical-params.js";
 
 // Each tunable score registers a profile: a flat set of numeric params with defaults.
 export interface ScoreParamDef {
@@ -19,6 +20,22 @@ export interface ScoreProfile {
 }
 
 export const SCORE_PROFILES: ScoreProfile[] = [
+  {
+    slug: "technical",
+    label: "score.profile_technical",
+    description: "score.profile_technical_desc",
+    params: Object.entries(DEFAULT_TECHNICAL_PARAMS).map(([key, value]) => {
+      const ranges: Record<string, [number, number, number]> = {
+        title_min: [5, 40, 1], title_max: [40, 120, 1],
+        desc_min: [20, 120, 1], desc_max: [120, 300, 1],
+        response_good_ms: [200, 5000, 100], response_ok_ms: [500, 8000, 100],
+      };
+      const [min, max, step] = key.startsWith("weight_") ? [0, 40, 1]
+        : ranges[key] ?? [0, 1, 0.05];
+      return { key, label: `score.param_${key}_label`, default: value, min, max, step,
+        help: `score.param_${key}_help` };
+    }),
+  },
   {
     slug: "faq",
     label: "score.profile_faq",
