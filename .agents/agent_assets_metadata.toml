@@ -84,3 +84,31 @@ mtime_ms = 1792074416297
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/53ed497c-291a-42eb-8a67-55759310eea8/12f48297-79b5-4de2-b8d6-ea91a88949f9"
 storage_version_token = "1792074416946770"
 content_type = "text/plain"
+
+[[outputs]]
+id = "JbKg0fIt3I8jwtNW1uzCX"
+uri = "file://attached_assets/Fehlerbericht-Korrekturen-Pruefbericht.txt"
+type = "text"
+title = "Prüfbericht mit vollständigen HTML-Ausschnitten"
+description = "Alle sieben Korrekturen, Standardformulierungen, Tests, Crawl-Zahlen und die drei angeforderten HTML-Blöcke."
+logical_id = "df8696db-3324-4d30-aa63-3071cf24ba58"
+content_hash = "sha256:65963ef474a65a431e2e56281f26469cc2c4e48c372f440262fa059cc1ce7c10"
+size = 9394
+mtime_ms = 1792075786068
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/df8696db-3324-4d30-aa63-3071cf24ba58/45e74975-2604-452e-a8ca-641de3a97250"
+storage_version_token = "1792075786950305"
+content_type = "text/plain"
+
+[[outputs]]
+id = "INchmcnNrQ7sAzJFhr9WX"
+uri = "file://attached_assets/Hammelmann-Fehlerbericht.html"
+type = "html"
+title = "Gerenderter Hammelmann-Fehlerbericht"
+description = "Vollständiger HTML-Bericht aus dem echten Crawl-only-Ergebnis, ohne Analyse oder DB-Schreibzugriffe."
+logical_id = "8b29860f-4bb1-4105-89c2-0bad8b0dc53e"
+content_hash = "sha256:883e6870079416711ffb76e4cda5f94d00506a9a5d20f947ae9895186dac2130"
+size = 12229
+mtime_ms = 1792075786268
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/8b29860f-4bb1-4105-89c2-0bad8b0dc53e/dac1d834-7f26-4e53-8d2d-55c20dc9d88c"
+storage_version_token = "1792075787530199"
+content_type = "text/html"
