@@ -167,7 +167,7 @@ test("slider changes retain debounced saving and success messages survive collap
 test("technical default matches the supplied German description exactly, including line breaks", async () => {
   const expected = (await readFile(new URL("./fixtures/score-technical-description.txt", import.meta.url), "utf8")).trimEnd();
   assert.equal(labelDefaults["score.profile_technical_desc"].de, expected);
-  assert.equal(Object.keys(labelDefaults).length, 1288);
+  assert.equal(Object.keys(labelDefaults).length, 1307);
 });
 test("retry credit has the requested German slider, saves its numeric value, and resets to 50 percent", async () => {
   const param = { key: "retry_credit", label: "score.param_retry_credit_label", help: "score.param_retry_credit_help",

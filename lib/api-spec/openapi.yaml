@@ -659,6 +659,28 @@ components:
           type: integer
       required: [url, reason]
 
+    BlockedRobotsHint:
+      type: object
+      required: [crawlers, generalRule, fullyBlockedAgents]
+      properties:
+        crawlers:
+          type: array
+          items:
+            type: object
+            required: [name, status]
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [allowed, disallowed, not_mentioned]
+        generalRule:
+          type: string
+          enum: [allowed, blocked, partial]
+        fullyBlockedAgents:
+          type: array
+          items:
+            type: string
     CrawlReliability:
       type: object
       properties:
@@ -807,6 +829,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Recommendation"
+        errorCode:
+          type: string
+          enum: [crawl_bot_protection, crawl_parked_domain, crawl_timed_out, crawl_no_selected_page, crawl_unreachable]
+        blockedRobotsHint:
+          $ref: "#/components/schemas/BlockedRobotsHint"
         errors:
           type: array
           items:

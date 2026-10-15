@@ -45,7 +45,8 @@ const mocks = {
       ? globalThis.__analysisLanguageTest.realDetermine(...args)
       : globalThis.__analysisLanguageTest?.language ?? { lang: null, source: null, declared: null, mismatch: false };
   `,
-  "./analyzers/technical-seo": `export const analyzeTechnicalSeo = (...args) => {
+  "./analyzers/technical-seo": `export const analyzeRobotsTxt = (...args) => globalThis.__analysisRobotsParser(...args);
+    export const analyzeTechnicalSeo = (...args) => {
     const state = globalThis.__analysisLanguageTest;
     state.technicalCrawl = args[0];
     return state.realTechnicalSeo ? state.realTechnicalSeo(...args) : null;
@@ -80,9 +81,11 @@ const mocks = {
     };
   `,
   "./admin-db.js": `
-    export const createAnalysisLog = async () => null;
+    export const createAnalysisLog = async () => globalThis.__analysisLanguageTest?.logId ?? null;
     export const updateAnalysisLogComplete = async () => {};
-    export const updateAnalysisLogFailed = async () => {};
+    export const updateAnalysisLogFailed = async (...args) => {
+      (globalThis.__analysisLanguageTest.failedLogCalls ??= []).push(args);
+    };
   `,
   "./score-config.js": `export const getScoreParams = async () => ({});`,
   "./log-context.js": `export const runWithAnalysisContext = (_id, callback) => callback();`,
@@ -322,7 +325,7 @@ const helperBundle = await build({
   stdin: {
     contents: `
       export { crawlSite, fetchExplicitPages, fetchSiteTechFiles, determineSiteLanguage } from "./crawler.ts";
-      export { analyzeTechnicalSeo } from "./analyzers/technical-seo.ts";
+      export { analyzeTechnicalSeo, analyzeRobotsTxt } from "./analyzers/technical-seo.ts";
       export { generateRuleBasedRecommendations } from "./analyzers/recommendations.ts";
     `,
     resolveDir: new URL(".", import.meta.url).pathname,
@@ -349,6 +352,36 @@ const helperBundle = await build({
   }],
 });
 const realHelpers = await import(`data:text/javascript;base64,${Buffer.from(helperBundle.outputFiles[0].contents).toString("base64")}`);
+globalThis.__analysisRobotsParser = realHelpers.analyzeRobotsTxt;
+
+for (const [code, reason, timedOut, manual] of [
+  ["crawl_bot_protection", "bot_protection", true, true],
+  ["crawl_parked_domain", "parked_domain", true, true],
+  ["crawl_timed_out", null, true, true],
+  ["crawl_no_selected_page", null, false, true],
+  ["crawl_unreachable", "dns", false, false],
+]) {
+  test(`empty crawl sets ${code}, preserving branch precedence and German legacy prose`, async () => {
+    globalThis.__analysisLanguageTest = {
+      logId: 42,
+      crawlResult: { pages: [], homepageFailReason: reason, timedOut,
+        robotsTxtStatus: "found", robotsTxt: "User-agent: bingbot\nDisallow: /\nUser-agent: *\nDisallow:",
+        reliability: { attempted: 1, succeeded: 0, failed: 1, failures: [] },
+        skipped: { otherLanguage: 0, excludedPath: 0, duplicate: 0, nonContent: 0, urls: [] } },
+    };
+    const id = `synthetic-failure-${code}`;
+    await runAnalysis(id, "url", "http://127.0.0.1/", null, null,
+      manual ? ["http://127.0.0.1/selected"] : null);
+    const result = getAnalysis(id);
+    assert.equal(result.status, "failed");
+    assert.equal(result.errorCode, code);
+    assert.match(result.errors[0], /^Crawl (nicht möglich|abgebrochen|fehlgeschlagen):/);
+    assert.deepEqual(globalThis.__analysisLanguageTest.failedLogCalls, [[42, result.errors[0]]]);
+    assert.equal(result.overallScore, null);
+    assert.equal(result.technicalSeo, null);
+    assert.equal(!!result.blockedRobotsHint, code === "crawl_bot_protection");
+  });
+}
 
 for (const mode of ["manual", "fill"]) {
   test(`${mode} analysis uses evaluated German declarations despite an English root and emits no false language recommendation`, async () => {

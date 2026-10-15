@@ -1,3 +1,4 @@
+import { AnalysisErrors } from "./AnalysisErrors";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -403,17 +404,13 @@ export function ReportDashboard({ analysisId }: Props) {
         </TabsContent>
       </Tabs>
 
-      {report.errors.length > 0 && (
+      {(report.errorCode || report.errors.length > 0) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-mono text-destructive">Hinweise und Fehler</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              {report.errors.map((err, i) => (
-                <li key={i}>- {err}</li>
-              ))}
-            </ul>
+            <AnalysisErrors report={report} showRobotsHint />
           </CardContent>
         </Card>
       )}

@@ -1,3 +1,4 @@
+import { AnalysisErrors } from "@/components/AnalysisErrors";
 import { useEffect, useRef, useState } from "react";
 import type { TechnicalScoreBreakdown as TechnicalBreakdown } from "@workspace/api-client-react";
 import { TechnicalScoreBreakdown } from "@/components/TechnicalScoreBreakdown";
@@ -255,12 +256,10 @@ function ProgressView({ analysisId, onComplete }: { analysisId: string; onComple
         })}
       </div>
 
-      {report?.errors && report.errors.length > 0 && (
+      {report && (report.errorCode || report.errors?.length > 0) && (
         <div className="p-3 rounded-md bg-muted/50 space-y-1">
           <p className="text-xs text-muted-foreground">{t("progress.hints_label")}</p>
-          {report.errors.map((e, i) => (
-            <p key={i} className="text-xs text-muted-foreground">– {e}</p>
-          ))}
+          <AnalysisErrors report={report} showRobotsHint />
         </div>
       )}
       {isFailed && failedHomepageRedirect && (
@@ -3240,13 +3239,11 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
         </TabsContent>
       </Tabs>
 
-      {report.errors.length > 0 && (
+      {(report.errorCode || report.errors.length > 0) && (
         <Card>
           <CardHeader><CardTitle className="text-xs font-semibold text-destructive uppercase tracking-wider">{t("results.errors_card_title")}</CardTitle></CardHeader>
           <CardContent>
-            <ul className="text-sm text-muted-foreground space-y-0.5">
-              {report.errors.map((e, i) => <li key={i}>– {e}</li>)}
-            </ul>
+            <AnalysisErrors report={report} showRobotsHint />
           </CardContent>
         </Card>
       )}

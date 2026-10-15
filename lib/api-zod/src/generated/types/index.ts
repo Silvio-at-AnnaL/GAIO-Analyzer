@@ -7,9 +7,14 @@
  */
 
 export * from "./analysisReport";
+export * from "./analysisReportErrorCode";
 export * from "./analysisReportMode";
 export * from "./analysisReportStatus";
 export * from "./analysisStarted";
+export * from "./blockedRobotsHint";
+export * from "./blockedRobotsHintCrawlersItem";
+export * from "./blockedRobotsHintCrawlersItemStatus";
+export * from "./blockedRobotsHintGeneralRule";
 export * from "./competitorFindings";
 export * from "./competitorResult";
 export * from "./competitorScore";

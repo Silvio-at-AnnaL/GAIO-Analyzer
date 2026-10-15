@@ -334,6 +334,27 @@ export const GetAnalysisReportResponse = zod.object({
       fixInstruction: zod.string(),
     }),
   ),
+  errorCode: zod
+    .enum([
+      "crawl_bot_protection",
+      "crawl_parked_domain",
+      "crawl_timed_out",
+      "crawl_no_selected_page",
+      "crawl_unreachable",
+    ])
+    .optional(),
+  blockedRobotsHint: zod
+    .object({
+      crawlers: zod.array(
+        zod.object({
+          name: zod.string(),
+          status: zod.enum(["allowed", "disallowed", "not_mentioned"]),
+        }),
+      ),
+      generalRule: zod.enum(["allowed", "blocked", "partial"]),
+      fullyBlockedAgents: zod.array(zod.string()),
+    })
+    .optional(),
   errors: zod.array(zod.string()),
   crawledPages: zod.array(zod.string()),
 });

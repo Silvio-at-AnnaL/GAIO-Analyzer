@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AnalysisErrors } from "./AnalysisErrors";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -116,14 +117,10 @@ export function AnalysisProgress({ analysisId, onComplete }: Props) {
             })}
           </div>
 
-          {report?.errors && report.errors.length > 0 && (
+          {report && (report.errorCode || report.errors?.length > 0) && (
             <div className="space-y-1 pt-2 border-t border-border">
               <p className="text-xs font-mono text-destructive">Fehler:</p>
-              {report.errors.map((err, i) => (
-                <p key={i} className="text-xs text-muted-foreground">
-                  - {err}
-                </p>
-              ))}
+              <AnalysisErrors report={report} />
             </div>
           )}
         </CardContent>

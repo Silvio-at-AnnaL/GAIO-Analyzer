@@ -7,6 +7,39 @@ export interface LabelDef {
 }
 
 export const labelDefaults: Record<string, LabelDef> = {
+  "errors.crawl_bot_protection_title": { group: "errors", de: "Die Website lässt keine automatisierten Abrufe zu" },
+  "errors.crawl_bot_protection_body": { group: "errors", de: `Ein Schutzdienst des Website-Betreibers (z. B. Cloudflare) hat die Abrufe des GAIO-Analyzers blockiert. Das ist kein Fehler des Analyzers und sagt nichts darüber aus, ob die Website für Besucher erreichbar ist.
+
+Bedeutung für die KI-Sichtbarkeit: Auch KI-Crawler wie GPTBot, ClaudeBot oder PerplexityBot rufen Websites automatisiert ab. Ob sie von diesem Schutz ebenfalls betroffen sind, hängt von den Einstellungen des Schutzdienstes ab und lässt sich von außen nicht prüfen. Wir empfehlen, diese Einstellungen gezielt für KI-Crawler zu überprüfen.
+
+So wird eine Analyse möglich: Bitten Sie den Betreiber bzw. Ihre IT, Abrufe mit der Kennung „GAIOAnalyzer/1.0“ freizugeben.` },
+  "errors.crawl_parked_domain_title": { group: "errors", de: "Unter dieser Domain ist keine Website erreichbar" },
+  "errors.crawl_parked_domain_body": { group: "errors", de: `Unter der angegebenen Adresse wird nur eine Park- oder Verkaufsseite angezeigt. Es gibt keine Inhalte, die analysiert werden könnten.
+
+Bitte prüfen Sie die Adresse oder geben Sie die Domain an, unter der die Website tatsächlich betrieben wird.` },
+  "errors.crawl_timed_out_title": { group: "errors", de: "Die Website hat zu langsam geantwortet" },
+  "errors.crawl_timed_out_body": { group: "errors", de: `Innerhalb des Zeitlimits konnte keine Seite vollständig abgerufen werden. Das kann an einer vorübergehenden Überlastung des Servers liegen.
+
+Langsame Antworten können auch dazu führen, dass KI-Crawler Inhalte nicht vollständig erfassen.
+
+Bitte starten Sie die Analyse später erneut. Tritt das Problem dauerhaft auf, sollten die Antwortzeiten des Servers geprüft werden.` },
+  "errors.crawl_no_selected_page_title": { group: "errors", de: "Keine der ausgewählten Seiten konnte geladen werden" },
+  "errors.crawl_no_selected_page_body": { group: "errors", de: `Innerhalb des Zeitlimits konnte keine der manuell ausgewählten Seiten abgerufen werden.
+
+Bitte prüfen Sie die Adressen der ausgewählten Seiten oder starten Sie die Analyse später erneut.` },
+  "errors.crawl_unreachable_title": { group: "errors", de: "Die Website konnte nicht abgerufen werden" },
+  "errors.crawl_unreachable_body": { group: "errors", de: `Die Startseite war nicht erreichbar – etwa weil der Server nicht antwortet, die Domain nicht aufgelöst werden kann oder ein Fehler gemeldet wurde. Den genauen Grund zeigt die Übersicht der fehlgeschlagenen Seiten.
+
+Bitte prüfen Sie die Adresse und starten Sie die Analyse später erneut.` },
+  "errors.robots_hint_title": { group: "errors", de: "Was Ihre robots.txt regelt (trotz Sperre lesbar)" },
+  "errors.robots_hint_allowed": { group: "errors", de: "erlaubt" },
+  "errors.robots_hint_blocked": { group: "errors", de: "gesperrt" },
+  "errors.robots_hint_not_mentioned": { group: "errors", de: "nicht erwähnt – es gilt die allgemeine Regel ({rule})" },
+  "errors.robots_hint_general_allowed": { group: "errors", de: "erlaubt" },
+  "errors.robots_hint_general_blocked": { group: "errors", de: "gesperrt" },
+  "errors.robots_hint_general_partial": { group: "errors", de: "erlaubt, einzelne Verzeichnisse ausgenommen" },
+  "errors.robots_hint_fully_blocked": { group: "errors", de: "Vollständig gesperrt: {agents}" },
+  "errors.robots_hint_note": { group: "errors", de: "Die robots.txt ist eine Bitte an Crawler, keine technische Sperre. Ob KI-Crawler die Website tatsächlich abrufen können, entscheidet zusätzlich der Schutzdienst." },
   "score.profile_technical": { group: "score", de: "Technisches SEO" },
   "score.param_count": { group: "score", de: "{count} Einstellungen" },
   "score.customized_badge": { group: "score", de: "Angepasst" },
@@ -201,7 +234,7 @@ Die Einstellungen gelten auch für die Bewertung der Wettbewerber.` },
   "domain.prefill_crawl_failed_refused":     { group: "domain", de: "⚠ Website nicht erreichbar: Der Server hat die Verbindung abgelehnt. Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
   "domain.prefill_crawl_failed_timeout":     { group: "domain", de: "⚠ Website nicht erreichbar: Zeit\u00fcberschreitung beim Abruf. Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
   "domain.prefill_crawl_failed_http_error":  { group: "domain", de: "⚠ Website nicht erreichbar: Der Server hat mit einem Fehlercode geantwortet (HTTP-Fehler). Vorschl\u00e4ge basieren nur auf dem Unternehmensnamen." },
-  "domain.prefill_crawl_failed_bot_protection": { group: "domain", de: "⚠ Die Website blockiert automatisierte Zugriffe (Bot-Schutz, z. B. Cloudflare). Die Vorbefüllung erfolgt ohne Website-Inhalte; auch die Analyse wird ohne Freigabe nicht möglich sein." },
+  "domain.prefill_crawl_failed_bot_protection": { group: "domain", de: "⚠ Die Website lässt keine automatisierten Abrufe zu (Schutzdienst, z. B. Cloudflare). Die Vorbefüllung erfolgt ohne Website-Inhalte. Für eine Analyse muss der Betreiber Abrufe mit der Kennung „GAIOAnalyzer/1.0“ freigeben." },
   "domain.prefill_crawl_failed_parked_domain":  { group: "domain", de: "⚠ Unter dieser Domain ist nur eine Park- bzw. Verkaufsseite erreichbar. Bitte die Adresse prüfen." },
   "domain.prefill_products_label": { group: "domain", de: "Erkannte Produkte / Leistungen:" },
   "domain.section_competitors":    { group: "domain", de: "Wettbewerber-Domains" },

@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AnalysisReportErrorCode } from "./analysisReportErrorCode";
 import type { AnalysisReportMode } from "./analysisReportMode";
 import type { AnalysisReportStatus } from "./analysisReportStatus";
+import type { BlockedRobotsHint } from "./blockedRobotsHint";
 import type { CompetitorResult } from "./competitorResult";
 import type { ContentRelevanceResult } from "./contentRelevanceResult";
 import type { CrawlReliability } from "./crawlReliability";
@@ -37,6 +39,8 @@ export interface AnalysisReport {
   llmDiscoverability?: LlmDiscoverabilityResult | null;
   competitorComparison?: CompetitorResult | null;
   recommendations: Recommendation[];
+  errorCode?: AnalysisReportErrorCode;
+  blockedRobotsHint?: BlockedRobotsHint;
   errors: string[];
   crawledPages: string[];
 }

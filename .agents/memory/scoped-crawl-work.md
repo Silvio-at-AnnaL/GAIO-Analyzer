@@ -75,3 +75,11 @@ After the redirect-duplicate allowance is exhausted, an unexpected redirect from
 **Why:** The user explicitly chose this edge-case policy to keep total logical page fetches bounded by the normal attempt limit plus the redirect allowance, while continuing other categories.
 
 **How to apply:** Preserve this bound and test the first redirect from a new category after allowance exhaustion. Previously observed redirect categories are skipped once the allowance is exhausted.
+
+## Bot-protection robots hint wording
+
+Keep three general robots-rule states: allowed, partial, blocked. Use the German wording “erlaubt, einzelne Verzeichnisse ausgenommen” for partial; blocked means `Disallow: /` for `User-agent: *`.
+
+**Why:** The user explicitly chose this wording after the live Hammelmann robots file showed path restrictions, rather than an unrestricted wildcard rule.
+
+**How to apply:** Preserve the distinction in failure hints and reports. Do not equate an Analyzer bot-protection failure with proven blocking of AI crawlers; their access also depends on protection-service settings.

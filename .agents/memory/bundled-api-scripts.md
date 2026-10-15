@@ -20,3 +20,9 @@ For temporary bundles emitted outside the workspace, externalized dependencies r
 **Why:** A private-function test bundle succeeded but could not load an externalized transitive package from `/tmp`; a synchronous build also rejected the source-injection plugin.
 
 **How to apply:** When a temporary test needs source injection, use async esbuild and supply runtime dependency search paths rather than changing project dependencies.
+
+For React render tests loaded from ESM data URLs, externalize both React and React DOM (including their subpaths) using resolved file URLs.
+
+**Why:** Bare external imports cannot resolve from a data URL; mixing external React with bundled React DOM can instead create an unsupported dynamic require inside the ESM bundle.
+
+**How to apply:** Resolve these npm imports through the test package before marking them external. Keep a single React runtime shared by the bundled component and the server renderer.

@@ -7,7 +7,7 @@ import { DEFAULT_TECHNICAL_PARAMS, type TechnicalScoreParams, type TechnicalBrea
 
 // ─── LLM crawler list ─────────────────────────────────────────────────────────
 
-const LLM_CRAWLER_NAMES = [
+export const LLM_CRAWLER_NAMES = [
   "GPTBot",
   "ChatGPT-User",
   "ClaudeBot",
@@ -28,6 +28,7 @@ export interface LlmCrawlerStatus {
 }
 
 export interface RobotsTxtAnalysis {
+  generalRule: "allowed" | "blocked" | "partial";
   userAgents: string[];
   llmCrawlers: LlmCrawlerStatus[];
   siteBlockedAgents: string[];
@@ -151,7 +152,7 @@ function parseRobotsTxtBlocks(content: string): { blocks: RobotsBlock[]; sitemap
   return { blocks, sitemapUrls };
 }
 
-function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
+export function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
   const { blocks, sitemapUrls } = parseRobotsTxtBlocks(content);
   const allUserAgents = [...new Set(blocks.flatMap((b) => b.agents))];
 
@@ -188,7 +189,10 @@ function analyzeRobotsTxt(content: string): RobotsTxtAnalysis {
     summary = `robots.txt adressiert ${allowedCount} von ${LLM_CRAWLER_NAMES.length} LLM-Crawlern explizit.`;
   }
 
-  return { userAgents: allUserAgents, llmCrawlers, siteBlockedAgents, crawlDelays, sitemapUrls, summary };
+  const generalDisallows = blocks.filter(b => b.agents.includes("*")).flatMap(b => b.disallows);
+  const generalRule = generalDisallows.includes("/") ? "blocked"
+    : generalDisallows.some(path => path.trim() !== "") ? "partial" : "allowed";
+  return { generalRule, userAgents: allUserAgents, llmCrawlers, siteBlockedAgents, crawlDelays, sitemapUrls, summary };
 }
 
 // ─── sitemap.xml analyser ─────────────────────────────────────────────────────

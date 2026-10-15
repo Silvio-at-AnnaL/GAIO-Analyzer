@@ -1,3 +1,4 @@
+import { crawlFailureMessage, renderCrawlFailureHtml, readableAnalysisError } from "./crawl-errors";
 import { getHeadingSummary } from "./heading-summary";
 import { crawlReliabilityNotices } from "./crawl-reliability";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
@@ -1680,7 +1681,7 @@ function buildFailedReportShell(
   const companyName = opts.inputParams?.companyName?.trim() ?? "";
   const titleTarget = companyName || url;
   const errors = Array.isArray(report.errors) ? report.errors : [];
-  const failureReason = String(errors.at(-1) ?? "Die Website konnte nicht automatisiert analysiert werden.");
+  const failureReason = readableAnalysisError(errors.at(-1) ?? "Die Website konnte nicht automatisiert analysiert werden.", opts.t ?? defaultTechnicalT);
   const reliability = report.crawlReliability as Record<string, unknown> | null | undefined;
   const limitedReliability = reliability
     ? {
@@ -1698,10 +1699,10 @@ function buildFailedReportShell(
   </header>
 
   <div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #ef4444;border-radius:8px;padding:20px 22px;margin:20px 0 28px;">
-    <h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">Analyse nicht möglich</h2>
+    ${crawlFailureMessage(report, opts.t ?? defaultTechnicalT) ? renderCrawlFailureHtml(report, opts.t ?? defaultTechnicalT) : `<h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">Analyse nicht möglich</h2>
     <p style="font-size:14px;color:${C.text};margin-bottom:10px;">Die Website von <strong>${esc(titleTarget)}</strong> konnte nicht automatisiert analysiert werden.</p>
     <p style="font-size:13px;color:${C.textSec};margin-bottom:14px;"><strong>Grund:</strong> ${esc(failureReason)}</p>
-    <p style="font-size:13px;color:${C.textSec};"><strong>Was bedeutet das?</strong> KI-Systeme wie ChatGPT, Perplexity oder Google-KI greifen auf Websites über automatisierte Crawler zu — dieselbe Technik, die hier scheiterte. Eine Website, die für unseren Analyse-Crawler nicht zuverlässig erreichbar ist, ist mit hoher Wahrscheinlichkeit auch für KI-Crawler schlecht oder gar nicht sichtbar. Das ist ein unmittelbares Risiko für die Auffindbarkeit in KI-Antworten.</p>
+    <p style="font-size:13px;color:${C.textSec};"><strong>Was bedeutet das?</strong> KI-Systeme wie ChatGPT, Perplexity oder Google-KI greifen auf Websites über automatisierte Crawler zu — dieselbe Technik, die hier scheiterte. Eine Website, die für unseren Analyse-Crawler nicht zuverlässig erreichbar ist, ist mit hoher Wahrscheinlichkeit auch für KI-Crawler schlecht oder gar nicht sichtbar. Das ist ein unmittelbares Risiko für die Auffindbarkeit in KI-Antworten.</p>`}
   </div>
 
   ${divider("Crawl-Zuverlässigkeit")}

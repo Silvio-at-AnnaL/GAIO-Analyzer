@@ -327,6 +327,35 @@ export interface CrawlFailure {
   retries?: number;
 }
 
+export type BlockedRobotsHintCrawlersItemStatus =
+  (typeof BlockedRobotsHintCrawlersItemStatus)[keyof typeof BlockedRobotsHintCrawlersItemStatus];
+
+export const BlockedRobotsHintCrawlersItemStatus = {
+  allowed: "allowed",
+  disallowed: "disallowed",
+  not_mentioned: "not_mentioned",
+} as const;
+
+export type BlockedRobotsHintCrawlersItem = {
+  name: string;
+  status: BlockedRobotsHintCrawlersItemStatus;
+};
+
+export type BlockedRobotsHintGeneralRule =
+  (typeof BlockedRobotsHintGeneralRule)[keyof typeof BlockedRobotsHintGeneralRule];
+
+export const BlockedRobotsHintGeneralRule = {
+  allowed: "allowed",
+  blocked: "blocked",
+  partial: "partial",
+} as const;
+
+export interface BlockedRobotsHint {
+  crawlers: BlockedRobotsHintCrawlersItem[];
+  generalRule: BlockedRobotsHintGeneralRule;
+  fullyBlockedAgents: string[];
+}
+
 export interface CrawlReliability {
   attempted: number;
   succeeded: number;
@@ -393,6 +422,17 @@ export const AnalysisReportMode = {
   html: "html",
 } as const;
 
+export type AnalysisReportErrorCode =
+  (typeof AnalysisReportErrorCode)[keyof typeof AnalysisReportErrorCode];
+
+export const AnalysisReportErrorCode = {
+  crawl_bot_protection: "crawl_bot_protection",
+  crawl_parked_domain: "crawl_parked_domain",
+  crawl_timed_out: "crawl_timed_out",
+  crawl_no_selected_page: "crawl_no_selected_page",
+  crawl_unreachable: "crawl_unreachable",
+} as const;
+
 export interface AnalysisReport {
   id: string;
   status: AnalysisReportStatus;
@@ -413,6 +453,8 @@ export interface AnalysisReport {
   llmDiscoverability?: LlmDiscoverabilityResult | null;
   competitorComparison?: CompetitorResult | null;
   recommendations: Recommendation[];
+  errorCode?: AnalysisReportErrorCode;
+  blockedRobotsHint?: BlockedRobotsHint;
   errors: string[];
   crawledPages: string[];
 }

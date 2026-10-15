@@ -1,5 +1,6 @@
 import { crawlSite, fetchExplicitPages, fetchSiteTechFiles, determineSiteLanguage, normalizeUrl, type SiteTechFiles, type SiteLanguage, type CrawlReliability, type CrawlResult, type CrawledPage } from "./crawler";
 import { analyzeTechnicalSeo } from "./analyzers/technical-seo";
+import { describeCrawlFailure, type CrawlErrorCode, type BlockedRobotsHint } from "./crawl-failure";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./analyzers/schema-org";
 import { analyzeHeadings, type HeadingScoreParams } from "./analyzers/headings";
 import { analyzeContentRelevance, usableContentRelevance } from "./analyzers/content-relevance";
@@ -50,6 +51,8 @@ export interface AnalysisState {
   competitorInput: CompetitorInput;
   recommendations: unknown[];
   errors: string[];
+  errorCode?: CrawlErrorCode;
+  blockedRobotsHint?: BlockedRobotsHint;
   crawledPages: string[];
   hreflangVariants: Array<{ lang: string; url: string }>;
   crawlReliability: CrawlReliability;
@@ -443,15 +446,10 @@ export async function runAnalysis(
 
       if (pages.length === 0) {
         state.status = "failed";
-        const crawlError = crawlResult.homepageFailReason === "bot_protection"
-          ? "Crawl nicht möglich: Die Website blockiert automatisierte Zugriffe durch einen Bot-Schutz (z. B. Cloudflare). Für eine Analyse muss der Zugriff für den GAIO-Analyzer freigegeben werden."
-          : crawlResult.homepageFailReason === "parked_domain"
-            ? "Crawl nicht möglich: Unter dieser Domain ist nur eine Park- bzw. Verkaufsseite erreichbar."
-            : crawlResult.timedOut
-          ? "Crawl abgebrochen: Die Website antwortet zu langsam für eine automatisierte Analyse (Zeitlimit überschritten)."
-          : (explicitUrls && explicitUrls.length > 0
-              ? "Crawl fehlgeschlagen: keine Seite konnte innerhalb des Zeitlimits geladen werden"
-              : "Crawl fehlgeschlagen: Die Website konnte nicht abgerufen werden (nicht erreichbar oder blockiert automatisierte Zugriffe).");
+        const failure = describeCrawlFailure(crawlResult, !!explicitUrls?.length);
+        state.errorCode = failure.errorCode;
+        state.blockedRobotsHint = failure.blockedRobotsHint;
+        const crawlError = failure.message;
         state.errors.push(crawlError);
         if (logId !== null) {
           try {
