@@ -1360,6 +1360,77 @@ function variantSite({ homeLang = "en", start = "/", variants = [{ lang: "de", u
   };
 }
 
+for (const mode of ["main", "competitor"]) {
+  for (const target of ["homepage", "language-variant homepage"]) {
+    for (const scenario of ["502 then 200", "502 three times", "429 then 200"]) {
+      test(`${mode} ${target}: ${scenario} checks normal HTTP responses before deciding the crawl outcome`, async () => {
+        const variant = target === "language-variant homepage";
+        const start = variant ? "/" : "/de";
+        const retryPath = variant ? "/de/" : start;
+        const persistent = scenario === "502 three times";
+        const status = scenario.startsWith("429") ? 429 : 502;
+        const site = variantSite();
+        let hits = 0;
+        await withServer((req, res) => {
+          if (req.url === retryPath) {
+            hits++;
+            if (persistent || hits === 1) {
+              res.writeHead(status, { "Content-Type": "text/html", ...(status === 429 ? { "Retry-After": "1" } : {}) });
+              res.end("<html><body>Temporarily unavailable</body></html>");
+              return;
+            }
+            if (!variant) {
+              res.end(languageHtml("de", `${germanText.repeat(4)} Homepage`, ["/de/products/one"]));
+              return;
+            }
+          }
+          return site(req, res);
+        }, async ({ origin, requests }) => {
+          const result = await crawlSite(`${origin}${start}`, mode === "main" ? 16 : 5,
+            mode === "main"
+              ? { mainSite: true, deadlineMs: 90_000, techPhaseBudgetMs: 30_000, minPagePhaseMs: 45_000 }
+              : { preferredLang: "de", minTextChars: 50, deadlineMs: 45_000, techPhaseBudgetMs: 20_000, minPagePhaseMs: 20_000 });
+          assert.equal(hits, persistent ? 3 : 2);
+          const retries = logs.filter(log => log.msg === "Retrying page fetch" && log.obj.url === `${origin}${retryPath}`);
+          assert.equal(retries.length, persistent ? 2 : 1);
+          assert.ok(retries.every(log => log.level === "debug" && log.obj.statusCode === status));
+          assert.deepEqual(retries.map(log => log.obj.retries), persistent ? [1, 2] : [1]);
+          assert.deepEqual(retries.map(log => log.obj.delayMs), persistent ? [2000, 4000] : [status === 429 ? 1000 : 2000]);
+          if (!persistent) {
+            assert.equal(result.homepageFailReason, null);
+            assert.ok(result.pages.some(page => page.url === `${origin}${variant ? "/de" : start}`));
+            assert.ok(result.pages.some(page => page.url === `${origin}/de/products/one`), "crawl continues to a subpage after homepage recovery");
+            assert.equal(result.reliability.failed, 0);
+            assert.equal(result.reliability.attempted, result.reliability.succeeded, "retries do not count as extra attempted pages");
+            assert.equal(result.pages.find(page => page.url === `${origin}/de`).retries, 1);
+            assert.ok(!logs.some(log => log.msg === "Homepage could not be analysed"));
+            if (variant) assert.equal(result.languageVariant.toLang, "de");
+          } else {
+            const failure = result.reliability.failures.find(f => f.url === `${origin}${retryPath}`);
+            assert.ok(failure);
+            assert.equal(failure.statusCode, 502);
+            assert.equal(failure.retries, 2);
+            assert.equal(result.reliability.failed, 1, "exhausted retries count as one final failed page");
+            assert.ok(!requests.some(req => req.url === "/de/products/one"));
+            if (variant) {
+              assert.equal(result.homepageFailReason, null);
+              assert.equal(result.languageVariant, null);
+              assert.ok(result.pages.some(page => page.url === `${origin}/`), "unavailable variant keeps the existing original-homepage fallback");
+              assert.ok(logs.some(log => log.msg === "language variant unavailable" && log.obj.statusCode === 502));
+            } else {
+              assert.equal(result.homepageFailReason, "http_error");
+              assert.equal(result.pages.length, 0);
+              assert.equal(result.reliability.attempted, 1);
+              assert.equal(result.reliability.succeeded, 0);
+              assert.ok(logs.some(log => log.msg === "Homepage could not be analysed" && log.obj.statusCode === 502));
+            }
+          }
+        });
+      });
+    }
+  }
+}
+
 test("main crawl selects the same-site German variant in place, evaluates only its path and reuses robots/llms", async () => {
   await withServer(variantSite(), async ({ origin, requests }) => {
     const result = await crawlSite(`${origin}/`, 16);
