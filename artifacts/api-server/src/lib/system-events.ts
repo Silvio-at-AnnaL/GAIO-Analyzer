@@ -19,6 +19,7 @@ const EXCLUDED_CONTEXT_KEYS = new Set([
 ]);
 
 export const PERSISTED_INFO_MESSAGES = new Set([
+  "category skipped: redirects to known page",
   "retry budget exhausted",
   "crawl exclusion rules loaded",
     "crawl exclusion rule changed",

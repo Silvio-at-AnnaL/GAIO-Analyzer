@@ -29,6 +29,15 @@ const { buildContext, isSensitiveKey, shouldPersist, PERSISTED_INFO_MESSAGES } =
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 
+test("redirect category learning INFO persists with its diagnostic fields", () => {
+  const msg = "category skipped: redirects to known page";
+  const obj = { category: "product_type", redirectDuplicates: 2, dropped: 23,
+    example: { url: "https://example.test/product_type/one", finalUrl: "https://example.test/" } };
+  assert.ok(PERSISTED_INFO_MESSAGES.has(msg));
+  assert.equal(shouldPersist({ level: 30, msg, obj }), true);
+  assert.deepEqual(buildContext(obj), obj);
+});
+
 test("crawl exclusion snapshot load INFO is persisted", () => {
   assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rules loaded"));
   assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rules loaded", obj: {} }), true);

@@ -32,8 +32,6 @@ const { crawlSite, compileExclusionRules, CRAWL_EXCLUSION_SEED } = await import(
 );
 const exclusionMatcher = compileExclusionRules([
   ...CRAWL_EXCLUSION_SEED,
-  { pattern: "registrierung", count_in_report: true },
-  { pattern: "passwort*", count_in_report: true },
 ].map(rule => ({ ...rule, is_active: true })));
 const [output, mode, ...urls] = process.argv.slice(2);
 if (!output || !["baseline", "current"].includes(mode) || !urls.length) {
@@ -45,7 +43,7 @@ for (const url of urls) {
   const started = Date.now();
   const result = await crawlSite(url, 16, {
     exclusionMatcher, deadlineMs: 90_000,
-    ...(mode === "current" ? { techPhaseBudgetMs: 30_000, minPagePhaseMs: 45_000, mainSite: true } : {}),
+    techPhaseBudgetMs: 30_000, minPagePhaseMs: 45_000, mainSite: true,
   });
   const failuresByStatus = {};
   const failuresByReason = {};
@@ -56,6 +54,8 @@ for (const url of urls) {
   }
   results.push({
     url, pages: result.pages.map(page => page.url), ...result.reliability,
+    duplicates: result.skipped.duplicate,
+    droppedCategories: events.filter(event => event.msg === "category skipped: redirects to known page").map(event => event.obj),
     transientErrors: result.reliability.transientErrors ?? 0,
     recoveredAfterRetry: result.reliability.recoveredAfterRetry ?? 0,
     failuresByStatus, failuresByReason,

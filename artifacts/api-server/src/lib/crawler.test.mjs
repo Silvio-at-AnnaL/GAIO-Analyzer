@@ -424,6 +424,108 @@ function fillFixture(req, res) {
   res.end(languageHtml("de", `${path} ${germanText.repeat(4)}`, path === "/" ? ["/products/removed", ...links] : []));
 }
 
+// Sitemap-only fixtures keep ordering deterministic without altering priorities.
+async function withRedirectSite(paths, respond, run) {
+  await withServer((req, res) => {
+    if (req.url === "/robots.txt" || req.url === "/llms.txt") {
+      res.writeHead(404); res.end(); return;
+    }
+    if (req.url === "/sitemap.xml") {
+      res.setHeader("Content-Type", "application/xml");
+      res.end(`<urlset>${paths.map(path => `<url><loc>http://${req.headers.host}${path}</loc></url>`).join("")}</urlset>`);
+      return;
+    }
+    if (req.url.includes("sitemap")) { res.writeHead(404); res.end(); return; }
+    res.setHeader("Content-Type", "text/html");
+    if (req.url === "/") res.end(languageHtml("de", `${germanText.repeat(4)} Home`));
+    else respond(req, res);
+  }, run);
+}
+
+test("redirect duplicates: taxonomy drops after two redirects and preserves content coverage and exact attempts", async () => {
+  const redirects = Array.from({ length: 25 }, (_, i) => `/product_type/item${i}`);
+  const content = ["produkte", "branche", "unternehmen", "news"]
+    .flatMap(cat => Array.from({ length: 3 }, (_, i) => `/${cat}/page${i}`));
+  await withRedirectSite([...redirects, ...content], (req, res) => {
+    if (redirects.includes(req.url)) { res.writeHead(301, { Location: "/" }); res.end(); }
+    else res.end(languageHtml("de", `${germanText.repeat(4)} ${req.url}`));
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.pages.length, 13);
+    assert.deepEqual(new Set(result.pages.slice(1).map(p => new URL(p.url).pathname)), new Set(content));
+    assert.equal(result.reliability.attempted, 15);
+    assert.equal(result.reliability.succeeded, 15);
+    assert.equal(result.skipped.duplicate, 2);
+    assert.equal(requests.filter(r => redirects.includes(r.url)).length, 2);
+    const event = logs.find(log => log.msg === "category skipped: redirects to known page");
+    assert.equal(event.level, "info");
+    assert.equal(event.obj.category, "product_type");
+    assert.equal(event.obj.redirectDuplicates, 2);
+    assert.equal(event.obj.dropped, 23);
+  });
+});
+
+test("redirect duplicates: ordinary 200 duplicates retain the normal attempt budget", async () => {
+  const paths = Array.from({ length: 40 }, (_, i) => `/section${i}/page`);
+  await withRedirectSite(paths, (_req, res) => {
+    res.end(languageHtml("de", `${germanText.repeat(4)} Home`));
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.pages.length, 1);
+    assert.equal(result.reliability.attempted, 28);
+    assert.equal(result.skipped.duplicate, 27);
+    assert.ok(!logs.some(log => log.msg === "category skipped: redirects to known page"));
+  });
+});
+
+test("redirect duplicates: an accepted category survives subsequent redirects", async () => {
+  const paths = ["/product_type/a", "/product_type/b", "/product_type/c", "/product_type/d", "/product_type/e"];
+  await withRedirectSite(paths, (req, res) => {
+    if (["/product_type/a", "/product_type/c", "/product_type/d"].includes(req.url)) {
+      res.writeHead(301, { Location: "/" }); res.end();
+    } else res.end(languageHtml("de", `${germanText.repeat(4)} ${req.url}`));
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.pages.length, 3);
+    assert.equal(result.reliability.attempted, 6);
+    assert.equal(result.skipped.duplicate, 3);
+    assert.ok(result.pages.some(p => p.url.endsWith("/product_type/e")));
+    assert.ok(!logs.some(log => log.msg === "category skipped: redirects to known page"));
+  });
+});
+
+test("redirect duplicates: a redirect to a new URL matching accepted content is learned", async () => {
+  const paths = ["/product_type/a", "/product_type/b", "/product_type/c"];
+  await withRedirectSite(paths, (req, res) => {
+    if (paths.includes(req.url)) { res.writeHead(301, { Location: "/unlisted-destination" }); res.end(); }
+    else res.end(languageHtml("de", `${germanText.repeat(4)} Home`));
+  }, async ({ origin }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(result.reliability.attempted, 3);
+    assert.equal(result.skipped.duplicate, 2);
+    assert.equal(result.pages.length, 1);
+    assert.equal(logs.find(log => log.msg === "category skipped: redirects to known page").obj.dropped, 1);
+  });
+});
+
+test("redirect duplicates: allowance is bounded at twenty and known redirect categories are skipped at the cap", async () => {
+  const redirects = Array.from({ length: 20 }, (_, i) => `/product_set${i}/first`);
+  const later = Array.from({ length: 20 }, (_, i) => `/product_set${i}/nested/real`);
+  const duplicates = Array.from({ length: 40 }, (_, i) => `/section${i}/page`);
+  await withRedirectSite([...redirects, ...later, ...duplicates], (req, res) => {
+    if (redirects.includes(req.url)) { res.writeHead(301, { Location: "/" }); res.end(); }
+    else res.end(languageHtml("de", `${germanText.repeat(4)} Home`));
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 16);
+    assert.equal(requests.filter(r => redirects.includes(r.url)).length, 20);
+    assert.equal(requests.filter(r => later.includes(r.url)).length, 0);
+    assert.equal(result.reliability.attempted, 48);
+    assert.equal(result.skipped.duplicate, 47);
+    assert.equal(result.pages.length, 1);
+    assert.ok(!logs.some(log => log.msg === "category skipped: redirects to known page"));
+  });
+});
+
 test("queryless exclusions cover query variants from homepage links and XML sitemap candidates", async () => {
   const blocked = "/de/kontakt?productid=1&cHash=x";
   await withServer((req, res) => {

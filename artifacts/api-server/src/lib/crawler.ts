@@ -129,6 +129,7 @@ const PRIORITY_PATTERNS: Array<{ score: number; pattern: RegExp }> = [
 ];
 
 const EXTRA_FETCH_ALLOWANCE = 12;
+const REDIRECT_DUPLICATE_ALLOWANCE = 20;
 
 // 2-3 letter language codes with optional region, e.g. "de", "en", "zh-CN", "pt-BR"
 
@@ -1785,6 +1786,37 @@ export async function crawlSite(
   // which would silently allow a category to exceed its cap.
 
   let pagesLeft = maxPages - result.pages.length; // homepage already in result
+  const acceptedPageUrls = new Set([canonicalHomepageUrl, ...result.pages.flatMap(
+    page => [canon(page.url), canon(page.finalUrl ?? page.url)],
+  )]);
+  const acceptedByCategory = new Map<string, number>();
+  for (const page of result.pages) {
+    const category = extractCategory(new URL(page.url).pathname, startPath);
+    acceptedByCategory.set(category, (acceptedByCategory.get(category) ?? 0) + 1);
+  }
+  const redirectDuplicatesByCategory = new Map<string, number>();
+  const droppedRedirectCategories = new Set<string>();
+  let redirectDuplicateCredits = 0;
+  let budgetAttempts = result.reliability.attempted;
+  const recordRedirectDuplicate = (url: string, finalUrl: string, category: string) => {
+    result.skipped.duplicate++;
+    if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+    // Only the bounded allowance is exempt from the normal attempt budget.
+    if (redirectDuplicateCredits < REDIRECT_DUPLICATE_ALLOWANCE) {
+      redirectDuplicateCredits++;
+      budgetAttempts--;
+    }
+    const count = (redirectDuplicatesByCategory.get(category) ?? 0) + 1;
+    redirectDuplicatesByCategory.set(category, count);
+    if (count >= 2 && !acceptedByCategory.get(category) && !droppedRedirectCategories.has(category)) {
+      droppedRedirectCategories.add(category);
+      const queue = categoryQueues.get(category);
+      const dropped = queue?.length ?? 0;
+      if (queue) queue.length = 0;
+      logger.info({ category, redirectDuplicates: count, dropped, example: { url, finalUrl } },
+        "category skipped: redirects to known page");
+    }
+  };
 
   const readmitLanguagePages = () => {
     for (let index = 0; index < skippedLanguagePages.length; index++) {
@@ -1807,12 +1839,15 @@ export async function crawlSite(
       }
       if (fingerprint) seenFingerprints.set(fingerprint, page.url);
       result.pages.push(page);
+      acceptedPageUrls.add(canon(page.url));
+      acceptedPageUrls.add(canon(page.finalUrl ?? page.url));
       readmittedPages++;
       pagesLeft--;
       const pathname = new URL(page.url).pathname;
       acceptedBranches.add(firstPathSegment(pathname));
       const category = extractCategory(pathname, startPath);
       categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+      acceptedByCategory.set(category, (acceptedByCategory.get(category) ?? 0) + 1);
       opts?.onProgress?.(result.pages.length, maxPages);
       quarantineHreflang(extractHreflangVariants(page.html, page.url));
       if (pagesLeft > 0) {
@@ -1833,7 +1868,7 @@ export async function crawlSite(
   if (skippedTechnicalUrls.size > 0) {
     logger.info({ skipped: [...skippedTechnicalUrls], techPhaseMs: pageLoopStart - crawlStart }, "technical phase budget exhausted");
   }
-  while (pagesLeft > 0 && result.reliability.attempted < maxPages + EXTRA_FETCH_ALLOWANCE) {
+  while (pagesLeft > 0 && budgetAttempts < maxPages + EXTRA_FETCH_ALLOWANCE) {
     if (Date.now() >= pageDeadline) {
       result.timedOut = true;
       break;
@@ -1852,6 +1887,11 @@ export async function crawlSite(
     for (const queue of dirtyQueues) sortCategoryQueue(queue);
     dirtyQueues.clear();
     for (const [cat, queue] of categoryQueues) {
+      if (droppedRedirectCategories.has(cat) ||
+          (redirectDuplicateCredits >= REDIRECT_DUPLICATE_ALLOWANCE && redirectDuplicatesByCategory.has(cat))) {
+        queue.length = 0;
+        continue;
+      }
       // Flush stale (visited / quarantined) entries from the front
       while (queue.length > 0 && (visited.has(queue[0].url) || hreflangUrlSet.has(queue[0].url))) {
         queue.shift();
@@ -1890,6 +1930,7 @@ export async function crawlSite(
     }
 
     result.reliability.attempted++;
+    budgetAttempts++;
     try {
       const page = await fetchTrackedPage(url, 15000, seedMode || excludedUrls.size > 0
         ? (target) => !isExcluded(target) && !excludedPageUrls.has(canon(target)) && !seededPageUrls.has(canon(target))
@@ -1907,6 +1948,13 @@ export async function crawlSite(
           retries: page.retries,
         };
         result.reliability.succeeded++;
+        const finalUrl = canon(page.finalUrl);
+        const fingerprint = contentFingerprint(page.html);
+        const redirectOriginalUrl = fingerprint ? seenFingerprints.get(fingerprint) : undefined;
+        if (acceptedPageUrls.has(finalUrl) || (finalUrl !== canon(url) && redirectOriginalUrl)) {
+          recordRedirectDuplicate(url, finalUrl, bestCat);
+          continue;
+        }
         if (isNonContentPage(page) !== null || (opts?.minTextChars !== undefined && isThinPage(page.html, opts.minTextChars))) {
           result.skipped.nonContent++;
           if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
@@ -1945,7 +1993,6 @@ export async function crawlSite(
           }
         }
         if (held) continue;
-        const fingerprint = contentFingerprint(page.html);
         const originalUrl = fingerprint ? seenFingerprints.get(fingerprint) : undefined;
         if (originalUrl) {
           result.skipped.duplicate++;
@@ -1955,6 +2002,9 @@ export async function crawlSite(
         }
         if (fingerprint) seenFingerprints.set(fingerprint, url);
         result.pages.push(crawledPage);
+        acceptedPageUrls.add(canon(url));
+        acceptedPageUrls.add(finalUrl);
+        acceptedByCategory.set(bestCat, (acceptedByCategory.get(bestCat) ?? 0) + 1);
         acceptedBranches.add(branch);
         pagesLeft--;
         opts?.onProgress?.(result.pages.length, maxPages);
@@ -1984,12 +2034,13 @@ export async function crawlSite(
     } catch (err) {
       const blockedFetch = err as { code?: string; url?: string };
       if (blockedFetch?.code === "PAGE_FETCH_BLOCKED" && blockedFetch.url) {
-        if (canon(blockedFetch.url) === url) result.reliability.attempted--;
-        else result.reliability.succeeded++; // Successful redirect response; its destination was deliberately not fetched.
+        if (canon(blockedFetch.url) === url) {
+          result.reliability.attempted--;
+          budgetAttempts--;
+        } else result.reliability.succeeded++; // Successful redirect response; its destination was deliberately not fetched.
         if (isExcluded(blockedFetch.url) || excludedPageUrls.has(canon(blockedFetch.url))) recordExcludedPath(normalizeUrl(blockedFetch.url));
         else {
-          result.skipped.duplicate++;
-          if (result.skipped.urls.length < 10) result.skipped.urls.push(url);
+          recordRedirectDuplicate(url, canon(blockedFetch.url), bestCat);
         }
         continue;
       }
