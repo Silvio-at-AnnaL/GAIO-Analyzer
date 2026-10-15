@@ -70,3 +70,17 @@ mtime_ms = 1792072984426
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/175f3e05-3b94-4940-8485-fc5f5c876a2e/fbfb1ea9-c147-4182-9c20-3b82b75a4c64"
 storage_version_token = "1792072985029096"
 content_type = "text/plain"
+
+[[outputs]]
+id = "WUbMhl80PXeRgkgAiE1-P"
+uri = "file://attached_assets/Prefill-Wettbewerber-Pruefbericht.txt"
+type = "text"
+title = "Vollständiger Prefill-Prüfbericht"
+description = "Firmenkontext, Suchanfragen, sämtliche Kandidatenurteile und Begründungen, endgültige Listen sowie Audit der Website-Zusammenfassung."
+logical_id = "53ed497c-291a-42eb-8a67-55759310eea8"
+content_hash = "sha256:bc5a70685ccefdf5248d3d13fe0a69f65f4b0fbc6936d2aa60fd3bb601de7584"
+size = 18961
+mtime_ms = 1792074416297
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/53ed497c-291a-42eb-8a67-55759310eea8/12f48297-79b5-4de2-b8d6-ea91a88949f9"
+storage_version_token = "1792074416946770"
+content_type = "text/plain"
