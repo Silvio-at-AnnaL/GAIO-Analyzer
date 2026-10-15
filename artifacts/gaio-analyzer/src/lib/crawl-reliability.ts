@@ -7,6 +7,13 @@ export function crawlReliabilityNotices(
   t: Translate,
 ): string[] {
   const notices: string[] = [];
+  if (Number(reliability.transientErrors ?? 0) > 0) {
+    notices.push(t("results.crawl_transient_errors", {
+      transient: Number(reliability.transientErrors),
+      attempted: Number(reliability.attempted ?? 0),
+      recovered: Number(reliability.recoveredAfterRetry ?? 0),
+    }));
+  }
   // Analyses saved before this metadata was introduced retain their old card.
   if (typeof reliability.timedOut !== "boolean") return notices;
   if (reliability.timedOut === true) {

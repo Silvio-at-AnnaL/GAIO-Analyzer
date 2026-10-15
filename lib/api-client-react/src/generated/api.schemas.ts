@@ -320,6 +320,27 @@ export interface CompetitorFindings {
   recommendation: string;
 }
 
+export interface CrawlFailure {
+  url: string;
+  reason: string;
+  statusCode?: number;
+  retries?: number;
+}
+
+export interface CrawlReliability {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  failures: CrawlFailure[];
+  transientErrors?: number;
+  recoveredAfterRetry?: number;
+  timedOut?: boolean;
+  techPhaseMs?: number;
+  pagePhaseMs?: number;
+  maxPages?: number;
+  serverErrors?: number;
+}
+
 export interface CompetitorScore {
   name: string;
   url: string;
@@ -330,6 +351,7 @@ export interface CompetitorScore {
   faqScore: number;
   compositeScore: number;
   crawledPagesCount: number;
+  crawlReliability?: CrawlReliability;
   findings?: CompetitorFindings | null;
 }
 
@@ -379,6 +401,7 @@ export interface AnalysisReport {
   mode: AnalysisReportMode;
   /** @nullable */
   overallScore?: number | null;
+  crawlReliability?: CrawlReliability;
   /** @nullable */
   currentModule?: string | null;
   progress: number;

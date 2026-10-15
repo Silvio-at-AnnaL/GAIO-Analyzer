@@ -2321,7 +2321,7 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                   )}
 
                   <CrawlReliabilityNotices reliability={crawlReliability} evaluated={evaluated} t={t} />
-                  {failed === 0 ? (crawlReliability.timedOut === true ? null : (
+                  {failed === 0 ? (crawlReliability.timedOut === true || Number(crawlReliability.transientErrors ?? 0) > 0 ? null : (
                     <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                       <CheckCircle2 className="h-4 w-4 shrink-0" />
                       {t("results.crawl_all_ok")}

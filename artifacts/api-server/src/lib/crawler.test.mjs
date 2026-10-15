@@ -85,6 +85,13 @@ for (const mode of ["explicit", "crawl"]) {
       assert.equal(result.reliability.attempted, mode === "explicit" ? 1 : 2);
       assert.equal(result.reliability.succeeded, mode === "explicit" ? 1 : 2);
       assert.equal(result.reliability.failed, 0);
+      assert.equal(result.reliability.transientErrors, 1);
+      assert.equal(result.reliability.recoveredAfterRetry, 1);
+      const warning = logs.filter(log => log.msg === "transient server errors");
+      assert.equal(warning.length, 1);
+      assert.equal(warning[0].level, "warn");
+      assert.deepEqual(warning[0].obj, { transientErrors: 1, recoveredAfterRetry: 1,
+        attempted: result.reliability.attempted, byStatus: { 502: 1 } });
       const retries = logs.filter(log => log.msg === "Retrying page fetch");
       assert.equal(retries.length, 1);
       assert.equal(retries[0].obj.retries, 1);
@@ -102,6 +109,7 @@ test("three 502 responses produce one final failure with status 502 and retries 
     assert.equal(hits, 3);
     assert.deepEqual(result.reliability, {
       attempted: 1, succeeded: 0, failed: 1,
+      transientErrors: 1, recoveredAfterRetry: 0,
       failures: [{ url: origin, reason: "http_error", statusCode: 502, retries: 2 }],
     });
     assert.deepEqual(logs.filter(log => log.msg === "Retrying page fetch").map(log => log.obj.delayMs), [2000, 4000]);
@@ -116,6 +124,7 @@ test("503 with insufficient deadline returns its final HTTP outcome without retr
     assert.equal(page.statusCode, 503);
     assert.equal(page.retries, 0);
     assert.ok(!logs.some(log => log.msg === "Retrying page fetch"));
+    assert.ok(!logs.some(log => log.msg === "transient server errors"));
   });
 });
 
@@ -130,8 +139,59 @@ test("429 honours Retry-After: 1 before succeeding", async () => {
     assert.equal(result.reliability.attempted, 1);
     assert.equal(result.reliability.succeeded, 1);
     assert.equal(result.pages[0].retries, 1);
+    assert.equal(result.reliability.transientErrors, 1);
+    assert.equal(result.reliability.recoveredAfterRetry, 1);
+    assert.deepEqual(logs.find(log => log.msg === "transient server errors").obj.byStatus, { 429: 1 });
     assert.ok(times[1] - times[0] >= 950);
     assert.ok(times[1] - times[0] < 2500);
+  });
+});
+
+for (const recover of [true, false]) {
+  test(`first-attempt timeout is counted once, ${recover ? "recovered" : "unrecovered"}, and logged in the crawl WARN`, async () => {
+    await withServer((req, res) => {
+      if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4)));
+      else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const realFetch = globalThis.fetch;
+      let hits = 0;
+      globalThis.fetch = (url, options) => {
+        if (String(url) === `${origin}/` && (++hits === 1 || !recover)) return Promise.reject(new Error("fetch-timeout"));
+        return realFetch(url, options);
+      };
+      try {
+        const result = await crawlSite(`${origin}/`, 1, { mainSite: true });
+        assert.equal(hits, 2);
+        assert.equal(result.reliability.transientErrors, 1);
+        assert.equal(result.reliability.recoveredAfterRetry, recover ? 1 : 0);
+        const warnings = logs.filter(log => log.msg === "transient server errors");
+        assert.equal(warnings.length, 1);
+        assert.deepEqual(warnings[0].obj, {
+          transientErrors: 1, recoveredAfterRetry: recover ? 1 : 0, attempted: 1, byStatus: { timeout: 1 },
+        });
+      } finally { globalThis.fetch = realFetch; }
+    });
+  });
+}
+
+test("multiple recovered page fetches emit one aggregate transient WARN grouped by first status", async () => {
+  const hits = new Map();
+  await withServer((req, res) => {
+    const count = (hits.get(req.url) ?? 0) + 1;
+    hits.set(req.url, count);
+    if (count === 1) {
+      res.writeHead(req.url === "/one" ? 502 : 429, { "Retry-After": "0" }); res.end("temporary");
+    } else res.end(languageHtml("de", germanText.repeat(4)));
+  }, async ({ origin }) => {
+    const result = await fetchExplicitPages(origin, [`${origin}/one`, `${origin}/two`], seedOptions);
+    assert.equal(result.reliability.attempted, 2);
+    assert.equal(result.reliability.succeeded, 2);
+    assert.equal(result.reliability.transientErrors, 2);
+    assert.equal(result.reliability.recoveredAfterRetry, 2);
+    assert.deepEqual(logs.filter(log => log.msg === "transient server errors"), [{
+      level: "warn", msg: "transient server errors",
+      obj: { transientErrors: 2, recoveredAfterRetry: 2, attempted: 2, byStatus: { 502: 1, 429: 1 } },
+    }]);
   });
 });
 
@@ -1396,6 +1456,15 @@ for (const mode of ["main", "competitor"]) {
           assert.ok(retries.every(log => log.level === "debug" && log.obj.statusCode === status));
           assert.deepEqual(retries.map(log => log.obj.retries), persistent ? [1, 2] : [1]);
           assert.deepEqual(retries.map(log => log.obj.delayMs), persistent ? [2000, 4000] : [status === 429 ? 1000 : 2000]);
+          assert.equal(result.reliability.transientErrors, 1);
+          assert.equal(result.reliability.recoveredAfterRetry, persistent ? 0 : 1);
+          const warnings = logs.filter(log => log.msg === "transient server errors");
+          assert.equal(warnings.length, 1, "one aggregate WARN per crawl, including early homepage failures");
+          assert.deepEqual(warnings[0], {
+            level: "warn", msg: "transient server errors",
+            obj: { transientErrors: 1, recoveredAfterRetry: persistent ? 0 : 1,
+              attempted: result.reliability.attempted, byStatus: { [status]: 1 } },
+          });
           if (!persistent) {
             assert.equal(result.homepageFailReason, null);
             assert.ok(result.pages.some(page => page.url === `${origin}${variant ? "/de" : start}`));

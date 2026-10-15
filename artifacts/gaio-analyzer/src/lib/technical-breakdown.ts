@@ -10,6 +10,7 @@ export function technicalDetail(component: TechnicalScoreComponent, t: Technical
   const vars = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, String(v ?? "")]));
   if (d.uploaded) return t("technical.detail_uploaded");
   switch (component.key) {
+    case "crawl": return t(d.recoveredAfterRetry === undefined ? "technical.detail_crawl" : "technical.detail_crawl_recovered", vars);
     case "https": return t(`technical.detail_${d.status}`);
     case "robots": return t(`technical.detail_${d.status}`);
     case "sitemap": return t("technical.detail_sitemap", { ...vars, status: t(`technical.detail_${d.status}`) });

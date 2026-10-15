@@ -386,6 +386,10 @@ export async function runAnalysis(
                 attempted: selectedResult.reliability.attempted + filled.reliability.attempted,
                 succeeded: selectedResult.reliability.succeeded + filled.reliability.succeeded,
                 failed: selectedResult.reliability.failed + filled.reliability.failed,
+                ...((selectedResult.reliability.transientErrors ?? 0) + (filled.reliability.transientErrors ?? 0) > 0 ? {
+                  transientErrors: (selectedResult.reliability.transientErrors ?? 0) + (filled.reliability.transientErrors ?? 0),
+                  recoveredAfterRetry: (selectedResult.reliability.recoveredAfterRetry ?? 0) + (filled.reliability.recoveredAfterRetry ?? 0),
+                } : {}),
                 serverErrors: selectedResult.reliability.failures.filter(f => (f.statusCode ?? 0) >= 500 && (f.statusCode ?? 0) < 600).length + (filled.reliability.serverErrors ?? 0),
                 failures: [...selectedResult.reliability.failures, ...filled.reliability.failures].slice(0, 25),
               },

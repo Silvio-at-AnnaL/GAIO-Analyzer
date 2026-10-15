@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import { logger } from "./logger";
+import { createCrawlRetryTracker, type RetryMetadata } from "./crawl-retry-tracker";
 import { LANG_PREFIX_RE, getPathLanguage as urlLang } from "./language-path";
 import { checkHttpsRedirect, type HttpsRedirectStatus } from "./https-redirect";
 export { checkHttpsRedirect } from "./https-redirect";
@@ -46,6 +47,8 @@ export interface CrawlReliability {
   pagePhaseMs?: number;
   maxPages?: number;
   serverErrors?: number;
+  transientErrors?: number;
+  recoveredAfterRetry?: number;
 }
 
 export interface SitemapResolution {
@@ -709,9 +712,14 @@ async function fetchPageWithRetry(
   canFetchUrl?: (url: string) => boolean,
   deadline?: number,
   discoveryFetch = false,
-): Promise<FetchTimingResult & { retries: number }> {
+): Promise<FetchTimingResult & { retries: number } & RetryMetadata> {
   let retries = 0;
   let networkRetries = 0;
+  let firstTransientStatus: RetryMetadata["transientStatus"];
+  const metadata = () => ({
+    retries,
+    ...(retries > 0 && firstTransientStatus !== undefined ? { transientStatus: firstTransientStatus } : {}),
+  });
   while (true) {
     let response: FetchTimingResult | undefined;
     let error: unknown;
@@ -723,8 +731,9 @@ async function fetchPageWithRetry(
         ? timeoutMs : Math.min(timeoutMs, deadline - Date.now());
       if (remaining <= 0) throw new Error("fetch-timeout");
       response = await fetchWithTiming(url, remaining, canFetchUrl);
+      if (retries === 0 && (response.statusCode >= 500 || response.statusCode === 429)) firstTransientStatus = response.statusCode;
       if (retries >= 2 || ![429, 502, 503, 504].includes(response.statusCode)) {
-        return Object.assign(response, { retries });
+        return Object.assign(response, metadata());
       }
       delayMs = retries === 0 ? 2000 : 4000;
       if (response.statusCode === 429) {
@@ -737,19 +746,20 @@ async function fetchPageWithRetry(
     } catch (err) {
       error = err;
       const reason = classifyFetchError(err);
-      Object.assign(err as object, { retries });
+      if (retries === 0 && reason === "timeout") firstTransientStatus = "timeout";
+      Object.assign(err as object, metadata());
       if ((err as { code?: string })?.code === "PAGE_FETCH_BLOCKED" || retries >= 2 || networkRetries >= 1 ||
         !["timeout", "connection_reset", "unknown"].includes(reason)) throw err;
       delayMs = 1000;
     }
     // Keep the last HTTP outcome when there is no budget for another attempt.
     if (deadline !== undefined && Date.now() + delayMs >= deadline) {
-      if (response) return Object.assign(response, { retries });
+      if (response) return Object.assign(response, metadata());
       throw error;
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (deadline !== undefined && Date.now() >= deadline) {
-      if (response) return Object.assign(response, { retries });
+      if (response) return Object.assign(response, metadata());
       throw error;
     }
     retries++;
@@ -762,12 +772,14 @@ async function fetchPageWithRetry(
 
 export async function fetchPage(
   url: string,
-  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason, retries: number) => void },
+  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason, retries: number) => void; onOutcome?: (metadata: RetryMetadata, succeeded: boolean) => void },
 ): Promise<CrawledPage | null> {
   try {
     const data = await fetchPageWithRetry(url, 15000, undefined, opts?.deadline);
+    opts?.onOutcome?.(data, data.statusCode < 400);
     return { url, ...data };
   } catch (err) {
+    opts?.onOutcome?.(err as RetryMetadata, false);
     const reason = classifyFetchError(err);
     opts?.onFailure?.(reason, (err as { retries?: number }).retries ?? 0);
     logger.warn({ url, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to fetch page");
@@ -1129,6 +1141,7 @@ export async function fetchExplicitPages(
   const completed = new Array<boolean>(explicitUrls.length).fill(false);
   const failureReasons = new Map<number, CrawlFailReason>();
   const failureRetries = new Map<number, number>();
+  const retryTracker = createCrawlRetryTracker();
   const loopStart = Date.now();
   let done = 0;
 
@@ -1137,6 +1150,7 @@ export async function fetchExplicitPages(
     results[index] = await fetchPage(pageUrl, {
       deadline: loopStart + BATCH_DEADLINE_MS,
       onFailure: (reason, retries) => { failureReasons.set(index, reason); failureRetries.set(index, retries); },
+      onOutcome: retryTracker.record,
     });
     completed[index] = true;
     opts?.onProgress?.(++done, explicitUrls.length);
@@ -1201,6 +1215,7 @@ export async function fetchExplicitPages(
     Object.assign(result, await fetchSiteTechFiles(inputUrl));
   }
   logger.info({ host: new URL(inputUrl).hostname, siteLanguage: result.siteLanguage, switched: false, readmittedPages: 0 }, "site language determined");
+  retryTracker.finish(result.reliability);
   return result;
 }
 
@@ -1311,6 +1326,21 @@ export async function crawlSite(
     logger.info({ host: baseDomain, requestedLang: opts?.preferredLang ?? null, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
   };
 
+  const retryTracker = createCrawlRetryTracker();
+  const finish = () => {
+    retryTracker.finish(result.reliability);
+    return result;
+  };
+  const fetchTrackedPage = async (...args: Parameters<typeof fetchPageWithRetry>) => {
+    try {
+      const page = await fetchPageWithRetry(...args);
+      retryTracker.record(page, page.statusCode < 400 && detectBlockedContent(page.html, page.finalUrl) === null);
+      return page;
+    } catch (error) {
+      retryTracker.record(error as RetryMetadata, false);
+      throw error;
+    }
+  };
   function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number, retries = 0) {
     result.reliability.failed++;
     if (statusCode !== undefined && statusCode >= 500 && statusCode < 600) {
@@ -1436,7 +1466,7 @@ export async function crawlSite(
   const fetchDiscoveryPage = async (url: string, timeoutMs = 15000) => {
     let cachedDestination: CrawledPage | undefined;
     try {
-      return await fetchPageWithRetry(url, timeoutMs, seedMode ? (target) => {
+      return await fetchTrackedPage(url, timeoutMs, seedMode ? (target) => {
         cachedDestination = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(target) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(target)));
         return !cachedDestination;
       } : undefined, crawlStart + CRAWL_DEADLINE_MS, true);
@@ -1593,7 +1623,7 @@ export async function crawlSite(
       );
       logSiteLanguage();
       result.httpsRedirect = await httpsCheck;
-      return result;
+      return finish();
     }
 
     // Quarantine hreflang variants found on homepage
@@ -1615,7 +1645,7 @@ export async function crawlSite(
     ) {
       logSiteLanguage();
       result.httpsRedirect = await httpsCheck;
-      return result;
+      return finish();
     }
   }
 
@@ -1815,7 +1845,7 @@ export async function crawlSite(
 
     result.reliability.attempted++;
     try {
-      const page = await fetchPageWithRetry(url, 15000, seedMode || excludedUrls.size > 0
+      const page = await fetchTrackedPage(url, 15000, seedMode || excludedUrls.size > 0
         ? (target) => !isExcluded(target) && !excludedPageUrls.has(canon(target)) && !seededPageUrls.has(canon(target))
         : undefined, pageDeadline);
       const blocked = detectBlockedContent(page.html, page.finalUrl);
@@ -1996,5 +2026,5 @@ export async function crawlSite(
   }
   logSiteLanguage();
   result.httpsRedirect = await httpsCheck;
-  return result;
+  return finish();
 }

@@ -15,6 +15,8 @@ export * from "./competitorResult";
 export * from "./competitorScore";
 export * from "./contentRelevanceResult";
 export * from "./contentRelevanceResultDimensionsItem";
+export * from "./crawlFailure";
+export * from "./crawlReliability";
 export * from "./errorResponse";
 export * from "./exportReportDeliveriesCsvConsent";
 export * from "./exportReportDeliveriesCsvParams";

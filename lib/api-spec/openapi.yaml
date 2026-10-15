@@ -646,6 +646,48 @@ components:
         - yourAdvantage
         - recommendation
 
+    CrawlFailure:
+      type: object
+      properties:
+        url:
+          type: string
+        reason:
+          type: string
+        statusCode:
+          type: integer
+        retries:
+          type: integer
+      required: [url, reason]
+
+    CrawlReliability:
+      type: object
+      properties:
+        attempted:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrawlFailure"
+        transientErrors:
+          type: integer
+        recoveredAfterRetry:
+          type: integer
+        timedOut:
+          type: boolean
+        techPhaseMs:
+          type: number
+        pagePhaseMs:
+          type: number
+        maxPages:
+          type: integer
+        serverErrors:
+          type: integer
+      required: [attempted, succeeded, failed, failures]
+
     CompetitorScore:
       type: object
       properties:
@@ -667,6 +709,8 @@ components:
           type: number
         crawledPagesCount:
           type: integer
+        crawlReliability:
+          $ref: "#/components/schemas/CrawlReliability"
         findings:
           oneOf:
             - $ref: "#/components/schemas/CompetitorFindings"
@@ -725,6 +769,8 @@ components:
           enum: [url, html]
         overallScore:
           type: ["number", "null"]
+        crawlReliability:
+          $ref: "#/components/schemas/CrawlReliability"
         currentModule:
           type: ["string", "null"]
         progress:

@@ -5,6 +5,7 @@ export const DEFAULT_TECHNICAL_PARAMS = {
   title_min: 15, title_max: 75, desc_min: 50, desc_max: 170,
   length_factor: 0.5, duplicate_factor: 0.5, html_sitemap_credit: 0.5,
   response_good_ms: 1000, response_ok_ms: 2000, response_ok_credit: 0.6,
+  retry_credit: 0.5,
 };
 
 export type TechnicalScoreParams = typeof DEFAULT_TECHNICAL_PARAMS;

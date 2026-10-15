@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CompetitorFindings } from "./competitorFindings";
+import type { CrawlReliability } from "./crawlReliability";
 
 export interface CompetitorScore {
   name: string;
@@ -17,5 +18,6 @@ export interface CompetitorScore {
   faqScore: number;
   compositeScore: number;
   crawledPagesCount: number;
+  crawlReliability?: CrawlReliability;
   findings?: CompetitorFindings | null;
 }

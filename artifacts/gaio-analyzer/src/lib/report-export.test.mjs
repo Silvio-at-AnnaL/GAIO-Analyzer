@@ -251,7 +251,7 @@ test("results notice component renders shared labels and is wired into the live 
   assert.equal(oldHtml, "");
   const source = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
   assert.match(source, /<CrawlReliabilityNotices reliability=\{crawlReliability\} evaluated=\{evaluated\} t=\{t\}/);
-  assert.match(source, /failed === 0 \? \(crawlReliability\.timedOut === true \? null/);
+  assert.match(source, /failed === 0 \? \(crawlReliability\.timedOut === true \|\| Number\(crawlReliability\.transientErrors \?\? 0\) > 0 \? null/);
 });
 
 test("connection_reset uses its German label in HTML and the live renderer mapping", async () => {
@@ -327,7 +327,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1283);
+  assert.equal(Object.keys(labelDefaults).length, 1287);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -387,6 +387,28 @@ function liveCard(value, overrides = {}) {
     .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
   return renderToStaticMarkup(React.createElement(LiveCard, { report: value, t }));
 }
+
+test("recovered transient failures show the exact German warning in both cards instead of the success line", async () => {
+  const value = reliabilityFixture(4, 3);
+  value.crawlReliability = { ...value.crawlReliability, transientErrors: 2, recoveredAfterRetry: 2 };
+  const expected = "Der Server hat 2 von 4 Abrufen zunächst mit einem Serverfehler beantwortet; 2 davon gelangen erst beim erneuten Versuch. Nicht alle Crawler wiederholen fehlgeschlagene Abrufe – Inhalte dieser Website sind für KI-Systeme daher möglicherweise nur eingeschränkt erreichbar.";
+  for (const html of [liveCard(value), exportedCard(await exportReport(value))]) {
+    assert.ok(html.includes(expected));
+    assert.ok(!html.includes("Alle abgerufenen Seiten waren erfolgreich"));
+  }
+  assert.ok(liveCard(value, { "results.crawl_transient_errors": "Vorübergehend: {transient}/{attempted}, erholt: {recovered}" })
+    .includes("Vorübergehend: 2/4, erholt: 2"));
+});
+test("zero or absent transient metadata retains both cards' legacy success line", async () => {
+  for (const metadata of [{}, { transientErrors: 0, recoveredAfterRetry: 0 }]) {
+    const value = reliabilityFixture(2, 2);
+    Object.assign(value.crawlReliability, metadata);
+    for (const html of [liveCard(value), exportedCard(await exportReport(value))]) {
+      assert.ok(html.includes("Alle abgerufenen Seiten waren erfolgreich"));
+      assert.ok(!html.includes("Nicht alle Crawler"));
+    }
+  }
+});
 
 test("live card hides the success line only for timed-out analyses and uses notice overrides", () => {
   const value = reliabilityFixture(3, 2);

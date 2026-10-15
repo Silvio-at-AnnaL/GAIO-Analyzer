@@ -1,7 +1,7 @@
 So entsteht der Technik-Score (0–100). Geprüft werden zwölf Bausteine über alle analysierten Seiten. Jeder Baustein ergibt einen Anteil zwischen 0 und 1, der mit seinem Gewicht multipliziert wird.
 
 1. HTTPS-Weiterleitung (Standard 10): Die Website wird mit http:// aufgerufen. Volle Punkte, wenn sie auf https:// umleitet; null Punkte, wenn sie unverschlüsselt ausgeliefert wird.
-2. Crawl-Zuverlässigkeit (10): Anteil der erfolgreich abgerufenen Seiten an allen Abrufversuchen.
+2. Crawl-Zuverlässigkeit (10): Anteil der erfolgreich abgerufenen Seiten an allen Abrufversuchen. Abrufe, die erst nach einer Wiederholung gelingen, zählen mit dem eingestellten Anteil (Standard 50 %).
 3. robots.txt (5): vorhanden oder nicht.
 4. Sitemap (8): XML-Sitemap oder Sitemap-Index ergibt volle Punkte, eine reine HTML-Sitemap den eingestellten Anteil (Standard 50 %), keine Sitemap null Punkte.
 5. Indexierbarkeit (7): Anteil der Seiten ohne „noindex“-Angabe (meta robots oder googlebot).

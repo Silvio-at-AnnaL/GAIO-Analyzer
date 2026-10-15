@@ -95,6 +95,28 @@ export const GetAnalysisReportResponse = zod.object({
   url: zod.string().nullish(),
   mode: zod.enum(["url", "html"]),
   overallScore: zod.number().nullish(),
+  crawlReliability: zod
+    .object({
+      attempted: zod.number(),
+      succeeded: zod.number(),
+      failed: zod.number(),
+      failures: zod.array(
+        zod.object({
+          url: zod.string(),
+          reason: zod.string(),
+          statusCode: zod.number().optional(),
+          retries: zod.number().optional(),
+        }),
+      ),
+      transientErrors: zod.number().optional(),
+      recoveredAfterRetry: zod.number().optional(),
+      timedOut: zod.boolean().optional(),
+      techPhaseMs: zod.number().optional(),
+      pagePhaseMs: zod.number().optional(),
+      maxPages: zod.number().optional(),
+      serverErrors: zod.number().optional(),
+    })
+    .optional(),
   currentModule: zod.string().nullish(),
   progress: zod.number(),
   technicalSeo: zod
@@ -266,6 +288,28 @@ export const GetAnalysisReportResponse = zod.object({
             faqScore: zod.number(),
             compositeScore: zod.number(),
             crawledPagesCount: zod.number(),
+            crawlReliability: zod
+              .object({
+                attempted: zod.number(),
+                succeeded: zod.number(),
+                failed: zod.number(),
+                failures: zod.array(
+                  zod.object({
+                    url: zod.string(),
+                    reason: zod.string(),
+                    statusCode: zod.number().optional(),
+                    retries: zod.number().optional(),
+                  }),
+                ),
+                transientErrors: zod.number().optional(),
+                recoveredAfterRetry: zod.number().optional(),
+                timedOut: zod.boolean().optional(),
+                techPhaseMs: zod.number().optional(),
+                pagePhaseMs: zod.number().optional(),
+                maxPages: zod.number().optional(),
+                serverErrors: zod.number().optional(),
+              })
+              .optional(),
             findings: zod
               .union([
                 zod.object({

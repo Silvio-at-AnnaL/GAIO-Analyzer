@@ -167,5 +167,33 @@ test("slider changes retain debounced saving and success messages survive collap
 test("technical default matches the supplied German description exactly, including line breaks", async () => {
   const expected = (await readFile(new URL("./fixtures/score-technical-description.txt", import.meta.url), "utf8")).trimEnd();
   assert.equal(labelDefaults["score.profile_technical_desc"].de, expected);
-  assert.equal(Object.keys(labelDefaults).length, 1283);
+  assert.equal(Object.keys(labelDefaults).length, 1287);
+});
+test("retry credit has the requested German slider, saves its numeric value, and resets to 50 percent", async () => {
+  const param = { key: "retry_credit", label: "score.param_retry_credit_label", help: "score.param_retry_credit_help",
+    current: 0.5, default: 0.5, min: 0, max: 1, step: 0.05 };
+  const profile = { ...clone(profiles[0]), params: [param] };
+  const calls = [];
+  await mount({ fetcher: async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, json: async () => !init?.method ? [clone(profile)]
+      : { ...clone(profile), params: [{ ...param, current: init.method === "POST" ? 0.5 : JSON.parse(init.body).value }] } };
+  } });
+  await click(triggers()[0]);
+  let slider = host.querySelector('input[type="range"]');
+  assert.deepEqual([slider.min, slider.max, slider.step, slider.value], ["0", "1", "0.05", "0.5"]);
+  assert.match(host.textContent, /Anteil, den ein erst nach Wiederholung erfolgreicher Abruf zählt/);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(slider, "0.75");
+    slider.dispatchEvent(new window.Event("input", { bubbles: true }));
+    slider.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+  assert.equal(calls.at(-1).init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { key: "retry_credit", value: 0.75 });
+  assert.match(triggers()[0].textContent, /Angepasst/);
+  await click(resetButton());
+  slider = host.querySelector('input[type="range"]');
+  assert.equal(slider.value, "0.5");
+  assert.doesNotMatch(triggers()[0].textContent, /Angepasst/);
 });

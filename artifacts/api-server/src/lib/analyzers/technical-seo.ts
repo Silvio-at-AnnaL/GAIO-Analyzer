@@ -516,8 +516,10 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string, 
     components.push({ key, weight, fraction, points: fraction === null ? null : weight * fraction, detail });
   };
   add("https", httpsRedirect === "unknown" ? null : httpsEnforced ? 1 : 0, { status: httpsRedirect, uploaded });
-  add("crawl", uploaded || !reliability?.attempted ? null : reliability.succeeded / reliability.attempted,
-    { succeeded: reliability?.succeeded ?? 0, attempted: reliability?.attempted ?? 0, uploaded });
+  const recoveredAfterRetry = reliability?.recoveredAfterRetry ?? 0;
+  add("crawl", uploaded || !reliability?.attempted ? null
+    : (reliability.succeeded - recoveredAfterRetry * (1 - params.retry_credit)) / reliability.attempted,
+    { succeeded: reliability?.succeeded ?? 0, attempted: reliability?.attempted ?? 0, recoveredAfterRetry, uploaded });
   add("robots", robotsStatus === "error" ? null : robotsStatus === "found" ? 1 : 0, { status: robotsStatus });
   add("sitemap", sitemapStatus === "error" ? null : sitemapStatus === "missing" ? 0
     : sitemapType === "html" ? params.html_sitemap_credit : sitemapType === "xml" || sitemapType === "xml_index" ? 1 : 0,

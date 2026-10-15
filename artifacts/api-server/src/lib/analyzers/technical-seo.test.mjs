@@ -139,6 +139,21 @@ function result(htmls, overrides = {}, params) {
 function component(value, key) {
   return value.breakdown.components.find(c => c.key === key);
 }
+test("crawl retry credit applies the exact requested fraction at default, zero, full and custom credit", () => {
+  const reliability = { attempted: 10, succeeded: 8, failed: 2, failures: [], transientErrors: 5, recoveredAfterRetry: 3 };
+  for (const credit of [undefined, 0, 1, 0.25]) {
+    const value = result(["<html><body>Inhalt</body></html>"], { reliability }, credit === undefined ? undefined : { retry_credit: credit });
+    const crawl = component(value, "crawl");
+    assert.equal(crawl.fraction, (8 - 3 * (1 - (credit ?? 0.5))) / 10);
+    assert.equal(crawl.points, 10 * crawl.fraction);
+    assert.equal(crawl.detail.recoveredAfterRetry, 3);
+  }
+});
+test("legacy reliability without retry metadata retains the previous score and records zero recovered", () => {
+  const value = result(["<html><body>Inhalt</body></html>"], { reliability: { attempted: 10, succeeded: 8, failed: 2, failures: [] } });
+  assert.equal(component(value, "crawl").fraction, 0.8);
+  assert.equal(component(value, "crawl").detail.recoveredAfterRetry, 0);
+});
 test("perfect single-language site scores 100 with all 12 components and hreflang null", () => {
   const value = result();
   assert.equal(value.score, 100);

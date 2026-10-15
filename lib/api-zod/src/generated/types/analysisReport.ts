@@ -9,6 +9,7 @@ import type { AnalysisReportMode } from "./analysisReportMode";
 import type { AnalysisReportStatus } from "./analysisReportStatus";
 import type { CompetitorResult } from "./competitorResult";
 import type { ContentRelevanceResult } from "./contentRelevanceResult";
+import type { CrawlReliability } from "./crawlReliability";
 import type { FaqResult } from "./faqResult";
 import type { HeadingResult } from "./headingResult";
 import type { LlmDiscoverabilityResult } from "./llmDiscoverabilityResult";
@@ -24,6 +25,7 @@ export interface AnalysisReport {
   mode: AnalysisReportMode;
   /** @nullable */
   overallScore?: number | null;
+  crawlReliability?: CrawlReliability;
   /** @nullable */
   currentModule?: string | null;
   progress: number;

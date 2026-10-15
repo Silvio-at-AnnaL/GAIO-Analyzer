@@ -1,5 +1,5 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { crawlSite } from "../crawler";
+import { crawlSite, type CrawlReliability } from "../crawler";
 import type { CrawlExclusionMatcher } from "../crawl-exclusions.js";
 import { analyzeTechnicalSeo } from "./technical-seo";
 import { analyzeSchemaOrg, type SchemaScoreParams } from "./schema-org";
@@ -34,6 +34,7 @@ export interface CompetitorScore {
   compositeScore: number;
   crawledPagesCount: number;
   crawledPages: CompetitorCrawledPage[];
+  crawlReliability?: CrawlReliability;
   findings: CompetitorFindings | null;
   error?: string;
   errorReason?: "unreachable" | "bot_protection" | "parked_domain" | "js_rendered";
@@ -361,6 +362,7 @@ export async function analyzeCompetitors(
           compositeScore: 0,
           crawledPagesCount: 0,
           crawledPages: [],
+          crawlReliability: crawlResult.reliability,
           findings: null,
           error: "Nicht erreichbar",
           errorReason,
@@ -413,6 +415,7 @@ export async function analyzeCompetitors(
           compositeScore: 0,
           crawledPagesCount: crawlResult.pages.length,
           crawledPages,
+          crawlReliability: crawlResult.reliability,
           findings: null,
           error: "Nicht auswertbar",
           errorReason: "js_rendered",
@@ -506,6 +509,7 @@ export async function analyzeCompetitors(
         ...competitorScores,
         crawledPagesCount: crawlResult.pages.length,
         crawledPages,
+        crawlReliability: crawlResult.reliability,
         findings,
       };
     } catch (err) {

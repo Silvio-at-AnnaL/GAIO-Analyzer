@@ -30,6 +30,19 @@ const report = {
   crawledPages: ["https://example.test"],
   technicalSeo: { score: 70, metaTitles: { present: 1 }, metaDescriptions: { present: 1 }, breakdown },
 };
+test("both technical breakdown renderers show recovered-after-retry counts without changing legacy details", () => {
+  const crawl = { key: "crawl", weight: 10, fraction: 0.75, points: 7.5,
+    detail: { attempted: 4, succeeded: 4, recoveredAfterRetry: 2 } };
+  const value = { ...breakdown, components: [crawl], evaluatedWeight: 10 };
+  const expected = "4 von 4 Seitenabrufen erfolgreich; davon 2 erst nach Wiederholung";
+  assert.equal(technicalDetail(crawl, t), expected);
+  const ui = renderToStaticMarkup(React.createElement(TechnicalScoreBreakdown, { breakdown: value, t }));
+  const html = renderTechnicalBreakdownHtml(value, t);
+  assert.ok(ui.includes(expected));
+  assert.ok(html.includes(expected));
+  assert.equal(technicalDetail({ key: "crawl", detail: { attempted: 4, succeeded: 4 } }, t),
+    "4 von 4 Seitenabrufen erfolgreich");
+});
 async function exportHtml(value, opts) {
   const previous = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false });

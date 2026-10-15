@@ -13,7 +13,7 @@ export const labelDefaults: Record<string, LabelDef> = {
   "score.profile_technical_desc": { group: "score", de: `So entsteht der Technik-Score (0–100). Geprüft werden zwölf Bausteine über alle analysierten Seiten. Jeder Baustein ergibt einen Anteil zwischen 0 und 1, der mit seinem Gewicht multipliziert wird.
 
 1. HTTPS-Weiterleitung (Standard 10): Die Website wird mit http:// aufgerufen. Volle Punkte, wenn sie auf https:// umleitet; null Punkte, wenn sie unverschlüsselt ausgeliefert wird.
-2. Crawl-Zuverlässigkeit (10): Anteil der erfolgreich abgerufenen Seiten an allen Abrufversuchen.
+2. Crawl-Zuverlässigkeit (10): Anteil der erfolgreich abgerufenen Seiten an allen Abrufversuchen. Abrufe, die erst nach einer Wiederholung gelingen, zählen mit dem eingestellten Anteil (Standard 50 %).
 3. robots.txt (5): vorhanden oder nicht.
 4. Sitemap (8): XML-Sitemap oder Sitemap-Index ergibt volle Punkte, eine reine HTML-Sitemap den eingestellten Anteil (Standard 50 %), keine Sitemap null Punkte.
 5. Indexierbarkeit (7): Anteil der Seiten ohne „noindex“-Angabe (meta robots oder googlebot).
@@ -34,6 +34,8 @@ Die Einstellungen gelten auch für die Bewertung der Wettbewerber.` },
   "score.param_weight_https_help": { group: "score", de: "Gewicht der Weiterleitung von HTTP auf HTTPS." },
   "score.param_weight_crawl_label": { group: "score", de: "Gewicht Crawl-Zuverlässigkeit" },
   "score.param_weight_crawl_help": { group: "score", de: "Gewicht des Anteils erfolgreicher Seitenabrufe." },
+  "score.param_retry_credit_label": { group: "score", de: "Anteil nach Wiederholung erfolgreicher Abrufe" },
+  "score.param_retry_credit_help": { group: "score", de: "Anteil, den ein erst nach Wiederholung erfolgreicher Abruf zählt. Standard 0,5 (50 %); 0 zählt ihn nicht, 1 zählt ihn vollständig." },
   "score.param_weight_robots_label": { group: "score", de: "Gewicht robots.txt" },
   "score.param_weight_robots_help": { group: "score", de: "Gewicht einer gefundenen robots.txt; Abruffehler bleiben unbewertet." },
   "score.param_weight_sitemap_label": { group: "score", de: "Gewicht Sitemap" },
@@ -98,6 +100,7 @@ Die Einstellungen gelten auch für die Bewertung der Wettbewerber.` },
   "technical.detail_unknown": { group: "results", de: "Weiterleitung konnte nicht geprüft werden" },
   "technical.detail_uploaded": { group: "results", de: "HTML-Upload – nicht bewertet" },
   "technical.detail_crawl": { group: "results", de: "{succeeded} von {attempted} Seitenabrufen erfolgreich" },
+  "technical.detail_crawl_recovered": { group: "results", de: "{succeeded} von {attempted} Seitenabrufen erfolgreich; davon {recoveredAfterRetry} erst nach Wiederholung" },
   "technical.detail_found": { group: "results", de: "gefunden" },
   "technical.detail_missing": { group: "results", de: "nicht gefunden" },
   "technical.detail_error": { group: "results", de: "Abruffehler – nicht bewertet" },
@@ -599,6 +602,7 @@ Die Einstellungen gelten auch für die Bewertung der Wettbewerber.` },
   "results.crawl_skipped_examples":      { group: "results", de: "Beispiele:" },
   "results.crawl_skipped_more":          { group: "results", de: "… und {n} weitere" },
   "results.crawl_all_ok":               { group: "results", de: "Alle abgerufenen Seiten waren erfolgreich." },
+  "results.crawl_transient_errors":     { group: "results", de: "Der Server hat {transient} von {attempted} Abrufen zunächst mit einem Serverfehler beantwortet; {recovered} davon gelangen erst beim erneuten Versuch. Nicht alle Crawler wiederholen fehlgeschlagene Abrufe – Inhalte dieser Website sind für KI-Systeme daher möglicherweise nur eingeschränkt erreichbar." },
   "results.crawl_timed_out":            { group: "results", de: "Die Website hat langsam geantwortet. Die Seitenauswahl wurde nach Ablauf der Zeit beendet; ausgewertet wurden {n} von {max} möglichen Seiten." },
   "results.crawl_server_errors":        { group: "results", de: "Der Server hat {count} Abrufe mit einem Serverfehler (5xx) beantwortet." },
   "results.crawl_failures_title":       { group: "results", de: "Fehlgeschlagene Seiten" },

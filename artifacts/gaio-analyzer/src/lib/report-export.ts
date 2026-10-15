@@ -462,7 +462,7 @@ function renderCrawlReliabilityHtml(
   });
   html += noticeText.map(text => `<p style="font-size:12px;color:#b45309;">${esc(text)}</p>`).join("");
   if (failed === 0) {
-    if (reliability.timedOut !== true) html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
+    if (reliability.timedOut !== true && Number(reliability.transientErrors ?? 0) === 0) html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
     return html;
   }
 

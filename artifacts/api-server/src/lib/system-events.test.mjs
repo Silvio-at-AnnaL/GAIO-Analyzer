@@ -33,6 +33,13 @@ test("crawl exclusion snapshot load INFO is persisted", () => {
   assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rules loaded"));
   assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rules loaded", obj: {} }), true);
 });
+test("transient server errors WARN is persisted with its aggregate counts and status groups", () => {
+  const obj = { transientErrors: 3, recoveredAfterRetry: 2, attempted: 16, byStatus: { 502: 2, timeout: 1 } };
+  assert.equal(shouldPersist({ level: 40, msg: "transient server errors", obj }), true);
+  const context = buildContext(obj);
+  assert.ok(JSON.stringify(context).includes("recoveredAfterRetry"));
+  assert.ok(JSON.stringify(context).includes("502"));
+});
 
 test("crawl exclusion mutation audit INFO is persisted", () => {
   assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rule changed"));

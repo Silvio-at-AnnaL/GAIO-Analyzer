@@ -227,6 +227,8 @@ test("mixed inputs keep the requested selection and exclusions without enabling 
 test("mixed analysis merges both phases and exposes only newly evaluated URLs as automatic additions", async () => {
   const state = mixedState();
   Object.assign(state.fillResult, { timedOut: true, techPhaseMs: 31000, pagePhaseMs: 59000 });
+  Object.assign(state.selectedResult.reliability, { transientErrors: 1, recoveredAfterRetry: 1 });
+  Object.assign(state.fillResult.reliability, { transientErrors: 2, recoveredAfterRetry: 1 });
   await runAnalysis("synthetic-mixed", "url", "http://127.0.0.1/", null, null,
     [selectedPage.url, "http://127.0.0.1/image"], null, { fillToMax: true, excludedUrls: ["http://127.0.0.1/excluded"] });
   const result = getAnalysis("synthetic-mixed");
@@ -237,6 +239,7 @@ test("mixed analysis merges both phases and exposes only newly evaluated URLs as
   assert.deepEqual(result.inputs.autoAddedPages, ["http://127.0.0.1/de/added"]);
   assert.deepEqual(result.crawlReliability, {
     attempted: 5, succeeded: 4, failed: 1, serverErrors: 0,
+    transientErrors: 3, recoveredAfterRetry: 2,
     failures: state.fillResult.reliability.failures,
     timedOut: true, techPhaseMs: 31000, pagePhaseMs: 59000, maxPages: 16,
   });
