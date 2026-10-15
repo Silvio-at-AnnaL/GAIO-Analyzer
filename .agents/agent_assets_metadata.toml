@@ -56,3 +56,17 @@ mtime_ms = 1792055660469
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/ab5e37a2-8625-4132-8f7d-13d227507c7f/d64f476c-4afb-4369-9b83-6f1d0b8b2d19"
 storage_version_token = "1792055675810256"
 content_type = "text/html"
+
+[[outputs]]
+id = "j7QQiOieReohq3_Xk0hAs"
+uri = "file://attached_assets/FAQ-Pruefbericht.txt"
+type = "text"
+title = "Vollständiger FAQ-Prüfbericht"
+description = "Commit, Tests, Styling-Vergleich, Hammelmann-Hinweis sowie alle neu erkannten Frage-Antwort-Paare mit Antwortanfang."
+logical_id = "175f3e05-3b94-4940-8485-fc5f5c876a2e"
+content_hash = "sha256:0190a7d9117a93b36faed9c856c2ea80162e3dca745ac9ac77b52e22ffa93f3e"
+size = 23816
+mtime_ms = 1792072984426
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/175f3e05-3b94-4940-8485-fc5f5c876a2e/fbfb1ea9-c147-4182-9c20-3b82b75a4c64"
+storage_version_token = "1792072985029096"
+content_type = "text/plain"
