@@ -526,6 +526,36 @@ test("redirect duplicates: allowance is bounded at twenty and known redirect cat
   });
 });
 
+test("redirect duplicates: an unseen category after allowance exhaustion consumes the normal budget", async () => {
+  const maxPages = 16;
+  const redirects = Array.from({ length: 20 }, (_, i) => `/product_set${i}/first`);
+  // Greater depth makes this previously unseen category follow all twenty redirects.
+  const overflow = "/product_overflow/nested/first";
+  const overflowLater = "/product_overflow/nested/deeper/real";
+  const duplicates = Array.from({ length: 40 }, (_, i) => `/section${i}/page`);
+  await withRedirectSite([...redirects, overflow, overflowLater, ...duplicates], (req, res) => {
+    if (redirects.includes(req.url) || req.url === overflow) {
+      res.writeHead(301, { Location: "/" }); res.end();
+    } else res.end(languageHtml("de", `${germanText.repeat(4)} Home`));
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, maxPages);
+    const initialPageRequests = requests.filter(r =>
+      redirects.includes(r.url) || r.url === overflow || r.url === overflowLater || duplicates.includes(r.url));
+    assert.deepEqual(initialPageRequests.slice(0, 20).map(r => r.url), redirects);
+    assert.equal(initialPageRequests[20].url, overflow);
+    assert.equal(initialPageRequests.filter(r => duplicates.includes(r.url)).length, 26,
+      "the overflow redirect consumes one of the remaining normal attempts");
+    assert.ok(!initialPageRequests.some(r => r.url === overflowLater),
+      "after its first redirect the new category is also skipped at the exhausted cap");
+    assert.equal(result.reliability.attempted, 1 + initialPageRequests.length);
+    assert.equal(result.reliability.attempted, maxPages + 12 + 20);
+    assert.ok(result.reliability.attempted <= maxPages + 12 + 20);
+    assert.equal(result.skipped.duplicate, 47);
+    assert.equal(result.reliability.failed, 0);
+    assert.equal(result.pages.length, 1);
+  });
+});
+
 test("queryless exclusions cover query variants from homepage links and XML sitemap candidates", async () => {
   const blocked = "/de/kontakt?productid=1&cHash=x";
   await withServer((req, res) => {

@@ -67,3 +67,11 @@ Do not optimize retries solely for more attempts at persistently failing subpage
 **Why:** The user observed a live comparison in which persistent per-URL server failures consumed the crawl's page time and reduced evaluated pages despite retries working as designed.
 
 **How to apply:** When changing retry policy, compare both elapsed time and evaluated pages, especially under persistent subpage failures. Keep the existing homepage and language-variant recovery paths available.
+
+## Redirect-duplicate allowance overflow
+
+After the redirect-duplicate allowance is exhausted, an unexpected redirect from a previously unseen category consumes the normal attempt budget.
+
+**Why:** The user explicitly chose this edge-case policy to keep total logical page fetches bounded by the normal attempt limit plus the redirect allowance, while continuing other categories.
+
+**How to apply:** Preserve this bound and test the first redirect from a new category after allowance exhaustion. Previously observed redirect categories are skipped once the allowance is exhausted.
