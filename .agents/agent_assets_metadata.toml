@@ -42,3 +42,17 @@ mtime_ms = 1792053966630
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/6c82d669-4ad9-4e6c-858b-3f5747c43d00/a5d2fbc3-6277-4060-b4d3-f9ab34e59887"
 storage_version_token = "1792053981927806"
 content_type = "text/plain"
+
+[[outputs]]
+id = "MnlY-HDvDu270e0EjORZL"
+uri = "file://.local/reports/language-comparison.html"
+type = "html"
+title = "Language detection — full comparison report"
+description = "All eight live crawl comparisons, full before/after page lists, technical scores, reliability, tests, commits, and the confirmed Farnell hreflang result."
+logical_id = "ab5e37a2-8625-4132-8f7d-13d227507c7f"
+content_hash = "sha256:1e11ffefbaa7827fed2f26ba9c18adf30fd08cb3dd2f5b342522ca7612cbb3e1"
+size = 56329
+mtime_ms = 1792055660469
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/ab5e37a2-8625-4132-8f7d-13d227507c7f/d64f476c-4afb-4369-9b83-6f1d0b8b2d19"
+storage_version_token = "1792055675810256"
+content_type = "text/html"
