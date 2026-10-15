@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw, SlidersHorizontal } from "lucide-react";
-import { adminFetch } from "@/store/authStore";
+import { adminFetch, useAuth } from "@/store/authStore";
 import { useT } from "@/lib/LabelProvider";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { readScoreSettingsOpen, writeScoreSettingsOpen } from "@/lib/score-settings-state";
 
 interface ScoreParam {
   key: string;
@@ -23,11 +25,32 @@ interface ScoreProfile {
 
 export function ScoreSettingsView() {
   const t = useT();
+  const { user } = useAuth();
+  const viewerId = user?.id;
+  const [openState, setOpenState] = useState(() => ({
+    viewerId, items: readScoreSettingsOpen(viewerId),
+  }));
+  const openItems = openState.viewerId === viewerId ? openState.items : [];
   const [profiles, setProfiles] = useState<ScoreProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [resetting, setResetting] = useState<string | null>(null);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    setOpenState({ viewerId, items: readScoreSettingsOpen(viewerId) });
+  }, [viewerId]);
+
+  useEffect(() => {
+    if (openState.viewerId === viewerId) writeScoreSettingsOpen(viewerId, openState.items);
+  }, [viewerId, openState]);
+
+  const openProfile = (slug: string) => {
+    setOpenState((current) => {
+      const items = current.viewerId === viewerId ? current.items : [];
+      return { viewerId, items: items.includes(slug) ? items : [...items, slug] };
+    });
+  };
 
   useEffect(() => {
     adminFetch("/api/admin/score-profiles")
@@ -60,6 +83,7 @@ export function ScoreSettingsView() {
       setMessages((current) => ({ ...current, [slug]: t("score.saved_msg") }));
     } catch {
       setMessages((current) => ({ ...current, [slug]: t("score.save_error") }));
+      openProfile(slug);
     }
   };
 
@@ -104,6 +128,7 @@ export function ScoreSettingsView() {
       setMessages((current) => ({ ...current, [slug]: t("score.saved_msg") }));
     } catch {
       setMessages((current) => ({ ...current, [slug]: t("score.save_error") }));
+      openProfile(slug);
     } finally {
       setResetting(null);
     }
@@ -135,12 +160,38 @@ export function ScoreSettingsView() {
         </div>
       )}
 
+      <Accordion
+        type="multiple"
+        value={openItems}
+        onValueChange={(items) => setOpenState({ viewerId, items })}
+        className="space-y-4"
+      >
       {profiles.map((profile) => {
         const message = messages[profile.slug] ?? "";
+        const customized = profile.params.some((param) => param.current !== param.default);
         return (
-          <section key={profile.slug} className="rounded-lg border border-border bg-card shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-              <h2 className="text-lg font-semibold text-foreground">{t(profile.label)}</h2>
+          <AccordionItem key={profile.slug} value={profile.slug} className="rounded-lg border border-border bg-card shadow-sm">
+            <AccordionTrigger className="gap-3 px-5 hover:no-underline">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-lg font-semibold text-foreground">{t(profile.label)}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {t("score.param_count", { count: profile.params.length })}
+                </span>
+                {customized && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    {t("score.customized_badge")}
+                  </span>
+                )}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="pb-0">
+            {profile.description && (
+              <div className="mx-5 mb-4 whitespace-pre-line rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+                {t(profile.description)}
+              </div>
+            )}
+
+            <div className="flex justify-end px-5 pb-3">
               <button
                 type="button"
                 onClick={() => void handleReset(profile.slug)}
@@ -151,12 +202,6 @@ export function ScoreSettingsView() {
                 {t("score.reset_button")}
               </button>
             </div>
-
-            {profile.description && (
-              <div className="mx-5 mt-5 whitespace-pre-line rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                {t(profile.description)}
-              </div>
-            )}
 
             <div className="divide-y divide-border">
               {profile.params.map((param) => (
@@ -193,6 +238,7 @@ export function ScoreSettingsView() {
 
             {message && (
               <div
+                role="status"
                 className={`border-t border-border px-5 py-3 text-sm ${
                   message.startsWith("Fehler") ? "text-destructive" : "text-emerald-600"
                 }`}
@@ -200,9 +246,11 @@ export function ScoreSettingsView() {
                 {message}
               </div>
             )}
-          </section>
+            </AccordionContent>
+          </AccordionItem>
         );
       })}
+      </Accordion>
     </div>
   );
 }

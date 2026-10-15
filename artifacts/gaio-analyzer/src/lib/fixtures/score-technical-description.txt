@@ -1,0 +1,20 @@
+So entsteht der Technik-Score (0–100). Geprüft werden zwölf Bausteine über alle analysierten Seiten. Jeder Baustein ergibt einen Anteil zwischen 0 und 1, der mit seinem Gewicht multipliziert wird.
+
+1. HTTPS-Weiterleitung (Standard 10): Die Website wird mit http:// aufgerufen. Volle Punkte, wenn sie auf https:// umleitet; null Punkte, wenn sie unverschlüsselt ausgeliefert wird.
+2. Crawl-Zuverlässigkeit (10): Anteil der erfolgreich abgerufenen Seiten an allen Abrufversuchen.
+3. robots.txt (5): vorhanden oder nicht.
+4. Sitemap (8): XML-Sitemap oder Sitemap-Index ergibt volle Punkte, eine reine HTML-Sitemap den eingestellten Anteil (Standard 50 %), keine Sitemap null Punkte.
+5. Indexierbarkeit (7): Anteil der Seiten ohne „noindex“-Angabe (meta robots oder googlebot).
+6. Canonical (5): Anteil der Seiten mit einer Canonical-Angabe auf dieselbe Website. Ein Canonical auf eine fremde Domain zählt nicht.
+7. Meta-Titel (18): Jede Seite mit Titel erhält volle Punkte, ohne Titel null. Liegt die Länge außerhalb des eingestellten Bereichs (Standard 15–75 Zeichen), wird mit dem Längenfaktor gemindert; steht derselbe Titel auf mehreren Seiten, zusätzlich mit dem Dublettenfaktor (beide Standard 0,5). Trifft beides zu, werden beide Faktoren angewendet.
+8. Meta-Beschreibung (12): wie beim Titel, Standardbereich 50–170 Zeichen.
+9. Viewport (5): Anteil der Seiten mit Angabe für mobile Darstellung.
+10. Bild-Alternativtexte (10): Anteil der Bilder mit Alternativtext. Gibt es keine Bilder, gilt der Baustein als erfüllt.
+11. Antwortzeit (5): Liegt die mittlere Antwortzeit unter der guten Grenze (Standard 1.000 ms), gibt es volle Punkte, unter der akzeptablen Grenze (Standard 2.000 ms) den eingestellten Anteil (Standard 60 %), darüber null.
+12. hreflang (5): nur bei Websites mit nachweisbaren Sprachversionen – also hreflang-Angaben oder Links auf Sprachpfade derselben Website wie /en/ oder /fr/. Bewertet wird der Anteil der Seiten mit hreflang-Angaben; ab 80 % gibt es volle Punkte. Einsprachige Websites werden hier nicht bewertet.
+
+Nicht bewertbar: Lässt sich ein Baustein nicht prüfen – etwa weil robots.txt oder Sitemap wegen eines Serverfehlers nicht abrufbar waren, die HTTPS-Prüfung keine Antwort erhielt oder nur eine hochgeladene Seite analysiert wird –, fällt er aus der Wertung. Der Score ergibt sich dann aus den übrigen Bausteinen: erreichte Punkte geteilt durch die Summe ihrer Gewichte, umgerechnet auf 0–100.
+
+Gewichte: Sie müssen nicht 100 ergeben – der Score wird immer auf 0–100 umgerechnet. Ein höheres Gewicht macht den Baustein wichtiger, Gewicht 0 schaltet ihn ab.
+Die Längenbereiche für Titel und Beschreibung sind verbreitete Richtwerte, keine feste Regel von Google; Google kürzt nach Pixelbreite.
+Die Einstellungen gelten auch für die Bewertung der Wettbewerber.

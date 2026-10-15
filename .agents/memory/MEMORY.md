@@ -12,3 +12,4 @@
 - [Nondelegable admin permissions](admin-permissions-policy.md) — user management, permission editing, and database configuration/testing must remain admin-only.
 - [Live session identity](live-session-identity.md) — JWT claims identify the account; protected requests use its current database role and username, without caching or fallback.
 - [Shared language-path policy](technical-seo-language-evidence.md) — curated web-language codes now apply to crawling and SEO; the old bare-regex/Farnell baseline was explicitly superseded.
+- [Workspace dependency relinking](workspace-dependency-relink.md) — filtered pnpm installs can leave existing dependencies unresolved; try a root frozen install before changing code.

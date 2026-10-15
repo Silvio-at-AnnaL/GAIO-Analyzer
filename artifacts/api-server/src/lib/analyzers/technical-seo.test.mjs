@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 
+const warnings = [];
+globalThis.__technicalSeoWarnings = warnings;
 const { outputFiles } = await build({
   entryPoints: [new URL("./technical-seo.ts", import.meta.url).pathname],
   bundle: true, platform: "node", format: "esm", write: false,
@@ -10,7 +12,7 @@ const { outputFiles } = await build({
     setup(builder) {
       builder.onResolve({ filter: /^\.\.\/logger$/ }, () => ({ path: "logger", namespace: "mock" }));
       builder.onLoad({ filter: /.*/, namespace: "mock" }, () => ({
-        contents: `export const logger = {warn(){}};`,
+        contents: `export const logger = {warn(...args){globalThis.__technicalSeoWarnings.push(args);}};`,
       }));
       builder.onResolve({ filter: /^cheerio$/ }, () => ({
         path: import.meta.resolve("cheerio"), external: true,
@@ -153,6 +155,11 @@ test("HTTPS uses redirect evidence, never the input scheme; unknown is unscored"
     assert.equal(component(value, "https").fraction, fraction);
     assert.equal(value.httpsEnforced, status === "enforced");
   }
+});
+test("uploaded-page mode does not warn about its intentionally unavailable HTTPS redirect check", () => {
+  warnings.length = 0;
+  analyzeTechnicalSeo(synthetic(), "uploaded-page");
+  assert.ok(!warnings.some(args => args.includes("https redirect check failed")));
 });
 test("crawl reliability uses all attempts, and zero attempts or uploads are unscored", () => {
   assert.equal(component(result(undefined, { reliability: { attempted: 4, succeeded: 3 } }), "crawl").fraction, .75);

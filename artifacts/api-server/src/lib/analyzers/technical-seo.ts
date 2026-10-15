@@ -482,7 +482,6 @@ export function analyzeTechnicalSeo(crawlResult: CrawlResult, inputUrl: string, 
   }
 
   const httpsRedirect = uploaded ? "unknown" : crawlResult.httpsRedirect ?? "unknown";
-  if (uploaded) logger.warn({ reason: "uploaded-page" }, "https redirect check failed");
   const httpsEnforced = httpsRedirect === "enforced";
   const imageAltCoverage = totalImages > 0 ? (imagesWithAlt / totalImages) * 100 : 100;
   const hreflangConsistent = hreflangPresent
