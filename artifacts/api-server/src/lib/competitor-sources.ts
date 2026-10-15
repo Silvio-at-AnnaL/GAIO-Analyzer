@@ -84,6 +84,7 @@ export async function findCandidatesBySearch(
     if (queries.length === 0) {
       queries = [`${companySummary.trim().split(/\s+/).slice(0, 8).join(" ")} Anbieter ${marketRegion}`.trim()];
     }
+    logger.info({ queries }, "Prefill: competitor search queries");
 
     const candidates: RawCandidate[] = [];
     const seen = new Set([normalizedHost(ownHost)]);

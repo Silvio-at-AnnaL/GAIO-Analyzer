@@ -42,6 +42,15 @@ test("crawl exclusion snapshot load INFO is persisted", () => {
   assert.ok(PERSISTED_INFO_MESSAGES.has("crawl exclusion rules loaded"));
   assert.equal(shouldPersist({ level: 30, msg: "crawl exclusion rules loaded", obj: {} }), true);
 });
+
+test("competitor search queries and missing-context skip are persisted at info level", () => {
+  const queries = ["Hochdruckpumpen Anbieter Deutschland", "Wasserstrahltechnik Hersteller DACH"];
+  for (const msg of ["Prefill: competitor search queries", "competitor search skipped: no company context"]) {
+    assert.ok(PERSISTED_INFO_MESSAGES.has(msg));
+    assert.equal(shouldPersist({ level: 30, msg, obj: { queries } }), true);
+  }
+  assert.deepEqual(buildContext({ queries }), { queries });
+});
 test("transient server errors WARN is persisted with its aggregate counts and status groups", () => {
   const obj = { transientErrors: 3, recoveredAfterRetry: 2, attempted: 16, byStatus: { 502: 2, timeout: 1 } };
   assert.equal(shouldPersist({ level: 40, msg: "transient server errors", obj }), true);

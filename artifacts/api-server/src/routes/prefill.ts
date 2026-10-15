@@ -480,6 +480,10 @@ Market region: ${marketRegion}
 
 NOTE: The website could not be crawled. Base your analysis on the company name, URL, and any general knowledge you have.
 
+COMPANY CONTEXT
+Provide "company_context": 2-3 sentences in German describing what the company makes or offers and which industries it serves, from general knowledge only. Use null if you do not know the company with confidence.
+Keep "content_summary" strictly null: it represents crawled website content, not general knowledge.
+
 TASK 1 — TARGET AUDIENCES
 Identify the primary B2B buyer personas. Include relevant industries, job titles/roles, and key buying criteria. Write 3-5 concise sentences in German.
 
@@ -490,6 +494,7 @@ They must serve the stated market. Exclude marketplaces, directories, associatio
 Return ONLY valid JSON, no other text:
 {
   "content_summary": null,
+  "company_context": "<German company context from general knowledge, 2-3 sentences, or null>",
   "personas": "<German prose, 3-5 sentences>",
   "competitors": [
     { "name": "<company>", "url": "https://...", "reason": "<ein Satz auf Deutsch: warum ist das ein direkter Wettbewerber?>" }
@@ -743,6 +748,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
   let rawCompetitors: { name: string; url: string; reason: string }[] = [];
   let suggestedTotal = 0;
   let content_summary: string | null = null;
+  let company_context: string | null = null;
 
   try {
     const response = await anthropic.messages.create({
@@ -763,7 +769,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
       return;
     }
 
-    let parsed: { personas?: unknown; competitors?: unknown; content_summary?: unknown };
+    let parsed: { personas?: unknown; competitors?: unknown; content_summary?: unknown; company_context?: unknown };
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch {
@@ -785,8 +791,12 @@ router.post("/prefill", async (req, res): Promise<void> => {
       .filter((c) => c.url.startsWith("http"));
 
     content_summary =
-      typeof parsed.content_summary === "string" && parsed.content_summary.trim()
-        ? stripMarkdown(parsed.content_summary)
+      !crawlFailed && typeof parsed.content_summary === "string" && parsed.content_summary.trim()
+        ? stripMarkdown(parsed.content_summary) || null
+        : null;
+    company_context =
+      crawlFailed && typeof parsed.company_context === "string" && parsed.company_context.trim()
+        ? stripMarkdown(parsed.company_context) || null
         : null;
   } catch (err) {
     logger.error({ err }, "Prefill: AI call failed");
@@ -794,21 +804,23 @@ router.post("/prefill", async (req, res): Promise<void> => {
     return;
   }
 
+  // General knowledge is internal competitor context, never website content.
+  const competitorContext = content_summary ?? (crawledContent.slice(0, 1600) || null) ?? company_context ?? null;
   let candidateSource: CandidateSourceName = "ai";
   if ((await getSetting("competitor_source") ?? "ai") === "search") {
-    const search = await findCandidatesBySearch(
-      content_summary ?? (crawledContent.slice(0, 1600) || "Kein auswertbarer Text der Unternehmenswebsite vorhanden."),
-      marketRegion,
-      competitorKey(url),
-    );
-    if (search.candidates.length >= 2) {
-      rawCompetitors = search.candidates.map(({ name, url: candidateUrl, reason }) => ({
-        name, url: candidateUrl, reason,
-      }));
-      candidateSource = "search";
+    if (competitorContext === null) {
+      logger.info("competitor search skipped: no company context");
     } else {
-      logger.warn({ error: search.error ?? "too_few_candidates", candidates: search.candidates.length },
-        "competitor search source unusable");
+      const search = await findCandidatesBySearch(competitorContext, marketRegion, competitorKey(url));
+      if (search.candidates.length >= 2) {
+        rawCompetitors = search.candidates.map(({ name, url: candidateUrl, reason }) => ({
+          name, url: candidateUrl, reason,
+        }));
+        candidateSource = "search";
+      } else {
+        logger.warn({ error: search.error ?? "too_few_candidates", candidates: search.candidates.length },
+          "competitor search source unusable");
+      }
     }
   }
 
@@ -850,7 +862,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
   });
   const relevance = await checkCompetitorRelevance(
     filteredCompetitors,
-    content_summary ?? (crawledContent.slice(0, 1600) || "Kein auswertbarer Text der Unternehmenswebsite vorhanden."),
+    competitorContext ?? `${company_name}\n${personas}`,
     marketRegion,
   );
 

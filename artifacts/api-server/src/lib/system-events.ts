@@ -44,6 +44,8 @@ export const PERSISTED_INFO_MESSAGES = new Set([
   "Prefill: duplicate competitor host dropped",
   "Prefill: no competitor has sufficient evidence for relevance check",
   "Prefill: search candidates",
+  "Prefill: competitor search queries",
+  "competitor search skipped: no company context",
 ]);
 
 interface BufferedSystemEvent {
