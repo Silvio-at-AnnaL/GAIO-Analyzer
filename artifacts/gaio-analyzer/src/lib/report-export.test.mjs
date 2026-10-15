@@ -209,6 +209,51 @@ function exportedCard(html) {
   return html.slice(start, html.indexOf(">Gecrawlte Seiten", start));
 }
 
+test("timed-out HTML report shows the exact hint and hides the success line", async () => {
+  const value = reliabilityFixture(3, 2);
+  value.crawlReliability = { ...value.crawlReliability, timedOut: true, techPhaseMs: 31000, pagePhaseMs: 59000, maxPages: 16 };
+  const html = exportedCard(await exportReport(value));
+  assert.ok(html.includes("Die Website hat langsam geantwortet. Die Seitenauswahl wurde nach Ablauf der Zeit beendet; ausgewertet wurden 2 von 16 möglichen Seiten."));
+  assert.ok(!html.includes("Alle abgerufenen Seiten waren erfolgreich"));
+});
+
+test("server-error notice requires a strict majority and preserves legacy report output", async () => {
+  const value = reliabilityFixture(1, 1);
+  const reliability = {
+    attempted: 4, succeeded: 1, failed: 3, timedOut: false,
+    failures: [502, 503, 404].map((statusCode, i) => ({ url: `https://example.test/${i}`, reason: "http_error", statusCode, retries: 2 })),
+  };
+  const majority = exportedCard(await exportReport({ ...value, crawlReliability: reliability }));
+  assert.ok(majority.includes("Der Server hat 2 Abrufe mit einem Serverfehler (5xx) beantwortet."));
+  const half = exportedCard(await exportReport({ ...value, crawlReliability: { ...reliability, failed: 4 } }));
+  assert.ok(!half.includes("Der Server hat"));
+  const { timedOut, ...old } = reliability;
+  const legacy = exportedCard(await exportReport({ ...value, crawlReliability: old }));
+  assert.ok(!legacy.includes("Der Server hat"));
+  assert.ok(!legacy.includes("Die Website hat langsam"));
+  assert.ok(exportedCard(await exportReport(value)).includes("Alle abgerufenen Seiten waren erfolgreich."));
+});
+
+test("results notice component renders shared labels and is wired into the live reliability card", async () => {
+  const { CrawlReliabilityNotices } = await load("../components/CrawlReliabilityNotices.tsx");
+  const { labelDefaults } = await load("./labelDefaults.ts");
+  const t = (key, params = {}) => Object.entries(params).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), labelDefaults[key].de);
+  const html = renderToStaticMarkup(React.createElement(CrawlReliabilityNotices, {
+    reliability: { timedOut: true, failed: 3, serverErrors: 2, failures: [], maxPages: 8 },
+    evaluated: 2, t,
+  }));
+  assert.ok(html.includes("ausgewertet wurden 2 von 8 möglichen Seiten."));
+  assert.ok(html.includes("Der Server hat 2 Abrufe"));
+  const oldHtml = renderToStaticMarkup(React.createElement(CrawlReliabilityNotices, {
+    reliability: { failed: 0, failures: [] }, evaluated: 2, t,
+  }));
+  assert.equal(oldHtml, "");
+  const source = await readFile(new URL("../views/ErgebnisseView.tsx", import.meta.url), "utf8");
+  assert.match(source, /<CrawlReliabilityNotices reliability=\{crawlReliability\} evaluated=\{evaluated\} t=\{t\}/);
+  assert.match(source, /failed === 0 \? \(crawlReliability\.timedOut === true \? null/);
+});
+
 test("connection_reset uses its German label in HTML and the live renderer mapping", async () => {
   const value = {
     ...reliabilityFixture(1, 1),
@@ -282,7 +327,7 @@ test("failed HTML reports pass evaluated count and language metadata to the same
 });
 
 test("results defaults add one language-variant label and retain the crawl text defaults", () => {
-  assert.equal(Object.keys(labelDefaults).length, 1281);
+  assert.equal(Object.keys(labelDefaults).length, 1283);
   for (const [key, de] of Object.entries({
     crawl_succeeded: "Erfolgreich abgerufen",
     crawl_evaluated: "Davon bewertet",
@@ -316,11 +361,13 @@ const cardEnd = resultsSource.indexOf("})()}", cardStart);
 assert.ok(cardStart >= 0 && cardEnd > cardStart);
 const cardExpression = resultsSource.slice(cardStart, cardEnd + "})()}".length);
 globalThis.__crawlCardReact = React;
+globalThis.__crawlNotices = (await load("../components/CrawlReliabilityNotices.tsx")).CrawlReliabilityNotices;
 const { outputFiles: liveFiles } = await build({
   stdin: {
     loader: "tsx",
     contents: `
       const React = globalThis.__crawlCardReact;
+      const CrawlReliabilityNotices = globalThis.__crawlNotices;
       const Card = ({ children, ...props }) => React.createElement("section", props, children);
       const CardHeader = Card, CardTitle = Card, CardContent = Card;
       const CheckCircle2 = () => React.createElement("svg");
@@ -340,6 +387,27 @@ function liveCard(value, overrides = {}) {
     .replace(/\{(\w+)\}/g, (placeholder, name) => vars[name] === undefined ? placeholder : String(vars[name]));
   return renderToStaticMarkup(React.createElement(LiveCard, { report: value, t }));
 }
+
+test("live card hides the success line only for timed-out analyses and uses notice overrides", () => {
+  const value = reliabilityFixture(3, 2);
+  value.crawlReliability = { ...value.crawlReliability, timedOut: true, maxPages: 16, techPhaseMs: 30000, pagePhaseMs: 60000 };
+  const html = liveCard(value);
+  assert.ok(html.includes("ausgewertet wurden 2 von 16 möglichen Seiten."));
+  assert.ok(!html.includes("Alle abgerufenen Seiten waren erfolgreich"));
+  assert.ok(liveCard(value, { "results.crawl_timed_out": "Abbruch: {n}/{max}" }).includes("Abbruch: 2/16"));
+  assert.ok(liveCard(reliabilityFixture()).includes("Alle abgerufenen Seiten waren erfolgreich."));
+});
+
+test("live card shows a majority server-error notice alongside the deadline notice and failures", () => {
+  const value = reliabilityFixture(2, 1);
+  value.crawlReliability = { attempted: 5, succeeded: 2, failed: 3, timedOut: true, serverErrors: 2,
+    failures: [{ url: "https://example.test/error", reason: "http_error", statusCode: 502, retries: 2 }] };
+  const html = liveCard(value);
+  assert.ok(html.includes("Die Website hat langsam geantwortet."));
+  assert.ok(html.includes("Der Server hat 2 Abrufe mit einem Serverfehler (5xx) beantwortet."));
+  assert.ok(html.includes("https://example.test/error"));
+  assert.ok(!html.includes("Alle abgerufenen Seiten waren erfolgreich"));
+});
 
 test("live card has four responsive tiles and renders both conditional lines with the new labels", () => {
   const html = liveCard(reliabilityFixture(27, 11, languageFixture));

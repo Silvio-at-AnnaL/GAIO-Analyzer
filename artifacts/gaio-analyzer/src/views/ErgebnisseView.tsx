@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TechnicalScoreBreakdown as TechnicalBreakdown } from "@workspace/api-client-react";
 import { TechnicalScoreBreakdown } from "@/components/TechnicalScoreBreakdown";
+import { CrawlReliabilityNotices } from "@/components/CrawlReliabilityNotices";
 import { technicalTooltip } from "@/lib/technical-breakdown";
 import { useDeliveryMode } from "@/store/deliveryModeStore";
 import { useGetAnalysisReport, getGetAnalysisReportQueryKey } from "@workspace/api-client-react";
@@ -2319,12 +2320,13 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </div>
                   )}
 
-                  {failed === 0 ? (
+                  <CrawlReliabilityNotices reliability={crawlReliability} evaluated={evaluated} t={t} />
+                  {failed === 0 ? (crawlReliability.timedOut === true ? null : (
                     <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                       <CheckCircle2 className="h-4 w-4 shrink-0" />
                       {t("results.crawl_all_ok")}
                     </p>
-                  ) : (
+                  )) : (
                     <div className="space-y-1.5 border-t border-border/30 pt-2">
                       <p className="text-xs text-muted-foreground mb-1">{t("results.crawl_failures_title")}</p>
                       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto] items-center gap-x-3 gap-y-1.5 text-xs">

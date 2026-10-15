@@ -21,6 +21,7 @@ export interface CrawledPage {
   statusCode: number;
   responseTime: number;
   ttfb: number;
+  retries?: number;
 }
 
 export interface HreflangVariant {
@@ -32,6 +33,7 @@ export interface CrawlFailure {
   url: string;
   reason: CrawlFailReason;
   statusCode?: number;
+  retries?: number;
 }
 
 export interface CrawlReliability {
@@ -39,6 +41,11 @@ export interface CrawlReliability {
   succeeded: number;
   failed: number;
   failures: CrawlFailure[];
+  timedOut?: boolean;
+  techPhaseMs?: number;
+  pagePhaseMs?: number;
+  maxPages?: number;
+  serverErrors?: number;
 }
 
 export interface SitemapResolution {
@@ -371,7 +378,7 @@ export async function fetchWithTiming(
   url: string,
   timeoutMs = 15000,
   canFetchUrl?: (url: string) => boolean,
-): Promise<{ html: string; contentType: string | null; statusCode: number; responseTime: number; ttfb: number; finalUrl: string }> {
+): Promise<{ html: string; contentType: string | null; statusCode: number; responseTime: number; ttfb: number; finalUrl: string; retryAfter: string | null }> {
   const start = Date.now();
   let ttfb = 0;
   const controller = new AbortController();
@@ -432,6 +439,7 @@ export async function fetchWithTiming(
           responseTime: Date.now() - start,
           ttfb,
           finalUrl: response.url || currentUrl,
+          retryAfter: response.headers.get("retry-after"),
         };
       }
     })();
@@ -700,33 +708,69 @@ async function fetchPageWithRetry(
   timeoutMs = 15000,
   canFetchUrl?: (url: string) => boolean,
   deadline?: number,
-): Promise<FetchTimingResult> {
-  try {
-    return await fetchWithTiming(url, timeoutMs, canFetchUrl);
-  } catch (err) {
-    const reason = classifyFetchError(err);
-    if ((err as { code?: string })?.code === "PAGE_FETCH_BLOCKED" ||
-      !["timeout", "connection_reset", "unknown"].includes(reason) ||
-      (deadline !== undefined && Date.now() + 1000 >= deadline)) throw err;
-    logger.debug({ url, reason, cause: fetchErrorCause(err) }, "Retrying page fetch");
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (deadline !== undefined && Date.now() >= deadline) throw err;
-    const retryTimeout = deadline === undefined ? timeoutMs : Math.min(timeoutMs, deadline - Date.now());
-    return fetchWithTiming(url, retryTimeout, canFetchUrl);
+  discoveryFetch = false,
+): Promise<FetchTimingResult & { retries: number }> {
+  let retries = 0;
+  let networkRetries = 0;
+  while (true) {
+    let response: FetchTimingResult | undefined;
+    let error: unknown;
+    let delayMs: number;
+    try {
+      // Homepage discovery has always been exempt from the expired technical
+      // deadline; competitors rely on it before their reserved page phase.
+      const remaining = deadline === undefined || (discoveryFetch && retries === 0)
+        ? timeoutMs : Math.min(timeoutMs, deadline - Date.now());
+      if (remaining <= 0) throw new Error("fetch-timeout");
+      response = await fetchWithTiming(url, remaining, canFetchUrl);
+      if (retries >= 2 || ![429, 502, 503, 504].includes(response.statusCode)) {
+        return Object.assign(response, { retries });
+      }
+      delayMs = retries === 0 ? 2000 : 4000;
+      if (response.statusCode === 429) {
+        const header = response.retryAfter?.trim();
+        const seconds = header && /^\d+(?:\.\d+)?$/.test(header) ? Number(header) * 1000 : NaN;
+        const dateDelay = header ? Date.parse(header) - Date.now() : NaN;
+        const requested = Number.isFinite(seconds) ? seconds : dateDelay;
+        delayMs = Number.isFinite(requested) ? Math.min(5000, Math.max(0, requested)) : 3000;
+      }
+    } catch (err) {
+      error = err;
+      const reason = classifyFetchError(err);
+      Object.assign(err as object, { retries });
+      if ((err as { code?: string })?.code === "PAGE_FETCH_BLOCKED" || retries >= 2 || networkRetries >= 1 ||
+        !["timeout", "connection_reset", "unknown"].includes(reason)) throw err;
+      delayMs = 1000;
+    }
+    // Keep the last HTTP outcome when there is no budget for another attempt.
+    if (deadline !== undefined && Date.now() + delayMs >= deadline) {
+      if (response) return Object.assign(response, { retries });
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (deadline !== undefined && Date.now() >= deadline) {
+      if (response) return Object.assign(response, { retries });
+      throw error;
+    }
+    retries++;
+    if (!response) networkRetries++;
+    logger.debug({ url, retries, delayMs, statusCode: response?.statusCode,
+      reason: error ? classifyFetchError(error) : "http_error",
+      ...(error ? { cause: fetchErrorCause(error) } : {}) }, "Retrying page fetch");
   }
 }
 
 export async function fetchPage(
   url: string,
-  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason) => void },
+  opts?: { deadline?: number; onFailure?: (reason: CrawlFailReason, retries: number) => void },
 ): Promise<CrawledPage | null> {
   try {
     const data = await fetchPageWithRetry(url, 15000, undefined, opts?.deadline);
     return { url, ...data };
   } catch (err) {
     const reason = classifyFetchError(err);
-    opts?.onFailure?.(reason);
-    logger.warn({ url, reason, cause: fetchErrorCause(err), err }, "Failed to fetch page");
+    opts?.onFailure?.(reason, (err as { retries?: number }).retries ?? 0);
+    logger.warn({ url, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to fetch page");
     return null;
   }
 }
@@ -1084,6 +1128,7 @@ export async function fetchExplicitPages(
   const results: Array<CrawledPage | null> = new Array(explicitUrls.length).fill(null);
   const completed = new Array<boolean>(explicitUrls.length).fill(false);
   const failureReasons = new Map<number, CrawlFailReason>();
+  const failureRetries = new Map<number, number>();
   const loopStart = Date.now();
   let done = 0;
 
@@ -1091,7 +1136,7 @@ export async function fetchExplicitPages(
     if (Date.now() - loopStart >= BATCH_DEADLINE_MS) break;
     results[index] = await fetchPage(pageUrl, {
       deadline: loopStart + BATCH_DEADLINE_MS,
-      onFailure: (reason) => { failureReasons.set(index, reason); },
+      onFailure: (reason, retries) => { failureReasons.set(index, reason); failureRetries.set(index, retries); },
     });
     completed[index] = true;
     opts?.onProgress?.(++done, explicitUrls.length);
@@ -1137,13 +1182,14 @@ export async function fetchExplicitPages(
           return [{ url: explicitUrls[index], reason: "timeout" as const }];
         }
         if (page === null) {
-          return [{ url: explicitUrls[index], reason: failureReasons.get(index) ?? "unknown" }];
+          return [{ url: explicitUrls[index], reason: failureReasons.get(index) ?? "unknown", retries: failureRetries.get(index) ?? 0 }];
         }
         if (page.statusCode >= 400) {
           return [{
             url: explicitUrls[index],
             reason: "http_error" as const,
             statusCode: page.statusCode,
+            retries: page.retries ?? 0,
           }];
         }
         return [];
@@ -1166,6 +1212,7 @@ export async function crawlSite(
     deadlineMs?: number;
     techPhaseBudgetMs?: number;
     minPagePhaseMs?: number;
+    mainSite?: boolean;
     preferredLang?: string;
     minTextChars?: number;
     onProgress?: (done: number, total: number) => void;
@@ -1264,12 +1311,16 @@ export async function crawlSite(
     logger.info({ host: baseDomain, requestedLang: opts?.preferredLang ?? null, siteLanguage: result.siteLanguage, switched: switchedLanguage, readmittedPages }, "site language determined");
   };
 
-  function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number) {
+  function recordFailure(url: string, reason: CrawlFailReason, statusCode?: number, retries = 0) {
     result.reliability.failed++;
+    if (statusCode !== undefined && statusCode >= 500 && statusCode < 600) {
+      result.reliability.serverErrors = (result.reliability.serverErrors ?? 0) + 1;
+    }
     if (result.reliability.failures.length < 25) {
       result.reliability.failures.push({
         url,
         reason,
+        retries,
         ...(statusCode !== undefined ? { statusCode } : {}),
       });
     }
@@ -1388,7 +1439,7 @@ export async function crawlSite(
       return await fetchPageWithRetry(url, timeoutMs, seedMode ? (target) => {
         cachedDestination = seeds.find((page) => normalizeUrl(page.url) === normalizeUrl(target) || (page.finalUrl && normalizeUrl(page.finalUrl) === normalizeUrl(target)));
         return !cachedDestination;
-      } : undefined, crawlStart + CRAWL_DEADLINE_MS);
+      } : undefined, crawlStart + CRAWL_DEADLINE_MS, true);
     } catch (error) {
       if ((error as { code?: string })?.code === "PAGE_FETCH_BLOCKED" && cachedDestination) {
         return { ...cachedDestination, finalUrl: cachedDestination.finalUrl ?? cachedDestination.url };
@@ -1470,7 +1521,7 @@ export async function crawlSite(
                 hostKey(finalVariantUrl.hostname) !== hostKey(originalHost) ||
                 normalizeUrl(variantPage.finalUrl) === normalizeUrl(originalUrl)) {
               const reason = variantBlocked ?? (variantPage.statusCode >= 400 ? classifyHttpStatus(variantPage.statusCode) : "unknown");
-              if (!variantSeed) recordFailure(variant.url, reason, variantPage.statusCode);
+              if (!variantSeed) recordFailure(variant.url, reason, variantPage.statusCode, variantPage.retries);
               logger.warn({ ...context, reason, statusCode: variantPage.statusCode }, "language variant unavailable");
             } else {
               // The original entry was fetched, but only the variant is evaluated.
@@ -1478,7 +1529,7 @@ export async function crawlSite(
               if (homePage.statusCode < 400 && originalBlocked === null) {
                 if (!homeSeed) result.reliability.succeeded++;
               }
-              else if (!homeSeed) recordFailure(originalUrl, originalBlocked ?? classifyHttpStatus(homePage.statusCode), homePage.statusCode);
+              else if (!homeSeed) recordFailure(originalUrl, originalBlocked ?? classifyHttpStatus(homePage.statusCode), homePage.statusCode, homePage.retries);
               homePage = variantPage;
               // Cached seed responses were accounted for by the selection phase.
               reusedHomepage = Boolean(variantSeed);
@@ -1501,7 +1552,7 @@ export async function crawlSite(
             }
           } catch (err) {
             const reason = err instanceof Error && err.message === "fetch-timeout" ? "timeout" : classifyFetchError(err);
-            recordFailure(variant.url, reason);
+            recordFailure(variant.url, reason, undefined, (err as { retries?: number }).retries);
             logger.warn({ ...context, reason, cause: fetchErrorCause(err), err }, "language variant unavailable");
           }
         }
@@ -1526,6 +1577,7 @@ export async function crawlSite(
         statusCode: homePage.statusCode,
         responseTime: homePage.responseTime,
         ttfb: homePage.ttfb,
+        retries: homePage.retries,
         });
       }
       acceptedBranches.add(firstPathSegment(new URL(canonicalHomepageUrl).pathname));
@@ -1533,7 +1585,7 @@ export async function crawlSite(
       opts?.onProgress?.(result.pages.length, maxPages);
     } else {
       const reason = blocked ?? classifyHttpStatus(homePage.statusCode);
-      if (!reusedHomepage) recordFailure(canonicalHomepageUrl, reason, homePage.statusCode);
+      if (!reusedHomepage) recordFailure(canonicalHomepageUrl, reason, homePage.statusCode, homePage.retries);
       result.homepageFailReason = reason;
       logger.warn(
         { url: canonicalHomepageUrl, reason, statusCode: homePage.statusCode },
@@ -1552,9 +1604,9 @@ export async function crawlSite(
   } catch (err) {
     const reason = classifyFetchError(err);
     canonicalHomepageUrl = canon(homepageUrl);
-    recordFailure(canonicalHomepageUrl, reason);
+    recordFailure(canonicalHomepageUrl, reason, undefined, (err as { retries?: number }).retries);
     result.homepageFailReason = reason;
-    logger.warn({ url: canonicalHomepageUrl, reason, cause: fetchErrorCause(err), err }, "Failed to fetch homepage");
+    logger.warn({ url: canonicalHomepageUrl, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to fetch homepage");
     if (
       reason === "dns" ||
       reason === "refused" ||
@@ -1706,7 +1758,7 @@ export async function crawlSite(
     logger.info({ skipped: [...skippedTechnicalUrls], techPhaseMs: pageLoopStart - crawlStart }, "technical phase budget exhausted");
   }
   while (pagesLeft > 0 && result.reliability.attempted < maxPages + EXTRA_FETCH_ALLOWANCE) {
-    if (Date.now() > pageDeadline) {
+    if (Date.now() >= pageDeadline) {
       result.timedOut = true;
       break;
     }
@@ -1776,6 +1828,7 @@ export async function crawlSite(
           statusCode: page.statusCode,
           responseTime: page.responseTime,
           ttfb: page.ttfb,
+          retries: page.retries,
         };
         result.reliability.succeeded++;
         if (isNonContentPage(page) !== null || (opts?.minTextChars !== undefined && isThinPage(page.html, opts.minTextChars))) {
@@ -1850,7 +1903,7 @@ export async function crawlSite(
           }
         }
       } else {
-        recordFailure(url, blocked ?? classifyHttpStatus(page.statusCode), page.statusCode);
+        recordFailure(url, blocked ?? classifyHttpStatus(page.statusCode), page.statusCode, page.retries);
       }
     } catch (err) {
       const blockedFetch = err as { code?: string; url?: string };
@@ -1865,8 +1918,8 @@ export async function crawlSite(
         continue;
       }
       const reason = classifyFetchError(err);
-      recordFailure(url, reason);
-      logger.warn({ url, reason, cause: fetchErrorCause(err), err }, "Failed to crawl page");
+      recordFailure(url, reason, undefined, (err as { retries?: number }).retries);
+      logger.warn({ url, reason, retries: (err as { retries?: number }).retries ?? 0, cause: fetchErrorCause(err), err }, "Failed to crawl page");
     }
   }
 
@@ -1934,6 +1987,13 @@ export async function crawlSite(
     "Crawl complete",
   );
 
+  if (opts.mainSite && result.timedOut) {
+    logger.warn({
+      reason: "deadline", pages: result.pages.length, requested: maxPages,
+      attempted: result.reliability.attempted, failed: result.reliability.failed,
+      techPhaseMs: result.techPhaseMs, pagePhaseMs: result.pagePhaseMs,
+    }, "main crawl ended early");
+  }
   logSiteLanguage();
   result.httpsRedirect = await httpsCheck;
   return result;

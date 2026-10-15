@@ -17,6 +17,9 @@ import {
 import { getScoreParams } from "./score-config.js";
 import { runWithAnalysisContext } from "./log-context.js";
 
+const MAIN_TECH_PHASE_BUDGET_MS = 30_000;
+const MAIN_MIN_PAGE_PHASE_MS = 45_000;
+
 export interface AnalysisInputs {
   companyName: string | null;
   buyerPersonas: string | null;
@@ -362,6 +365,9 @@ export async function runAnalysis(
             const filled = await crawlSite(url, 16, {
               exclusionMatcher,
               deadlineMs: 90_000,
+              techPhaseBudgetMs: MAIN_TECH_PHASE_BUDGET_MS,
+              minPagePhaseMs: MAIN_MIN_PAGE_PHASE_MS,
+              mainSite: true,
               seedPages: pages,
               excludeUrls: state.inputs?.excludedPages ?? [],
               ...(selectionLanguage ? { preferredLang: selectionLanguage } : {}),
@@ -380,6 +386,7 @@ export async function runAnalysis(
                 attempted: selectedResult.reliability.attempted + filled.reliability.attempted,
                 succeeded: selectedResult.reliability.succeeded + filled.reliability.succeeded,
                 failed: selectedResult.reliability.failed + filled.reliability.failed,
+                serverErrors: selectedResult.reliability.failures.filter(f => (f.statusCode ?? 0) >= 500 && (f.statusCode ?? 0) < 600).length + (filled.reliability.serverErrors ?? 0),
                 failures: [...selectedResult.reliability.failures, ...filled.reliability.failures].slice(0, 25),
               },
               skipped: {
@@ -405,6 +412,9 @@ export async function runAnalysis(
         crawlResult = await crawlSite(url, 16, {
           exclusionMatcher,
           deadlineMs: 90_000,
+          techPhaseBudgetMs: MAIN_TECH_PHASE_BUDGET_MS,
+          minPagePhaseMs: MAIN_MIN_PAGE_PHASE_MS,
+          mainSite: true,
           onProgress: (done, total) => {
             state.progress = 5 + Math.round((done / Math.max(1, total)) * 15);
             state.currentModule = "Crawling Website";
@@ -416,7 +426,13 @@ export async function runAnalysis(
       state.crawledPages = pages.map((p) => p.url);
       state.homepageRedirect = crawlResult.homepageRedirect ?? null;
       state.hreflangVariants = crawlResult.hreflangVariants ?? [];
-      state.crawlReliability = crawlResult.reliability;
+      state.crawlReliability = {
+        ...crawlResult.reliability,
+        timedOut: crawlResult.timedOut,
+        techPhaseMs: crawlResult.techPhaseMs,
+        pagePhaseMs: crawlResult.pagePhaseMs,
+        maxPages: 16,
+      };
       state.siteLanguage = crawlResult.siteLanguage;
       state.languageVariant = crawlResult.languageVariant ?? null;
       state.crawlSkipped = crawlResult.skipped;

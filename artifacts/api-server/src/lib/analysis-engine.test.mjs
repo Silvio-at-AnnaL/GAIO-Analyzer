@@ -226,6 +226,7 @@ test("mixed inputs keep the requested selection and exclusions without enabling 
 
 test("mixed analysis merges both phases and exposes only newly evaluated URLs as automatic additions", async () => {
   const state = mixedState();
+  Object.assign(state.fillResult, { timedOut: true, techPhaseMs: 31000, pagePhaseMs: 59000 });
   await runAnalysis("synthetic-mixed", "url", "http://127.0.0.1/", null, null,
     [selectedPage.url, "http://127.0.0.1/image"], null, { fillToMax: true, excludedUrls: ["http://127.0.0.1/excluded"] });
   const result = getAnalysis("synthetic-mixed");
@@ -234,13 +235,21 @@ test("mixed analysis merges both phases and exposes only newly evaluated URLs as
   assert.deepEqual(result.inputs.requestedPages, [selectedPage.url, "http://127.0.0.1/image"]);
   assert.deepEqual(result.inputs.excludedPages, ["http://127.0.0.1/excluded"]);
   assert.deepEqual(result.inputs.autoAddedPages, ["http://127.0.0.1/de/added"]);
-  assert.deepEqual(result.crawlReliability, { attempted: 5, succeeded: 4, failed: 1, failures: state.fillResult.reliability.failures });
+  assert.deepEqual(result.crawlReliability, {
+    attempted: 5, succeeded: 4, failed: 1, serverErrors: 0,
+    failures: state.fillResult.reliability.failures,
+    timedOut: true, techPhaseMs: 31000, pagePhaseMs: 59000, maxPages: 16,
+  });
   assert.equal(result.crawlSkipped.nonContent, 1);
   assert.equal(result.crawlSkipped.excludedPath, 2);
   assert.deepEqual(result.languageVariant, state.fillResult.languageVariant);
   assert.equal(state.explicitCalls[0][2].skipTechFiles, true);
   assert.equal(state.crawlCalls[0][1], 16);
   assert.equal(state.crawlCalls[0][2].preferredLang, "de");
+  assert.equal(state.crawlCalls[0][2].techPhaseBudgetMs, 30_000);
+  assert.equal(state.crawlCalls[0][2].minPagePhaseMs, 45_000);
+  assert.equal(state.crawlCalls[0][2].deadlineMs, 90_000);
+  assert.equal(state.crawlCalls[0][2].mainSite, true);
   assert.deepEqual(state.crawlCalls[0][2].seedPages, [selectedPage]);
   assert.equal(state.techCalls, undefined, "successful fill must not refetch technical files");
   assert.equal(state.ruleLoads, 1);

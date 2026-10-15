@@ -167,5 +167,5 @@ test("slider changes retain debounced saving and success messages survive collap
 test("technical default matches the supplied German description exactly, including line breaks", async () => {
   const expected = (await readFile(new URL("./fixtures/score-technical-description.txt", import.meta.url), "utf8")).trimEnd();
   assert.equal(labelDefaults["score.profile_technical_desc"].de, expected);
-  assert.equal(Object.keys(labelDefaults).length, 1281);
+  assert.equal(Object.keys(labelDefaults).length, 1283);
 });

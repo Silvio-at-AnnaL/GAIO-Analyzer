@@ -1,4 +1,6 @@
 import { getHeadingSummary } from "./heading-summary";
+import { crawlReliabilityNotices } from "./crawl-reliability";
+import { labelDefaults } from "./labelDefaults";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
 import { isLimitedCompetitor } from "./competitor-comparability";
 import type { TechnicalScoreBreakdown } from "@workspace/api-client-react";
@@ -453,8 +455,14 @@ function renderCrawlReliabilityHtml(
     </div>`;
   }
 
+  const noticeText = crawlReliabilityNotices(reliability, evaluated, (key, params) => {
+    let text = labelDefaults[key]?.de ?? key;
+    for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value));
+    return text;
+  });
+  html += noticeText.map(text => `<p style="font-size:12px;color:#b45309;">${esc(text)}</p>`).join("");
   if (failed === 0) {
-    html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
+    if (reliability.timedOut !== true) html += `<p style="font-size:12px;color:#16a34a;margin:6px 0 16px;">✓ ${T.allOk}</p>`;
     return html;
   }
 

@@ -68,6 +68,101 @@ const { classifyFetchError } = await import(
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+for (const mode of ["explicit", "crawl"]) {
+  test(`${mode}: 502 then 200 counts the recovered page once and records one retry`, async () => {
+    let hits = 0;
+    await withServer((req, res) => {
+      if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/products/one"]));
+      else if (req.url === "/products/one") {
+        if (++hits === 1) { res.writeHead(502); res.end("temporary"); }
+        else res.end(languageHtml("de", `Produkte ${germanText.repeat(5)}`));
+      } else { res.writeHead(404); res.end(); }
+    }, async ({ origin }) => {
+      const result = mode === "explicit"
+        ? await fetchExplicitPages(origin, [`${origin}/products/one`], seedOptions)
+        : await crawlSite(origin, 2, { mainSite: true });
+      assert.equal(hits, 2);
+      assert.equal(result.reliability.attempted, mode === "explicit" ? 1 : 2);
+      assert.equal(result.reliability.succeeded, mode === "explicit" ? 1 : 2);
+      assert.equal(result.reliability.failed, 0);
+      const retries = logs.filter(log => log.msg === "Retrying page fetch");
+      assert.equal(retries.length, 1);
+      assert.equal(retries[0].obj.retries, 1);
+      assert.equal(retries[0].obj.statusCode, 502);
+      assert.equal(retries[0].obj.delayMs, 2000);
+      if (mode === "explicit") assert.equal(result.pages[0].retries, 1);
+    });
+  });
+}
+
+test("three 502 responses produce one final failure with status 502 and retries 2", async () => {
+  let hits = 0;
+  await withServer((req, res) => { hits++; res.writeHead(502); res.end("temporary"); }, async ({ origin }) => {
+    const result = await fetchExplicitPages(origin, [origin], seedOptions);
+    assert.equal(hits, 3);
+    assert.deepEqual(result.reliability, {
+      attempted: 1, succeeded: 0, failed: 1,
+      failures: [{ url: origin, reason: "http_error", statusCode: 502, retries: 2 }],
+    });
+    assert.deepEqual(logs.filter(log => log.msg === "Retrying page fetch").map(log => log.obj.delayMs), [2000, 4000]);
+  });
+});
+
+test("503 with insufficient deadline returns its final HTTP outcome without retrying", async () => {
+  let hits = 0;
+  await withServer((req, res) => { hits++; res.writeHead(503); res.end("temporary"); }, async ({ origin }) => {
+    const page = await fetchPage(origin, { deadline: Date.now() + 250 });
+    assert.equal(hits, 1);
+    assert.equal(page.statusCode, 503);
+    assert.equal(page.retries, 0);
+    assert.ok(!logs.some(log => log.msg === "Retrying page fetch"));
+  });
+});
+
+test("429 honours Retry-After: 1 before succeeding", async () => {
+  const times = [];
+  await withServer((req, res) => {
+    times.push(Date.now());
+    if (times.length === 1) { res.writeHead(429, { "Retry-After": "1" }); res.end("slow down"); }
+    else res.end(languageHtml("de", germanText.repeat(4)));
+  }, async ({ origin }) => {
+    const result = await fetchExplicitPages(origin, [origin], seedOptions);
+    assert.equal(result.reliability.attempted, 1);
+    assert.equal(result.reliability.succeeded, 1);
+    assert.equal(result.pages[0].retries, 1);
+    assert.ok(times[1] - times[0] >= 950);
+    assert.ok(times[1] - times[0] < 2500);
+  });
+});
+
+test("scaled main technical budget preserves a full page reservation and logs an early end", async () => {
+  await withServer(async (req, res) => {
+    if (req.url === "/robots.txt") { await delay(80); res.end("User-agent: *"); }
+    else if (req.url === "/") res.end(languageHtml("de", germanText.repeat(4), ["/products/one", "/services/two"]));
+    else if (req.url.startsWith("/products/") || req.url.startsWith("/services/")) {
+      await delay(300);
+      res.end(languageHtml("de", `${req.url} ${germanText.repeat(5)}`));
+    } else { res.writeHead(404); res.end(); }
+  }, async ({ origin, requests }) => {
+    const result = await crawlSite(origin, 4, {
+      mainSite: true, deadlineMs: 90, techPhaseBudgetMs: 30, minPagePhaseMs: 450,
+    });
+    assert.ok(result.techPhaseMs >= 80);
+    assert.ok(result.pagePhaseMs >= 440, "page phase retains the 450ms reservation after slow technical files");
+    assert.ok(!requests.some(req => req.url === "/sitemap.xml"));
+    assert.ok(requests.some(req => req.url.startsWith("/products/")));
+    assert.equal(result.timedOut, true);
+    const warnings = logs.filter(log => log.msg === "main crawl ended early");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].level, "warn");
+    assert.deepEqual(warnings[0].obj, {
+      reason: "deadline", pages: result.pages.length, requested: 4,
+      attempted: result.reliability.attempted, failed: result.reliability.failed,
+      techPhaseMs: result.techPhaseMs, pagePhaseMs: result.pagePhaseMs,
+    });
+  });
+});
+
 for (const source of ["homepage", "sitemap"]) {
   test(`${source} uses snapshot rules and counts only counted matches, leaving explicit pages unfiltered`, async () => {
     await withServer((req, res) => {
@@ -630,7 +725,10 @@ test("only competitor calls opt into both budgets, retaining five pages and a 45
   assert.match(warning, /techPhaseMs: crawlResult\.techPhaseMs/);
   assert.match(warning, /pagePhaseMs: crawlResult\.pagePhaseMs/);
   const mainSource = await readFile(new URL("./analysis-engine.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(mainSource, /techPhaseBudgetMs|minPagePhaseMs/);
+  assert.match(mainSource, /MAIN_TECH_PHASE_BUDGET_MS = 30_000/);
+  assert.match(mainSource, /MAIN_MIN_PAGE_PHASE_MS = 45_000/);
+  assert.equal((mainSource.match(/techPhaseBudgetMs: MAIN_TECH_PHASE_BUDGET_MS/g) ?? []).length, 2);
+  assert.equal((mainSource.match(/minPagePhaseMs: MAIN_MIN_PAGE_PHASE_MS/g) ?? []).length, 2);
 });
 
 // Strong contrary-language fixtures must satisfy the 800-character threshold.
