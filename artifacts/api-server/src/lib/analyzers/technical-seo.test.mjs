@@ -238,6 +238,8 @@ test("hreflang requires evidence: skipped language alone and external or same-la
   }
   assert.equal(component(result([goodHtml() + '<a href="https://example.de/en/products">EN</a>']), "hreflang").fraction, 0);
   assert.equal(component(result([goodHtml() + '<a href="/en-US/products">EN</a>']), "hreflang").fraction, 0);
+  // Genuine language links still count alongside ordinary Farnell-like paths.
+  assert.equal(component(result([goodHtml() + '<a href="/sc/products">SC</a><a href="/nxp/products">NXP</a><a href="/en-DE/services">in English</a>']), "hreflang").fraction, 0);
 });
 test("hreflang coverage is proportional below 80%, full credit at 80%", () => {
   const alternate = '<link rel="alternate" hreflang="en" href="/en/">';
