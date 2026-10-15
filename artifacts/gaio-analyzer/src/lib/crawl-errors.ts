@@ -40,14 +40,18 @@ export function robotsHintText(report: FailureReport, t: TechnicalT = defaultTec
   const hint = report.blockedRobotsHint as Record<string, unknown>;
   if (!["allowed", "blocked", "partial"].includes(String(hint.generalRule)) || !Array.isArray(hint.crawlers)) return null;
   const rule = t(`errors.robots_hint_general_${String(hint.generalRule)}`);
-  const crawlers = hint.crawlers.flatMap((entry: unknown) => {
-    if (!entry || typeof entry !== "object") return [];
+  const groups = new Map<string, string[]>();
+  for (const entry of hint.crawlers) {
+    if (!entry || typeof entry !== "object") continue;
     const { name, status } = entry as Record<string, unknown>;
-    if (typeof name !== "string" || !["allowed", "disallowed", "not_mentioned"].includes(String(status))) return [];
+    if (typeof name !== "string" || !["allowed", "disallowed", "not_mentioned"].includes(String(status))) continue;
     const text = status === "allowed" ? t("errors.robots_hint_allowed")
       : status === "disallowed" ? t("errors.robots_hint_blocked") : t("errors.robots_hint_not_mentioned", { rule });
-    return [`${name}: ${text}`];
-  });
+    const names = groups.get(text) ?? [];
+    names.push(name);
+    groups.set(text, names);
+  }
+  const crawlers = [...groups].map(([text, names]) => `${names.join(", ")}: ${text}`);
   const agents = Array.isArray(hint.fullyBlockedAgents)
     ? hint.fullyBlockedAgents.filter((agent): agent is string => typeof agent === "string") : [];
   return { title: t("errors.robots_hint_title"), crawlers,
@@ -63,7 +67,8 @@ export function renderCrawlFailureHtml(report: FailureReport, t: TechnicalT = de
   const message = crawlFailureMessage(report, t);
   const hint = robotsHintText(report, t);
   if (!message) return "";
-  return `<section><h2>${escapeHtml(message.title)}</h2>${message.paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join("")}
-    ${hint ? `<section><h3>${escapeHtml(hint.title)}</h3><ul>${hint.crawlers.map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
-      ${hint.fullyBlocked ? `<p>${escapeHtml(hint.fullyBlocked)}</p>` : ""}<p>${escapeHtml(hint.note)}</p></section>` : ""}</section>`;
+  const paragraphStyle = "font-size:13px;color:#4a4d57;margin:0 0 14px;";
+  return `<section><h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">${escapeHtml(message.title)}</h2>${message.paragraphs.map(p => `<p style="${paragraphStyle}">${escapeHtml(p)}</p>`).join("")}
+    ${hint ? `<section><h3 style="margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">${escapeHtml(hint.title)}</h3><ul style="font-size:13px;color:#4a4d57;margin:0 0 14px;padding-left:18px;">${hint.crawlers.map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
+      ${hint.fullyBlocked ? `<p style="${paragraphStyle}">${escapeHtml(hint.fullyBlocked)}</p>` : ""}<p style="${paragraphStyle}">${escapeHtml(hint.note)}</p></section>` : ""}</section>`;
 }

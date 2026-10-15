@@ -1,4 +1,5 @@
 import { AnalysisErrors } from "@/components/AnalysisErrors";
+import { faqNoSchemaHint } from "@/lib/faq-hint";
 import { useEffect, useRef, useState } from "react";
 import type { TechnicalScoreBreakdown as TechnicalBreakdown } from "@workspace/api-client-react";
 import { TechnicalScoreBreakdown } from "@/components/TechnicalScoreBreakdown";
@@ -3003,6 +3004,9 @@ body { font-family: 'DM Sans',-apple-system,'Segoe UI',sans-serif; background:#f
                     </div>
                   )}
                 </div>
+                {faqNoSchemaHint(faqQuality, t) && (
+                  <p className="text-xs text-muted-foreground">{faqNoSchemaHint(faqQuality, t)}</p>
+                )}
                 {faqQuality.breakdown != null && typeof faqQuality.breakdown === "object" && (
                   <div className="pt-2 border-t border-border/30 space-y-2">
                     <p className="text-xs text-muted-foreground mb-1">{t("results.faq_breakdown_label")}</p>

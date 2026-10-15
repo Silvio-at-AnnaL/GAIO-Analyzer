@@ -112,14 +112,32 @@ function visiblePairs(html: string, target: Map<string, FaqPair>): void {
   $("h2, h3, h4").each((_, el) => {
     const question = clean($(el).text());
     if (!question.endsWith("?")) return;
+    let anchor = $(el);
+    for (let level = 0; level < 3; level++) {
+      // Empty icon/button siblings do not prevent climbing a question-only wrapper.
+      if (anchor.nextAll().toArray().some(sibling => clean($(sibling).text()))) break;
+      const parent = anchor.parent();
+      if (!parent.length || clean(parent.text()) !== question) break;
+      anchor = parent;
+    }
     const answer: string[] = [];
-    let sibling = $(el).next();
-    while (sibling.length && !sibling.is("h1, h2, h3, h4, h5, h6")) {
+    let sibling = anchor.next();
+    const headings = "h1, h2, h3, h4, h5, h6";
+    while (sibling.length && !sibling.is(headings) && !sibling.find(headings).length) {
       answer.push(sibling.text());
       sibling = sibling.next();
     }
     const text = clean(answer.join(" "));
     if (text.length >= MIN_ANSWER_CHARS) addPair(target, question, text);
+  });
+  $("[aria-controls]").each((_, el) => {
+    const question = clean($(el).text());
+    if (!question.endsWith("?") && !SUMMARY_QUESTION_START.test(question)) return;
+    const id = $(el).attr("aria-controls");
+    const controlled = id ? $.root().find("[id]").filter((_, node) => $(node).attr("id") === id).first() : null;
+    if (!controlled?.length) return;
+    const answer = clean(controlled.text());
+    if (answer.length >= MIN_ANSWER_CHARS) addPair(target, question, answer);
   });
 }
 

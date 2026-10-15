@@ -26,3 +26,9 @@ For React render tests loaded from ESM data URLs, externalize both React and Rea
 **Why:** Bare external imports cannot resolve from a data URL; mixing external React with bundled React DOM can instead create an unsupported dynamic require inside the ESM bundle.
 
 **How to apply:** Resolve these npm imports through the test package before marking them external. Keep a single React runtime shared by the bundled component and the server renderer.
+
+For one-off browser checks in this environment, the platform Playwright module may have no downloaded browser. Use the existing Chromium executable at `/repl/tools/bin/chromium` rather than installing another browser.
+
+**Why:** Playwright's default launch searched an absent workspace browser cache even though the platform Chromium was already available.
+
+**How to apply:** Check that the executable exists, then pass it as `executablePath` for local synthetic HTML rendering checks. Frontend source bundles using report export also need `import.meta.env.BASE_URL` defined outside Vite.

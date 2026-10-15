@@ -1,4 +1,5 @@
 import { crawlFailureMessage, renderCrawlFailureHtml, readableAnalysisError } from "./crawl-errors";
+import { faqNoSchemaHint } from "./faq-hint";
 import { getHeadingSummary } from "./heading-summary";
 import { crawlReliabilityNotices } from "./crawl-reliability";
 import { buildReportInputParams, readAnalysisInputs } from "./report-input-params";
@@ -514,7 +515,7 @@ export function renderTechnicalBreakdownHtml(breakdown: TechnicalScoreBreakdown 
       <th scope="row">${esc(t(`technical.${c.key}`))}</th><td>${technicalPoints(c.weight)}</td>
       <td>${c.points === null ? esc(t("technical.not_evaluable")) : technicalPoints(c.points)}</td>
       <td>${esc(technicalDetail(c, t))}</td></tr>`).join("")}</tbody></table></div>
-    <p>${esc(t("technical.evaluated_weight", { weight: breakdown.evaluatedWeight }))}</p>
+    <p style="font-size:12px;color:${C.textSec};margin:6px 0;">${esc(t("technical.evaluated_weight", { weight: breakdown.evaluatedWeight }))}</p>
     </section>`;
 }
 
@@ -792,6 +793,7 @@ function renderDetailsSection(report: Record<string, unknown>, t: TechnicalT): s
       ? faq.qualityAssessment.trim()
       : "";
     const breakdown = faq.breakdown as Record<string, { points: number; max: number }> | null | undefined;
+    const noSchemaHint = faqNoSchemaHint(faq, t);
     html += `
     <h3>FAQ-Qualität</h3>
     <div class="detail-grid">
@@ -805,6 +807,7 @@ function renderDetailsSection(report: Record<string, unknown>, t: TechnicalT): s
         ? `<div class="detail-item"><div class="label">${FT.qualityScore}</div><div class="val">${typeof faq.qualityScore === "number" ? `${faq.qualityScore}/100` : FT.qualityUnavailable}</div></div>`
         : ""}
     </div>
+    ${noSchemaHint ? `<p style="font-size:13px;color:${C.textSec};margin:10px 0;">${esc(noSchemaHint)}</p>` : ""}
     ${breakdown && typeof breakdown === "object" ? `
     <div style="border-top:1px solid ${C.border};padding-top:10px;margin:10px 0;">
       <div style="font-size:12px;color:${C.textMuted};margin-bottom:8px;">${FT.breakdown}</div>

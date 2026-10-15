@@ -105,6 +105,32 @@ test("robots hints are absent without data or for any other error code, includin
   }
 });
 
+test("robots hint groups identical translated status text in first-appearance order in React and HTML", async () => {
+  const data = { ...report("crawl_bot_protection"), blockedRobotsHint: { ...robots, crawlers: [
+    { name: "GPTBot", status: "not_mentioned" }, { name: "ClaudeBot", status: "disallowed" },
+    { name: "ChatGPT-User", status: "not_mentioned" }, { name: "PerplexityBot", status: "allowed" },
+    { name: "OtherBot", status: "disallowed" },
+  ] } };
+  const lines = robotsHintText(data, t).crawlers;
+  assert.deepEqual(lines, [
+    "GPTBot, ChatGPT-User: nicht erwähnt – es gilt die allgemeine Regel (erlaubt, einzelne Verzeichnisse ausgenommen)",
+    "ClaudeBot, OtherBot: gesperrt", "PerplexityBot: erlaubt",
+  ]);
+  for (const html of [render(AnalysisErrors, data, t, { showRobotsHint: true }), await htmlReport(data)]) {
+    for (const line of lines) assert.ok(html.includes(line));
+  }
+  const translate = (key, params) => ["errors.robots_hint_allowed", "errors.robots_hint_blocked"].includes(key) ? "same" : t(key, params);
+  assert.equal(robotsHintText(data, translate).crawlers[1], "ClaudeBot, PerplexityBot, OtherBot: same");
+  assert.equal(new Set(lines).size, lines.length);
+});
+
+test("failed export locally overrides global heading and paragraph styles", async () => {
+  const html = await htmlReport(report("crawl_bot_protection"));
+  assert.ok(html.includes('<h2 style="margin:0 0 12px;padding:0;border:0;color:#b91c1c;">'));
+  assert.ok(html.includes('<p style="font-size:13px;color:#4a4d57;margin:0 0 14px;">'));
+  assert.ok(html.includes('<h3 style="margin:14px 0 8px;padding:0;border:0;color:#4a4d57;">'));
+});
+
 test("raw failure objects and serialized objects never appear in legacy error rendering", async () => {
   const failure = { url: "https://example.test/path", reason: "bot_protection", statusCode: 403 };
   for (const error of [failure, JSON.stringify(failure), [failure]]) {
@@ -127,6 +153,6 @@ test("both results locations and legacy dashboard use the shared labelled render
   const shared = await readFile(new URL("../views/SharedAnalysisView.tsx", import.meta.url), "utf8");
   assert.match(shared, /srcDoc=\{data.htmlContent\}/);
   assert.ok(!shared.includes("JSON.stringify"));
-  assert.equal(Object.keys(labelDefaults).length, 1307);
+  assert.equal(Object.keys(labelDefaults).length, 1308);
   assert.ok(crawlFailureMessage(report("crawl_timed_out")).paragraphs.length > 1);
 });
