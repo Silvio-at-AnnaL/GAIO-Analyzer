@@ -196,3 +196,17 @@ mtime_ms = 1792145054107
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/39242a12-6fe2-4580-a65d-0083bb94a06f/09fbb543-d3b9-4469-9cee-b5ede3918d88"
 storage_version_token = "1792145055648395"
 content_type = "text/plain"
+
+[[outputs]]
+id = "DWmBIPwecUUGDgEOYJInF"
+uri = "file://attached_assets/Unused-Anthropic-package-cleanup-verification.txt"
+type = "text"
+title = "Unused integration cleanup: verification report"
+description = "Commit, all changed/deleted files, precise lockfile changes, passing checks, health/prefill results and exact direct route logs."
+logical_id = "4cc32de1-6545-42a4-b480-4ff9662f4f57"
+content_hash = "sha256:97577ba8e1bc8deb0834ead9e0e965265ef5bf6ef0fc8bd758b1568006c08b5b"
+size = 4435
+mtime_ms = 1792146942524
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/4cc32de1-6545-42a4-b480-4ff9662f4f57/fe788eb9-8437-415e-b426-66d629580e13"
+storage_version_token = "1792146943320569"
+content_type = "text/plain"
