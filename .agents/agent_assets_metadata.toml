@@ -210,3 +210,17 @@ mtime_ms = 1792146942524
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/4cc32de1-6545-42a4-b480-4ff9662f4f57/fe788eb9-8437-415e-b426-66d629580e13"
 storage_version_token = "1792146943320569"
 content_type = "text/plain"
+
+[[outputs]]
+id = "h_ULq4YcFpCwcAudIfgAt"
+uri = "file://attached_assets/Prefill-analysis-log-correlation-verification.txt"
+type = "text"
+title = "Prefill and analysis log correlation: verification report"
+description = "Commit, all changed files, generated-file summary, passing checks, linked IDs, event counts, and provider/model values from both APIs."
+logical_id = "d85e707a-b875-4cb4-84ca-65248db5271e"
+content_hash = "sha256:09038e14052380f3b69592dad071e56407c08f1c3e8af87c673a8edb22f72a73"
+size = 10905
+mtime_ms = 1792150517518
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/d85e707a-b875-4cb4-84ca-65248db5271e/5ace53bb-224a-425a-ae39-5c19f588be23"
+storage_version_token = "1792150518374221"
+content_type = "text/plain"
