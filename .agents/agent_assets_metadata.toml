@@ -112,3 +112,31 @@ mtime_ms = 1792075786268
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/8b29860f-4bb1-4105-89c2-0bad8b0dc53e/dac1d834-7f26-4e53-8d2d-55c20dc9d88c"
 storage_version_token = "1792075787530199"
 content_type = "text/html"
+
+[[outputs]]
+id = "00lvl9GvmgoplhoVXyYfE"
+uri = "file://attached_assets/Prefill-central-AI-verification-report.txt"
+type = "text"
+title = "Prefill central AI: implementation and verification report"
+description = "Commit, changed files, exact live competitors and persona excerpts, all route logs, and the API timing-test caveat."
+logical_id = "b72abedd-b6ab-4ba3-b5cd-8d3b0bbb9eb3"
+content_hash = "sha256:d4b9bb2a10eef3e0518e5d21cfd89a582edc1317b429e4a1cd9f666487fd343c"
+size = 14941
+mtime_ms = 1792139967206
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/b72abedd-b6ab-4ba3-b5cd-8d3b0bbb9eb3/bafc3531-8a02-4e4b-9620-7cace841a4f0"
+storage_version_token = "1792139968448826"
+content_type = "text/plain"
+
+[[outputs]]
+id = "cqk_NWRjift6Lshxy0Nit"
+uri = "file://attached_assets/Prefill-central-AI-route-logs.txt"
+type = "text"
+title = "All 17 direct AI route log entries"
+description = "Grouped by Hammelmann, Rotima run 1 and Rotima run 2, with model, stop reasons, timing and token usage."
+logical_id = "67ee0baf-6fd8-4998-b087-057ca26c1910"
+content_hash = "sha256:845c2475cbcb7ec11fa49648bd694b02b6212b57c54af08d3b5009c323de541a"
+size = 4139
+mtime_ms = 1792139967770
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/67ee0baf-6fd8-4998-b087-057ca26c1910/2aab97bf-bf32-4808-a203-9ec20d84d517"
+storage_version_token = "1792139969144892"
+content_type = "text/plain"
