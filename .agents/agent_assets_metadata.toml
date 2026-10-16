@@ -168,3 +168,31 @@ mtime_ms = 1792142315010
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/a673c42b-aa0a-41e0-a783-29592aea4462/1dc356ff-9cb7-4623-a1fd-e232d8d7fdc0"
 storage_version_token = "1792142316313375"
 content_type = "text/plain"
+
+[[outputs]]
+id = "yBAw674tFFMYrzGR5YR7y"
+uri = "file://attached_assets/Recommendations-central-AI-verification-report.txt"
+type = "text"
+title = "Recommendations: implementation and comparison verification"
+description = "Commit, changed files, passing checks, both analysis IDs, exact logs, source/tier counts and all six full BEFUND texts."
+logical_id = "4cfb0c14-9467-41af-a416-313d3ecebcaa"
+content_hash = "sha256:2aeabe91a8531e6cb9f2e8c71861a24d64cc63712e093515eabb2050f58f90c2"
+size = 9555
+mtime_ms = 1792145053831
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/4cfb0c14-9467-41af-a416-313d3ecebcaa/c831e6f2-68d7-4790-b0f9-d8614a0d79e6"
+storage_version_token = "1792145055003589"
+content_type = "text/plain"
+
+[[outputs]]
+id = "Dlzlmo3XcJ7C1fZ1iigBS"
+uri = "file://attached_assets/Recommendations-central-AI-route-logs.txt"
+type = "text"
+title = "Vaupel and Rotima: exact recommendation route and response logs"
+description = "Direct configured route, model, stop reasons, durations, tokens, protocol source and item counts."
+logical_id = "39242a12-6fe2-4580-a65d-0083bb94a06f"
+content_hash = "sha256:1719fac4f24d685d1e57e5a9d42f04bc3d0a5f51d13d433cf4527d125435563d"
+size = 1041
+mtime_ms = 1792145054107
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/39242a12-6fe2-4580-a65d-0083bb94a06f/09fbb543-d3b9-4469-9cee-b5ede3918d88"
+storage_version_token = "1792145055648395"
+content_type = "text/plain"
