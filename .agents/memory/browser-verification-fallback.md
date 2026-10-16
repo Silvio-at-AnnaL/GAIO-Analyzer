@@ -16,3 +16,11 @@ React test doubles for effect dependencies must retain stable function and objec
 CSS-clipped menu items can pass Playwright visibility checks while their parent is collapsed and intercepts clicks. Open the containing menu explicitly rather than treating `isVisible()` as proof that an item can be clicked.
 
 **Why:** Admin-browser verification encountered this visibility/clickability mismatch in collapsed navigation; it was not an application failure.
+
+## Browser startup and compatibility
+
+Keep complete test/typecheck batches separate from signed-in browser verification. If the tools Chromium build stalls, use an already-installed Playwright-compatible browser build for the verification rather than changing application dependencies.
+
+**Why:** Browser startup consumed the ordinary response timeout under shared execution load. Verification succeeded with the installed compatible Chromium build and without simultaneous whole-suite checks.
+
+**How to apply:** Log launch and navigation stages separately. Await navigation and its expected response together so an early response-wait rejection cannot terminate the process before failure diagnostics are captured.

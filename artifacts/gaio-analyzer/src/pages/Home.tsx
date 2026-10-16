@@ -27,6 +27,7 @@ import { AngebotCreatorView } from "@/views/admin/AngebotCreatorView";
 import { PromptVerwaltungView } from "@/views/admin/PromptVerwaltungView";
 import { TextverwaltungView } from "@/views/admin/TextverwaltungView";
 import { ScoreSettingsView } from "@/views/admin/ScoreSettingsView";
+import { UsageView } from "@/views/admin/UsageView";
 import { DeliveryLogView } from "@/views/admin/DeliveryLogView";
 import { CrawlExclusionsView } from "@/views/admin/CrawlExclusionsView";
 import { SystemLogView } from "@/views/admin/SystemLogView";
@@ -84,6 +85,7 @@ function AppContent() {
                 )}
                 {activeView === 23                  && <DeliveryLogView />}
                 {activeView === 24                  && <CrawlExclusionsView />}
+                {activeView === 25                  && <UsageView />}
               </>
             )}
           </div>

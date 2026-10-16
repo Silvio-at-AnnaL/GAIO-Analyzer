@@ -204,8 +204,8 @@ test("analysis log cost column is admin-default, explicitly delegable, hidden wi
     if(visible) {assert.equal(text(find(h,"text-analysis-cost-new")),"0,37 $");assert.equal(text(find(h,"text-analysis-cost-old")),"–");}
   }
 });
-test("all new labels exist in ai/log groups and the label count is 1345",()=>{
-  assert.equal(Object.keys(labelDefaults).length,1345);
+test("all new labels exist in ai/log groups and the label count is updated",()=>{
+  assert.equal(Object.keys(labelDefaults).length,1418);
   assert.equal(labelDefaults["ai.price_input"].de,"Preis Eingabe (USD je 1 Mio. Tokens)");
   assert.equal(labelDefaults["log.cost_tiny"].de,"< 0,01 $");
 });

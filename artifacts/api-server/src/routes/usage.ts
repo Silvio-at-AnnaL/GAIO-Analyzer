@@ -51,10 +51,21 @@ export function registerUsageRoutes(router: Router, requireAuth: RequestHandler,
         FROM usage_events ${USAGE_FILTER}`, filters.params)).rows[0];
       const groups = await Promise.all(["area", "module", "model"].map(async column =>
         (await query(`SELECT ${column}, COUNT(*)::int AS calls,
+          COUNT(*) FILTER (WHERE kind='llm')::int AS "llmCalls",
+          COUNT(*) FILTER (WHERE kind='search')::int AS "searchCalls",
           COALESCE(SUM(input_tokens),0)::float8 AS "inputTokens",
           COALESCE(SUM(output_tokens),0)::float8 AS "outputTokens",
+          COALESCE(SUM(search_credits),0)::float8 AS "searchCredits",
           SUM(cost_usd)::float8 AS "costUsd"
           FROM usage_events ${USAGE_FILTER} GROUP BY ${column} ORDER BY ${column} NULLS LAST`, filters.params)).rows));
+      const byDay = (await query(`SELECT
+        TO_CHAR(created_at AT TIME ZONE 'Europe/Berlin','YYYY-MM-DD') AS day,
+        SUM(cost_usd) FILTER (WHERE kind='llm')::float8 AS "costUsd",
+        COALESCE(SUM(input_tokens) FILTER (WHERE kind='llm'),0)::float8 AS "inputTokens",
+        COALESCE(SUM(output_tokens) FILTER (WHERE kind='llm'),0)::float8 AS "outputTokens",
+        COALESCE(SUM(search_credits) FILTER (WHERE kind='search'),0)::float8 AS "searchCredits",
+        COUNT(DISTINCT analysis_id) FILTER (WHERE kind='llm')::int AS analyses
+        FROM usage_events ${USAGE_FILTER} GROUP BY day ORDER BY day`, filters.params)).rows;
       const month = (await query<{ used: number }>(`SELECT COALESCE(SUM(search_credits),0)::float8 AS used
         FROM usage_events WHERE kind='search' AND ($1::text IS NULL OR env=$1)
         AND created_at >= (date_trunc('month',NOW() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')
@@ -62,7 +73,7 @@ export function registerUsageRoutes(router: Router, requireAuth: RequestHandler,
       [filters.params[2]])).rows[0];
       const { analysesCount, avgCostPerAnalysis, ...usageTotals } = totals;
       res.json({ totals: usageTotals, analysesCount, avgCostPerAnalysis,
-        byArea: groups[0], byModule: groups[1], byModel: groups[2],
+        byArea: groups[0], byModule: groups[1], byModel: groups[2], byDay,
         searchMonth: { used: Number(month.used),
           included: Number(await getSetting("search_included_credits") ?? "1000"),
           plan: await getSetting("search_plan") ?? "free" } });

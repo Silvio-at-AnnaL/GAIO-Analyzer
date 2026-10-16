@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Globe, FileCode, BarChart3, HelpCircle, Mail, Settings, Menu,
   LogIn, User, Users, Server, ArrowLeftRight,
-  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText, AlertTriangle, Inbox, FilterX,
+  BrainCircuit, BarChart2, Palette, SlidersHorizontal, ChevronDown, ScrollText, AlertTriangle, Inbox, FilterX, Coins,
 } from "lucide-react";
 import { useAppStore, type ActiveView } from "@/store/appStore";
 import { adminFetch, useAuth, canAccess, type Permissions } from "@/store/authStore";
@@ -35,6 +35,7 @@ const FEATURE_VIEW: Record<string, ActiveView> = {
   systemprotokoll: 22,
   versandprotokoll: 23,
   crawl_ausschluesse: 24,
+  kosten: 25,
 };
 
 const FEATURE_LABEL: Record<string, string> = Object.fromEntries(
@@ -49,6 +50,7 @@ const FEATURE_ICON: Record<string, React.ElementType> = {
   systemprotokoll: ScrollText,
   versandprotokoll: Inbox,
   crawl_ausschluesse: FilterX,
+  kosten: Coins,
 };
 
 function NavButton({
