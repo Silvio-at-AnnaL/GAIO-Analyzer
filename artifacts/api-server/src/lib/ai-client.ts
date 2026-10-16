@@ -1,5 +1,6 @@
 import { getSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
+import { recordUsage } from "./usage-events.js";
 
 const CALL_LLM_TIMEOUT_MS = 120_000;
 const CALL_LLM_MAX_RETRIES = 2;
@@ -191,6 +192,8 @@ export async function callLLMDetailed(
       stopReason: response.stopReason,
       inputTokens: response.inputTokens, outputTokens: response.outputTokens,
     }, "callLLM route");
+    recordUsage({ kind: "llm", module, provider, model,
+      inputTokens: response.inputTokens, outputTokens: response.outputTokens });
     return response;
   } catch (err) {
     if (err instanceof MissingApiKeyError) throw err;

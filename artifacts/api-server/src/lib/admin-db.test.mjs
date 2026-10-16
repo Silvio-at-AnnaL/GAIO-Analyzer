@@ -31,6 +31,7 @@ async function loadAdminDb() {
 const state = { template: "", logs: [], updates: [], deletes: [], cleared: [] };
 globalThis.__adminDbMigrationTest = state;
 const mocks = {
+  "./usage-snapshot.js": "export async function saveUsageSnapshot() {}",
   "bcryptjs": `export default { hash: async () => "not-used" };`,
   "./db.js": `
     export async function withTransaction(fn) { return fn({ query }); }
@@ -117,6 +118,11 @@ test("DB initialization runs twice with the same additive IF NOT EXISTS correlat
       ["analysis_log", "llm_model"], ["system_events", "prep_id"],
     ]) assert.ok(schemas[0].includes(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`));
     assert.match(schemas[0], /CREATE INDEX IF NOT EXISTS idx_system_events_prep_id\s+ON system_events \(prep_id\)/);
+    assert.match(schemas[0], /CREATE TABLE IF NOT EXISTS usage_events/);
+    assert.match(schemas[0], /ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS usage_json JSONB/);
+    for (const column of ["created_at", "analysis_id", "prep_id"]) {
+      assert.ok(schemas[0].includes(`CREATE INDEX IF NOT EXISTS idx_usage_events_${column}`));
+    }
   } finally { state.exportQuery = null; }
 });
 const {

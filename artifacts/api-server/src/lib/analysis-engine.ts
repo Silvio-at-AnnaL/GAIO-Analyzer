@@ -105,6 +105,10 @@ const analysisWatchdog = setInterval(() => {
         : [...entry.state.errors, ANALYSIS_TIMEOUT_ERROR],
     };
     analysisStore.set(id, { ...entry, state });
+    if (state.logId !== null) {
+      void updateAnalysisLogFailed(state.logId, ANALYSIS_TIMEOUT_ERROR).catch(err =>
+        logger.error({ err }, "usage watchdog snapshot failed"));
+    }
     logger.warn({ id }, "Analysis stopped by global watchdog");
   }
 }, 30_000);
@@ -508,6 +512,7 @@ export async function runAnalysis(
       state.status = "failed";
       state.errors.push("Invalid input: provide URL or HTML");
       save();
+      if (logId !== null) await updateAnalysisLogFailed(logId, state.errors[0]);
       return;
     }
 

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { build } from "esbuild";
 
 const mocks = {
+  "./usage-events.js": "export function recordUsage() {}",
   "./admin-db.js": `
     export async function getSetting(key) {
       const state = globalThis.__aiClientTest;

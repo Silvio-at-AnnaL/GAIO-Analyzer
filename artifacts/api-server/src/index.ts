@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { initializeDatabase } from "./lib/admin-db";
 import { initSystemEventLog } from "./lib/system-events";
+import { logUsageEnvironment } from "./lib/usage-events";
 
 const rawPort = process.env["PORT"];
 
@@ -12,6 +13,7 @@ if (!rawPort) {
 }
 
 const port = Number(rawPort);
+logUsageEnvironment();
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);

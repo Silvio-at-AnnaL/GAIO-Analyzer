@@ -5,6 +5,8 @@ import { build } from "esbuild";
 globalThis.__competitorSearchLogs = [];
 globalThis.__competitorQueryCalls = [];
 const mocks = {
+  "./usage-events.js": `export function recordUsage() {}
+    export function tavilyCredits() { return 1; }`,
   "./ai-client.js": `export async function callLLM(prompt,maxTokens,temperature,options) {
     globalThis.__competitorQueryCalls.push({prompt,maxTokens,temperature,options});
     return "ANFRAGE: Hersteller DACH";
