@@ -140,3 +140,31 @@ mtime_ms = 1792139967770
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/67ee0baf-6fd8-4998-b087-057ca26c1910/2aab97bf-bf32-4808-a203-9ec20d84d517"
 storage_version_token = "1792139969144892"
 content_type = "text/plain"
+
+[[outputs]]
+id = "ozULeucHx0_TMxzhLGcjd"
+uri = "file://attached_assets/Competitor-findings-central-AI-verification-report.txt"
+type = "text"
+title = "Competitor findings: implementation and verification report"
+description = "Commit, scope, test counts, Vaupel analysis ID, all four exact route/response logs and requested text excerpts."
+logical_id = "ce23ea8c-3758-4d3f-a971-b9b55a567e2c"
+content_hash = "sha256:a5a850fb0d44b62d174652406f47941e62aa3fd75ab07c06d0c5d984ba347db3"
+size = 6534
+mtime_ms = 1792142314654
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/ce23ea8c-3758-4d3f-a971-b9b55a567e2c/11b141ec-8ca2-4de0-9a0a-6ccbd30dec60"
+storage_version_token = "1792142315700033"
+content_type = "text/plain"
+
+[[outputs]]
+id = "dGWmCpB7sJtBnOBa4ADp2"
+uri = "file://attached_assets/Competitor-findings-central-AI-route-logs.txt"
+type = "text"
+title = "Four competitor findings: exact route and response logs"
+description = "Direct route, configured model, stop reason, duration and tokens; all four parsed successfully without fallback."
+logical_id = "a673c42b-aa0a-41e0-a783-29592aea4462"
+content_hash = "sha256:88144c1eba2c7a646eabc891d96cd51033d87b1af05ba644cc82f4f1ce0ab738"
+size = 2504
+mtime_ms = 1792142315010
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/a673c42b-aa0a-41e0-a783-29592aea4462/1dc356ff-9cb7-4623-a1fd-e232d8d7fdc0"
+storage_version_token = "1792142316313375"
+content_type = "text/plain"
