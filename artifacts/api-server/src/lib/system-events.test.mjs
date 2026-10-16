@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { build } from "esbuild";
 
 const mocks = {
-  "./db.js": "export async function query() {}",
-  "./logger.js": "export function setLogSink() {}",
+  "./db.js": "export async function query(sql, params) { globalThis.__persistedSystemEventQueries?.push({sql,params}); }",
+  "./logger.js": "export function setLogSink(sink) { globalThis.__testSystemEventSink = sink; }",
 };
 
 const { outputFiles } = await build({
@@ -25,9 +25,33 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { buildContext, isSensitiveKey, shouldPersist, PERSISTED_INFO_MESSAGES } = await import(
+const { buildContext, isSensitiveKey, shouldPersist, PERSISTED_INFO_MESSAGES, initSystemEventLog } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
+
+test("both correlation IDs stay in their columns, not duplicated into event context", () => {
+  assert.equal(buildContext({ analysisId: "analysis", prepId: "prep" }), null);
+  assert.deepEqual(buildContext({ prepId: "prep", provider: "claude" }), { provider: "claude" });
+});
+
+test("event persistence binds prep_id separately in every buffered SQL row", async () => {
+  const calls = globalThis.__persistedSystemEventQueries = [];
+  initSystemEventLog();
+  const receive = globalThis.__testSystemEventSink;
+  receive({ level: 30, msg: "callLLM route", obj: { prepId: "prep", provider: "claude" } });
+  for (let i = 0; i < 49; i++) {
+    receive({ level: 30, msg: "callLLM route", obj: { analysisId: "analysis", prepId: "prep" } });
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  const insert = calls.find(call => call.sql.includes("INSERT INTO system_events"));
+  assert.match(insert.sql, /\(level, msg, analysis_id, context, prep_id\)/);
+  assert.equal(insert.params.length, 250);
+  assert.deepEqual(insert.params.slice(0, 10), [
+    30, "callLLM route", null, { provider: "claude" }, "prep",
+    30, "callLLM route", "analysis", null, "prep",
+  ]);
+  assert.match(insert.sql, /\(\$6, \$7, \$8, \$9::jsonb, \$10\)/);
+});
 
 test("redirect category learning INFO persists with its diagnostic fields", () => {
   const msg = "category skipped: redirects to known page";

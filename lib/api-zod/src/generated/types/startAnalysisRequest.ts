@@ -9,6 +9,7 @@ import type { QuestionnaireData } from "./questionnaireData";
 import type { StartAnalysisRequestMode } from "./startAnalysisRequestMode";
 
 export interface StartAnalysisRequest {
+  prepId?: string;
   mode: StartAnalysisRequestMode;
   /** @nullable */
   url?: string | null;

@@ -1,5 +1,5 @@
 import pino from "pino";
-import { getAnalysisId } from "./log-context.js";
+import { getAnalysisId, getPrepId } from "./log-context.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -26,7 +26,8 @@ export const logger = pino({
   ],
   mixin() {
     const analysisId = getAnalysisId();
-    return analysisId ? { analysisId } : {};
+    const prepId = getPrepId();
+    return { ...(analysisId ? { analysisId } : {}), ...(prepId ? { prepId } : {}) };
   },
   hooks: {
     logMethod(args, method, level) {
@@ -40,6 +41,8 @@ export const logger = pino({
           : {};
         const analysisId = getAnalysisId();
         if (analysisId && obj.analysisId === undefined) obj.analysisId = analysisId;
+        const prepId = getPrepId();
+        if (prepId && obj.prepId === undefined) obj.prepId = prepId;
         const msg = typeof first === "string"
           ? first
           : typeof second === "string"

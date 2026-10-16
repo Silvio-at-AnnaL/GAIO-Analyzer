@@ -68,6 +68,11 @@ const mocks = {
   "./prompt-defaults.js": `export { PROMPT_DEFAULTS } from "./defaults";`,
   "./defaults": `
     export const PROMPT_DEFAULTS = [{
+      slug: "content-relevance",
+      template: "fixture content relevance",
+      description: "fixture",
+      placeholders: [],
+    }, {
       slug: "llm-discoverability-a",
       template: "updated default template",
       description: "updated description",
@@ -80,6 +85,40 @@ const mocks = {
     }
   `,
 };
+
+test("analysis-log insertion stores nullable correlation/provider metadata without credentials", async () => {
+  const db = await loadAdminDb();
+  const calls = [];
+  state.exportQuery = async (sql, params) => { calls.push({ sql, params }); return { rows: [{ id: 42 }] }; };
+  try {
+    assert.equal(await db.createAnalysisLog({ uuid: "analysis", domain: "example.test", mode: "url",
+      prepId: "prep", llmProvider: "claude", llmModel: "stored-model" }), 42);
+    assert.match(calls[0].sql, /prep_id, llm_provider, llm_model/);
+    assert.deepEqual(calls[0].params, ["analysis", "example.test", null, "url", null, "prep", "claude", "stored-model"]);
+    await db.createAnalysisLog({ uuid: "legacy", domain: "example.test", mode: "url" });
+    assert.deepEqual(calls[1].params.slice(5), [null, null, null]);
+  } finally { state.exportQuery = null; }
+});
+
+test("DB initialization runs twice with the same additive IF NOT EXISTS correlation DDL", async () => {
+  const db = await loadAdminDb();
+  const schemas = [];
+  state.exportQuery = async sql => {
+    if (sql.includes("CREATE TABLE IF NOT EXISTS analysis_log")) schemas.push(sql);
+    return { rows: sql.includes("SELECT COUNT") ? [{ c: "1" }] : [] };
+  };
+  try {
+    await db.initializeDatabase();
+    await db.initializeDatabase();
+    assert.equal(schemas.length, 2);
+    assert.equal(schemas[0], schemas[1]);
+    for (const [table, column] of [
+      ["analysis_log", "prep_id"], ["analysis_log", "llm_provider"],
+      ["analysis_log", "llm_model"], ["system_events", "prep_id"],
+    ]) assert.ok(schemas[0].includes(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`));
+    assert.match(schemas[0], /CREATE INDEX IF NOT EXISTS idx_system_events_prep_id\s+ON system_events \(prep_id\)/);
+  } finally { state.exportQuery = null; }
+});
 const {
   migrateLlmDiscoverabilityAPrompt, PREVIOUS_LLM_DISCOVERABILITY_A_TEMPLATE,
   removeLegacyLlmDiscoverabilityRatingPrompt, PREVIOUS_LLM_DISCOVERABILITY_RATING_TEMPLATE,

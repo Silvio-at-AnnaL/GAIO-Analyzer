@@ -20,6 +20,11 @@ import type { SchemaOrgResult } from "./schemaOrgResult";
 import type { TechnicalSeoResult } from "./technicalSeoResult";
 
 export interface AnalysisReport {
+  prepId?: string;
+  /** @nullable */
+  llmProvider?: string | null;
+  /** @nullable */
+  llmModel?: string | null;
   id: string;
   status: AnalysisReportStatus;
   /** @nullable */

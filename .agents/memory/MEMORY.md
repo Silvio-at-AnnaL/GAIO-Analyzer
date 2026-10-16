@@ -15,3 +15,4 @@
 - [Workspace dependency relinking](workspace-dependency-relink.md) — filtered pnpm installs can leave existing dependencies unresolved; try a root frozen install before changing code.
 - [Prefill context provenance](prefill-context-policy.md) — general knowledge stays internal; preserve the crawled-text fallback when a successful crawl lacks a summary.
 - [Staged AI routing migration](ai-routing-migration.md) — transport migrations are scoped by flow; do not expand them to other analyzers, dependencies, prompts, or settings.
+- [Git index-lock guard](git-index-lock-guard.md) — even diff/status may refresh the index and need the explicit Git guard flag for authorized operations.

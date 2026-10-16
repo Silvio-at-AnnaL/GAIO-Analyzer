@@ -349,6 +349,9 @@ components:
     StartAnalysisRequest:
       type: object
       properties:
+        prepId:
+          type: string
+          format: uuid
         mode:
           type: string
           enum: [url, html]
@@ -788,6 +791,13 @@ components:
     AnalysisReport:
       type: object
       properties:
+        prepId:
+          type: string
+          format: uuid
+        llmProvider:
+          type: ["string", "null"]
+        llmModel:
+          type: ["string", "null"]
         id:
           type: string
         status:

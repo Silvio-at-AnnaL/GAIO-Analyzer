@@ -260,6 +260,76 @@ test("ai_key_valid_until accepts empty and valid ISO dates and rejects invalid d
   assert.equal(state.cacheResets, 2);
 });
 
+test("system event list and export share linked analysis/preparation filters and return prepId", async () => {
+  const state = reset();
+  const analysisId = "analysis-unit-id";
+  const prepId = "abcdefab-1234-7bcd-abcd-abcdefabcdef";
+  const records = [
+    { id: "1", analysis_id: analysisId, prep_id: prepId },
+    { id: "2", analysis_id: null, prep_id: prepId },
+    { id: "3", analysis_id: analysisId, prep_id: null },
+    { id: "4", analysis_id: "other-analysis", prep_id: "other-prep" },
+  ].map(row => ({ ...row, created_at: "2026-10-16T10:00:00Z", level: 30, msg: row.id,
+    analysis_domain: null, context: null }));
+  state.deliveryQuery = (sql, params) => {
+    assert.match(sql, /analysis_id = \$4 OR \(prep_id IS NOT NULL AND prep_id =\s*\(SELECT prep_id FROM analysis_log WHERE analysis_uuid = \$4 LIMIT 1\)\)/);
+    assert.match(sql, /\(\$7::text IS NULL OR prep_id = \$7\)/);
+    if (sql.includes("::bigint")) {
+      assert.match(sql, /\$8::bigint/);
+      assert.match(sql, /LIMIT \$9/);
+      assert.equal(params.length, 9);
+    } else {
+      assert.match(sql, /LIMIT \$8/);
+      assert.equal(params.length, 8);
+    }
+    const linkedPrep = params[3] === analysisId ? prepId : null;
+    return { rows: records.filter(row =>
+      (!params[3] || row.analysis_id === params[3] || (linkedPrep !== null && row.prep_id === linkedPrep)) &&
+      (!params[6] || row.prep_id === params[6])
+    ).reverse() };
+  };
+  for (const [filter, expected] of [
+    [{}, ["1", "2", "3", "4"]],
+    [{ analysisId }, ["1", "2", "3"]],
+    [{ prepId: prepId.toUpperCase() }, ["1", "2"]],
+    [{ analysisId, prepId }, ["1", "2"]],
+    [{ analysisId: "other-analysis" }, ["4"]],
+  ]) {
+    const query = { minLevel: 30, ...filter };
+    const list = await request("GET", "/system-events", { query });
+    const exported = await request("GET", "/system-events/export", { query });
+    assert.equal(list.statusCode, 200);
+    assert.equal(exported.statusCode, 200);
+    const data = JSON.parse(exported.body);
+    assert.deepEqual(list.body.events.map(row => row.id).reverse(), expected);
+    assert.deepEqual(data.events.map(row => row.id), expected);
+    for (const row of [...list.body.events, ...data.events]) {
+      assert.equal(row.prepId, records.find(record => record.id === row.id).prep_id);
+    }
+  }
+  for (const path of ["/system-events", "/system-events/export"]) {
+    assert.equal((await request("GET", path, { query: { prepId: "invalid" } })).statusCode, 400);
+  }
+});
+
+test("admin analysis-log API includes stored provider/model and preparation metadata without key fields", async () => {
+  const state = reset();
+  state.deliveryQuery = sql => {
+    if (sql.includes("COUNT(*)")) return { rows: [{ c: 1 }] };
+    if (sql.includes("total_kb")) return { rows: [{ total_kb: 0 }] };
+    assert.match(sql, /al\.prep_id, al\.llm_provider, al\.llm_model/);
+    return { rows: [{ id: 1, analysis_uuid: "analysis", prep_id: "prep", llm_provider: "claude",
+      llm_model: "stored-model", has_html_export: 0 }] };
+  };
+  const response = await request("GET", "/analysis-log");
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.items[0].prepId, "prep");
+  assert.equal(response.body.items[0].llmProvider, "claude");
+  assert.equal(response.body.items[0].llmModel, "stored-model");
+  assert.equal(Object.hasOwn(response.body.items[0], "apiKey"), false);
+  assert.equal(Object.hasOwn(response.body.items[0], "hasKey"), false);
+});
+
 test("ai-status reports future, today, past, and unset expiry days in UTC", async () => {
   const state = reset();
   const today = new Date().toISOString().slice(0, 10);

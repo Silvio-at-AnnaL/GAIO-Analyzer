@@ -41,11 +41,16 @@ const mocks = {
   "../lib/logger": `export const logger = Object.fromEntries(["info","warn","error"].map(level => [
     level, (obj, msg) => globalThis.__prefillContextTest.logs.push({
       level, msg: typeof obj === "string" ? obj : msg, obj: typeof obj === "string" ? {} : obj,
+      prepId: globalThis.__prefillLogPrepId?.(),
     })
   ]));`,
 };
 const { outputFiles } = await build({
-  entryPoints: [new URL("./prefill.ts", import.meta.url).pathname],
+  stdin: {
+    contents: 'import "./prefill.ts"; export { getPrepId } from "../lib/log-context.js";',
+    resolveDir: new URL(".", import.meta.url).pathname,
+    loader: "ts",
+  },
   bundle: true, platform: "node", format: "esm", write: false,
   plugins: [{
     name: "prefill-context",
@@ -56,9 +61,10 @@ const { outputFiles } = await build({
     },
   }],
 });
-await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+const logContext = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+globalThis.__prefillLogPrepId = logContext.getPrepId;
 
-async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false, blockedCandidate = false, rawResponse, expectedStatus = 200 } = {}) {
+async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false, blockedCandidate = false, rawResponse, expectedStatus = 200, prepId } = {}) {
   Object.assign(state, {
     initial: { personas: "Technische Einkäufer", competitors: [aiCandidate], content_summary: summary, company_context: companyContext },
     source, searches: [], prompts: [], logs: [], searchCandidates, aiCalls: [], rawResponse,
@@ -76,7 +82,7 @@ async function run({ failed = false, summary = null, companyContext = null, sour
   };
   const response = { body: null, code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
   try {
-    await state.handlers.get("/prefill")({body:{company_name:"Firma Test",url:"https://company.test/"}}, response);
+    await state.handlers.get("/prefill")({body:{company_name:"Firma Test",url:"https://company.test/",prep_id:prepId}}, response);
     assert.equal(response.code, expectedStatus);
     return response.body;
   } finally { globalThis.fetch = originalFetch; }
@@ -91,6 +97,17 @@ test("content_summary takes priority for search and relevance; successful prompt
   assert.equal(data.content_summary, "Website-Zusammenfassung");
   assert.equal(data.candidateSource, "search");
   assert.equal(data.competitors.length, 2);
+});
+
+test("valid prefill prep_id covers every handler log and invalid IDs are silently ignored", async () => {
+  const id = "ABCDEFAB-1234-7BCD-ABCD-ABCDEFABCDEF";
+  await run({ summary: "Content", prepId: id });
+  assert.ok(state.logs.length > 0);
+  assert.ok(state.logs.every(log => log.prepId === id.toLowerCase()));
+  for (const prepId of ["invalid", 123, null]) {
+    await run({ summary: "Content", prepId });
+    assert.ok(state.logs.every(log => log.prepId === undefined));
+  }
 });
 
 test("successful crawl without summary uses the existing first 1600 crawled characters for search and relevance", async () => {

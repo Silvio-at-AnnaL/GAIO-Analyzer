@@ -16,7 +16,7 @@ import {
   updateAnalysisLogFailed,
 } from "./admin-db.js";
 import { getScoreParams } from "./score-config.js";
-import { runWithAnalysisContext } from "./log-context.js";
+import { runWithLogContext } from "./log-context.js";
 
 const MAIN_TECH_PHASE_BUDGET_MS = 30_000;
 const MAIN_MIN_PAGE_PHASE_MS = 45_000;
@@ -33,6 +33,9 @@ export interface AnalysisInputs {
 
 export interface AnalysisState {
   id: string;
+  prepId?: string;
+  llmProvider?: string | null;
+  llmModel?: string | null;
   logId: number | null;
   status: "pending" | "running" | "completed" | "failed";
   url: string | null;
@@ -256,20 +259,24 @@ export async function runAnalysis(
   explicitUrls?: string[] | null,
   userSession?: string | null,
   fillOptions?: { fillToMax?: boolean; excludedUrls?: string[] | null },
+  logMetadata: { prepId?: string; llmProvider?: string | null; llmModel?: string | null } = {},
 ): Promise<void> {
-  return runWithAnalysisContext(id, async () => {
+  return runWithLogContext({ analysisId: id, ...(logMetadata.prepId ? { prepId: logMetadata.prepId } : {}) }, async () => {
   const domain = url || "html-upload";
   const companyName = questionnaire?.companyName ?? questionnaire?.brandName ?? null;
 
   let logId: number | null = null;
   try {
-    logId = await createAnalysisLog({ uuid: id, domain, companyName, mode, userSession });
+    logId = await createAnalysisLog({ uuid: id, domain, companyName, mode, userSession, ...logMetadata });
   } catch (err) {
     logger.error({ err }, "Failed to create analysis log entry");
   }
 
   const state: AnalysisState = {
     id,
+    prepId: logMetadata.prepId,
+    llmProvider: logMetadata.llmProvider ?? null,
+    llmModel: logMetadata.llmModel ?? null,
     logId,
     status: "running",
     url,

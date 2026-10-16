@@ -15,7 +15,7 @@ const SENSITIVE_KEY_WORDS = new Set([
   "token", "authorization", "cookie", "cookies", "apikey",
 ]);
 const EXCLUDED_CONTEXT_KEYS = new Set([
-  "analysisId", "req", "res", "time", "pid", "hostname", "level", "msg",
+  "analysisId", "prepId", "req", "res", "time", "pid", "hostname", "level", "msg",
 ]);
 
 export const PERSISTED_INFO_MESSAGES = new Set([
@@ -52,6 +52,7 @@ interface BufferedSystemEvent {
   level: number;
   msg: string;
   analysisId: string | null;
+  prepId: string | null;
   context: Record<string, unknown> | null;
 }
 
@@ -160,6 +161,7 @@ function receiveLog(entry: LogSinkEntry): void {
       level: entry.level,
       msg: entry.msg,
       analysisId,
+      prepId: typeof entry.obj.prepId === "string" ? entry.obj.prepId : null,
       context: buildContext(entry.obj),
     });
     if (buffer.length > MAX_BUFFER_SIZE) {
@@ -180,12 +182,12 @@ async function flushSystemEvents(): Promise<void> {
   try {
     const params: unknown[] = [];
     const values = batch.map((entry, index) => {
-      const offset = index * 4;
-      params.push(entry.level, entry.msg, entry.analysisId, entry.context);
-      return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb)`;
+      const offset = index * 5;
+      params.push(entry.level, entry.msg, entry.analysisId, entry.context, entry.prepId);
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5})`;
     });
     await query(
-      `INSERT INTO system_events (level, msg, analysis_id, context)
+      `INSERT INTO system_events (level, msg, analysis_id, context, prep_id)
        VALUES ${values.join(", ")}`,
       params,
     );

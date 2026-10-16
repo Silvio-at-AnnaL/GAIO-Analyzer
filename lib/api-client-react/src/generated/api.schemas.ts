@@ -151,6 +151,7 @@ export const StartAnalysisRequestMode = {
 } as const;
 
 export interface StartAnalysisRequest {
+  prepId?: string;
   mode: StartAnalysisRequestMode;
   /** @nullable */
   url?: string | null;
@@ -440,6 +441,11 @@ export const AnalysisReportErrorCode = {
 } as const;
 
 export interface AnalysisReport {
+  prepId?: string;
+  /** @nullable */
+  llmProvider?: string | null;
+  /** @nullable */
+  llmModel?: string | null;
   id: string;
   status: AnalysisReportStatus;
   /** @nullable */

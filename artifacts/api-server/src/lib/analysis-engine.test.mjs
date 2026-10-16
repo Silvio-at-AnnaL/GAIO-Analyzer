@@ -81,14 +81,20 @@ const mocks = {
     };
   `,
   "./admin-db.js": `
-    export const createAnalysisLog = async () => globalThis.__analysisLanguageTest?.logId ?? null;
+    export const createAnalysisLog = async (opts) => {
+      globalThis.__analysisLanguageTest.createdLog = opts;
+      return globalThis.__analysisLanguageTest?.logId ?? null;
+    };
     export const updateAnalysisLogComplete = async () => {};
     export const updateAnalysisLogFailed = async (...args) => {
       (globalThis.__analysisLanguageTest.failedLogCalls ??= []).push(args);
     };
   `,
   "./score-config.js": `export const getScoreParams = async () => ({});`,
-  "./log-context.js": `export const runWithAnalysisContext = (_id, callback) => callback();`,
+  "./log-context.js": `export const runWithLogContext = (ctx, callback) => {
+    globalThis.__analysisLanguageTest.logContext = ctx;
+    return callback();
+  };`,
 };
 
 const { outputFiles } = await build({
@@ -129,6 +135,22 @@ test("normalizes empty company name and buyer personas to null", () => {
     excludedPages: null,
     autoAddedPages: [],
   });
+});
+
+test("analysis stores prepId and provider/model in state and persistence inputs even on a later failure", async () => {
+  const fixture = globalThis.__analysisLanguageTest = {
+    competitorCalls: [], logId: 42, ruleError: new Error("fixture stop after metadata"),
+  };
+  const metadata = { prepId: "abcdefab-1234-7bcd-abcd-abcdefabcdef", llmProvider: "claude", llmModel: "configured-model" };
+  await runAnalysis("metadata-analysis", "url", "https://example.test", null, {}, null, null, undefined, metadata);
+  const result = getAnalysis("metadata-analysis");
+  for (const [key, value] of Object.entries(metadata)) {
+    assert.equal(result[key], value);
+    assert.equal(fixture.createdLog[key], value);
+  }
+  assert.deepEqual(fixture.logContext, { analysisId: "metadata-analysis", prepId: metadata.prepId });
+  assert.equal(Object.hasOwn(fixture.createdLog, "hasKey"), false);
+  assert.equal(Object.hasOwn(fixture.createdLog, "apiKey"), false);
 });
 
 for (const mode of ["auto", "manual"]) {

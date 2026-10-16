@@ -20,6 +20,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Start a new website analysis
  */
 export const StartAnalysisBody = zod.object({
+  prepId: zod.string().uuid().optional(),
   mode: zod.enum(["url", "html"]),
   url: zod.string().nullish(),
   html: zod.string().nullish(),
@@ -108,6 +109,9 @@ export const GetAnalysisReportParams = zod.object({
 });
 
 export const GetAnalysisReportResponse = zod.object({
+  prepId: zod.string().uuid().optional(),
+  llmProvider: zod.string().nullish(),
+  llmModel: zod.string().nullish(),
   id: zod.string(),
   status: zod.enum(["pending", "running", "completed", "failed"]),
   url: zod.string().nullish(),

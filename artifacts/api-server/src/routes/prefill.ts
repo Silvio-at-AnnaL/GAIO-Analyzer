@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import * as cheerio from "cheerio";
 import { callLLM, callLLMDetailed } from "../lib/ai-client.js";
 import { checkLlmReady } from "../lib/llm-preflight.js";
+import { parsePrepId, runWithLogContext } from "../lib/log-context.js";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { getSetting } from "../lib/admin-db.js";
 import { getCrawlExclusionRules, CRAWL_EXCLUSION_LOAD_ERROR } from "../lib/crawl-exclusion-store.js";
@@ -670,6 +671,7 @@ export async function checkCompetitorRelevance(
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 router.post("/prefill", async (req, res): Promise<void> => {
+  return runWithLogContext({ prepId: parsePrepId(req.body?.prep_id) }, async () => {
   const body = req.body as Record<string, unknown>;
   const company_name = typeof body.company_name === "string" ? body.company_name.trim() : "";
   const url = typeof body.url === "string" ? body.url.trim() : "";
@@ -871,6 +873,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     suggestedTotal,
     judgedCount: relevance.judgedCount,
     candidateSource,
+  });
   });
 });
 

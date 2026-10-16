@@ -3,11 +3,18 @@ import { v4 as uuidv4 } from "uuid";
 import { StartAnalysisBody, GetAnalysisReportParams } from "@workspace/api-zod";
 import { runAnalysis, getAnalysis } from "../lib/analysis-engine";
 import { checkLlmReady } from "../lib/llm-preflight.js";
+import { resolveLlmConfig } from "../lib/ai-client.js";
+import { parsePrepId, runWithLogContext } from "../lib/log-context.js";
 
 const router: IRouter = Router();
 
 router.post("/analyze", async (req, res): Promise<void> => {
-  const parsed = StartAnalysisBody.safeParse(req.body);
+  const prepId = parsePrepId(req.body?.prepId);
+  // Validate separately: the optional ID must never block an otherwise valid start.
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+    ? { ...req.body, prepId: undefined }
+    : req.body;
+  const parsed = StartAnalysisBody.safeParse(body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -25,6 +32,8 @@ router.post("/analyze", async (req, res): Promise<void> => {
     return;
   }
 
+  const id = uuidv4();
+  return runWithLogContext({ analysisId: id, prepId }, async () => {
   const readiness = await checkLlmReady();
   if (!readiness.ok) {
     req.log.warn(
@@ -35,15 +44,17 @@ router.post("/analyze", async (req, res): Promise<void> => {
     return;
   }
 
-  const id = uuidv4();
+  const { provider: llmProvider, model: llmModel } = await resolveLlmConfig();
 
   const userSession = Array.isArray(req.ip) ? req.ip[0] : (req.ip ?? null);
   const fillOptions = mode === "url" && explicitUrls?.length && fillToMax === true
     ? { fillToMax: true, excludedUrls: excludedUrls?.slice(0, 200) ?? null }
     : undefined;
-  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null, userSession, fillOptions);
+  runAnalysis(id, mode, url || null, html || null, questionnaire, explicitUrls || null, userSession, fillOptions,
+    { prepId, llmProvider, llmModel });
 
   res.status(201).json({ id, status: "running" });
+  });
 });
 
 router.get("/analyze/:id", async (req, res): Promise<void> => {

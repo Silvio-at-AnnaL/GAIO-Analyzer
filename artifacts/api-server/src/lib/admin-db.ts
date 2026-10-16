@@ -124,6 +124,10 @@ const CREATE_TABLES = `
     html_export_id  INTEGER
   );
 
+  ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS prep_id TEXT;
+  ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS llm_provider TEXT;
+  ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS llm_model TEXT;
+
   CREATE TABLE IF NOT EXISTS analysis_exports (
     id           SERIAL      PRIMARY KEY,
     analysis_id  INTEGER     NOT NULL REFERENCES analysis_log(id),
@@ -200,6 +204,10 @@ const CREATE_TABLES = `
     analysis_id TEXT,
     context     JSONB
   );
+
+  ALTER TABLE system_events ADD COLUMN IF NOT EXISTS prep_id TEXT;
+  CREATE INDEX IF NOT EXISTS idx_system_events_prep_id
+    ON system_events (prep_id);
 
   CREATE INDEX IF NOT EXISTS idx_system_events_created_at
     ON system_events (created_at);
@@ -483,12 +491,16 @@ export async function createAnalysisLog(opts: {
   companyName?: string | null;
   mode: "url" | "html";
   userSession?: string | null;
+  prepId?: string;
+  llmProvider?: string | null;
+  llmModel?: string | null;
 }): Promise<number> {
   const result = await query<{ id: number }>(
-    `INSERT INTO analysis_log (analysis_uuid, domain, company_name, triggered_by, user_session, status, started_at)
-     VALUES ($1, $2, $3, $4, $5, 'running', NOW())
+    `INSERT INTO analysis_log (analysis_uuid, domain, company_name, triggered_by, user_session, prep_id, llm_provider, llm_model, status, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())
      RETURNING id`,
-    [opts.uuid, opts.domain, opts.companyName ?? null, opts.mode, opts.userSession ?? null],
+    [opts.uuid, opts.domain, opts.companyName ?? null, opts.mode, opts.userSession ?? null,
+      opts.prepId ?? null, opts.llmProvider ?? null, opts.llmModel ?? null],
   );
   return result.rows[0].id;
 }

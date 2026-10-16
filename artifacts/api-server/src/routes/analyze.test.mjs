@@ -26,13 +26,24 @@ const mocks = {
   "../lib/llm-preflight.js": `
     export async function checkLlmReady() {
       globalThis.__analyzeTest.preflightCalls++;
+      globalThis.__analyzeTest.preflightContext = globalThis.__analyzeContext();
       return globalThis.__analyzeTest.readiness;
+    }
+  `,
+  "../lib/ai-client.js": `
+    export async function resolveLlmConfig() {
+      globalThis.__analyzeTest.configCalls++;
+      return { provider: "claude", model: "configured-test-model", hasKey: true };
     }
   `,
 };
 
 const { outputFiles } = await build({
-  entryPoints: [new URL("./analyze.ts", import.meta.url).pathname],
+  stdin: {
+    contents: 'import "./analyze.ts"; export { getAnalysisId, getPrepId } from "../lib/log-context.js";',
+    resolveDir: new URL(".", import.meta.url).pathname,
+    loader: "ts",
+  },
   bundle: true,
   platform: "node",
   format: "esm",
@@ -49,10 +60,11 @@ const { outputFiles } = await build({
     },
   }],
 });
-await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+const context = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+globalThis.__analyzeContext = () => ({ analysisId: context.getAnalysisId(), prepId: context.getPrepId() });
 
 function reset(readiness) {
-  globalThis.__analyzeTest = { readiness, runs: [], preflightCalls: 0, logs: [] };
+  globalThis.__analyzeTest = { readiness, runs: [], preflightCalls: 0, configCalls: 0, logs: [], warningContexts: [] };
   return globalThis.__analyzeTest;
 }
 
@@ -61,7 +73,10 @@ async function postAnalyze(body = {}) {
   const req = {
     body: { mode: "url", url: "https://example.test", questionnaire: {}, explicitUrls: [], ...body },
     ip: "127.0.0.1",
-    log: { warn: (obj, msg) => globalThis.__analyzeTest.logs.push({ obj, msg }) },
+    log: { warn: (obj, msg) => {
+      globalThis.__analyzeTest.logs.push({ obj, msg });
+      globalThis.__analyzeTest.warningContexts.push(globalThis.__analyzeContext());
+    } },
   };
   const res = {
     statusCode: 200,
@@ -87,6 +102,9 @@ test("failed LLM preflight responds 503 and does not start analysis", async () =
   assert.deepEqual(res.body, { error: "LLM provider unavailable", code: "LLM_UNAVAILABLE" });
   assert.equal(state.preflightCalls, 1);
   assert.equal(state.runs.length, 0);
+  assert.deepEqual(state.preflightContext, { analysisId: "test-analysis-id", prepId: undefined });
+  assert.deepEqual(state.warningContexts, [state.preflightContext]);
+  assert.equal(state.configCalls, 0);
   assert.deepEqual(state.logs, [{
     obj: { reason: "provider_error", provider: "claude", status: 503 },
     msg: "analysis blocked: llm preflight failed",
@@ -101,6 +119,34 @@ test("successful LLM preflight preserves the 201 running response", async () => 
   assert.equal(state.preflightCalls, 1);
   assert.equal(state.runs.length, 1);
   assert.equal(state.runs[0][0], "test-analysis-id");
+});
+
+test("analysis preflight and run receive the normalized prepId and only provider/model metadata", async () => {
+  const state = reset({ ok: true });
+  const prepId = "ABCDEFAB-1234-7BCD-ABCD-ABCDEFABCDEF";
+  const res = await postAnalyze({ prepId });
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(state.preflightContext, { analysisId: "test-analysis-id", prepId: prepId.toLowerCase() });
+  assert.deepEqual(state.runs[0][8], {
+    prepId: prepId.toLowerCase(), llmProvider: "claude", llmModel: "configured-test-model",
+  });
+  assert.equal(state.configCalls, 1);
+});
+
+test("invalid optional analysis prepId is ignored without blocking a start", async () => {
+  const state = reset({ ok: true });
+  assert.equal((await postAnalyze({ prepId: { invalid: true } })).statusCode, 201);
+  assert.equal(state.preflightContext.prepId, undefined);
+  assert.equal(state.runs[0][8].prepId, undefined);
+});
+
+test("failed preflight retains both IDs in warning context and never starts or resolves analysis metadata", async () => {
+  const state = reset({ ok: false, reason: "provider_error" });
+  const prepId = "abcdefab-1234-4bcd-abcd-abcdefabcdef";
+  assert.equal((await postAnalyze({ prepId })).statusCode, 503);
+  assert.deepEqual(state.warningContexts, [{ analysisId: "test-analysis-id", prepId }]);
+  assert.equal(state.runs.length, 0);
+  assert.equal(state.configCalls, 0);
 });
 
 test("fill fields are ignored without selected pages, in HTML mode, or without opt-in", async () => {

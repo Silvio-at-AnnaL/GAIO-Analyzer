@@ -13,6 +13,7 @@ import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
 import { checkLlmReady, resetLlmPreflightCache } from "../lib/llm-preflight.js";
+import { parsePrepId } from "../lib/log-context.js";
 import { getPrompt, fillTemplate, clearPromptCache } from "../lib/prompt-manager.js";
 import { PROMPT_DEFAULTS_MAP } from "../lib/prompt-defaults.js";
 import { SCORE_PROFILES, getScoreParams, setScoreParam, resetScoreParams } from "../lib/score-config.js";
@@ -163,12 +164,13 @@ interface SystemEventRow {
   level: number;
   msg: string;
   analysis_id: string | null;
+  prep_id: string | null;
   analysis_domain: string | null;
   context: Record<string, unknown> | null;
 }
 
 const SYSTEM_EVENTS_EXPORT_MAX = 5000;
-const SYSTEM_EVENTS_SELECT = `SELECT system_events.id::text AS id, system_events.created_at, level, msg, analysis_id, context,
+const SYSTEM_EVENTS_SELECT = `SELECT system_events.id::text AS id, system_events.created_at, level, msg, analysis_id, prep_id, context,
        analysis.analysis_domain
   FROM system_events
   LEFT JOIN LATERAL (
@@ -179,6 +181,10 @@ const SYSTEM_EVENTS_SELECT = `SELECT system_events.id::text AS id, system_events
   ) analysis ON TRUE`;
 
 function systemEventFilters(req: Request) {
+  const prepId = parsePrepId(req.query.prepId);
+  if (req.query.prepId !== undefined && !prepId) {
+    return { error: "Ungültige prepId" } as const;
+  }
   const from = typeof req.query.from === "string" && req.query.from ? req.query.from : null;
   const to = typeof req.query.to === "string" && req.query.to ? req.query.to : null;
   const toIsPlainDate = to !== null && /^\d{4}-\d{2}-\d{2}$/.test(to);
@@ -202,8 +208,8 @@ function systemEventFilters(req: Request) {
   }
 
   return {
-    from, to, minLevel, analysisId, rawQ,
-    params: [from, to, minLevel, analysisId, q, toIsPlainDate],
+    from, to, minLevel, analysisId, prepId: prepId ?? null, rawQ,
+    params: [from, to, minLevel, analysisId, q, toIsPlainDate, prepId ?? null],
     where: `WHERE ($1::timestamptz IS NULL OR created_at >= $1)
       AND (
         $2::text IS NULL
@@ -211,7 +217,11 @@ function systemEventFilters(req: Request) {
         OR (NOT $6::boolean AND created_at <= $2::timestamptz)
       )
       AND level >= $3
-      AND ($4::text IS NULL OR analysis_id = $4)
+      AND ($4::text IS NULL OR (
+        analysis_id = $4 OR (prep_id IS NOT NULL AND prep_id =
+          (SELECT prep_id FROM analysis_log WHERE analysis_uuid = $4 LIMIT 1))
+      ))
+      AND ($7::text IS NULL OR prep_id = $7)
       AND ($5::text IS NULL OR msg ILIKE $5 ESCAPE '\\' OR context::text ILIKE $5 ESCAPE '\\')`,
   };
 }
@@ -719,6 +729,9 @@ adminRouter.post("/verify-code", requireAuth, async (req: Request, res: Response
 interface AnalysisLogRow {
   id: number;
   analysis_uuid: string | null;
+  prep_id: string | null;
+  llm_provider: string | null;
+  llm_model: string | null;
   domain: string;
   company_name: string | null;
   triggered_by: string | null;
@@ -804,7 +817,7 @@ adminRouter.get("/analysis-log", requireAuth, requireFeature("analyseprotokoll")
   const total = parseInt(String(totalResult.rows[0].c), 10);
 
   const rows = (await query<AnalysisLogRow & { has_html_export: number }>(`
-    SELECT al.id, al.analysis_uuid, al.domain, al.company_name, al.gaio_score, al.scores_json,
+    SELECT al.id, al.analysis_uuid, al.prep_id, al.llm_provider, al.llm_model, al.domain, al.company_name, al.gaio_score, al.scores_json,
            al.pages_crawled, al.status, al.triggered_by, al.error_message,
            al.html_export_id,
            TO_CHAR(al.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
@@ -826,6 +839,9 @@ adminRouter.get("/analysis-log", requireAuth, requireFeature("analyseprotokoll")
   const items = rows.map(r => ({
     id: r.id,
     analysisUuid: r.analysis_uuid,
+    prepId: r.prep_id,
+    llmProvider: r.llm_provider,
+    llmModel: r.llm_model,
     domain: r.domain,
     companyName: r.company_name,
     triggeredBy: r.triggered_by,
@@ -856,9 +872,9 @@ adminRouter.get("/system-events", requireAuth, requireFeature("systemprotokoll")
     const rows = (await query<SystemEventRow>(
       `${SYSTEM_EVENTS_SELECT}
         ${filters.where}
-         AND ($7::bigint IS NULL OR system_events.id < $7)
+         AND ($8::bigint IS NULL OR system_events.id < $8)
        ORDER BY system_events.id DESC
-        LIMIT $8`,
+        LIMIT $9`,
        [...filters.params, beforeId, limit + 1],
     )).rows;
 
@@ -870,6 +886,7 @@ adminRouter.get("/system-events", requireAuth, requireFeature("systemprotokoll")
       level: row.level,
       msg: row.msg,
       analysisId: row.analysis_id,
+      prepId: row.prep_id,
       analysisDomain: normalizeAnalysisDomain(row.analysis_domain),
       context: row.context,
     }));
@@ -895,7 +912,7 @@ adminRouter.get("/system-events/export", requireAuth, requireFeature("systemprot
       `${SYSTEM_EVENTS_SELECT}
         ${filters.where}
         ORDER BY system_events.id DESC
-        LIMIT $7`,
+        LIMIT $8`,
       [...filters.params, SYSTEM_EVENTS_EXPORT_MAX + 1],
     )).rows;
     const truncated = rows.length > SYSTEM_EVENTS_EXPORT_MAX;
@@ -911,6 +928,7 @@ adminRouter.get("/system-events/export", requireAuth, requireFeature("systemprot
       levelName: ({ 30: "info", 40: "warn", 50: "error", 60: "fatal" } as Record<number, string>)[row.level] ?? String(row.level),
       message: row.msg,
       analysisId: row.analysis_id,
+      prepId: row.prep_id,
       domain: normalizeAnalysisDomain(row.analysis_domain),
       details: row.context,
     }));
@@ -925,6 +943,7 @@ adminRouter.get("/system-events/export", requireAuth, requireFeature("systemprot
         to: filters.to,
         minLevel: filters.minLevel,
         analysisId: filters.analysisId,
+        prepId: filters.prepId,
         q: filters.rawQ,
       },
       order: "oldest first",
