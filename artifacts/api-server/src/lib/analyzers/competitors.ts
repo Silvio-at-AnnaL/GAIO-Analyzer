@@ -1,4 +1,4 @@
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLMDetailed } from "../ai-client.js";
 import { crawlSite, type CrawlReliability } from "../crawler";
 import type { CrawlExclusionMatcher } from "../crawl-exclusions.js";
 import { analyzeTechnicalSeo } from "./technical-seo";
@@ -231,11 +231,10 @@ async function generateFindings(
       DISADVANTAGES: disadvantages,
     });
     const response = await Promise.race([
-      anthropic.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: FINDINGS_MAX_TOKENS,
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
+      callLLMDetailed(prompt, FINDINGS_MAX_TOKENS, 0, {
+        module: "competitor-findings",
+        timeoutMs: FINDINGS_TIMEOUT_MS,
+        maxRetries: 0,
       }),
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("timeout")), FINDINGS_TIMEOUT_MS);
@@ -243,10 +242,10 @@ async function generateFindings(
     ]);
 
     responseReceived = true;
-    stopReason = response.stop_reason;
-    inputTokens = response.usage.input_tokens;
-    outputTokens = response.usage.output_tokens;
-    text = response.content[0].type === "text" ? response.content[0].text : "";
+    stopReason = response.stopReason;
+    inputTokens = response.inputTokens;
+    outputTokens = response.outputTokens;
+    text = response.text;
     textChars = text.length;
     const firstBrace = text.indexOf("{");
     const lastBrace = text.lastIndexOf("}");
