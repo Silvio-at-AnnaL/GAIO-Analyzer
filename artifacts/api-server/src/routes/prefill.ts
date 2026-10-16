@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import * as cheerio from "cheerio";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLM, callLLMDetailed } from "../lib/ai-client.js";
+import { checkLlmReady } from "../lib/llm-preflight.js";
 import { getPrompt, fillTemplate } from "../lib/prompt-manager.js";
 import { getSetting } from "../lib/admin-db.js";
 import { getCrawlExclusionRules, CRAWL_EXCLUSION_LOAD_ERROR } from "../lib/crawl-exclusion-store.js";
@@ -203,13 +204,7 @@ async function verifyUrl(url: string, timeoutMs: number): Promise<boolean> {
 
 async function claudeCorrectUrl(name: string, originalUrl: string): Promise<string | null> {
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 100,
-      messages: [
-        {
-          role: "user",
-          content: `Find the correct official website URL for this company: '${name}'
+    const prompt = `Find the correct official website URL for this company: '${name}'
 
 The URL I have is '${originalUrl}' but it appears to be unreachable — it may contain a typo, wrong umlaut spelling, missing hyphen, or wrong TLD.
 
@@ -219,15 +214,10 @@ Return ONLY a JSON object, no other text:
 Rules:
 - Return the main homepage URL only
 - Must start with https://
-- If you are not confident about the correct URL, return the original URL unchanged rather than guessing`,
-        },
-      ],
+- If you are not confident about the correct URL, return the original URL unchanged rather than guessing`;
+    const text = await callLLM(prompt, 100, 0, {
+      module: "prefill-url-correction", timeoutMs: 30_000, maxRetries: 1,
     });
-
-    const text = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
-      .join("");
 
     const match = text.match(/\{[^}]*\}/);
     if (!match) return null;
@@ -254,13 +244,7 @@ async function claudeFindReplacement(
     const usedHostList = Array.from(usedHosts).join(", ");
     const context = contentSummary ?? "No content summary available";
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 220,
-      messages: [
-        {
-          role: "user",
-          content: `The following competitor could not be verified online: '${failedName}'
+    const prompt = `The following competitor could not be verified online: '${failedName}'
 
 Based on this company's product context:
 ${context}
@@ -281,15 +265,10 @@ Return ONLY JSON, no other text:
 The reason is mandatory, plain German prose, at most 140 characters.
 
 If you cannot suggest a reliable replacement, return:
-{ "name": null, "url": null, "reason": null }`,
-        },
-      ],
+{ "name": null, "url": null, "reason": null }`;
+    const text = await callLLM(prompt, 220, 0, {
+      module: "prefill-replacement", timeoutMs: 30_000, maxRetries: 1,
     });
-
-    const text = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
-      .join("");
 
     const match = text.match(/\{[^}]*\}/);
     if (!match) return null;
@@ -647,16 +626,9 @@ export async function checkCompetitorRelevance(
       MARKET_REGION: marketRegion,
       CANDIDATES: candidateText,
     });
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      temperature: 0,
-      messages: [{ role: "user", content: prompt }],
-    }, { timeout: 30_000 });
-    responseText = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => (block as { type: "text"; text: string }).text)
-      .join("");
+    responseText = await callLLM(prompt, 1500, 0, {
+      module: "prefill-relevance", timeoutMs: 30_000, maxRetries: 2,
+    });
     const verdicts = parseRelevanceVerdicts(responseText, judgedIndexes.length);
     if (verdicts.size === 0) {
       logger.warn({ response: responseText.slice(0, 200) }, "competitor relevance check unusable");
@@ -707,6 +679,16 @@ router.post("/prefill", async (req, res): Promise<void> => {
     return;
   }
 
+  const readiness = await checkLlmReady();
+  if (!readiness.ok) {
+    logger.warn(
+      { reason: readiness.reason, provider: readiness.provider, status: readiness.status },
+      "prefill blocked: llm preflight failed",
+    );
+    res.status(503).json({ error: "LLM provider unavailable", code: "LLM_UNAVAILABLE" });
+    return;
+  }
+
   let exclusionMatcher: CrawlExclusionMatcher;
   try {
     exclusionMatcher = await getCrawlExclusionRules();
@@ -751,20 +733,13 @@ router.post("/prefill", async (req, res): Promise<void> => {
   let company_context: string | null = null;
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
+    const { text: rawText, stopReason } = await callLLMDetailed(prompt, 1500, 0, {
+      module: "prefill-main", timeoutMs: 90_000, maxRetries: 1,
     });
-
-    const rawText = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
-      .join("");
 
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      logger.error({ rawText }, "Prefill: no JSON found in AI response");
+      logger.error({ rawText, stopReason }, "Prefill: no JSON found in AI response");
       res.status(500).json({ error: "AI returned an unexpected format" });
       return;
     }
@@ -773,7 +748,7 @@ router.post("/prefill", async (req, res): Promise<void> => {
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch {
-      logger.error({ jsonMatch: jsonMatch[0] }, "Prefill: failed to parse JSON");
+      logger.error({ jsonMatch: jsonMatch[0], stopReason }, "Prefill: failed to parse JSON");
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }

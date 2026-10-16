@@ -1,4 +1,4 @@
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLM } from "./ai-client.js";
 import { getSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
 import { fillTemplate, getPrompt } from "./prompt-manager.js";
@@ -70,16 +70,8 @@ export async function findCandidatesBySearch(
       COMPANY_SUMMARY: companySummary,
       MARKET_REGION: marketRegion,
     });
-    const generateQueries = dependencies.generateQueries ?? (async (text: string) => {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 300,
-        temperature: 0,
-        messages: [{ role: "user", content: text }],
-      });
-      return response.content.filter((block) => block.type === "text")
-        .map((block) => (block as { type: "text"; text: string }).text).join("");
-    });
+    const generateQueries = dependencies.generateQueries ?? ((text: string) =>
+      callLLM(text, 300, 0, { module: "competitor-search-queries", timeoutMs: 30_000, maxRetries: 1 }));
     queries = parseSearchQueries(await generateQueries(prompt));
     if (queries.length === 0) {
       queries = [`${companySummary.trim().split(/\s+/).slice(0, 8).join(" ")} Anbieter ${marketRegion}`.trim()];

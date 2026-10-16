@@ -34,7 +34,7 @@ Before treating a small wall-clock budget fixture failure as a crawler regressio
 
 **Why:** Combined runs produced budget failures while isolated checks of both versions passed; a later complete serial suite also passed without changing production budgets.
 
-**How to apply:** Use focused baseline/current comparisons and serial whole-suite verification when timing failures occur. Do not change reservations or timer origins just to accommodate test-process scheduling.
+**How to apply:** Use focused baseline/current comparisons and serial whole-suite verification when timing failures occur. Run these checks separately from live prefills and browser automation to avoid extra scheduling pressure. Do not change reservations or timer origins just to accommodate test-process scheduling.
 
 ## Exclusion matching policy
 

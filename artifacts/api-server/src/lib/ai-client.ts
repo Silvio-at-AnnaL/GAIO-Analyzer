@@ -6,6 +6,7 @@ const CALL_LLM_MAX_RETRIES = 2;
 
 interface ProviderResponse {
   text: string;
+  stopReason: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
 }
@@ -44,6 +45,7 @@ async function callWithClaude(
   if (block?.type !== "text") throw new Error("Non-text response from Claude");
   return {
     text: block.text,
+    stopReason: resp.stop_reason ?? null,
     inputTokens: resp.usage?.input_tokens ?? null,
     outputTokens: resp.usage?.output_tokens ?? null,
   };
@@ -66,6 +68,7 @@ async function callWithOpenAI(
   });
   return {
     text: resp.choices[0]?.message?.content ?? "",
+    stopReason: resp.choices[0]?.finish_reason ?? null,
     inputTokens: resp.usage?.prompt_tokens ?? null,
     outputTokens: resp.usage?.completion_tokens ?? null,
   };
@@ -78,7 +81,7 @@ async function callWithGemini(
   const genAI = new GoogleGenerativeAI(apiKey);
   const geminiModel = genAI.getGenerativeModel({ model, generationConfig: { temperature } });
   const result = await geminiModel.generateContent(prompt);
-  return { text: result.response.text(), inputTokens: null, outputTokens: null };
+  return { text: result.response.text(), stopReason: null, inputTokens: null, outputTokens: null };
 }
 
 async function resolveLlmConfigInternal(): Promise<LlmConfig> {
@@ -145,6 +148,12 @@ export async function resolveLlmConfig(): Promise<{ provider: string; model: str
 export async function callLLM(
   prompt: string, maxTokens = 4096, temperature = 0, options: LlmCallOptions = {},
 ): Promise<string> {
+  return (await callLLMDetailed(prompt, maxTokens, temperature, options)).text;
+}
+
+export async function callLLMDetailed(
+  prompt: string, maxTokens = 4096, temperature = 0, options: LlmCallOptions = {},
+): Promise<ProviderResponse> {
   const startedAt = Date.now();
   const module = options.module ?? "unknown";
   const timeoutMs = options.timeoutMs ?? CALL_LLM_TIMEOUT_MS;
@@ -171,9 +180,10 @@ export async function callLLM(
     }
     logger.info({
       provider, route: "direct", model, module, durationMs: Date.now() - startedAt,
+      stopReason: response.stopReason,
       inputTokens: response.inputTokens, outputTokens: response.outputTokens,
     }, "callLLM route");
-    return response.text;
+    return response;
   } catch (err) {
     if (err instanceof MissingApiKeyError) throw err;
     const redact = (value: string) => apiKey ? value.replaceAll(apiKey, "[REDACTED]") : "[REDACTED]";

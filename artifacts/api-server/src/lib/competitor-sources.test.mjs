@@ -3,8 +3,12 @@ import { test } from "node:test";
 import { build } from "esbuild";
 
 globalThis.__competitorSearchLogs = [];
+globalThis.__competitorQueryCalls = [];
 const mocks = {
-  "@workspace/integrations-anthropic-ai": `export const anthropic = {};`,
+  "./ai-client.js": `export async function callLLM(prompt,maxTokens,temperature,options) {
+    globalThis.__competitorQueryCalls.push({prompt,maxTokens,temperature,options});
+    return "ANFRAGE: Hersteller DACH";
+  }`,
   "./admin-db.js": `export async function getSetting() {throw Error("real settings forbidden in tests");}`,
   "./prompt-manager.js": `export async function getPrompt() {return "{{COMPANY_SUMMARY}} {{MARKET_REGION}}";}
     export function fillTemplate(t, vars) {return Object.entries(vars).reduce((s,[k,v])=>s.replaceAll("{{"+k+"}}",v),t);}`,
@@ -42,3 +46,16 @@ for (const generated of ["ANFRAGE: Hochdruckpumpen Hersteller\nANFRAGE: Wasserst
     assert.ok(!JSON.stringify(logged).includes("synthetic-test-key"));
   });
 }
+
+test("default query generator uses central callLLM with exact deterministic options",async()=>{
+  globalThis.__competitorQueryCalls=[];
+  const result=await findCandidatesBySearch("Produktkontext","DACH","own.test",{
+    readSetting:async key=>key==="search_provider"?"tavily":"synthetic-test-key",
+    fetcher:async()=>new Response(JSON.stringify({results:[]}),{headers:{"content-type":"application/json"}}),
+  });
+  assert.deepEqual(result.queries,["Hersteller DACH"]);
+  assert.deepEqual(globalThis.__competitorQueryCalls,[{
+    prompt:"Produktkontext DACH",maxTokens:300,temperature:0,
+    options:{module:"competitor-search-queries",timeoutMs:30_000,maxRetries:1},
+  }]);
+});

@@ -197,8 +197,16 @@ export function DomainAnalyseView() {
           setCompetitorReasons(reasonsMap);
           setPhase2Visible(true);
         },
-        onError: () => {
+        onError: (error) => {
           if (generation !== prefillGeneration.current) return;
+          if (error instanceof Error && error.name === "ApiError") {
+            const apiError = error as Error & { status?: number; data?: { code?: string } };
+            if (apiError.status === 503 && apiError.data?.code === "LLM_UNAVAILABLE") {
+              setPrefillError(t("domain.error_prefill_llm_unavailable"));
+              setPhase2Visible(true);
+              return;
+            }
+          }
           setPrefillError(t("domain.error_prefill_failed"));
           setPhase2Visible(true);
         },

@@ -9,14 +9,18 @@ const aiCandidate = { name: "AI Hersteller", url: "https://ai-candidate.test", r
 const searchCandidates = [1, 2].map(n => ({ name: `Suchhersteller ${n}`, url: `https://search-${n}.test`, reason: "Direkter Wettbewerber" }));
 const mocks = {
   express: `export function Router() { return { post(path, fn) { globalThis.__prefillContextTest.handlers.set(path, fn); } }; }`,
-  "@workspace/integrations-anthropic-ai": `export const anthropic = { messages: { async create(params) {
+  "../lib/ai-client.js": `export async function callLLM(prompt, maxTokens, temperature, options) {
     const s = globalThis.__prefillContextTest;
-    const prompt = params.messages[0].content;
     s.prompts.push(prompt);
-    if (prompt.startsWith("RELEVANCE:")) return { content: [{type:"text", text:
-      [1,2].map(n => "KANDIDAT: " + n + "\\nPASST: ja\\nGRUND: Passender Hersteller\\nDUBLETTE_VON: -").join("\\n\\n") }] };
-    return { content: [{type:"text", text:JSON.stringify(s.initial)}] };
-  } } };`,
+    s.aiCalls.push({prompt,maxTokens,temperature,options});
+    if (prompt.startsWith("RELEVANCE:")) return [1,2].map(n =>
+      "KANDIDAT: " + n + "\\nPASST: ja\\nGRUND: Passender Hersteller\\nDUBLETTE_VON: -").join("\\n\\n");
+    return s.rawResponse ?? JSON.stringify(s.initial);
+  }
+  export async function callLLMDetailed(...args) {
+    return {text:await callLLM(...args),stopReason:"max_tokens",inputTokens:10,outputTokens:20};
+  }`,
+  "../lib/llm-preflight.js": `export async function checkLlmReady() {return {ok:true,provider:"claude"};}`,
   "../lib/prompt-manager.js": `export async function getPrompt(slug) {
     if(slug === "competitor-relevance") return "RELEVANCE:{{COMPANY_SUMMARY}}";
     return "STORED:{{CRAWLED_CONTENT}}";
@@ -54,10 +58,10 @@ const { outputFiles } = await build({
 });
 await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 
-async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false, blockedCandidate = false } = {}) {
+async function run({ failed = false, summary = null, companyContext = null, source = "search", longCrawl = false, blockedCandidate = false, rawResponse, expectedStatus = 200 } = {}) {
   Object.assign(state, {
     initial: { personas: "Technische Einkäufer", competitors: [aiCandidate], content_summary: summary, company_context: companyContext },
-    source, searches: [], prompts: [], logs: [], searchCandidates,
+    source, searches: [], prompts: [], logs: [], searchCandidates, aiCalls: [], rawResponse,
   });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async url => {
@@ -73,7 +77,7 @@ async function run({ failed = false, summary = null, companyContext = null, sour
   const response = { body: null, code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
   try {
     await state.handlers.get("/prefill")({body:{company_name:"Firma Test",url:"https://company.test/"}}, response);
-    assert.equal(response.code, 200);
+    assert.equal(response.code, expectedStatus);
     return response.body;
   } finally { globalThis.fetch = originalFetch; }
 }
@@ -159,3 +163,34 @@ test("unjudged blocked candidate retains its original search reason", async () =
   assert.ok(data.competitors.every(c => c.reason === "Direkter Wettbewerber"));
   assert.ok(state.prompts.every(prompt => !prompt.startsWith("RELEVANCE:")));
 });
+
+test("main, URL correction, replacement and relevance calls use their exact central options and temperature zero",async()=>{
+  await run({summary:"Website-Zusammenfassung",blockedCandidate:true});
+  const expected={
+    "prefill-main":{maxTokens:1500,timeoutMs:90_000,maxRetries:1},
+    "prefill-url-correction":{maxTokens:100,timeoutMs:30_000,maxRetries:1},
+    "prefill-replacement":{maxTokens:220,timeoutMs:30_000,maxRetries:1},
+    "prefill-relevance":{maxTokens:1500,timeoutMs:30_000,maxRetries:2},
+  };
+  const calls=[...state.aiCalls];
+  await run({summary:"Website-Zusammenfassung"});
+  calls.push(...state.aiCalls);
+  assert.deepEqual([...new Set(calls.map(c=>c.options.module))].sort(),Object.keys(expected).sort());
+  for(const call of calls) {
+    const {maxTokens,...options}=expected[call.options.module];
+    assert.equal(call.maxTokens,maxTokens);
+    assert.equal(call.temperature,0);
+    assert.deepEqual(call.options,{module:call.options.module,...options});
+  }
+});
+
+for(const [rawResponse,message,error] of [
+  ["no JSON here","Prefill: no JSON found in AI response","AI returned an unexpected format"],
+  ['{"personas":invalid}',"Prefill: failed to parse JSON","Failed to parse AI response"],
+]) {
+  test(`${message} logs the detailed stop reason and retains the existing response`,async()=>{
+    const data=await run({rawResponse,expectedStatus:500});
+    assert.deepEqual(data,{error});
+    assert.ok(state.logs.some(log=>log.level==="error" && log.msg===message && log.obj.stopReason==="max_tokens"));
+  });
+}

@@ -153,6 +153,6 @@ test("both results locations and legacy dashboard use the shared labelled render
   const shared = await readFile(new URL("../views/SharedAnalysisView.tsx", import.meta.url), "utf8");
   assert.match(shared, /srcDoc=\{data.htmlContent\}/);
   assert.ok(!shared.includes("JSON.stringify"));
-  assert.equal(Object.keys(labelDefaults).length, 1323);
+  assert.equal(Object.keys(labelDefaults).length, 1324);
   assert.ok(crawlFailureMessage(report("crawl_timed_out")).paragraphs.length > 1);
 });

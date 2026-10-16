@@ -28,6 +28,7 @@ const mocks = {
             if (state.sdkError) throw state.sdkError;
             return {
               content: [{ type: "text", text: "Claude response" }],
+              stop_reason: state.stopReason ?? "end_turn",
               usage: { input_tokens: 15, output_tokens: 7 },
             };
           },
@@ -45,7 +46,7 @@ const mocks = {
             state.requests.push({ provider: "openai-compatible", request });
             if (state.sdkError) throw state.sdkError;
             return {
-              choices: [{ message: { content: "OpenAI response" } }],
+              choices: [{ message: { content: "OpenAI response" }, finish_reason: state.stopReason ?? "stop" }],
               usage: { prompt_tokens: 22, completion_tokens: 11 },
             };
           },
@@ -81,7 +82,7 @@ const { outputFiles } = await build({
     },
   }],
 });
-const { callLLM, resolveLlmConfig, MissingApiKeyError } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+const { callLLM, callLLMDetailed, resolveLlmConfig, MissingApiKeyError } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
 
 const key = "anthropic-direct-secret-test-key";
 const model = "claude-custom-admin-model";
@@ -111,7 +112,7 @@ test("Claude uses the stored key/model directly, with timeout/retries and usage 
   assert.equal(routes(state).length, 1);
   assert.deepEqual({ ...routes(state)[0].obj, durationMs: 0 }, {
     provider: "claude", route: "direct", model, module: "content-relevance",
-    durationMs: 0, inputTokens: 15, outputTokens: 7,
+    durationMs: 0, inputTokens: 15, outputTokens: 7, stopReason: "end_turn",
   });
   assert.ok(typeof routes(state)[0].obj.durationMs === "number" && routes(state)[0].obj.durationMs >= 0);
   assert.ok(!JSON.stringify(state.logs).includes(key));
@@ -125,7 +126,7 @@ test("module defaults to unknown and OpenAI-compatible usage is logged", async (
   });
   assert.deepEqual({ ...routes(state)[0].obj, durationMs: 0 }, {
     provider: "openai", route: "direct", model: "gpt-4o",
-    module: "unknown", durationMs: 0, inputTokens: 22, outputTokens: 11,
+    module: "unknown", durationMs: 0, inputTokens: 22, outputTokens: 11, stopReason: "stop",
   });
 });
 
@@ -152,7 +153,26 @@ test("Gemini retains its API and reports unavailable token usage", async () => {
   assert.equal(await callLLM("prompt"), "Gemini response");
   assert.equal(routes(state)[0].obj.inputTokens, null);
   assert.equal(routes(state)[0].obj.outputTokens, null);
+  assert.equal(routes(state)[0].obj.stopReason, null);
 });
+
+for (const [provider,settings,expected] of [
+  ["claude",{ai_api_key_claude:key},{text:"Claude response",stopReason:"max_tokens",inputTokens:15,outputTokens:7}],
+  ["openai",{ai_api_key_openai:"openai-test-key"},{text:"OpenAI response",stopReason:"length",inputTokens:22,outputTokens:11}],
+  ["perplexity",{ai_api_key_perplexity:"perplexity-test-key"},{text:"OpenAI response",stopReason:"length",inputTokens:22,outputTokens:11}],
+  ["custom-1",{ai_custom_providers:JSON.stringify([{id:"custom-1",api_key:"custom-test-key",
+    base_url:"https://custom.example",model:"custom-model",enabled:true}])},
+    {text:"OpenAI response",stopReason:"length",inputTokens:22,outputTokens:11}],
+  ["gemini",{ai_api_key_gemini:"gemini-test-key"},{text:"Gemini response",stopReason:null,inputTokens:null,outputTokens:null}],
+]) {
+  test(`callLLMDetailed returns stop reason and metrics for ${provider}; callLLM remains text-only`,async()=>{
+    const state=reset({ai_provider:provider,...settings});
+    state.stopReason=expected.stopReason;
+    assert.deepEqual(await callLLMDetailed("prompt",1500,0,{module:"prefill-main"}),expected);
+    assert.equal(routes(state)[0].obj.stopReason,expected.stopReason);
+    assert.equal(await callLLM("prompt",1500,0),expected.text);
+  });
+}
 
 test("missing key for each selected provider warns and throws without an SDK call", async () => {
   for (const provider of ["claude", "openai", "perplexity", "gemini", "custom-1"]) {

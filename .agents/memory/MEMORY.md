@@ -14,3 +14,4 @@
 - [Shared language-path policy](technical-seo-language-evidence.md) — curated web-language codes now apply to crawling and SEO; the old bare-regex/Farnell baseline was explicitly superseded.
 - [Workspace dependency relinking](workspace-dependency-relink.md) — filtered pnpm installs can leave existing dependencies unresolved; try a root frozen install before changing code.
 - [Prefill context provenance](prefill-context-policy.md) — general knowledge stays internal; preserve the crawled-text fallback when a successful crawl lacks a summary.
+- [Staged AI routing migration](ai-routing-migration.md) — transport migrations are scoped by flow; do not expand them to other analyzers, dependencies, prompts, or settings.

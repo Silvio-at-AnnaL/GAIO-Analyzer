@@ -7,6 +7,7 @@ export interface LabelDef {
 }
 
 export const labelDefaults: Record<string, LabelDef> = {
+  "domain.error_prefill_llm_unavailable": { group: "domain", de: "KI-Vorausfüllung derzeit nicht möglich: Der KI-Anbieter ist nicht erreichbar. Bitte füllen Sie die Felder manuell aus oder informieren Sie den Administrator." },
   "errors.next_steps_title": { group: "errors", de: "Nächste Schritte" },
   "errors.next_steps_default": { group: "errors", de: "Erreichbarkeit und Antwortzeiten der Website prüfen.\nFehlerhafte oder nicht erreichbare URLs bereinigen.\nNach der Behebung eine erneute GAIO-Analyse durchführen." },
   "errors.crawl_bot_protection_next_steps": { group: "errors", de: "Abrufe mit der Kennung „GAIOAnalyzer/1.0“ beim Betreiber bzw. der IT freigeben lassen.\nEinstellungen des Schutzdienstes gezielt für KI-Crawler (z. B. GPTBot, ClaudeBot, PerplexityBot) prüfen.\nNach der Freigabe eine erneute GAIO-Analyse durchführen." },

@@ -291,6 +291,29 @@ function changeFile(tree, file) {
   return input;
 }
 
+for (const [name, error, label] of [
+  ["LLM unavailable", Object.assign(new Error("Unavailable"), {name:"ApiError",status:503,data:{code:"LLM_UNAVAILABLE"}}),
+    "domain.error_prefill_llm_unavailable"],
+  ["other 503", Object.assign(new Error("Unavailable"), {name:"ApiError",status:503,data:{code:"OTHER"}}),
+    "domain.error_prefill_failed"],
+  ["network failure", new Error("Offline"), "domain.error_prefill_failed"],
+]) {
+  test(`prefill ${name} shows the right label and keeps manual fields available`,()=>{
+    const context=makeContext({store:makeStore({domainForm:{
+      companyName:"Example",url:"https://example.test",personas:"",competitors:[""],
+    }})});
+    const harness=makeHarness();
+    installHarness(harness,context);
+    let tree=harness.render(DomainAnalyseView);
+    byTestId(tree,"button-ai-prefill").props.onClick();
+    context.prefillMutation.mutateCalls[0][1].onError(error);
+    tree=harness.render(DomainAnalyseView);
+    assert.ok(textContent(tree).includes(label));
+    assert.ok(byTestId(tree,"input-personas"));
+    assert.equal(context.startAnalysis.mutateCalls.length,0);
+  });
+}
+
 test("the real import link is hidden without access and visible to admins or explicitly permitted users", () => {
   const cases = [
     [{ isAuthenticated: false, user: null, permissions: {} }, false],
