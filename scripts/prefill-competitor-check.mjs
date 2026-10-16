@@ -74,7 +74,7 @@ await writeFile(bundlePath, result.outputFiles[0].contents);
 const child = spawnSync(process.execPath, [bundlePath], {
   cwd: root, stdio: "inherit",
   env: {...process.env, NODE_ENV:"production", NODE_PATH: [
-    `${root}artifacts/api-server/node_modules`,`${root}lib/integrations-anthropic-ai/node_modules`,`${root}node_modules`,
+    `${root}artifacts/api-server/node_modules`,`${root}node_modules`,
   ].join(":")},
 });
 process.exitCode = child.status ?? 1;

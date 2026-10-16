@@ -14,7 +14,7 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - **Frontend**: React + Vite + Tailwind CSS
 - **Charts**: Recharts (radar, donut, bar charts)
 - **HTML parsing**: cheerio (Node.js)
-- **AI/LLM**: Anthropic via Replit AI Integrations (claude-sonnet-4-6)
+- **AI/LLM**: AI calls use the provider, key and model configured in Admin → KI-Tool (central `callLLM` in `artifacts/api-server/src/lib/ai-client.ts`).
 - **Database**: PostgreSQL (Neon), accessed via raw SQL in artifacts/api-server/src/lib/db*. lib/db is an unused Drizzle template.
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
@@ -67,12 +67,9 @@ GAIO Analyzer is a B2B industrial website audit tool that evaluates LLM discover
 - `artifacts/api-server/src/lib/analyzers/` — Individual analysis modules
 - `artifacts/api-server/src/routes/analyze.ts` — Analysis API endpoints
 - `artifacts/gaio-analyzer/src/components/` — Frontend components (QuestionnaireForm, InputModeSelection, AnalysisProgress, ReportDashboard)
-- `lib/integrations-anthropic-ai/` — Anthropic AI integration package
 
 ## Environment Variables
 
-- `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` — Auto-configured by Replit AI Integrations
-- `AI_INTEGRATIONS_ANTHROPIC_API_KEY` — Auto-configured by Replit AI Integrations
 - `SESSION_SECRET` — Session secret
 - `DATABASE_URL` — PostgreSQL connection (auto-configured)
 
