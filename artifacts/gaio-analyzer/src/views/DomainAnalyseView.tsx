@@ -12,12 +12,14 @@ import { useT } from "@/lib/LabelProvider";
 import { SetupImportLink } from "@/components/SetupImportLink";
 import { PrefillCompetitorDropNote } from "@/components/PrefillCompetitorDropNote";
 import { canFillPages, pageFillOptions } from "@/lib/page-fill";
+import { newDomainPreparation, preparationUrlKey } from "@/lib/domain-preparation";
 
 const MAX_VISIBLE_PAGES = 15;
 
 export function DomainAnalyseView() {
   const {
     domainForm, setDomainForm,
+    domainPreparation, setDomainPreparation,
     setAnalysisId, setAnalysisStatus, setActiveView,
     crawledPages, selectedPages, setSelectedPages,
     setupImportNotice, setSetupImportNotice,
@@ -48,6 +50,7 @@ export function DomainAnalyseView() {
   const prefillGeneration = useRef(0);
 
   const invalidatePrefillForImport = () => {
+    setDomainPreparation(null);
     // Must run before import setters, not only in the later reset effect.
     prefillGeneration.current += 1;
     prefillMutation.reset();
@@ -55,6 +58,7 @@ export function DomainAnalyseView() {
 
   useEffect(() => {
     if (!setupImportNotice) return;
+    setDomainPreparation(null);
     // Discard old mutation output and any response still in flight at import time.
     prefillGeneration.current += 1;
     prefillMutation.reset();
@@ -158,12 +162,15 @@ export function DomainAnalyseView() {
     setPrefillError(null);
     setCompetitorReasons({});
     const generation = ++prefillGeneration.current;
+    const preparation = newDomainPreparation(domainForm.url);
+    setDomainPreparation(preparation);
 
     prefillMutation.mutate(
       {
         data: {
           company_name: domainForm.companyName.trim(),
           url: domainForm.url.trim(),
+          ...(preparation ? { prep_id: preparation.prepId } : {}),
         },
       },
       {
@@ -300,6 +307,8 @@ export function DomainAnalyseView() {
         data: {
           mode: "url",
           url: normalizeUrl(domainForm.url),
+          ...(domainPreparation?.urlKey === preparationUrlKey(domainForm.url)
+            ? { prepId: domainPreparation.prepId } : {}),
           questionnaire: {
             companyName: domainForm.companyName.trim() || null,
             competitors: competitorUrls || null,

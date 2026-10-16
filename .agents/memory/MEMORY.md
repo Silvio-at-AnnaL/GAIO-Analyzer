@@ -16,3 +16,5 @@
 - [Prefill context provenance](prefill-context-policy.md) — general knowledge stays internal; preserve the crawled-text fallback when a successful crawl lacks a summary.
 - [Staged AI routing migration](ai-routing-migration.md) — transport migrations are scoped by flow; do not expand them to other analyzers, dependencies, prompts, or settings.
 - [Git index-lock guard](git-index-lock-guard.md) — even diff/status may refresh the index and need the explicit Git guard flag for authorized operations.
+- [Analysis metadata visibility](analysis-metadata-visibility.md) — provider/model belong in admin history and invisible export metadata, not customer-facing reports.
+- [Browser verification fallback](browser-verification-fallback.md) — testing subagent kind was unavailable; local Playwright can use the installed Chromium without app dependencies.

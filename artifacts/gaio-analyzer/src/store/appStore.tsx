@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { SetupImportNotice } from "../lib/setup-import";
+import { preparationUrlKey, type DomainPreparation } from "../lib/domain-preparation";
 
 export type ActiveView = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24;
 export type Theme = "light" | "dark" | "system";
@@ -27,6 +28,8 @@ interface AppState {
 
   domainForm: DomainForm;
   setDomainForm: (form: DomainForm) => void;
+  domainPreparation: DomainPreparation | null;
+  setDomainPreparation: (value: DomainPreparation | null) => void;
   setupImportNotice: SetupImportNotice | null;
   setSetupImportNotice: (notice: SetupImportNotice | null) => void;
 
@@ -82,8 +85,18 @@ function applyTheme(theme: Theme) {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [activeView, setActiveView] = useState<ActiveView>(1);
   const [systemLogAnalysisId, setSystemLogAnalysisId] = useState<string | null>(null);
-  const [domainForm, setDomainForm] = useState<DomainForm>(DEFAULT_DOMAIN_FORM);
-  const [setupImportNotice, setSetupImportNotice] = useState<SetupImportNotice | null>(null);
+  const [domainForm, setDomainFormState] = useState<DomainForm>(DEFAULT_DOMAIN_FORM);
+  const [domainPreparation, setDomainPreparation] = useState<DomainPreparation | null>(null);
+  const [setupImportNotice, setSetupImportNoticeState] = useState<SetupImportNotice | null>(null);
+  const setDomainForm = (form: DomainForm) => {
+    setDomainPreparation(previous =>
+      previous?.urlKey === preparationUrlKey(form.url) ? previous : null);
+    setDomainFormState(form);
+  };
+  const setSetupImportNotice = (notice: SetupImportNotice | null) => {
+    if (notice) setDomainPreparation(null);
+    setSetupImportNoticeState(notice);
+  };
   const [htmlForm, setHtmlForm] = useState<HtmlForm>(DEFAULT_HTML_FORM);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
@@ -120,6 +133,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSystemLogAnalysisId,
         domainForm,
         setDomainForm,
+        domainPreparation,
+        setDomainPreparation,
         setupImportNotice,
         setSetupImportNotice,
         htmlForm,

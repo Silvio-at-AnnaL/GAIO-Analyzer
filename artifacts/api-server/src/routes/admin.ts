@@ -218,7 +218,7 @@ function systemEventFilters(req: Request) {
       )
       AND level >= $3
       AND ($4::text IS NULL OR (
-        analysis_id = $4 OR (prep_id IS NOT NULL AND prep_id =
+        analysis_id = $4 OR (analysis_id IS NULL AND prep_id IS NOT NULL AND prep_id =
           (SELECT prep_id FROM analysis_log WHERE analysis_uuid = $4 LIMIT 1))
       ))
       AND ($7::text IS NULL OR prep_id = $7)

@@ -147,6 +147,8 @@ function makeStore(overrides = {}) {
     store.timeline.push("setDomainForm");
     store.domainForm = value;
   };
+  store.domainPreparation = overrides.domainPreparation ?? null;
+  store.setDomainPreparation = value => { store.domainPreparation = value; };
   store.setCrawledPages = (value) => {
     store.calls.push(["setCrawledPages", value]);
     store.timeline.push("setCrawledPages");
@@ -341,6 +343,70 @@ test("the real import link is hidden without access and visible to admins or exp
       });
     }
   }
+});
+
+test("prefill sends a fresh UUID and repeated same-URL analyses reuse it across view remounts", () => {
+  const context = makeContext({ store: makeStore({ domainForm: {
+    companyName: "Example", url: "https://example.test", personas: "", competitors: [""],
+  } }) });
+  let harness = makeHarness();
+  installHarness(harness, context);
+  byTestId(harness.render(DomainAnalyseView), "button-ai-prefill").props.onClick();
+  const id = context.prefillMutation.mutateCalls[0][0].data.prep_id;
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  for (let i = 0; i < 2; i++) {
+    harness = makeHarness();
+    installHarness(harness, context);
+    // Reveal the second phase without starting another prefill.
+    findElement(harness.render(DomainAnalyseView), node => node.props?.onClick &&
+      textContent(node) === "domain.prefill_manual").props.onClick();
+    byTestId(harness.render(DomainAnalyseView), "button-start-analysis").props.onClick();
+    assert.equal(context.startAnalysis.mutateCalls.at(-1)[0].data.prepId, id);
+  }
+  harness = makeHarness();
+  installHarness(harness, context);
+  byTestId(harness.render(DomainAnalyseView), "button-ai-prefill").props.onClick();
+  assert.notEqual(context.prefillMutation.mutateCalls[1][0].data.prep_id, id);
+});
+
+test("a changed URL, including a changed path, sends no preparation ID", () => {
+  for (const url of ["https://other.test", "https://example.test/other"]) {
+    const context = makeContext({ store: makeStore({ domainForm: {
+      companyName: "Example", url: "https://example.test", personas: "", competitors: [""],
+    } }) });
+    const harness = makeHarness();
+    installHarness(harness, context);
+    byTestId(harness.render(DomainAnalyseView), "button-ai-prefill").props.onClick();
+    context.store.domainForm = { ...context.store.domainForm, url };
+    findElement(harness.render(DomainAnalyseView), node => node.props?.onClick &&
+      textContent(node) === "domain.prefill_manual").props.onClick();
+    byTestId(harness.render(DomainAnalyseView), "button-start-analysis").props.onClick();
+    assert.equal(Object.hasOwn(context.startAnalysis.mutateCalls[0][0].data, "prepId"), false);
+  }
+});
+
+test("setup import clears the remembered preparation even when importing the same URL", async () => {
+  await withBrowserGlobals(async () => {
+    const context = makeContext({ store: makeStore({ domainForm: {
+      companyName: "Example", url: "https://example.test", personas: "", competitors: [""],
+    } }) });
+    const harness = makeHarness();
+    installHarness(harness, context);
+    byTestId(harness.render(DomainAnalyseView), "button-ai-prefill").props.onClick();
+    const view = harness.render(DomainAnalyseView);
+    const link = findElement(view, node => typeof node.props?.onBeforeApply === "function");
+    installHarness(makeHarness(), context);
+    const importTree = globalThis.__setupImportHarness.render(SetupImportLink, link.props);
+    changeFile(importTree, { name: "same.html", size: 100, contents: reportHtml(setupBlock({
+      url: "https://example.test",
+    })) });
+    await flushImport();
+    assert.equal(context.store.domainPreparation, null);
+    installHarness(harness, context);
+    harness.render(DomainAnalyseView);
+    byTestId(harness.render(DomainAnalyseView), "button-start-analysis").props.onClick();
+    assert.equal(Object.hasOwn(context.startAnalysis.mutateCalls[0][0].data, "prepId"), false);
+  });
 });
 
 test("welcome hints use a centered field-width container and a separate permission-gated import line", () => {

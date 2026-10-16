@@ -106,6 +106,29 @@ test("redirect_loop has the same German label in results and HTML export rendere
   assert.match(html, /https:\/\/example\.test\/redirect-loop/);
 });
 
+test("correlation metadata is additive, invisible, nullable and ignored by setup import", async () => {
+  const original = block(await exportReport(report));
+  const metadata = { prepId: "abcdefab-1234-4bcd-abcd-abcdefabcdef",
+    llmProvider: "claude", llmModel: "claude-sonnet-4-6" };
+  const html = await exportReport({ ...report, ...metadata });
+  const enriched = block(html);
+  for (const [key, value] of Object.entries(metadata)) {
+    assert.equal(enriched[key], value);
+    assert.equal(original[key], null);
+    const visible = html.replace(/<script type="application\/json" id="gaio-analysis-data">[\s\S]*?<\/script>/, "");
+    assert.ok(!visible.includes(value));
+  }
+  const { prepId, llmProvider, llmModel, exportDate, ...rest } = enriched;
+  const { prepId: oldPrep, llmProvider: oldProvider, llmModel: oldModel,
+    exportDate: oldDate, ...oldRest } = original;
+  assert.deepEqual(rest, oldRest);
+  const imported = parseReportSetup(html);
+  const baseline = parseReportSetup(await exportReport(report));
+  delete imported.setup.exportDate;
+  delete baseline.setup.exportDate;
+  assert.deepEqual(imported, baseline);
+});
+
 test("shared helper prefers validated inputs, including nulls, and preserves old form fallback", () => {
   const server = buildReportInputParams(report, form, "test-date");
   assert.equal(server.companyName, "Example Instruments");

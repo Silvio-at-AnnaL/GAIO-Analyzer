@@ -18,6 +18,8 @@ interface LogItem {
   startedAt: string;
   completedAt: string | null;
   hasHtmlExport: boolean;
+  llmProvider?: string | null;
+  llmModel?: string | null;
 }
 
 interface LogResponse {
@@ -235,6 +237,11 @@ export function AnalysisLogView() {
                         </a>
                       ) : (
                         <span className="text-xs font-medium" style={{ color: "hsl(var(--foreground))" }}>{item.domain}</span>
+                      )}
+                      {(item.llmProvider || item.llmModel) && (
+                        <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                          {[item.llmProvider, item.llmModel].filter(Boolean).join(" · ")}
+                        </p>
                       )}
                     </td>
 

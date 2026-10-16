@@ -227,6 +227,9 @@ components:
     PrefillBody:
       type: object
       properties:
+        prep_id:
+          type: string
+          format: uuid
         company_name:
           type: string
         url:

@@ -64,6 +64,7 @@ export const StartAnalysisBody = zod.object({
  * @summary AI pre-fill for questionnaire
  */
 export const PrefillQuestionnaireBody = zod.object({
+  prep_id: zod.string().uuid().optional(),
   company_name: zod.string(),
   url: zod.string(),
 });

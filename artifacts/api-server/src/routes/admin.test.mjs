@@ -269,10 +269,11 @@ test("system event list and export share linked analysis/preparation filters and
     { id: "2", analysis_id: null, prep_id: prepId },
     { id: "3", analysis_id: analysisId, prep_id: null },
     { id: "4", analysis_id: "other-analysis", prep_id: "other-prep" },
+    { id: "5", analysis_id: "analysis-b", prep_id: prepId },
   ].map(row => ({ ...row, created_at: "2026-10-16T10:00:00Z", level: 30, msg: row.id,
     analysis_domain: null, context: null }));
   state.deliveryQuery = (sql, params) => {
-    assert.match(sql, /analysis_id = \$4 OR \(prep_id IS NOT NULL AND prep_id =\s*\(SELECT prep_id FROM analysis_log WHERE analysis_uuid = \$4 LIMIT 1\)\)/);
+    assert.match(sql, /analysis_id = \$4 OR \(analysis_id IS NULL AND prep_id IS NOT NULL AND prep_id =\s*\(SELECT prep_id FROM analysis_log WHERE analysis_uuid = \$4 LIMIT 1\)\)/);
     assert.match(sql, /\(\$7::text IS NULL OR prep_id = \$7\)/);
     if (sql.includes("::bigint")) {
       assert.match(sql, /\$8::bigint/);
@@ -282,18 +283,19 @@ test("system event list and export share linked analysis/preparation filters and
       assert.match(sql, /LIMIT \$8/);
       assert.equal(params.length, 8);
     }
-    const linkedPrep = params[3] === analysisId ? prepId : null;
+    const linkedPrep = [analysisId, "analysis-b"].includes(params[3]) ? prepId : null;
     return { rows: records.filter(row =>
-      (!params[3] || row.analysis_id === params[3] || (linkedPrep !== null && row.prep_id === linkedPrep)) &&
+      (!params[3] || row.analysis_id === params[3] || (row.analysis_id === null && linkedPrep !== null && row.prep_id === linkedPrep)) &&
       (!params[6] || row.prep_id === params[6])
     ).reverse() };
   };
   for (const [filter, expected] of [
-    [{}, ["1", "2", "3", "4"]],
+    [{}, ["1", "2", "3", "4", "5"]],
     [{ analysisId }, ["1", "2", "3"]],
-    [{ prepId: prepId.toUpperCase() }, ["1", "2"]],
+    [{ prepId: prepId.toUpperCase() }, ["1", "2", "5"]],
     [{ analysisId, prepId }, ["1", "2"]],
     [{ analysisId: "other-analysis" }, ["4"]],
+    [{ analysisId: "analysis-b" }, ["2", "5"]],
   ]) {
     const query = { minLevel: 30, ...filter };
     const list = await request("GET", "/system-events", { query });

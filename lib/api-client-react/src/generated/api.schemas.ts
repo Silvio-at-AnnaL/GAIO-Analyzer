@@ -59,6 +59,7 @@ export interface ReportDeliveryDeletion {
 }
 
 export interface PrefillBody {
+  prep_id?: string;
   company_name: string;
   url: string;
 }
