@@ -224,3 +224,17 @@ mtime_ms = 1792150517518
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/d85e707a-b875-4cb4-84ca-65248db5271e/5ace53bb-224a-425a-ae39-5c19f588be23"
 storage_version_token = "1792150518374221"
 content_type = "text/plain"
+
+[[outputs]]
+id = "B4JVGBN62nKgPWAgmpRlY"
+uri = "file://attached_assets/Browser-preparation-and-linked-logs-verification.txt"
+type = "text"
+title = "Browser preparation and linked-log verification"
+description = "Commit, complete changed-file list, test results, both browser-run IDs, isolated log counts and downloaded HTML metadata."
+logical_id = "0e72aa9e-952e-490f-a9b8-d469a63b828d"
+content_hash = "sha256:94fedccaa900e77f33fe821e8163eaa23dd3b3c25ba1c1b0e899a31e8ff97ea3"
+size = 4325
+mtime_ms = 1792153147540
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/0e72aa9e-952e-490f-a9b8-d469a63b828d/9a31e6d1-1c5b-4cec-bff4-18bd7dfd30b0"
+storage_version_token = "1792153153649501"
+content_type = "text/plain"
