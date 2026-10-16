@@ -12,3 +12,7 @@ The documented testing subagent configuration returned `Unknown config kind: tes
 For long-running jobs, wait for the completed UI rather than using an async `waitForFunction` predicate. The local browser stack returned a handle containing `false` immediately from that predicate instead of continuing to wait. Await JSON parsing explicitly inside browser evaluations. Keep the browser available for focused recovery so a selector failure does not require repeating paid AI work.
 
 React test doubles for effect dependencies must retain stable function and object identities, or they can produce artificial render loops.
+
+CSS-clipped menu items can pass Playwright visibility checks while their parent is collapsed and intercepts clicks. Open the containing menu explicitly rather than treating `isVisible()` as proof that an item can be clicked.
+
+**Why:** Admin-browser verification encountered this visibility/clickability mismatch in collapsed navigation; it was not an application failure.

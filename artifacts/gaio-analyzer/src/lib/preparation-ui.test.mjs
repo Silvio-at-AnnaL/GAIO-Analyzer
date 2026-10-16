@@ -89,5 +89,5 @@ test("admin analysis log renders provider and model under the domain, and no met
   assert.equal(rows.length, 2);
   assert.ok(rows[0].textContent.includes("claude · claude-sonnet-4-6"));
   assert.equal(rows[1].querySelector("td:nth-child(2) p"), null);
-  assert.equal(host.querySelectorAll("th").length, 7);
+  assert.equal(host.querySelectorAll("th").length, 8);
 });

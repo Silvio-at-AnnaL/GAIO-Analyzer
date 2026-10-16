@@ -28,7 +28,7 @@ test("FAQ hint uses the label and actual schema maximum, not a fixed 40", async 
   assert.equal(hint, t("results.faq_no_schema_hint", { points: 27 }));
   assert.ok((await html(faq)).includes(hint));
   assert.equal(labelDefaults["results.faq_no_schema_hint"].group, "results");
-  assert.equal(Object.keys(labelDefaults).length, 1324);
+  assert.equal(Object.keys(labelDefaults).length, 1345);
 });
 
 test("FAQ export honors a label override and escapes translated text", async () => {

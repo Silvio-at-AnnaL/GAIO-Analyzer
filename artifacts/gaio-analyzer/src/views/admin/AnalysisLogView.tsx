@@ -3,6 +3,7 @@ import { Download, Trash2, ChevronLeft, ChevronRight, ScrollText } from "lucide-
 import { adminFetch, useAuth, canAccess } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
+import { usageCostCell, type AdminUsageSnapshot } from "@/lib/admin-usage";
 
 interface LogItem {
   id: number;
@@ -20,6 +21,7 @@ interface LogItem {
   hasHtmlExport: boolean;
   llmProvider?: string | null;
   llmModel?: string | null;
+  usage?: AdminUsageSnapshot | null;
 }
 
 interface LogResponse {
@@ -59,6 +61,7 @@ export function AnalysisLogView() {
   const { user, isAuthenticated, isLoading, permissions } = useAuth();
   const canViewLog = isAuthenticated && !!user && canAccess("analyseprotokoll", user.role, permissions);
   const canOpenSystemLog = isAuthenticated && !!user && canAccess("systemprotokoll", user.role, permissions);
+  const canViewCosts = isAuthenticated && !!user && canAccess("kosten", user.role, permissions);
   const { setActiveView, setSystemLogAnalysisId } = useAppStore();
 
   const [data, setData] = useState<LogResponse | null>(null);
@@ -208,6 +211,7 @@ export function AnalysisLogView() {
                     { id: "company",   label: t("log.col_company") },
                     { id: "score",     label: t("log.col_score") },
                     { id: "pages",     label: t("log.col_pages") },
+                    ...(canViewCosts ? [{ id: "cost", label: t("log.col_cost") }] : []),
                     { id: "status",    label: t("users.col_status") },
                     { id: "export",    label: t("log.col_export") },
                     { id: "actions",   label: t("users.col_actions") },
@@ -262,6 +266,12 @@ export function AnalysisLogView() {
                     </td>
 
                     {/* Status */}
+                    {canViewCosts && (() => {
+                      const cost = usageCostCell(item.usage, t);
+                      return <td data-testid={`text-analysis-cost-${item.analysisUuid ?? item.id}`} title={cost.title}
+                        className="px-3 py-3 text-right text-xs whitespace-nowrap">{cost.text}</td>;
+                    })()}
+
                     <td className="px-4 py-3">
                       {item.status === "completed" && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"

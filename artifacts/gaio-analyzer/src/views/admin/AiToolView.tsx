@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Save, CheckCircle, AlertCircle, Loader2, Plus, Trash2, Pencil, X } from "lucide-react";
-import { adminFetch } from "@/store/authStore";
+import { adminFetch, useAuth, canAccess } from "@/store/authStore";
 import { useT, useLabelContext } from "@/lib/LabelProvider";
+import { mergeProviderPrice, providerPrice, searchPlanPatch, type PriceDraft } from "@/lib/admin-usage";
+import { ProviderPriceFields, TavilyPlanFields, TavilyUsageLine } from "./AiUsageFields";
 
 interface AiSettings {
   ai_provider: string;
@@ -18,6 +20,11 @@ interface AiSettings {
   search_provider: string;
   search_api_key: string;
   ai_key_valid_until?: string;
+  ai_prices?: string;
+  search_plan?: string;
+  search_included_credits?: string;
+  search_monthly_price_usd?: string;
+  search_credit_price_usd?: string;
 }
 
 interface AiStatus {
@@ -74,6 +81,8 @@ const EMPTY_NEW_PROV = { name: "", api_key: "", base_url: "", model: "" };
 export function AiToolView() {
   const t = useT();
   const { locale } = useLabelContext();
+  const { user, isAuthenticated, permissions } = useAuth();
+  const canViewCosts = isAuthenticated && !!user && canAccess("kosten", user.role, permissions);
   const intlLocale = locale === "en" ? "en-US" : "de-DE";
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [status, setStatus]     = useState<AiStatus | null>(null);
@@ -89,6 +98,7 @@ export function AiToolView() {
   const [editedKeys, setEditedKeys]     = useState<Record<string, string>>({});
   const [editedModels, setEditedModels] = useState<Record<string, string>>({});
   const [searchKey, setSearchKey] = useState<string | undefined>();
+  const [editedPrices, setEditedPrices] = useState<Record<string, PriceDraft>>({});
 
   const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -219,6 +229,7 @@ export function AiToolView() {
       const body: Record<string, string> = {
         competitor_source: settings?.competitor_source ?? "ai",
         search_provider: settings?.search_provider ?? "tavily",
+        ...searchPlanPatch(settings ?? {}),
       };
       if (searchKey !== undefined) body.search_api_key = searchKey;
       const res = await adminFetch("/api/admin/settings/ai", {
@@ -226,7 +237,10 @@ export function AiToolView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Could not save competitor source");
+      if (!res.ok) {
+        showFeedback("competitor-source", "err", await settingsError(res));
+        return;
+      }
       setSearchKey(undefined);
       await load();
       showFeedback("competitor-source", "ok", t("ai.credentials_saved"));
@@ -237,11 +251,51 @@ export function AiToolView() {
     }
   }
 
+  async function settingsError(response: Response): Promise<string> {
+    try {
+      const data = await response.json();
+      if (typeof data.error === "string") return data.error;
+    } catch { /* Keep the translated fallback for non-JSON errors. */ }
+    return t("delivery.save_error");
+  }
+
+  async function mergedPrices(id: string): Promise<string> {
+    // Refresh the map before merging so another provider's recently saved prices
+    // are retained, including changes made in a different admin session.
+    const response = await adminFetch("/api/admin/settings/ai");
+    if (!response.ok) throw new Error(await settingsError(response));
+    const latest = await response.json() as AiSettings;
+    return mergeProviderPrice(latest.ai_prices ?? "{}", id,
+      editedPrices[id] ?? providerPrice(latest.ai_prices ?? "{}", id));
+  }
+
+  function clearPriceDraft(id: string) {
+    setEditedPrices(prices => { const next = { ...prices }; delete next[id]; return next; });
+  }
+
+  async function saveCustomPrice(id: string) {
+    setSaving(`price-${id}`);
+    try {
+      const res = await adminFetch("/api/admin/settings/ai", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ai_prices: await mergedPrices(id) }),
+      });
+      if (!res.ok) { showFeedback(`price-${id}`, "err", await settingsError(res)); return; }
+      clearPriceDraft(id);
+      await load();
+      showFeedback(`price-${id}`, "ok", t("ai.credentials_saved"));
+    } catch {
+      showFeedback(`price-${id}`, "err", t("delivery.save_error"));
+    } finally { setSaving(null); }
+  }
+
   async function saveBuiltinCredentials(id: BuiltinId) {
     setSaving(id);
+    try {
     const body: Record<string, string> = {};
     if (editedKeys[id]   !== undefined) body[`ai_api_key_${id}`] = editedKeys[id];
     if (editedModels[id] !== undefined) body[`ai_model_${id}`]   = editedModels[id];
+    if (editedPrices[id] !== undefined) body.ai_prices = await mergedPrices(id);
     const res = await adminFetch("/api/admin/settings/ai", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -249,6 +303,7 @@ export function AiToolView() {
     });
     setSaving(null);
     if (res.ok) {
+      clearPriceDraft(id);
       await load();
       setAiTestResult(null);
       window.dispatchEvent(new Event("ai-key-status-changed"));
@@ -256,8 +311,11 @@ export function AiToolView() {
       setEditedModels(e => { const n = { ...e }; delete n[id]; return n; });
       showFeedback(id, "ok", t("ai.credentials_saved"));
     } else {
-      showFeedback(id, "err", t("delivery.save_error"));
+      showFeedback(id, "err", await settingsError(res));
     }
+    } catch {
+      showFeedback(id, "err", t("delivery.save_error"));
+    } finally { setSaving(null); }
   }
 
   async function saveCustomProviders(updated: CustomProvider[], feedbackKey = "custom") {
@@ -524,7 +582,11 @@ export function AiToolView() {
                   style={inputStyle}
                 />
               </div>
+              <ProviderPriceFields providerId={b.id}
+                value={editedPrices[b.id] ?? providerPrice(settings?.ai_prices ?? "{}", b.id)}
+                onChange={value => setEditedPrices(prices => ({ ...prices, [b.id]: value }))} />
               <button
+                data-testid={`button-save-provider-${b.id}`}
                 onClick={() => void saveBuiltinCredentials(b.id)}
                 disabled={saving === b.id}
                 className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
@@ -546,6 +608,17 @@ export function AiToolView() {
               <p><span className="font-medium text-foreground">{t("ai.model_colon")}</span> <span className="font-mono">{cp.model}</span></p>
               <p><span className="font-medium text-foreground">{t("ai.api_key_colon")}</span> {cp.api_key ? t("ai.key_set") : t("ai.key_unset")}</p>
             </div>
+            <ProviderPriceFields providerId={cp.id}
+              value={editedPrices[cp.id] ?? providerPrice(settings?.ai_prices ?? "{}", cp.id)}
+              onChange={value => setEditedPrices(prices => ({ ...prices, [cp.id]: value }))} />
+            <button data-testid={`button-save-price-${cp.id}`} onClick={() => void saveCustomPrice(cp.id)}
+              disabled={saving === `price-${cp.id}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+              style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
+              {saving === `price-${cp.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {t("profile.save_button")}
+            </button>
+            {feedback?.key === `price-${cp.id}` && <FeedbackLine type={feedback.type} msg={feedback.msg} />}
             <button
               onClick={() => { setEditingId(cp.id); setEditProv({ ...cp }); }}
               className="flex items-center gap-2 px-3 py-1.5 rounded text-sm"
@@ -613,6 +686,9 @@ export function AiToolView() {
           />
         </label>
         <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{t("ai.competitor_source_help")}</p>
+        <TavilyPlanFields settings={settings ?? {}}
+          onChange={(key, value) => setSettings(s => s ? { ...s, [key]: value } : s)} />
+        <TavilyUsageLine allowed={canViewCosts} userId={user?.id} />
         <button
           data-testid="button-save-competitor-source"
           onClick={() => void saveCompetitorSource()}
