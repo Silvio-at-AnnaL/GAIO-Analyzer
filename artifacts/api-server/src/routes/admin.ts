@@ -22,6 +22,8 @@ import { validate as isUuid } from "uuid";
 import { getAnalysis } from "../lib/analysis-engine.js";
 import { registerReportDeliveryRoutes } from "./report-deliveries.js";
 import { registerCrawlExclusionRoutes } from "./crawl-exclusions.js";
+import { registerUsageRoutes } from "./usage.js";
+import { USAGE_SETTING_DEFAULTS, validateUsageSettings } from "../lib/usage-events.js";
 
 declare module "express" {
   interface Request {
@@ -157,6 +159,7 @@ async function lockReportDelivery(logId: number): Promise<() => void> {
 const adminRouter = Router();
 registerReportDeliveryRoutes(adminRouter, requireAuth, requireFeature("versandprotokoll"));
 registerCrawlExclusionRoutes(adminRouter, requireAuth, requireFeature("crawl_ausschluesse"));
+registerUsageRoutes(adminRouter, requireAuth, requireFeature("kosten"));
 
 interface SystemEventRow {
   id: string;
@@ -732,6 +735,7 @@ interface AnalysisLogRow {
   prep_id: string | null;
   llm_provider: string | null;
   llm_model: string | null;
+  usage_json: unknown;
   domain: string;
   company_name: string | null;
   triggered_by: string | null;
@@ -817,7 +821,7 @@ adminRouter.get("/analysis-log", requireAuth, requireFeature("analyseprotokoll")
   const total = parseInt(String(totalResult.rows[0].c), 10);
 
   const rows = (await query<AnalysisLogRow & { has_html_export: number }>(`
-    SELECT al.id, al.analysis_uuid, al.prep_id, al.llm_provider, al.llm_model, al.domain, al.company_name, al.gaio_score, al.scores_json,
+    SELECT al.id, al.analysis_uuid, al.prep_id, al.llm_provider, al.llm_model, al.usage_json, al.domain, al.company_name, al.gaio_score, al.scores_json,
            al.pages_crawled, al.status, al.triggered_by, al.error_message,
            al.html_export_id,
            TO_CHAR(al.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
@@ -842,6 +846,7 @@ adminRouter.get("/analysis-log", requireAuth, requireFeature("analyseprotokoll")
     prepId: r.prep_id,
     llmProvider: r.llm_provider,
     llmModel: r.llm_model,
+    usage: r.usage_json ?? null,
     domain: r.domain,
     companyName: r.company_name,
     triggeredBy: r.triggered_by,
@@ -1133,7 +1138,7 @@ adminRouter.post("/angebot/generate", requireAuth, requireFeature("angebots_crea
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
 const SETTINGS_GROUPS: Record<string, string[]> = {
-  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers","ai_key_valid_until","competitor_source","search_provider","search_api_key"],
+  ai:       ["ai_provider","ai_model_claude","ai_api_key_claude","ai_model_openai","ai_api_key_openai","ai_api_key_perplexity","ai_model_perplexity","ai_api_key_gemini","ai_model_gemini","ai_custom_providers","ai_key_valid_until","competitor_source","search_provider","search_api_key","ai_prices","search_plan","search_included_credits","search_monthly_price_usd","search_credit_price_usd"],
   mail:     ["mail_host","mail_port","mail_secure","mail_user","mail_password","mail_from_name","mail_from_address"],
   delivery: ["delivery_mode","delivery_bcc","delivery_require_email"],
 };
@@ -1368,7 +1373,7 @@ adminRouter.get("/settings/:group", requireAuth, requireSettingsFeature, async (
 
   const result: Record<string, string> = {};
   for (const key of keys) {
-    const raw = await getSetting(key) ?? (key === "competitor_source" ? "ai" : key === "search_provider" ? "tavily" : "");
+    const raw = await getSetting(key) ?? USAGE_SETTING_DEFAULTS[key] ?? (key === "competitor_source" ? "ai" : key === "search_provider" ? "tavily" : "");
     if (key === "ai_custom_providers") {
       try {
         const providers = JSON.parse(raw || "[]") as CustomProviderRecord[];
@@ -1388,6 +1393,10 @@ adminRouter.patch("/settings/:group", requireAuth, requireSettingsFeature, async
   if (!keys) { res.status(400).json({ error: "Ungültige Gruppe" }); return; }
 
   const body = req.body as Record<string, string>;
+  if (group === "ai") {
+    const error = validateUsageSettings(body);
+    if (error) { res.status(400).json({ error }); return; }
+  }
   if (group === "ai" && "ai_key_valid_until" in body) {
     const date = body.ai_key_valid_until;
     if (typeof date !== "string" || (date !== "" &&
@@ -1431,7 +1440,7 @@ adminRouter.patch("/settings/:group", requireAuth, requireSettingsFeature, async
       if (key === `ai_api_key_${activeProvider}`) {
         activeKeyChanged ||= String(value) !== (await getSetting(key) ?? "");
       }
-      await setSetting(key, String(value));
+      await setSetting(key, key === "ai_prices" && typeof value === "object" ? JSON.stringify(value) : String(value));
     }
   }
   if (group === "ai") {

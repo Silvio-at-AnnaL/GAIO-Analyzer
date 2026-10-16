@@ -7,6 +7,9 @@ import { currentUserAuthTests } from "./current-user-auth-tests.mjs";
 import { crawlExclusionRouteTests } from "./crawl-exclusions-tests.mjs";
 
 const mocks = {
+  "./admin-db.js": `export { getSetting } from "../lib/admin-db.js";`,
+  "./db.js": `export { query } from "../lib/db.js";`,
+  "./logger.js": `export { logger } from "../lib/logger.js";`,
   express: `
     export function Router() {
       const routes = new Map();
@@ -258,6 +261,36 @@ test("ai_key_valid_until accepts empty and valid ISO dates and rejects invalid d
     assert.deepEqual(invalid.body, { error: "Ungültiges Ablaufdatum" });
   }
   assert.equal(state.cacheResets, 2);
+});
+
+test("usage APIs require authentication and kosten permission with admin default access", async () => {
+  for (const path of ["/usage/summary", "/usage/export.csv"]) {
+    reset();
+    assert.equal((await request("GET", path, {token:null,guardsOnly:true})).statusCode,401);
+    assert.equal((await request("GET", path, {token:"valid-user",guardsOnly:true})).statusCode,403);
+    assert.equal((await request("GET", path, {guardsOnly:true})).statusCode,200);
+    reset({permissions_json:JSON.stringify({kosten:["user_extended"]})});
+    assert.equal((await request("GET", path, {token:"valid-extended",guardsOnly:true})).statusCode,200);
+  }
+});
+
+test("AI price and plan settings validate before writes and expose unmasked defaults", async () => {
+  let state=reset();
+  const defaults=await request("GET","/settings/:group");
+  assert.deepEqual(JSON.parse(defaults.body.ai_prices),{claude:{inputPerMTok:3,outputPerMTok:15}});
+  assert.equal(defaults.body.search_plan,"free");
+  assert.equal(defaults.body.search_included_credits,"1000");
+  for(const body of [{ai_prices:"[]"},{search_plan:"bad"},{search_included_credits:"1.5"},
+    {search_credit_price_usd:"-1"},{search_monthly_price_usd:"oops"}]) {
+    state=reset();
+    assert.equal((await request("PATCH","/settings/:group",{body:{ai_provider:"openai",...body}})).statusCode,400);
+    assert.equal(state.saved.length,0);
+  }
+  state=reset();
+  const prices=JSON.stringify({custom:{inputPerMTok:0,outputPerMTok:2}});
+  assert.equal((await request("PATCH","/settings/:group",{body:{ai_prices:prices,search_plan:"payg",search_credit_price_usd:"0.01"}})).statusCode,200);
+  assert.ok(state.saved.some(([key,value])=>key==="ai_prices"&&value===prices));
+  assert.equal((await request("GET","/settings/:group")).body.ai_prices,prices);
 });
 
 test("system event list and export share linked analysis/preparation filters and return prepId", async () => {

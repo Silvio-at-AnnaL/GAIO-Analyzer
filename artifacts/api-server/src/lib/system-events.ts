@@ -205,6 +205,11 @@ async function flushSystemEvents(): Promise<void> {
 
 async function runRetention(): Promise<void> {
   try {
+    await query("DELETE FROM usage_events WHERE created_at < NOW() - INTERVAL '395 days'");
+  } catch (error) {
+    reportError("retention", error);
+  }
+  try {
     await query(
       `DELETE FROM system_events
        WHERE created_at < NOW() - INTERVAL '30 days'`,

@@ -238,3 +238,17 @@ mtime_ms = 1792153147540
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/0e72aa9e-952e-490f-a9b8-d469a63b828d/9a31e6d1-1c5b-4cec-bff4-18bd7dfd30b0"
 storage_version_token = "1792153153649501"
 content_type = "text/plain"
+
+[[outputs]]
+id = "eOUOgiu7UX3Ijq-BYaj61"
+uri = "file://.local/verification/usage-verification-report.txt"
+type = "text"
+title = "Usage recording — verification report"
+description = "Commit, changed files, tests, full Dev/Live summary responses, analysis snapshot, Tavily evidence and first five CSV lines."
+logical_id = "be90a9e0-0fdc-4ca3-a344-ede49942bdac"
+content_hash = "sha256:182c17b547ea58c888a2cf210886f8854c80d17fd29d54218b18eeb6dd7d9235"
+size = 15503
+mtime_ms = 1792155939811
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:df26f7dd-e1cf-4e91-b5aa-b08f3e9710f8/be90a9e0-0fdc-4ca3-a344-ede49942bdac/5e9dc021-89e7-45c9-bd3d-c82509c1590b"
+storage_version_token = "1792155940401884"
+content_type = "text/plain"

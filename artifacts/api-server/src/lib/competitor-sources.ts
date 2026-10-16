@@ -2,6 +2,7 @@ import { callLLM } from "./ai-client.js";
 import { getSetting } from "./admin-db.js";
 import { logger } from "./logger.js";
 import { fillTemplate, getPrompt } from "./prompt-manager.js";
+import { recordUsage, tavilyCredits } from "./usage-events.js";
 
 export type CandidateSourceName = "ai" | "search";
 
@@ -89,12 +90,17 @@ export async function findCandidatesBySearch(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            api_key: apiKey, query, search_depth: "basic", max_results: 8, include_answer: false,
+            api_key: apiKey, query, search_depth: "basic", max_results: 8, include_answer: false, include_usage: true,
           }),
           signal: AbortSignal.timeout(10_000),
         });
+        if (response.status === 432 || response.status === 433) {
+          logger.warn({ status: response.status }, "tavily quota exhausted");
+        }
         if (!response.ok) throw new Error(`http_${response.status}`);
-        const data: unknown = await response.json();
+        let data: unknown;
+        try { data = await response.json(); }
+        finally { recordUsage({ kind: "search", credits: tavilyCredits(data) }); }
         if (!data || typeof data !== "object" || !("results" in data) || !Array.isArray(data.results)) {
           throw new Error("invalid_results");
         }

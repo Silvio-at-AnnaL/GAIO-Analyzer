@@ -18,3 +18,4 @@
 - [Git index-lock guard](git-index-lock-guard.md) — even diff/status may refresh the index and need the explicit Git guard flag for authorized operations.
 - [Analysis metadata visibility](analysis-metadata-visibility.md) — provider/model belong in admin history and invisible export metadata, not customer-facing reports.
 - [Browser verification fallback](browser-verification-fallback.md) — testing subagent kind was unavailable; local Playwright can use the installed Chromium without app dependencies.
+- [Shared preparation accounting](usage-accounting.md) — preparation usage is attributed to each linked analysis, but global spend must count each event only once.

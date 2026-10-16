@@ -127,6 +127,21 @@ const CREATE_TABLES = `
   ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS prep_id TEXT;
   ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS llm_provider TEXT;
   ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS llm_model TEXT;
+  ALTER TABLE analysis_log ADD COLUMN IF NOT EXISTS usage_json JSONB;
+
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    env TEXT NOT NULL CHECK (env IN ('live','dev')),
+    kind TEXT NOT NULL CHECK (kind IN ('llm','search')),
+    area TEXT NOT NULL, module TEXT, provider TEXT, model TEXT,
+    analysis_id TEXT, prep_id TEXT,
+    input_tokens INTEGER, output_tokens INTEGER, search_credits INTEGER,
+    cost_usd NUMERIC(12,6)
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events (created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_events_analysis_id ON usage_events (analysis_id);
+  CREATE INDEX IF NOT EXISTS idx_usage_events_prep_id ON usage_events (prep_id);
 
   CREATE TABLE IF NOT EXISTS analysis_exports (
     id           SERIAL      PRIMARY KEY,
@@ -420,7 +435,7 @@ export async function initializeDatabase(): Promise<void> {
 
   // Auto-register missing permission entries
   const ALL_FEATURE_IDS = [
-    "nutzerverwaltung", "analyseprotokoll", "setup_import", "geteilte_analysen", "angebots_creator",
+    "nutzerverwaltung", "analyseprotokoll", "kosten", "setup_import", "geteilte_analysen", "angebots_creator",
     "erscheinungsbild", "kontakt_daten", "rechtemanagement",
     "ki_tool", "mailserver", "versand_analyse", "versandprotokoll",
     "prompt_verwaltung", "textverwaltung", "score_einstellungen", "crawl_ausschluesse", "systemprotokoll",
@@ -518,6 +533,7 @@ export async function updateAnalysisLogComplete(
      WHERE id = $4`,
     [gaioScore, scoresJson, pagesCrawled, id],
   );
+  await (await import("./usage-snapshot.js")).saveUsageSnapshot(id);
 }
 
 export async function updateAnalysisLogFailed(id: number, errorMessage: string): Promise<void> {
@@ -527,6 +543,7 @@ export async function updateAnalysisLogFailed(id: number, errorMessage: string):
      WHERE id = $2`,
     [errorMessage, id],
   );
+  await (await import("./usage-snapshot.js")).saveUsageSnapshot(id);
 }
 
 export interface ReportDelivery {
