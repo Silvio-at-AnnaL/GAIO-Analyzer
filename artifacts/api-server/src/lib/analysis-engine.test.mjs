@@ -338,7 +338,7 @@ const helperBundle = await build({
       const helperMocks = {
         "./logger": mocks["./logger"],
         "../logger": mocks["./logger"],
-        "@workspace/integrations-anthropic-ai": "export const anthropic = {};",
+        "../ai-client.js": "export async function callLLMDetailed() { throw new Error('No AI in fixtures'); }",
         "../prompt-manager.js": "export const getPrompt = async () => ''; export const fillTemplate = () => '';",
         "./recommendation-input.js": "export const buildRecommendationInput = () => ({});",
       };

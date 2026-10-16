@@ -57,8 +57,12 @@ const mocks = {
   "@google/generative-ai": `
     export class GoogleGenerativeAI {
       constructor(apiKey) { globalThis.__aiClientTest.clients.push({ provider: "gemini", apiKey }); }
-      getGenerativeModel() {
-        return { generateContent: async () => ({ response: { text: () => "Gemini response" } }) };
+      getGenerativeModel(options) {
+        globalThis.__aiClientTest.modelOptions = options;
+        return { generateContent: async (prompt) => {
+          globalThis.__aiClientTest.requests.push({ provider: "gemini", prompt });
+          return { response: { text: () => "Gemini response" } };
+        } };
       }
     }
   `,
@@ -260,3 +264,44 @@ test("per-call timeout and retry overrides reach Anthropic and OpenAI constructo
     apiKey: "test-openai-key", timeout: 15_000, maxRetries: 0,
   });
 });
+
+for (const [provider, settings, expectedModel] of [
+  ["claude", { ai_api_key_claude: key }, model],
+  ["openai", { ai_api_key_openai: "openai-test-key" }, "gpt-4o"],
+  ["perplexity", { ai_api_key_perplexity: "perplexity-test-key" }, "llama-3.1-sonar-large-128k-online"],
+  ["custom-1", { ai_custom_providers: JSON.stringify([{
+    id: "custom-1", api_key: "custom-test-key", base_url: "https://custom.example",
+    model: "custom-model", enabled: true,
+  }]) }, "custom-model"],
+  ["gemini", { ai_api_key_gemini: "gemini-test-key" }, "gemini-1.5-pro"],
+]) {
+  test(`${provider} passes system instructions without logging them and preserves requests when absent`, async () => {
+    const system = "Synthetic private system instruction.";
+    for (const instruction of [system, undefined]) {
+      const state = reset({ ai_provider: provider, ...settings });
+      await callLLMDetailed("user prompt", 321, 0.2, { module: "system-test", system: instruction });
+      if (provider === "gemini") {
+        assert.equal(JSON.stringify(state.modelOptions), JSON.stringify({
+          model: expectedModel, generationConfig: { temperature: 0.2 },
+          ...(instruction === undefined ? {} : { systemInstruction: instruction }),
+        }));
+        assert.deepEqual(state.requests, [{ provider: "gemini", prompt: "user prompt" }]);
+      } else if (provider === "claude") {
+        assert.equal(JSON.stringify(state.requests[0].request), JSON.stringify({
+          model: expectedModel, max_tokens: 321, temperature: 0.2,
+          ...(instruction === undefined ? {} : { system: instruction }),
+          messages: [{ role: "user", content: "user prompt" }],
+        }));
+      } else {
+        assert.equal(JSON.stringify(state.requests[0].request), JSON.stringify({
+          model: expectedModel, max_tokens: 321, temperature: 0.2,
+          messages: [
+            ...(instruction === undefined ? [] : [{ role: "system", content: instruction }]),
+            { role: "user", content: "user prompt" },
+          ],
+        }));
+      }
+      assert.ok(!JSON.stringify(state.logs).includes(system));
+    }
+  });
+}

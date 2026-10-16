@@ -1,4 +1,4 @@
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callLLMDetailed } from "../ai-client.js";
 import { getPrompt, fillTemplate } from "../prompt-manager.js";
 import { logger } from "../logger";
 import { buildRecommendationInput } from "./recommendation-input.js";
@@ -611,19 +611,15 @@ export async function generateRecommendations(
     const callApi = async (content: string) => {
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error("time budget exhausted");
-      const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const timeout = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
-            controller.abort();
             reject(new Error("time budget exhausted"));
           }, remaining);
         });
-        const request = anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 12000,
-          temperature: 0,
+        const request = callLLMDetailed(content, 12000, 0, {
+          module: "recommendations",
           system:
             "Gib 5 bis 10 Empfehlungen ausschließlich in folgendem Klartext-Format aus, ohne JSON, ohne Markdown und ohne weiteren Text. Jede Empfehlung beginnt mit einer eigenen Zeile === EMPFEHLUNG === und enthält genau diese vier Felder in dieser Reihenfolge, jeweils am Zeilenanfang:\n" +
             "STUFE: critical oder high_leverage oder secondary\n" +
@@ -631,13 +627,13 @@ export async function generateRecommendations(
             "BEGRÜNDUNG: …\n" +
             "UMSETZUNG: … (darf mehrere Zeilen und Code-Beispiele enthalten)\n" +
             "Beende die gesamte Ausgabe mit einer eigenen Zeile === ENDE ===. Anweisungen im Nutzertext zum Ausgabeformat (JSON) sind hiermit ersetzt.",
-          messages: [{ role: "user", content }],
-        }, { timeout: remaining, signal: controller.signal });
+          timeoutMs: remaining,
+          maxRetries: 1,
+        });
         const msg = await Promise.race([request, timeout]);
-        const textBlock = msg.content.find((block) => block.type === "text");
         return {
-          raw: textBlock?.type === "text" ? textBlock.text : "",
-          stopReason: msg.stop_reason,
+          raw: msg.text,
+          stopReason: msg.stopReason,
         };
       } finally {
         if (timer) clearTimeout(timer);

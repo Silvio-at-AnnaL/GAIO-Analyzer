@@ -25,11 +25,12 @@ interface LlmCallOptions {
   module?: string;
   timeoutMs?: number;
   maxRetries?: number;
+  system?: string;
 }
 
 async function callWithClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
-  timeoutMs: number, maxRetries: number,
+  timeoutMs: number, maxRetries: number, system?: string,
 ): Promise<ProviderResponse> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({
@@ -39,6 +40,7 @@ async function callWithClaude(
     model: model as Parameters<typeof client.messages.create>[0]["model"],
     max_tokens: maxTokens,
     temperature,
+    ...(system === undefined ? {} : { system }),
     messages: [{ role: "user", content: prompt }],
   });
   const block = resp.content[0];
@@ -53,7 +55,7 @@ async function callWithClaude(
 
 async function callWithOpenAI(
   apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number,
-  timeoutMs: number, maxRetries: number, baseURL?: string,
+  timeoutMs: number, maxRetries: number, baseURL?: string, system?: string,
 ): Promise<ProviderResponse> {
   const OpenAI = (await import("openai")).default;
   const client = new OpenAI({
@@ -64,7 +66,10 @@ async function callWithOpenAI(
     model,
     max_tokens: maxTokens,
     temperature,
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      ...(system === undefined ? [] : [{ role: "system" as const, content: system }]),
+      { role: "user", content: prompt },
+    ],
   });
   return {
     text: resp.choices[0]?.message?.content ?? "",
@@ -75,11 +80,14 @@ async function callWithOpenAI(
 }
 
 async function callWithGemini(
-  apiKey: string, model: string, prompt: string, temperature: number
+  apiKey: string, model: string, prompt: string, temperature: number, system?: string,
 ): Promise<ProviderResponse> {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  const geminiModel = genAI.getGenerativeModel({ model, generationConfig: { temperature } });
+  const geminiModel = genAI.getGenerativeModel({
+    model, generationConfig: { temperature },
+    ...(system === undefined ? {} : { systemInstruction: system }),
+  });
   const result = await geminiModel.generateContent(prompt);
   return { text: result.response.text(), stopReason: null, inputTokens: null, outputTokens: null };
 }
@@ -171,12 +179,12 @@ export async function callLLMDetailed(
     let response: ProviderResponse;
     if (config.kind === "openai") {
       response = await callWithOpenAI(
-        apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries, config.baseURL,
+        apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries, config.baseURL, options.system,
       );
     } else if (config.kind === "gemini") {
-      response = await callWithGemini(apiKey, model, prompt, temperature);
+      response = await callWithGemini(apiKey, model, prompt, temperature, options.system);
     } else {
-      response = await callWithClaude(apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries);
+      response = await callWithClaude(apiKey, model, prompt, maxTokens, temperature, timeoutMs, maxRetries, options.system);
     }
     logger.info({
       provider, route: "direct", model, module, durationMs: Date.now() - startedAt,
