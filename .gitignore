@@ -53,6 +53,8 @@ Thumbs.db
 *.dump
 
 # Legacy SQLite admin database — local only
+artifacts/api-server/server/bootstrap.json
+artifacts/api-server/server/**/*.json
 artifacts/api-server/server/admin.db
 artifacts/api-server/server/admin.db-shm
 artifacts/api-server/server/admin.db-wal
