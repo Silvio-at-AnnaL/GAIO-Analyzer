@@ -1,16 +1,21 @@
 import jwt from "jsonwebtoken";
-import { randomBytes } from "node:crypto";
-import { logger } from "./logger.js";
+let signingSecret: string | null = null;
 
-function resolveJwtSecret(): string {
-  const env = process.env.ADMIN_JWT_SECRET ?? process.env.SESSION_SECRET;
-  if (env) return env;
-  const generated = randomBytes(64).toString("hex");
-  logger.warn("Neither ADMIN_JWT_SECRET nor SESSION_SECRET is set — using ephemeral JWT secret. Sessions will not survive restarts.");
-  return generated;
+export class SessionSecretNotReadyError extends Error {
+  constructor() {
+    super("Session signing secret has not been initialized");
+    this.name = "SessionSecretNotReadyError";
+  }
 }
 
-const JWT_SECRET = resolveJwtSecret();
+export function setSessionSigningSecret(secret: string): void {
+  if (!secret) throw new SessionSecretNotReadyError();
+  signingSecret = secret;
+}
+
+export function isSessionSigningReady(): boolean {
+  return signingSecret !== null;
+}
 
 export interface JwtPayload {
   userId: number;
@@ -19,12 +24,14 @@ export interface JwtPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
+  if (!signingSecret) throw new SessionSecretNotReadyError();
+  return jwt.sign(payload, signingSecret, { expiresIn: "8h" });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
+  if (!signingSecret) return null;
   try {
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
+    return jwt.verify(token, signingSecret) as JwtPayload;
   } catch {
     return null;
   }

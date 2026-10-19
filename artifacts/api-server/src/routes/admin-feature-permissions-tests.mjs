@@ -18,7 +18,7 @@ const ROUTE_FEATURES = {
 };
 const ADMIN_ONLY = [
   "GET /users", "POST /users", "PATCH /users/:id/role", "DELETE /users/:id",
-  "PATCH /settings/permissions", "GET /settings/database", "POST /settings/database",
+  "PATCH /settings/permissions", "GET /settings/database",
   "POST /settings/database/test",
 ];
 

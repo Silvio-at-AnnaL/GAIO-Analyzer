@@ -46,7 +46,7 @@ export function ForcePasswordChangeView() {
         body: JSON.stringify({ username: pendingChangeUsername, tempPassword: tempPw, newPassword: newPw, confirmPassword: confirmPw }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? t("auth.set_password_failed")); return; }
+      if (!res.ok) { setError(data.errorLabel ? t(data.errorLabel) : data.error ?? t("auth.set_password_failed")); return; }
       login(data.user);
       setActiveView(7);
     } catch {

@@ -67,6 +67,7 @@ const { extractMainText, extractPageText, analyzeContentRelevance, usableContent
 });
 
 const { migrateContentRelevancePrompt, PREVIOUS_CONTENT_RELEVANCE_TEMPLATE } = await loadWithMocks("../admin-db.ts", {
+  "./session-secret.js": `export async function initializeSessionSigningSecret() {}`,
   "bcryptjs": `export default { hash: async () => "not-used" };`,
   "./db.js": `
     export async function withTransaction(fn) { return fn({ query }); }

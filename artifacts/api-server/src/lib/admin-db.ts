@@ -4,6 +4,7 @@ import { PROMPT_DEFAULTS } from "./prompt-defaults.js";
 import { clearPromptCache } from "./prompt-manager.js";
 import { query, withTransaction } from "./db.js";
 import { seedCrawlExclusionRules } from "./crawl-exclusion-seed.js";
+import { initializeSessionSigningSecret } from "./session-secret.js";
 
 // Verbatim previous default: a custom admin-edited template must not be overwritten.
 export const PREVIOUS_CONTENT_RELEVANCE_TEMPLATE = `KRITISCHE ANFORDERUNG: Alle Ausgaben ausnahmslos auf Deutsch. Kein einziges englisches Wort in irgendeinem Feld. Sprache: Deutsch. Nur Deutsch.
@@ -386,6 +387,9 @@ export async function initializeDatabase(): Promise<void> {
   // Create all tables
   await query(CREATE_TABLES);
   await migrateReportDeliveryRetention();
+  const cleanup = await query("DELETE FROM settings WHERE key = 'database_url'");
+  logger.info({ rowsRemoved: cleanup.rowCount ?? 0 }, "Obsolete database connection setting cleanup ran");
+  await initializeSessionSigningSecret();
   await query(`
     CREATE TABLE IF NOT EXISTS crawl_exclusion_rules (
       id SERIAL PRIMARY KEY,

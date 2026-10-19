@@ -31,6 +31,9 @@ async function loadAdminDb() {
 const state = { template: "", logs: [], updates: [], deletes: [], cleared: [] };
 globalThis.__adminDbMigrationTest = state;
 const mocks = {
+  "./session-secret.js": `export async function initializeSessionSigningSecret() {
+    globalThis.__adminDbMigrationTest.secretInitializations = (globalThis.__adminDbMigrationTest.secretInitializations ?? 0) + 1;
+  }`,
   "./usage-snapshot.js": "export async function saveUsageSnapshot() {}",
   "bcryptjs": `export default { hash: async () => "not-used" };`,
   "./db.js": `
@@ -104,13 +107,21 @@ test("analysis-log insertion stores nullable correlation/provider metadata witho
 test("DB initialization runs twice with the same additive IF NOT EXISTS correlation DDL", async () => {
   const db = await loadAdminDb();
   const schemas = [];
+  const cleanups = [];
+  const before = state.secretInitializations ?? 0;
   state.exportQuery = async sql => {
     if (sql.includes("CREATE TABLE IF NOT EXISTS analysis_log")) schemas.push(sql);
+    if (sql.startsWith("DELETE FROM settings")) cleanups.push(sql);
     return { rows: sql.includes("SELECT COUNT") ? [{ c: "1" }] : [] };
   };
   try {
     await db.initializeDatabase();
     await db.initializeDatabase();
+    assert.deepEqual(cleanups, [
+      "DELETE FROM settings WHERE key = 'database_url'",
+      "DELETE FROM settings WHERE key = 'database_url'",
+    ]);
+    assert.equal(state.secretInitializations - before, 2);
     assert.equal(schemas.length, 2);
     assert.equal(schemas[0], schemas[1]);
     for (const [table, column] of [

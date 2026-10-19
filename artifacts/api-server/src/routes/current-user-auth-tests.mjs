@@ -24,7 +24,7 @@ export function currentUserAuthTests({ reset, request }) {
     state.users.set(1, { id: 1, username: "renamed-user", role: "user" });
     for (const [method, path] of [
       ["GET", "/users"], ["POST", "/users"], ["PATCH", "/users/:id/role"], ["DELETE", "/users/:id"],
-      ["PATCH", "/settings/permissions"], ["GET", "/settings/database"], ["POST", "/settings/database"],
+      ["PATCH", "/settings/permissions"], ["GET", "/settings/database"],
       ["POST", "/settings/database/test"],
     ]) {
       const result = await request(method, path, { token: "valid-admin", params: { id: "2" } });
@@ -32,7 +32,7 @@ export function currentUserAuthTests({ reset, request }) {
       assert.deepEqual(result.body, { error: "Keine Berechtigung" });
       assert.deepEqual(result.adminUser, { id: 1, username: "renamed-user", role: "user" });
     }
-    assert.equal(state.authQueries.length, 8);
+    assert.equal(state.authQueries.length, 7);
     assert.ok(state.authQueries.every(([sql, params]) => sql === LOOKUP && params[0] === 1));
     assert.deepEqual(state.queries, []);
     assert.deepEqual(state.saved, []);

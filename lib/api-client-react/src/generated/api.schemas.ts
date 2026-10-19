@@ -5,6 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type DatabaseStatusSource =
+  (typeof DatabaseStatusSource)[keyof typeof DatabaseStatusSource];
+
+export const DatabaseStatusSource = {
+  env: "env",
+  file: "file",
+} as const;
+
+export interface DatabaseStatus {
+  source: DatabaseStatusSource;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  /** @nullable */
+  sslmode: string | null;
+  connected: boolean;
+  latencyMs: number;
+}
+
+export interface DatabaseConnectionTest {
+  ok: boolean;
+  ms: number;
+}
+
 export type ReportDeliveryItemReportType =
   (typeof ReportDeliveryItemReportType)[keyof typeof ReportDeliveryItemReportType];
 

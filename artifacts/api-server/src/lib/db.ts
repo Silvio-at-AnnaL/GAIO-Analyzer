@@ -1,5 +1,15 @@
 import pg from "pg";
 import { logger } from "./logger.js";
+import { resolveDatabaseConfig } from "./bootstrap.js";
+
+export const databaseConfig = (() => {
+  try {
+    return resolveDatabaseConfig();
+  } catch {
+    logger.fatal("No explicit database connection configured: set DATABASE_URL or server/bootstrap.json database_url. Exiting.");
+    process.exit(1);
+  }
+})();
 
 // Return timestamp columns as strings (not Date objects) so all existing
 // string-based comparisons and .slice() calls keep working unchanged.
@@ -8,8 +18,8 @@ pg.types.setTypeParser(pg.types.builtins.TIMESTAMPTZ, (v: string) => v);
 pg.types.setTypeParser(pg.types.builtins.DATE,        (v: string) => v);
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL
+  connectionString: databaseConfig.url,
+  ssl: databaseConfig.url
     ? { rejectUnauthorized: false }
     : undefined,
   max: 10,

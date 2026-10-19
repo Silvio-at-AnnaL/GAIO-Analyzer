@@ -38,7 +38,7 @@ export function LoginView() {
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? t("auth.login_failed")); return; }
+      if (!res.ok) { setError(data.errorLabel ? t(data.errorLabel) : data.error ?? t("auth.login_failed")); return; }
       if (data.mustChangePw) {
         setPendingChangeUsername(username);
         setActiveView(8);

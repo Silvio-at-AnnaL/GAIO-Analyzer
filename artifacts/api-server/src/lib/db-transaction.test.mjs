@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { build } from "esbuild";
 
 const mocks = {
+  "./bootstrap.js": `export function resolveDatabaseConfig() { return { url: "postgresql://fixture/db", source: "env" }; }`,
   pg: `
     export default {
       types: { builtins: { TIMESTAMP: 1, TIMESTAMPTZ: 2, DATE: 3 }, setTypeParser() {} },

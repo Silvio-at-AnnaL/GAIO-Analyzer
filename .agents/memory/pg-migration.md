@@ -12,7 +12,6 @@ All DB access uses the `query<T>()` helper from `src/lib/db.ts`. It returns `{ r
 ## How to apply
 - Import `query` from `../lib/db.js` (not from `pg` directly).
 - All `getSetting()`, `setSetting()`, `createAnalysisLog()` etc. are async — always `await`.
-- `admin-auth.ts` resolves JWT secret from `process.env.SESSION_SECRET` (no DB call at init time) so the module remains synchronous at import.
 - `mailer.ts` `getMailSettings()` is async — `sendMail` awaits it.
 - `ai-client.ts` `callLLM` is async — all `getSetting()` calls inside it are awaited.
 - Timestamp columns are returned as strings (type parsers set in `db.ts`) — `.slice(0,10)` still works.

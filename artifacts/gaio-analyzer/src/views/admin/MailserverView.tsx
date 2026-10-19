@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Save, Send, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Database, Info } from "lucide-react";
 import { adminFetch, useAuth } from "@/store/authStore";
 import { useT } from "@/lib/LabelProvider";
+import type { DatabaseStatus } from "@workspace/api-client-react";
 
 // ── Mail settings ─────────────────────────────────────────────────────────────
 
@@ -31,11 +32,7 @@ function encryptionFromSettings(port: string, secure: string): EncryptionMode {
 
 // ── Database status ───────────────────────────────────────────────────────────
 
-interface DbStatus {
-  source:     "env" | "bootstrap" | "default";
-  maskedUrl:  string;
-  connected:  boolean;
-}
+type DbStatus = DatabaseStatus;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -60,14 +57,8 @@ export function MailserverView() {
   // ── DB state ────────────────────────────────────────────────────────────────
   const [dbStatus,     setDbStatus]     = useState<DbStatus | null>(null);
   const [dbLoading,    setDbLoading]    = useState(true);
-  const [dbConnStr,    setDbConnStr]    = useState("");
-  const [dbEdited,     setDbEdited]     = useState(false);
-  const [dbShowPw,     setDbShowPw]     = useState(false);
-  const [dbFormOpen,   setDbFormOpen]   = useState(false);
   const [dbTesting,    setDbTesting]    = useState(false);
   const [dbTestResult, setDbTestResult] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
-  const [dbSaving,     setDbSaving]     = useState(false);
-  const [dbSaved,      setDbSaved]      = useState(false);
 
   useEffect(() => {
     void loadMail();
@@ -140,8 +131,9 @@ export function MailserverView() {
       if (res.ok) {
         const data: DbStatus = await res.json();
         setDbStatus(data);
-        if (data.source === "default") setDbFormOpen(true);
       }
+    } catch {
+      setDbStatus(null);
     } finally {
       setDbLoading(false);
     }
@@ -150,32 +142,17 @@ export function MailserverView() {
   async function handleDbTest() {
     setDbTesting(true);
     setDbTestResult(null);
-    const body = dbEdited ? { connectionString: dbConnStr } : {};
-    const res = await adminFetch("/api/admin/settings/database/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json() as { ok: boolean; ms?: number; error?: string };
-    setDbTesting(false);
-    setDbTestResult(data);
-  }
-
-  async function handleDbSave() {
-    if (!dbConnStr.trim()) return;
-    setDbSaving(true);
-    setDbSaved(false);
-    const res = await adminFetch("/api/admin/settings/database", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionString: dbConnStr.trim() }),
-    });
-    setDbSaving(false);
-    if (res.ok) {
-      setDbSaved(true);
-      setDbEdited(false);
-      setTimeout(() => setDbSaved(false), 3500);
-      void loadDb();
+    try {
+      const res = await adminFetch("/api/admin/settings/database/test", { method: "POST" });
+      const data = await res.json() as { ok: boolean; ms?: number };
+      setDbTestResult({ ok: res.ok && data.ok, ms: data.ms });
+      if (res.ok) setDbStatus(current => current ? {
+        ...current, connected: data.ok, latencyMs: data.ms ?? 0,
+      } : null);
+    } catch {
+      setDbTestResult({ ok: false });
+    } finally {
+      setDbTesting(false);
     }
   }
 
@@ -349,131 +326,34 @@ export function MailserverView() {
           </div>
         ) : dbStatus ? (
           <>
-            {/* ENV source — read-only info */}
-            {dbStatus.source === "env" && (
-              <div className="rounded-md p-4 space-y-2" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-                <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "#1d4ed8" }}>
-                  <Info className="w-4 h-4 shrink-0" />
-                  {t("mail.db_env_configured")}
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              {([
+                ["mail.db_source", t(`mail.db_source_${dbStatus.source}`)],
+                ["mail.db_host", dbStatus.host],
+                ["mail.db_port", dbStatus.port],
+                ["mail.db_database", dbStatus.database],
+                ["mail.db_user", dbStatus.user],
+                ["mail.db_sslmode", dbStatus.sslmode ?? t("mail.db_not_specified")],
+                ["mail.db_latency", t("mail.db_latency_value", { ms: dbStatus.latencyMs })],
+              ] as const).map(([label, value]) => (
+                <div key={label}>
+                  <dt style={{ color: "hsl(var(--muted-foreground))" }}>{t(label)}</dt>
+                  <dd className="font-mono break-all">{value}</dd>
                 </div>
-                {dbStatus.maskedUrl && (
-                  <div className="font-mono text-xs break-all" style={{ color: "#4b5563" }}>
-                    {dbStatus.maskedUrl}
-                  </div>
-                )}
-                <div className="text-xs" style={{ color: "#6b7280" }}>
-                  {t("mail.db_env_priority")}
-                </div>
-              </div>
-            )}
-
-            {/* BOOTSTRAP or DEFAULT source — editable */}
-            {(dbStatus.source === "bootstrap" || dbStatus.source === "default") && (
-              <div className="space-y-3">
-                {/* Current connection status */}
-                <div className="space-y-1">
-                  <div className="text-xs font-medium uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    {t("mail.db_current_connection")}
-                  </div>
-                  {dbStatus.maskedUrl ? (
-                    <div className="font-mono text-xs break-all" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      {dbStatus.maskedUrl}
-                    </div>
-                  ) : (
-                    <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>—</div>
-                  )}
-                  <div className={`flex items-center gap-1.5 text-xs ${dbStatus.connected ? "text-green-500" : "text-amber-500"}`}>
-                    {dbStatus.connected
-                      ? <><CheckCircle className="w-3.5 h-3.5" /> {t("mail.db_connected")}</>
-                      : <><AlertCircle className="w-3.5 h-3.5" />
-                          {dbStatus.source === "default"
-                            ? t("mail.db_default_active")
-                            : t("mail.db_no_connection")}
-                        </>
-                    }
-                  </div>
-                </div>
-
-                {/* Toggle form when not default */}
-                {dbStatus.source === "bootstrap" && !dbFormOpen && (
-                  <button
-                    onClick={() => setDbFormOpen(true)}
-                    className="text-xs underline"
-                    style={{ color: "hsl(var(--muted-foreground))" }}
-                  >
-                    {t("mail.db_change_conn")}
-                  </button>
-                )}
-
-                {/* Edit form */}
-                {dbFormOpen && (
-                  <div className="space-y-3 pt-1">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">{t("mail.db_conn_label")}</label>
-                      <div className="relative">
-                        <input
-                          type={dbShowPw ? "text" : "password"}
-                          value={dbEdited ? dbConnStr : dbStatus.maskedUrl}
-                          placeholder="postgresql://user:pass@host/db?sslmode=require"
-                          onFocus={() => { if (!dbEdited) { setDbConnStr(""); setDbEdited(true); } }}
-                          onChange={(e) => { setDbConnStr(e.target.value); setDbEdited(true); }}
-                          className="w-full px-3 py-2 pr-10 rounded-md text-sm border font-mono"
-                          style={inputStyle}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setDbShowPw((v) => !v)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2"
-                          style={{ color: "hsl(var(--muted-foreground))" }}
-                          tabIndex={-1}
-                        >
-                          {dbShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                      <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                        {t("mail.db_format_hint")}
-                        {" · "}{t("mail.db_free_db")}<a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "hsl(var(--primary))" }}>neon.tech</a>
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => void handleDbTest()}
-                        disabled={dbTesting}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border disabled:opacity-50"
-                        style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "transparent" }}
-                      >
-                        {dbTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                        {t("mail.db_test_button")}
-                      </button>
-
-                      <button
-                        onClick={() => void handleDbSave()}
-                        disabled={dbSaving || !dbEdited || !dbConnStr.trim()}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-50 ml-auto"
-                        style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
-                      >
-                        {dbSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        {t("profile.save_button")}
-                      </button>
-                    </div>
-
-                    {dbTestResult && (
-                      <div className={`flex items-center gap-2 text-sm ${dbTestResult.ok ? "text-green-500" : "text-red-400"}`}>
-                        {dbTestResult.ok
-                          ? <><CheckCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_ok", { ms: dbTestResult.ms ?? 0 })}</>
-                          : <><AlertCircle className="w-4 h-4 shrink-0" /> {t("mail.db_test_error", { error: dbTestResult.error ?? "" })}</>
-                        }
-                      </div>
-                    )}
-
-                    {dbSaved && (
-                      <div className="flex items-center gap-2 text-sm text-green-500">
-                        <CheckCircle className="w-4 h-4 shrink-0" /> {t("mail.db_saved")}
-                      </div>
-                    )}
-                  </div>
-                )}
+              ))}
+            </dl>
+            <div className={`flex items-center gap-1.5 text-sm ${dbStatus.connected ? "text-green-500" : "text-amber-500"}`}>
+              {dbStatus.connected ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              {t(dbStatus.connected ? "mail.db_connected" : "mail.db_no_connection")}
+            </div>
+            <button onClick={() => void handleDbTest()} disabled={dbTesting}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border disabled:opacity-50">
+              {dbTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+              {t("mail.db_test_button")}
+            </button>
+            {dbTestResult && (
+              <div role="status" className={`text-sm ${dbTestResult.ok ? "text-green-500" : "text-red-400"}`}>
+                {dbTestResult.ok ? t("mail.db_test_ok", { ms: dbTestResult.ms ?? 0 }) : t("mail.db_test_error")}
               </div>
             )}
           </>
@@ -485,8 +365,8 @@ export function MailserverView() {
 
         {/* Platform hint */}
         <div className="pt-2 text-xs border-t" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-          {t("mail.db_platform_hint_replit")}
-          {" "}{t("mail.db_platform_hint_own")}
+          <Info className="w-3.5 h-3.5 inline mr-1" />
+          {t("mail.db_config_hint")}
         </div>
       </div>}
     </div>

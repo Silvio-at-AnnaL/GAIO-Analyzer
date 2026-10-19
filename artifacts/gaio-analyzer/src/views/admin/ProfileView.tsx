@@ -81,7 +81,7 @@ export function ProfileView() {
     const data = await res.json();
     setNameSaving(false);
     if (res.ok) { await refreshUser(); setNameMsg(t("profile.msg_saved")); }
-    else setNameMsg(data.error ?? t("profile.error_generic"));
+    else setNameMsg(data.errorLabel ? t(data.errorLabel) : data.error ?? t("profile.error_generic"));
   }
 
   async function saveUsername(e: React.FormEvent) {
@@ -90,7 +90,7 @@ export function ProfileView() {
     const data = await res.json();
     setUsernameSaving(false);
     if (res.ok) { await refreshUser(); setNewUsername(""); setCurrentPwU(""); setUsernameMsg(t("profile.msg_username_updated")); }
-    else setUsernameMsg(data.error ?? t("profile.error_generic"));
+    else setUsernameMsg(data.errorLabel ? t(data.errorLabel) : data.error ?? t("profile.error_generic"));
   }
 
   async function saveEmail(e: React.FormEvent) {
@@ -108,7 +108,7 @@ export function ProfileView() {
           setEmailMsg(t("profile.code_sent"));
         }
       } else { await refreshUser(); setNewEmail(""); setEmailMsg(t("profile.msg_email_updated")); }
-    } else setEmailMsg(data.error ?? t("profile.error_generic"));
+    } else setEmailMsg(data.errorLabel ? t(data.errorLabel) : data.error ?? t("profile.error_generic"));
   }
 
   async function verifyEmailCode(e: React.FormEvent) {
@@ -129,7 +129,7 @@ export function ProfileView() {
     const data = await res.json();
     setPwSaving(false);
     if (res.ok) { setCurrentPw(""); setNewPw(""); setConfirm(""); setPwMsg(t("profile.msg_password_changed")); }
-    else setPwMsg(data.error ?? t("profile.error_generic"));
+    else setPwMsg(data.errorLabel ? t(data.errorLabel) : data.error ?? t("profile.error_generic"));
   }
 
   return (

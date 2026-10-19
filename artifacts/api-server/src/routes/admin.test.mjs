@@ -63,6 +63,7 @@ const mocks = {
     }
   `,
   "../lib/db.js": `
+    export const databaseConfig = { url: "postgresql://status-user:never-return-this@db.example:6543/status-db?sslmode=require", source: "file" };
     export async function query(sql, params) {
       const state = globalThis.__adminTest;
       // Track authentication lookups separately from route-handler queries so
@@ -111,7 +112,6 @@ const mocks = {
   "../lib/analysis-engine.js": `export function getAnalysis(id) {
     return globalThis.__adminTest.analyses.get(id);
   }`,
-  "../lib/bootstrap.js": `export function getDatabaseUrl() { return ""; }`,
   "../lib/mailer.js": `export async function sendMail(options) {
     const state = globalThis.__adminTest;
     state.mails.push(options);
@@ -120,6 +120,7 @@ const mocks = {
     return result;
   }`,
   "../lib/admin-auth.js": `
+    export function isSessionSigningReady() { return !globalThis.__adminTest.sessionNotReady; }
     export function signToken() { return "token"; }
     export function verifyToken(token) {
       if (token === "valid-admin") return { userId: 1, username: "admin", role: "admin" };
@@ -177,6 +178,86 @@ const { outputFiles } = await build({
   }],
 });
 await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`);
+
+test("database status exposes only safe metadata from the active pool configuration", async () => {
+  const state = reset({ database_url: "postgresql://obsolete:password@wrong/db" });
+  const result = await request("GET", "/settings/database");
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(Object.keys(result.body).sort(),
+    ["source", "host", "port", "database", "user", "sslmode", "connected", "latencyMs"].sort());
+  assert.equal(result.body.source, "file");
+  assert.equal(result.body.host, "db.example");
+  assert.equal(result.body.port, 6543);
+  assert.equal(result.body.database, "status-db");
+  assert.equal(result.body.user, "status-user");
+  assert.equal(result.body.sslmode, "require");
+  assert.equal(result.body.connected, true);
+  assert.equal(typeof result.body.latencyMs, "number");
+  assert.ok(!JSON.stringify(result.body).includes("never-return-this"));
+  assert.ok(!JSON.stringify(result.body).includes("postgresql://"));
+  assert.deepEqual(state.queries, [["SELECT 1", undefined]]);
+  assert.ok(!state.settingReads.includes("database_url"));
+});
+
+test("database test ignores any body URL and queries only the current pool; saving route is absent", async () => {
+  const state = reset();
+  const body = { connectionString: "postgresql://attacker:password@other/db" };
+  const result = await request("POST", "/settings/database/test", { body });
+  assert.equal(result.body.ok, true);
+  assert.deepEqual(state.queries, [["SELECT 1", undefined]]);
+  assert.equal((await request("POST", "/settings/database", { body })).statusCode, 404);
+  assert.deepEqual(state.saved, []);
+});
+
+test("database failures return no raw error text or connection credentials", async () => {
+  const state = reset();
+  state.deliveryQuery = async () => { throw new Error("postgresql://private:password@host/db"); };
+  const status = await request("GET", "/settings/database");
+  assert.equal(status.body.connected, false);
+  const probe = await request("POST", "/settings/database/test");
+  assert.equal(probe.body.ok, false);
+  assert.ok(!JSON.stringify([status.body, probe.body]).includes("password"));
+});
+
+test("login and password/username changes return label-based 503 before secret readiness without mutations", async () => {
+  for (const [method, path, body] of [
+    ["POST", "/login", { username: "admin", password: "fixture" }],
+    ["POST", "/set-initial-password", { username: "admin", newPassword: "fixture" }],
+    ["PATCH", "/profile", { newUsername: "renamed" }],
+    ["PATCH", "/profile", { newPassword: "changed" }],
+  ]) {
+    const state = reset();
+    state.sessionNotReady = true;
+    const result = await request(method, path, { body });
+    assert.equal(result.statusCode, 503);
+    assert.equal(result.body.errorLabel, "auth.session_unavailable");
+    assert.deepEqual(state.queries, []);
+    assert.deepEqual(state.saved, []);
+  }
+});
+
+test("session signing secret is not a settings group and cannot be read or written through generic routes", async () => {
+  const state = reset({ session_signing_secret: "private-fixture" });
+  for (const group of ["session_signing_secret", "jwt_secret", "session_secret"]) {
+    for (const method of ["GET", "PATCH"]) {
+      const result = await request(method, "/settings/:group", {
+        params: { group }, body: { session_signing_secret: "replacement" },
+      });
+      assert.notEqual(result.statusCode, 200);
+      assert.ok(!JSON.stringify(result.body).includes("private-fixture"));
+    }
+  }
+  for (const group of ["ai", "mail", "delivery"]) {
+    const result = await request("GET", "/settings/:group", { params: { group } });
+    assert.equal(result.statusCode, 200);
+    assert.ok(!Object.hasOwn(result.body, "session_signing_secret"));
+    await request("PATCH", "/settings/:group", {
+      params: { group }, body: { session_signing_secret: "replacement" },
+    });
+  }
+  assert.ok(!state.settingReads.includes("session_signing_secret"));
+  assert.ok(!state.saved.some(([key]) => key === "session_signing_secret"));
+});
 
 function reset(settings = {}) {
   globalThis.__adminTest = {

@@ -33,11 +33,19 @@ const mocks = {
   "@/store/authStore": `
     ${accessFunction}
     export function useAuth() { return { ...globalThis.__adminUiHarness.auth, reloadPermissions: async () => {} }; }
-    export async function adminFetch(url) {
+    export async function adminFetch(url, init) {
       const h = globalThis.__adminUiHarness;
       h.calls.push(url);
+      h.requests.push([url, init]);
+      if (url.endsWith("/database/test")) {
+        if (h.probeError) throw new Error("Network error");
+        return new Response(JSON.stringify(h.probe ?? { ok: true, ms: 7 }));
+      }
       if (url.endsWith("/permissions")) return new Response(JSON.stringify(h.permissions));
-      if (url.endsWith("/database")) return new Response(JSON.stringify({ source: "env", maskedUrl: "configured", connected: true }));
+      if (url.endsWith("/database")) return new Response(JSON.stringify({
+        source: h.dbSource ?? "env", host: "fixture-db.test", port: 5432, database: "fixture",
+        user: "fixture-user", sslmode: "require", latencyMs: 3, connected: true,
+      }));
       return new Response("{}");
     }
   `,
@@ -95,7 +103,7 @@ function hasText(node, text) {
 }
 function harness(component, role = "admin", permissions = {}) {
   const h = {
-    cursor: 0, slots: [], deps: [], effects: [], calls: [], permissions,
+    cursor: 0, slots: [], deps: [], effects: [], calls: [], requests: [], permissions,
     auth: { user: role ? { id: 1, role } : null, isAuthenticated: !!role, permissions },
   };
   globalThis.__adminUiHarness = h;
@@ -108,6 +116,53 @@ function harness(component, role = "admin", permissions = {}) {
   };
   return h;
 }
+
+test("database status is read-only for both sources and the test button sends no connection string", async () => {
+  for (const source of ["env", "file"]) {
+    const h = harness(MailserverView);
+    h.dbSource = source;
+    await h.settle();
+    for (const value of ["fixture-db.test", "fixture", "fixture-user", "require"]) {
+      assert.ok(hasText(h.root, value));
+    }
+    assert.ok(hasText(h.root, `mail.db_source_${source}`));
+    assert.ok(hasText(h.root, "mail.db_config_hint"));
+    assert.ok(!hasText(h.root, "mail.db_change_conn"));
+    const dbCard = elements(h.root, node => node.type === "div" && hasText(node, "mail.db_title"))
+      .find(node => node.props.className?.includes("rounded-lg"));
+    assert.equal(elements(dbCard, node => node.type === "input").length, 0);
+    const button = elements(dbCard, node => node.type === "button" && hasText(node, "mail.db_test_button"))[0];
+    assert.ok(button);
+    await button.props.onClick();
+    await h.settle();
+    const probe = h.requests.find(([url]) => url.endsWith("/database/test"));
+    assert.deepEqual(probe[1], { method: "POST" });
+    assert.ok(hasText(h.root, "mail.db_test_ok"));
+    assert.ok(!h.requests.some(([url, init]) => url.endsWith("/database") && init?.method === "POST"));
+  }
+});
+
+test("database test failure is label-based and leaves its button available for retry", async () => {
+  const h = harness(MailserverView);
+  h.probeError = true;
+  await h.settle();
+  const button = () => elements(h.root, node => node.type === "button" && hasText(node, "mail.db_test_button"))[0];
+  button().props.onClick();
+  await h.settle();
+  assert.ok(hasText(h.root, "mail.db_test_error"));
+  assert.equal(button().props.disabled, false);
+});
+
+test("auth and profile error handlers translate the new service-unavailable label", async () => {
+  for (const filename of ["LoginView", "ForcePasswordChangeView", "ProfileView"]) {
+    const source = await readFile(new URL(`../views/admin/${filename}.tsx`, import.meta.url), "utf8");
+    assert.match(source, /data\.errorLabel \? t\(data\.errorLabel\)/);
+  }
+  const { labelDefaults } = await load({ entryPoints: [new URL("./labelDefaults.ts", import.meta.url).pathname] });
+  assert.ok(labelDefaults["auth.session_unavailable"].de);
+  assert.ok(!labelDefaults["mail.db_change_conn"]);
+  assert.ok(!labelDefaults["mail.db_saved"]);
+});
 
 test("fixed admin-only features render disabled and unchecked controls even with stale role grants", async () => {
   const h = harness(PermissionsView, "admin", {
@@ -160,5 +215,5 @@ test("result share control is hidden without feature permission and shown for ex
 test("admin-only hint has the requested German default and total label count is updated", async () => {
   const { labelDefaults } = await load({ entryPoints: [new URL("./labelDefaults.ts", import.meta.url).pathname] });
   assert.deepEqual(labelDefaults["perm.admin_only_hint"], { group: "admin", de: "Nur für Administratoren" });
-  assert.equal(Object.keys(labelDefaults).length, 1418);
+  assert.equal(Object.keys(labelDefaults).length, 1420);
 });

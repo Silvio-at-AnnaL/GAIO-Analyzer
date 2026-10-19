@@ -3,12 +3,10 @@ import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { load as cheerioLoad } from "cheerio";
-import { Client as PgClient } from "pg";
         import { getSetting, setSetting, saveAnalysisExportOnce, insertReportDelivery, countReportDeliveries } from "../lib/admin-db.js";
-        import { query, withTransaction } from "../lib/db.js";
-        import { getDatabaseUrl } from "../lib/bootstrap.js";
+        import { query, withTransaction, databaseConfig } from "../lib/db.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
-import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
+import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword, isSessionSigningReady } from "../lib/admin-auth.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
@@ -461,7 +459,15 @@ adminRouter.post("/public/send-report", reportMailLimiter, async (req: Request, 
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-adminRouter.post("/login", loginLimiter, async (req: Request, res: Response) => {
+function requireSessionSigning(_req: Request, res: Response, next: NextFunction): void {
+  if (!isSessionSigningReady()) {
+    res.status(503).json({ error: "auth.session_unavailable", errorLabel: "auth.session_unavailable" });
+    return;
+  }
+  next();
+}
+
+adminRouter.post("/login", loginLimiter, requireSessionSigning, async (req: Request, res: Response) => {
   const { username, password } = req.body ?? {};
   if (!username || !password) { res.status(400).json({ error: "Benutzername und Passwort erforderlich" }); return; }
 
@@ -503,7 +509,7 @@ adminRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
 
 // ── First-login password change ───────────────────────────────────────────────
 
-adminRouter.post("/set-initial-password", async (req: Request, res: Response) => {
+adminRouter.post("/set-initial-password", requireSessionSigning, async (req: Request, res: Response) => {
   const { username, tempPassword, newPassword, confirmPassword } = req.body ?? {};
   if (!username || !tempPassword || !newPassword || !confirmPassword) {
     res.status(400).json({ error: "Alle Felder sind erforderlich" }); return;
@@ -636,7 +642,7 @@ adminRouter.get("/profile", requireAuth, async (req: Request, res: Response) => 
   res.json({ user: safeUser(user) });
 });
 
-adminRouter.patch("/profile", requireAuth, async (req: Request, res: Response) => {
+adminRouter.patch("/profile", requireSessionSigning, requireAuth, async (req: Request, res: Response) => {
   const { firstName, lastName, newUsername, newEmail, currentPassword, newPassword } = req.body ?? {};
   const userId = req.adminUser!.id;
 
@@ -1306,62 +1312,40 @@ adminRouter.post("/settings/test-mail", requireAuth, requireFeature("mailserver"
 
 // ── Database settings ─────────────────────────────────────────────────────────
 
-function maskDbUrl(raw: string): string {
-  return raw.replace(/:([^@/]+)@/, ":••••••••@");
-}
-
-async function testDbConnection(connectionString: string): Promise<{ ok: boolean; ms?: number; error?: string }> {
+async function testDbConnection(): Promise<{ ok: boolean; ms: number }> {
   const start = Date.now();
-  const client = new PgClient({ connectionString, connectionTimeoutMillis: 8000 });
   try {
-    await client.connect();
-    await client.query("SELECT 1");
-    await client.end();
+    await query("SELECT 1");
     return { ok: true, ms: Date.now() - start };
-  } catch (err) {
-    try { await client.end(); } catch { /* ignore */ }
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } catch {
+    // Database errors may contain credentials or connection strings. Do not expose them.
+    return { ok: false, ms: Date.now() - start };
   }
 }
 
 // GET /api/admin/settings/database
 adminRouter.get("/settings/database", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
-  const rawUrl = getDatabaseUrl();
-  const storedDbUrl = await getSetting("database_url");
-  const source: "env" | "bootstrap" | "default" =
-    process.env.DATABASE_URL?.trim() ? "env"       :
-    storedDbUrl?.trim()              ? "bootstrap" : "default";
-
-  const maskedUrl = rawUrl ? maskDbUrl(rawUrl) : "";
-  let connected = false;
-  if (rawUrl) {
-    const result = await testDbConnection(rawUrl);
-    connected = result.ok;
+  try {
+    const parsed = new URL(databaseConfig.url);
+    const result = await testDbConnection();
+    res.json({
+      source: databaseConfig.source,
+      host: parsed.hostname,
+      port: Number(parsed.port || 5432),
+      database: decodeURIComponent(parsed.pathname.replace(/^\//, "")),
+      user: decodeURIComponent(parsed.username),
+      sslmode: parsed.searchParams.get("sslmode"),
+      connected: result.ok,
+      latencyMs: result.ms,
+    });
+  } catch {
+    res.status(503).json({ error: "mail.db_status_error", errorLabel: "mail.db_status_error" });
   }
-
-  res.json({ source, maskedUrl, connected });
-});
-
-// POST /api/admin/settings/database
-adminRouter.post("/settings/database", requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const { connectionString } = req.body as { connectionString?: string };
-  if (!connectionString || typeof connectionString !== "string" || !connectionString.trim()) {
-    res.status(400).json({ error: "connectionString fehlt" }); return;
-  }
-  await setSetting("database_url", connectionString.trim());
-  res.json({ success: true });
 });
 
 // POST /api/admin/settings/database/test
-adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const { connectionString } = req.body as { connectionString?: string };
-  const rawUrl = connectionString?.trim() || getDatabaseUrl();
-
-  if (!rawUrl) {
-    res.json({ ok: false, error: "Kein Connection String angegeben" }); return;
-  }
-
-  const result = await testDbConnection(rawUrl);
+adminRouter.post("/settings/database/test", requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  const result = await testDbConnection();
   res.json(result);
 });
 

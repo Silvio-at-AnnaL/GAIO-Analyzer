@@ -19,6 +19,8 @@ import type {
 import type {
   AnalysisReport,
   AnalysisStarted,
+  DatabaseConnectionTest,
+  DatabaseStatus,
   ErrorResponse,
   ExportReportDeliveriesCsvParams,
   HealthStatus,
@@ -38,6 +40,162 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Admin-only read-only status of the active database pool
+ */
+export const getGetDatabaseStatusUrl = () => {
+  return `/api/admin/settings/database`;
+};
+
+export const getDatabaseStatus = async (
+  options?: RequestInit,
+): Promise<DatabaseStatus> => {
+  return customFetch<DatabaseStatus>(getGetDatabaseStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDatabaseStatusQueryKey = () => {
+  return [`/api/admin/settings/database`] as const;
+};
+
+export const getGetDatabaseStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDatabaseStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDatabaseStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDatabaseStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDatabaseStatus>>
+  > = ({ signal }) => getDatabaseStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDatabaseStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDatabaseStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDatabaseStatus>>
+>;
+export type GetDatabaseStatusQueryError = ErrorType<void>;
+
+/**
+ * @summary Admin-only read-only status of the active database pool
+ */
+
+export function useGetDatabaseStatus<
+  TData = Awaited<ReturnType<typeof getDatabaseStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDatabaseStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDatabaseStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Admin-only SELECT 1 using the current pool; request body is ignored
+ */
+export const getTestDatabaseConnectionUrl = () => {
+  return `/api/admin/settings/database/test`;
+};
+
+export const testDatabaseConnection = async (
+  options?: RequestInit,
+): Promise<DatabaseConnectionTest> => {
+  return customFetch<DatabaseConnectionTest>(getTestDatabaseConnectionUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getTestDatabaseConnectionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testDatabaseConnection>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testDatabaseConnection>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["testDatabaseConnection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testDatabaseConnection>>,
+    void
+  > = () => {
+    return testDatabaseConnection(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestDatabaseConnectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testDatabaseConnection>>
+>;
+
+export type TestDatabaseConnectionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin-only SELECT 1 using the current pool; request body is ignored
+ */
+export const useTestDatabaseConnection = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testDatabaseConnection>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testDatabaseConnection>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getTestDatabaseConnectionMutationOptions(options));
+};
 
 /**
  * Returns server health status

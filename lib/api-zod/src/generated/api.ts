@@ -8,6 +8,28 @@
 import * as zod from "zod";
 
 /**
+ * @summary Admin-only read-only status of the active database pool
+ */
+export const GetDatabaseStatusResponse = zod.object({
+  source: zod.enum(["env", "file"]),
+  host: zod.string(),
+  port: zod.number(),
+  database: zod.string(),
+  user: zod.string(),
+  sslmode: zod.string().nullable(),
+  connected: zod.boolean(),
+  latencyMs: zod.number(),
+});
+
+/**
+ * @summary Admin-only SELECT 1 using the current pool; request body is ignored
+ */
+export const TestDatabaseConnectionResponse = zod.object({
+  ok: zod.boolean(),
+  ms: zod.number(),
+});
+
+/**
  * Returns server health status
  * @summary Health check
  */

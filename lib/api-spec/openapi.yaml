@@ -13,6 +13,30 @@ tags:
   - name: analysis
     description: Website analysis operations
 paths:
+  /admin/settings/database:
+    get:
+      operationId: getDatabaseStatus
+      summary: Admin-only read-only status of the active database pool
+      responses:
+        "200":
+          description: Active connection metadata without credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatus"
+        "503":
+          description: Database configuration cannot be inspected
+  /admin/settings/database/test:
+    post:
+      operationId: testDatabaseConnection
+      summary: Admin-only SELECT 1 using the current pool; request body is ignored
+      responses:
+        "200":
+          description: Connection test result without database error details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseConnectionTest"
   /healthz:
     get:
       operationId: healthCheck
@@ -191,6 +215,35 @@ paths:
 
 components:
   schemas:
+    DatabaseStatus:
+      type: object
+      required: [source, host, port, database, user, sslmode, connected, latencyMs]
+      properties:
+        source:
+          type: string
+          enum: [env, file]
+        host:
+          type: string
+        port:
+          type: integer
+        database:
+          type: string
+        user:
+          type: string
+        sslmode:
+          type: [string, "null"]
+        connected:
+          type: boolean
+        latencyMs:
+          type: number
+    DatabaseConnectionTest:
+      type: object
+      required: [ok, ms]
+      properties:
+        ok:
+          type: boolean
+        ms:
+          type: number
     ReportDeliveryItem:
       type: object
       required: [id, createdAt, recipientEmail, companyName, domain, gaioScore, reportType, consentMarketing, consentAt, consentText, status, errorMessage, analysisLogId, hasReport]
