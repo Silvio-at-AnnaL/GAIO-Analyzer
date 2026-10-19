@@ -14,3 +14,9 @@ Session signing adopts the configured environment secret only when creating its 
 **Why:** The user deliberately requested a new, independently owned signing-secret setting and explicitly prohibited adopting legacy settings.
 
 **How to apply:** Keep stored-value precedence across restarts and instances. Future migrations must not reinterpret legacy secret rows as the signing source.
+
+Unavailable signing infrastructure is not evidence that a session is invalid.
+
+**Why:** The user observed cold starts incorrectly showing authenticated users as logged out before the stored secret had loaded, with no recovery after startup retries were exhausted.
+
+**How to apply:** Protected requests must be able to trigger recoverable secret loading independently of startup initialization. Report temporary unavailability rather than rejecting a cookie merely because signing is not ready.

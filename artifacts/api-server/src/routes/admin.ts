@@ -6,7 +6,8 @@ import { load as cheerioLoad } from "cheerio";
         import { getSetting, setSetting, saveAnalysisExportOnce, insertReportDelivery, countReportDeliveries } from "../lib/admin-db.js";
         import { query, withTransaction, databaseConfig } from "../lib/db.js";
 import { sendMail, type MailOptions } from "../lib/mailer.js";
-import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword, isSessionSigningReady } from "../lib/admin-auth.js";
+import { signToken, verifyToken, validatePasswordPolicy, generateTempPassword } from "../lib/admin-auth.js";
+import { ensureSessionSigningSecret } from "../lib/session-secret.js";
 import { sendEmail } from "../lib/admin-email.js";
 import { logger } from "../lib/logger.js";
 import { callLLM } from "../lib/ai-client.js";
@@ -68,6 +69,7 @@ const COOKIE_OPTS = {
 };
 
 async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!await waitForSessionSigning(res)) return;
   const token = req.cookies?.gaio_admin_token;
   if (!token) { res.status(401).json({ error: "Nicht authentifiziert" }); return; }
   const payload = verifyToken(token);
@@ -459,11 +461,26 @@ adminRouter.post("/public/send-report", reportMailLimiter, async (req: Request, 
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-function requireSessionSigning(_req: Request, res: Response, next: NextFunction): void {
-  if (!isSessionSigningReady()) {
+async function waitForSessionSigning(res: Response): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      ensureSessionSigningSecret(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error("Session signing initialization timed out")), 10_000);
+      }),
+    ]);
+    return true;
+  } catch {
     res.status(503).json({ error: "auth.session_unavailable", errorLabel: "auth.session_unavailable" });
-    return;
+    return false;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+async function requireSessionSigning(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!await waitForSessionSigning(res)) return;
   next();
 }
 

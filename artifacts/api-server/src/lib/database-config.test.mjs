@@ -114,6 +114,8 @@ test("real pool logs fatal and exits before constructing a pool without configur
 const sessionMocks = {
   "./db.js": `export async function query(sql, params) {
     fixture.calls.push([sql, params]);
+    if (fixture.queryGate) await fixture.queryGate;
+    if (fixture.queryFailures > 0) { fixture.queryFailures--; throw new Error("Database temporarily unavailable"); }
     if (sql.startsWith("SELECT")) return { rows: fixture.stored === undefined ? [] : [{ value: fixture.stored }] };
     if (sql.startsWith("INSERT")) {
       fixture.candidates.push(params[1]);
@@ -122,7 +124,10 @@ const sessionMocks = {
     }
     throw new Error("Unexpected SQL");
   }`,
-  "./admin-auth.js": `export function setSessionSigningSecret(value) { fixture.loaded.push(value); }`,
+  "./admin-auth.js": `
+    export function isSessionSigningReady() { return fixture.loaded.length > 0; }
+    export function setSessionSigningSecret(value) { fixture.loaded.push(value); }
+  `,
 };
 function secretFixture(stored) {
   return { stored, loaded: [], calls: [], candidates: [] };
@@ -173,6 +178,38 @@ test("session secret: racing instances load one stored winner, never losing cand
   assert.equal(state.candidates.length, 2);
   assert.equal(new Set(state.loaded).size, 1);
   assert.ok(state.loaded.every(value => value === state.stored));
+});
+
+test("ensure session signing shares one in-flight load and skips queries once ready", async () => {
+  const state = secretFixture("stored-winner");
+  let release;
+  state.queryGate = new Promise(resolve => { release = resolve; });
+  const mod = await load("./session-secret.ts", sessionMocks, state);
+  const first = mod.ensureSessionSigningSecret();
+  const second = mod.ensureSessionSigningSecret();
+  const initialization = mod.initializeSessionSigningSecret();
+  assert.equal(first, second);
+  assert.equal(first, initialization);
+  assert.equal(state.calls.length, 1);
+  release();
+  await Promise.all([first, second, initialization]);
+  await mod.ensureSessionSigningSecret();
+  assert.equal(state.calls.length, 1);
+  assert.deepEqual(state.loaded, ["stored-winner"]);
+});
+
+test("ensure session signing clears a failed shared load so the next caller retries", async () => {
+  const state = secretFixture("stored-winner");
+  state.queryFailures = 1;
+  const mod = await load("./session-secret.ts", sessionMocks, state);
+  const first = mod.ensureSessionSigningSecret();
+  const second = mod.ensureSessionSigningSecret();
+  assert.equal(first, second);
+  await assert.rejects(first, /temporarily unavailable/);
+  assert.equal(state.calls.length, 1);
+  await mod.ensureSessionSigningSecret();
+  assert.equal(state.calls.length, 2);
+  assert.deepEqual(state.loaded, ["stored-winner"]);
 });
 
 test("session tokens fail closed before initialization and use only the loaded secret afterwards", async () => {

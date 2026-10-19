@@ -119,10 +119,18 @@ const mocks = {
     if (result instanceof Error) throw result;
     return result;
   }`,
+  "../lib/session-secret.js": `
+    export async function ensureSessionSigningSecret() {
+      const state = globalThis.__adminTest;
+      if (state.sessionLoad) return state.sessionLoad();
+      if (state.sessionNotReady) throw new Error("Secret temporarily unavailable");
+    }
+  `,
   "../lib/admin-auth.js": `
     export function isSessionSigningReady() { return !globalThis.__adminTest.sessionNotReady; }
     export function signToken() { return "token"; }
     export function verifyToken(token) {
+      if (globalThis.__adminTest.sessionNotReady) return null;
       if (token === "valid-admin") return { userId: 1, username: "admin", role: "admin" };
       if (token === "valid-user") return { userId: 2, username: "user", role: "user" };
       if (token === "valid-extended") return { userId: 3, username: "extended", role: "user_extended" };
@@ -233,6 +241,62 @@ test("login and password/username changes return label-based 503 before secret r
     assert.equal(result.body.errorLabel, "auth.session_unavailable");
     assert.deepEqual(state.queries, []);
     assert.deepEqual(state.saved, []);
+  }
+});
+
+test("a valid cookie arriving before secret initialization succeeds after loading instead of returning 401", async () => {
+  const state = reset();
+  state.sessionNotReady = true;
+  let finishLoad;
+  state.sessionLoad = () => new Promise(resolve => { finishLoad = resolve; });
+  const pending = request("GET", "/settings/database");
+  await Promise.resolve();
+  assert.equal(state.authQueries.length, 0, "must not verify identity before the secret loads");
+  state.sessionNotReady = false;
+  finishLoad();
+  const result = await pending;
+  assert.equal(result.statusCode, 200);
+  assert.equal(state.authQueries.length, 1);
+});
+
+test("a failed secret load returns 503 and the next request retries successfully", async () => {
+  const state = reset();
+  let attempts = 0;
+  state.sessionLoad = async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("Database temporarily unavailable");
+  };
+  const failed = await request("GET", "/settings/database");
+  assert.equal(failed.statusCode, 503);
+  assert.equal(failed.body.errorLabel, "auth.session_unavailable");
+  assert.equal(state.authQueries.length, 0);
+  const recovered = await request("GET", "/settings/database");
+  assert.equal(recovered.statusCode, 200);
+  assert.equal(attempts, 2);
+});
+
+test("auth and signing middleware time out after 10 seconds with a label-based 503", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    for (const [method, path] of [["GET", "/me"], ["POST", "/login"]]) {
+      const state = reset();
+      state.sessionLoad = () => new Promise(() => {});
+      let completed = false;
+      const pending = request(method, path).then(result => { completed = true; return result; });
+      // The login limiter runs before the async signing middleware.
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      context.mock.timers.tick(9_999);
+      await Promise.resolve();
+      assert.equal(completed, false);
+      context.mock.timers.tick(1);
+      const result = await pending;
+      assert.equal(result.statusCode, 503);
+      assert.equal(result.body.errorLabel, "auth.session_unavailable");
+      assert.deepEqual(state.authQueries, []);
+      assert.deepEqual(state.queries, []);
+    }
+  } finally {
+    context.mock.timers.reset();
   }
 });
 

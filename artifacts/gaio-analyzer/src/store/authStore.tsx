@@ -65,7 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await adminFetch("/api/admin/me");
+      let res = await adminFetch("/api/admin/me");
+      if (res.status === 503) {
+        await new Promise<void>(resolve => setTimeout(resolve, 2_000));
+        res = await adminFetch("/api/admin/me");
+      }
       if (res.ok) {
         const d = await res.json() as { user: AdminUser };
         setUser(d.user);

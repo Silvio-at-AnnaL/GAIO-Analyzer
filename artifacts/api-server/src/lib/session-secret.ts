@@ -1,8 +1,22 @@
 import { randomBytes } from "node:crypto";
 import { query } from "./db.js";
-import { setSessionSigningSecret } from "./admin-auth.js";
+import { setSessionSigningSecret, isSessionSigningReady } from "./admin-auth.js";
 
-export async function initializeSessionSigningSecret(): Promise<void> {
+let inFlight: Promise<void> | null = null;
+
+export function ensureSessionSigningSecret(): Promise<void> {
+  if (isSessionSigningReady()) return Promise.resolve();
+  if (!inFlight) {
+    inFlight = loadSessionSigningSecret().finally(() => { inFlight = null; });
+  }
+  return inFlight;
+}
+
+export function initializeSessionSigningSecret(): Promise<void> {
+  return ensureSessionSigningSecret();
+}
+
+async function loadSessionSigningSecret(): Promise<void> {
   const key = "session_signing_secret";
   let result = await query<{ value: string }>("SELECT value FROM settings WHERE key = $1", [key]);
   if (!result.rows[0]) {
